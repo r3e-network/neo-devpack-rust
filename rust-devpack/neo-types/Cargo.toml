@@ -1,0 +1,18 @@
+[package]
+name = "neo-types"
+version = "0.1.0"
+edition = "2021"
+authors = ["Neo N3 DevPack Team"]
+description = "Neo N3 Core Types for Smart Contract Development"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"], optional = true }
+thiserror = "1.0"
+anyhow = "1.0"
+
+[features]
+default = ["std", "serde"]
+std = []
+no-std = []
+alloc = []
+serde = ["dep:serde"]

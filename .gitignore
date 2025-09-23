@@ -1,0 +1,39 @@
+# Neo LLVM .gitignore
+
+# Build directories
+build/
+target/
+*.o
+*.so
+*.dylib
+*.dll
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# LLVM build files
+llvm/build/
+llvm/install/
+
+# Rust build files
+Cargo.lock
+**/target/
+
+# Test outputs
+*.nef
+*.log
+
+# Embedded repositories
+neo/
+
+# Temporary files
+*.tmp
+*.temp

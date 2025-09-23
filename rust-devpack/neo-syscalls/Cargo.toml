@@ -1,0 +1,17 @@
+[package]
+name = "neo-syscalls"
+version = "0.1.0"
+edition = "2021"
+authors = ["Neo N3 DevPack Team"]
+description = "Neo N3 System Calls for Smart Contract Development"
+
+[dependencies]
+neo-types = { path = "../neo-types" }
+thiserror = "1.0"
+anyhow = "1.0"
+
+[features]
+default = ["std"]
+std = []
+no-std = []
+alloc = []

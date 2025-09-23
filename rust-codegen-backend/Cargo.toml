@@ -1,0 +1,10 @@
+[package]
+name = "neovm-codegen-backend"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "neovm_codegen_backend"
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]

@@ -1,0 +1,23 @@
+[package]
+name = "neo-macros"
+version = "0.1.0"
+edition = "2021"
+authors = ["Neo N3 DevPack Team"]
+description = "Neo N3 Macros for Smart Contract Development"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1.0"
+quote = "1.0"
+syn = { version = "2.0", features = ["full"] }
+neo-types = { path = "../neo-types" }
+neo-syscalls = { path = "../neo-syscalls" }
+neo-runtime = { path = "../neo-runtime" }
+
+[features]
+default = ["std"]
+std = []
+no-std = []
+alloc = []
