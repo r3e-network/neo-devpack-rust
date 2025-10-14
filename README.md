@@ -1,238 +1,143 @@
-# Neo LLVM: LLVM Backend for Neo N3 Smart Contracts
+# Neo Wasm → NeoVM Pipeline
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Neo N3](https://img.shields.io/badge/Neo-N3-blue.svg)](https://neo.org)
-[![LLVM](https://img.shields.io/badge/LLVM-16.0-orange.svg)](https://llvm.org)
-[![Rust](https://img.shields.io/badge/Rust-1.70+-red.svg)](https://rust-lang.org)
+This repository hosts the Rust tooling required to compile Neo N3 smart contracts to WebAssembly and convert the resulting modules into NeoVM NEF artefacts. The legacy in-tree LLVM NeoVM backend has been retired in favour of a simpler, Wasm-first workflow.
 
-A complete LLVM backend and Rust development framework for building Neo N3 smart contracts. This project enables developers to write high-performance smart contracts in Rust and compile them directly to NeoVM bytecode using LLVM's powerful optimization pipeline.
+The workflow is:
 
-## 🚀 **Features**
-
-### **Complete Neo N3 Support**
-- ✅ **189+ Neo N3 Opcodes**: Full support for all Neo N3 virtual machine instructions
-- ✅ **50+ System Calls**: Complete syscall bindings for Neo N3 runtime
-- ✅ **NEF Generation**: Native Neo Executable Format (NEF) output with manifest
-- ✅ **Stack-Based Translation**: Automatic conversion from LLVM's register-based IR to NeoVM's stack-based execution
-
-### **Rust Development Framework**
-- ✅ **Type-Safe APIs**: Comprehensive Neo N3 data types and runtime bindings
-- ✅ **Procedural Macros**: `#[neo_contract]`, `#[neo_method]`, `#[neo_storage]` for easy contract development
-- ✅ **Storage Abstractions**: High-level storage operations with type safety
-- ✅ **Testing Framework**: Built-in testing utilities for smart contract development
-
-### **Developer Experience**
-- ✅ **Familiar Syntax**: Write contracts in standard Rust
-- ✅ **Rich Tooling**: Full LLVM toolchain support for debugging and optimization
-- ✅ **Gas Optimization**: Automatic optimization for minimal gas consumption
-- ✅ **Documentation**: Comprehensive guides and examples
-
-## 📋 **Quick Start**
-
-### **Prerequisites**
-- Rust 1.70+
-- LLVM 16.0+
-- CMake 3.20+
-
-### **Installation**
-```bash
-# Clone the repository
-git clone https://github.com/your-org/neo-llvm.git
-cd neo-llvm
-
-# Build the LLVM backend
-mkdir build && cd build
-cmake .. -DLLVM_ENABLE_PROJECTS="clang;lld"
-make -j$(nproc)
-
-# Build the Rust development framework
-cd ../rust-devpack
-cargo build --release
+```
+Rust contract (neo-devpack) ──cargo build --target wasm32-unknown-unknown──▶ Wasm module ──wasm-neovm──▶ NEF + manifest
 ```
 
-### **Your First Contract**
+## What's Included
+
+- **`wasm-neovm`** – a Rust CLI/library that translates a Wasm module into NeoVM bytecode and emits the accompanying NEF+manifest pair.
+- **`rust-devpack`** – the existing Rust developer tooling (types, macros, runtime stubs) for authoring Neo contracts.
+- **`scripts/build_contract.sh`** – helper script that builds a contract to Wasm and invokes the translator in a single step.
+- **Documentation** – updated notes on the new pipeline in [`docs/wasm-pipeline.md`](docs/wasm-pipeline.md) and the NEF container format in [`docs/nef-format-specification.md`](docs/nef-format-specification.md).
+
+## Quick Start
+
+1. Install Rust and the Wasm target:
+   ```bash
+   rustup target add wasm32-unknown-unknown
+   ```
+2. Build your contract crate (for example `contracts/hello`):
+   ```bash
+   scripts/build_contract.sh contracts/hello Hello
+   ```
+   The script compiles the crate for `wasm32-unknown-unknown` (release mode) and then runs the translator to produce `Hello.nef` and `Hello.manifest.json` next to the `.wasm` artefact.
+   Append additional translator flags after the optional contract name, for example `--safe-method main` to mark the exported entry point as safe.
+
+3. Alternatively, run the translator manually:
+   ```bash
+   cargo build --manifest-path contracts/hello/Cargo.toml \
+     --release --target wasm32-unknown-unknown
+
+   cargo run --manifest-path wasm-neovm/Cargo.toml -- \
+     --input contracts/hello/target/wasm32-unknown-unknown/release/Hello.wasm \
+     --nef build/Hello.nef \
+     --manifest build/Hello.manifest.json \
+     --name Hello \
+     --safe-method main \
+     --manifest-overlay contracts/hello/manifest-extra.json
+   ```
+
+   Use one or more `--safe-method <name>` flags to mark exported methods as safe in the generated manifest. Supply `--manifest-overlay <file>` to merge additional JSON metadata when needed.
+
+Rust contracts can now embed manifest metadata directly via DevPack macros:
+
 ```rust
 use neo_devpack::prelude::*;
 
-#[neo_contract]
-struct HelloWorld {
-    message: NeoString,
+#[neo_event]
+pub struct TransferEvent {
+    pub from: NeoByteString,
+    pub to: NeoByteString,
+    pub amount: NeoInteger,
 }
 
-impl HelloWorld {
-    pub fn new() -> Self {
-        Self {
-            message: NeoString::from_str("Hello, Neo N3!"),
-        }
-    }
-    
-    #[neo_method]
-    pub fn get_message(&self) -> NeoResult<NeoString> {
-        Ok(self.message.clone())
-    }
-    
-    #[neo_method]
-    pub fn set_message(&mut self, new_message: NeoString) -> NeoResult<()> {
-        self.message = new_message;
-        Ok(())
-    }
-}
+neo_permission!("0xff", ["balanceOf"]);
+neo_supported_standards!(["NEP-17"]);
+neo_trusts!(["*"]);
 ```
 
-### **Compilation**
-```bash
-# Compile to NeoVM bytecode
-cargo build --target neovm-unknown-unknown --release
+Each `#[neo_event]` declaration automatically registers the event schema, and `neo_permission!` records required permissions. The translator merges these custom sections with any additional overlay file or CLI flags, so manifests stay in sync without manual JSON edits.
 
-# Generate NEF file with manifest
-neo-llvm-tool generate-nef target/neovm-unknown-unknown/release/contract
+### Emitting Opcodes and Syscalls
+
+The translator understands a small set of reserved Wasm import modules:
+
+- `syscall`: import functions named after Neo interop descriptors (for example, `System.Runtime.GetTime`). During translation each call becomes a NeoVM `SYSCALL` with the appropriate 4-byte hash.
+- `neo`: use the DevPack-friendly aliases (`storage_get`, `notify`, `call_contract`, …). The translator resolves these names to their canonical descriptors before emitting the `SYSCALL` instruction, so existing Rust contracts keep compiling unchanged.
+- `opcode`: import functions whose names match NeoVM opcodes (for example, `SWAP`). Calls to these opcodes emit the corresponding bytecode. For immediates you can either supply literal parameters (e.g., `PUSHINT32` takes one `i32.const` argument) or fall back to the utility imports `RAW` (append a single byte) and `RAW4` (append four bytes) to inject arbitrary data.
+
+Example (in WAT form):
+
+```wat
+(module
+  (import "syscall" "System.Runtime.GetTime" (func $get_time (result i64)))
+  (import "opcode" "DEPTH" (func $depth))
+  (func (export "entry") (result i64)
+    call $depth
+    call $get_time))
 ```
 
-## 🏗️ **Architecture**
+The accompanying Rust contract can declare the imports with `#[link(wasm_import_module = "syscall")]` / `#[link(wasm_import_module = "neo")]` / `#[link(wasm_import_module = "opcode")]` attributes. To emit raw bytes, bind to `opcode::RAW`/`opcode::RAW4` and pass literal constants.
 
-### **LLVM Backend**
-The Neo LLVM backend translates LLVM's register-based intermediate representation (IR) to NeoVM's stack-based execution model through a sophisticated stackification pass.
+## Translator Capabilities
+
+`wasm-neovm` already lowers a useful subset of Wasm into NeoVM bytecode:
+
+- Immediate folding for `i32.const` and `i64.const`, choosing the smallest available `PUSHINT*` opcode and propagating literal values through locals.
+- Integer arithmetic and comparisons – `add`, `sub`, `mul`, `eq`, `ne`, `eqz`, `lt`, `le`, `gt`, and `ge` – shared between 32-bit and 64-bit Wasm operands.
+- Bitwise logic, shifts, and rotations – `and`, `or`, `xor`, `shl`, `shr_s`/`shr_u`, and `rotl`/`rotr` (with shift masking and dynamic support).
+- Bit counting – `clz`, `ctz`, and `popcnt` fold literals to immediates and fall back to small NeoVM helpers for dynamic operands.
+- Globals – `global.get`/`global.set` for `i32`/`i64` globals, initialised from constant expressions and stored in module-scoped static slots.
+- Indirect calls – `call_indirect` over funcref tables populated via `elem` segments, lowering to bounds-checked dispatch that traps on uninitialised entries.
+- Reference types – `ref.null`, `ref.func`, `ref.is_null`, `ref.eq`, and `ref.as_non_null`, with funcref values represented as sentinel-aware integers.
+- Table operations – full support for `table.get/set/size/grow/fill/copy` across multiple tables, passive segment initialisation via `table.init`, inline table initialisers, and `elem.drop`, all routed through shared runtime helpers with bounds checks.
+- Structured control flow – `block`, `loop`, `if`/`else`, `br`, `br_if`, and `br_table`, using patched `JMP*_L` sequences while maintaining Wasm stack height guarantees (single-value or void blocks today).
+- Conditional selection – `select` (and typed select with a single `i32`/`i64` result) lowered via `JMPIFNOT_L`, `DROP`, and `NIP` patterns.
+- Integer conversions – `i32.wrap_i64`, `i64.extend_i32_{s,u}`, and sign-extension helpers (`i32.extend{8,16}_s`, `i64.extend{8,16,32}_s`).
+- Signed and unsigned division/remainder (`div_s`, `div_u`, `rem_s`, `rem_u`) lowered to `DIV`/`MOD`, masking operands to preserve Wasm semantics.
+- Full support for `local.get`, `local.set`, and `local.tee`, mapping function arguments to `LDARG*` and stack locals to `LDLOC*`/`STLOC*` opcodes.
+- Linear memory – single-memory modules can use the full `load*`/`store*` family, `memory.size`, `memory.grow`, bulk operations (`memory.fill`, `memory.copy`), and data-segment primitives (`memory.init`, `data.drop`). Passive segment bytes are cached in static slots, active segments are copied in during the first initialisation, and helpers enforce bounds checks before every access.
+- Exported signatures may use `i32` or `i64` parameters; literal tracking carries through both kinds of locals.
+- `drop` elimination (removing dead literals) and `unreachable` lowering to the NeoVM `ABORT` opcode.
+- Import bridges for every NeoVM opcode (`opcode::<NAME>`) and syscall (`syscall::<Descriptor>`), including helpers for emitting raw immediates (`opcode::RAW`/`RAW4`).
+
+-Unsupported instructions (floating-point, reference types beyond funcref, and multi-memory) surface descriptive errors. [`docs/wasm-pipeline.md`](docs/wasm-pipeline.md) tracks the roadmap toward full coverage.
+
+## Development
+
+- Run translator tests:
+  ```bash
+  cargo test --manifest-path wasm-neovm/Cargo.toml
+  ```
+- Work on the devpack:
+  ```bash
+  cargo test --manifest-path rust-devpack/Cargo.toml
+  ```
+- Format & lint (uses stable Rust tooling):
+  ```bash
+  cargo fmt --all
+  cargo clippy --all-targets --all-features
+  ```
+
+## Directory Layout
 
 ```
-Rust Code → LLVM IR → Stackification → NeoVM Bytecode
+.
+├── docs/                 # Updated documentation for the Wasm pipeline
+├── rust-devpack/         # Rust SDK for Neo contracts
+├── scripts/              # Helper scripts (build + translate)
+└── wasm-neovm/           # Wasm → NeoVM translator crate
 ```
 
-**Key Components:**
-- **Stackification Pass**: Converts SSA form to stack operations
-- **Stack Height Tracking**: Maintains consistency across control flow
-- **Instruction Selection**: Maps LLVM instructions to NeoVM opcodes
-- **NEF Generation**: Creates Neo Executable Format files
+## Next Steps
 
-### **Rust Framework**
-The Rust development framework provides a complete SDK for Neo N3 smart contract development.
+- Extend table support (table grow/set operations, reference types) and richer element segment initialisers.
+- Add floating-point/SIMD instruction lowering once integer semantics are fully settled.
+- Enrich manifest generation with devpack metadata (events, permissions, standards) and exercise NEF output in the NeoVM reference runner.
 
-**Core Crates:**
-- **`neo-types`**: Neo N3 data types and value representations
-- **`neo-syscalls`**: System call bindings and runtime interface
-- **`neo-runtime`**: Runtime utilities and storage operations
-- **`neo-macros`**: Procedural macros for contract development
-- **`neo-devpack`**: Main development package with prelude
-
-## 📚 **Documentation**
-
-### **Architecture & Design**
-- **[Project Roadmap](docs/neo-llvm-roadmap.md)** - Project goals, architecture, and development roadmap
-- **[Implementation Plan](docs/implementation-plan.md)** - Detailed technical implementation plan
-- **[Neo N3 Backend](docs/neo-n3-backend.md)** - LLVM backend architecture and design
-
-### **Technical Specifications**
-- **[LLVM to NeoVM Translation](docs/llvm-to-neovm-translation.md)** - Technical explanation of register-based to stack-based translation
-- **[NEF Format Specification](docs/nef-format-specification.md)** - Neo Executable Format specification
-- **[Complete Neo N3 Support](docs/complete-neon3-support.md)** - Complete opcode and syscall documentation
-
-### **Rust Integration**
-- **[Rust Framework](docs/rust-framework.md)** - Rust development framework design
-- **[Rust Integration](docs/rust-integration.md)** - Rust integration with LLVM backend
-
-## 🎯 **Examples**
-
-### **Storage Contract**
-```rust
-#[neo_contract]
-struct StorageContract {
-    owner: NeoByteString,
-    data: NeoMap<NeoString, NeoValue>,
-}
-
-#[neo_storage]
-struct ContractStorage {
-    users: NeoMap<NeoByteString, UserData>,
-    settings: NeoMap<NeoString, NeoValue>,
-}
-```
-
-### **Token Contract**
-```rust
-#[neo_contract]
-struct TokenContract {
-    name: NeoString,
-    symbol: NeoString,
-    decimals: NeoInteger,
-    total_supply: NeoInteger,
-}
-
-impl TokenContract {
-    #[neo_method]
-    pub fn transfer(&mut self, from: NeoByteString, to: NeoByteString, amount: NeoInteger) -> NeoResult<NeoBoolean> {
-        // Implementation
-    }
-}
-```
-
-## 🧪 **Testing**
-
-```bash
-# Run all tests
-cargo test
-
-# Run examples
-cargo run --example hello_world
-cargo run --example storage_contract
-cargo run --example token_contract
-
-# Run comprehensive test suite
-cargo test --test comprehensive_test_suite
-```
-
-## 🔧 **Development**
-
-### **Building from Source**
-```bash
-# Build LLVM backend
-cd llvm
-mkdir build && cd build
-cmake .. -DLLVM_ENABLE_PROJECTS="clang;lld" -DCMAKE_BUILD_TYPE=Release
-make -j$(nproc)
-
-# Build Rust framework
-cd ../../rust-devpack
-cargo build --release
-```
-
-### **Running Tests**
-```bash
-# LLVM backend tests
-cd llvm/build
-make check-llvm-codegen-neovm
-
-# Rust framework tests
-cd ../../rust-devpack
-cargo test --all-features
-```
-
-## 🤝 **Contributing**
-
-We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
-
-### **Development Workflow**
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests for new functionality
-5. Ensure all tests pass
-6. Submit a pull request
-
-## 📄 **License**
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 **Acknowledgments**
-
-- **Neo Foundation** for the Neo N3 platform and virtual machine
-- **LLVM Project** for the powerful compiler infrastructure
-- **Rust Community** for the excellent language and ecosystem
-
-## 📞 **Support**
-
-- **Documentation**: [docs/](docs/)
-- **Issues**: [GitHub Issues](https://github.com/your-org/neo-llvm/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/your-org/neo-llvm/discussions)
-
----
-
-**Neo LLVM** - Bringing the power of LLVM and Rust to Neo N3 smart contract development.
+Contributions towards these milestones are welcome.

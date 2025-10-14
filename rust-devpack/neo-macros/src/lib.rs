@@ -3,8 +3,131 @@
 //! This crate provides procedural macros for Neo N3 smart contract development.
 
 use proc_macro::TokenStream;
-use quote::quote;
-use syn::{parse_macro_input, DeriveInput, ItemFn, ItemStruct, ItemImpl, ItemTrait, ItemMod};
+use proc_macro2::TokenStream as TokenStream2;
+use quote::{format_ident, quote};
+use serde_json::{json, Value as JsonValue};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use syn::parse::{Parse, ParseStream};
+use syn::punctuated::Punctuated;
+use syn::{bracketed, parse_macro_input, DeriveInput, ItemFn, LitStr, Token};
+
+static MANIFEST_OVERLAY_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+fn manifest_overlay_tokens(value: &str) -> TokenStream2 {
+    let bytes = value.as_bytes();
+    let len = bytes.len();
+    let byte_tokens = bytes.iter().map(|b| quote! { #b });
+    let counter = MANIFEST_OVERLAY_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let ident = format_ident!("__NEO_MANIFEST_OVERLAY_{}", counter);
+
+    quote! {
+        const _: () = {
+            #[link_section = ".custom_section.neo.manifest"]
+            #[used]
+            static #ident: [u8; #len] = [#(#byte_tokens),*];
+        };
+    }
+}
+
+struct PermissionArgs {
+    contract: LitStr,
+    methods: Vec<LitStr>,
+}
+
+impl Parse for PermissionArgs {
+    fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
+        let contract: LitStr = input.parse()?;
+        input.parse::<Token![,]>()?;
+
+        let content;
+        bracketed!(content in input);
+        let methods: Punctuated<LitStr, Token![,]> =
+            content.call(Punctuated::<LitStr, Token![,]>::parse_terminated)?;
+
+        Ok(Self {
+            contract,
+            methods: methods.into_iter().collect(),
+        })
+    }
+}
+
+struct StringList {
+    items: Vec<LitStr>,
+}
+
+impl Parse for StringList {
+    fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
+        let content;
+        bracketed!(content in input);
+        let items: Punctuated<LitStr, Token![,]> =
+            content.call(Punctuated::<LitStr, Token![,]>::parse_terminated)?;
+        Ok(Self {
+            items: items.into_iter().collect(),
+        })
+    }
+}
+
+/// Neo N3 Manifest Overlay macro
+///
+/// Embed a JSON manifest fragment as a Wasm custom section.
+#[proc_macro]
+pub fn neo_manifest_overlay(input: TokenStream) -> TokenStream {
+    let literal = parse_macro_input!(input as LitStr);
+    let value = literal.value();
+
+    if let Err(err) = serde_json::from_str::<JsonValue>(&value) {
+        return syn::Error::new(literal.span(), format!("invalid JSON: {err}"))
+            .to_compile_error()
+            .into();
+    }
+
+    manifest_overlay_tokens(&value).into()
+}
+
+/// Declare manifest permissions and embed them as a custom section.
+#[proc_macro]
+pub fn neo_permission(input: TokenStream) -> TokenStream {
+    let args = parse_macro_input!(input as PermissionArgs);
+    let contract = args.contract.value();
+    let methods: Vec<String> = args.methods.into_iter().map(|lit| lit.value()).collect();
+
+    let overlay = json!({
+        "permissions": [
+            {
+                "contract": contract,
+                "methods": methods,
+            }
+        ]
+    });
+
+    manifest_overlay_tokens(&overlay.to_string()).into()
+}
+
+/// Declare supported standards for the contract manifest.
+#[proc_macro]
+pub fn neo_supported_standards(input: TokenStream) -> TokenStream {
+    let list = parse_macro_input!(input as StringList);
+    let standards: Vec<String> = list.items.into_iter().map(|lit| lit.value()).collect();
+
+    let overlay = json!({
+        "supportedstandards": standards,
+    });
+
+    manifest_overlay_tokens(&overlay.to_string()).into()
+}
+
+/// Declare trusted contracts for the contract manifest.
+#[proc_macro]
+pub fn neo_trusts(input: TokenStream) -> TokenStream {
+    let list = parse_macro_input!(input as StringList);
+    let trusts: Vec<String> = list.items.into_iter().map(|lit| lit.value()).collect();
+
+    let overlay = json!({
+        "trusts": trusts,
+    });
+
+    manifest_overlay_tokens(&overlay.to_string()).into()
+}
 
 /// Neo N3 Contract macro
 /// 
@@ -80,7 +203,7 @@ pub fn neo_contract(_args: TokenStream, input: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn neo_method(_args: TokenStream, input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as ItemFn);
-    let name = &input.sig.ident;
+    let _name = &input.sig.ident;
     let vis = &input.vis;
     let sig = &input.sig;
     let block = &input.block;
@@ -476,4 +599,3 @@ pub fn neo_error(_args: TokenStream, input: TokenStream) -> TokenStream {
     
     TokenStream::from(expanded)
 }
-
