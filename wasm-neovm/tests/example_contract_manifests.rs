@@ -1,0 +1,258 @@
+use anyhow::Result;
+use serde_json::{json, Value};
+use std::borrow::Cow;
+use tempfile::NamedTempFile;
+use wasm_encoder::{
+    CodeSection, CustomSection, ExportKind, ExportSection, Function, FunctionSection, Module,
+    TypeSection, ValType,
+};
+use wasm_neovm::{translate_module_with_safe, write_nef_with_metadata};
+
+fn module_with_exports(exports: &[(&str, Vec<ValType>, Vec<ValType>)], overlay: &Value) -> Vec<u8> {
+    let mut module = Module::new();
+
+    let mut types = TypeSection::new();
+    let mut functions = FunctionSection::new();
+    let mut exports_section = ExportSection::new();
+    let mut codes = CodeSection::new();
+
+    for (idx, (name, params, results)) in exports.iter().enumerate() {
+        types.ty().function(params.clone(), results.clone());
+        functions.function(idx as u32);
+        exports_section.export(name, ExportKind::Func, idx as u32);
+
+        let mut body = Function::new(vec![]);
+        {
+            let mut instr = body.instructions();
+            if !results.is_empty() {
+                if !params.is_empty() {
+                    instr.local_get(0);
+                } else {
+                    instr.i32_const(0);
+                }
+            }
+            instr.end();
+        }
+        codes.function(&body);
+    }
+
+    module.section(&types);
+    module.section(&functions);
+    module.section(&exports_section);
+    module.section(&codes);
+
+    let overlay_bytes = overlay.to_string().into_bytes();
+    let custom_section = CustomSection {
+        name: Cow::Borrowed(".custom_section.neo.manifest"),
+        data: Cow::Owned(overlay_bytes),
+    };
+    module.section(&custom_section);
+
+    module.finish()
+}
+
+fn method_by_name<'a>(manifest: &'a Value, name: &str) -> Option<&'a Value> {
+    manifest["abi"]["methods"].as_array().and_then(|methods| {
+        methods
+            .iter()
+            .find(|entry| entry["name"].as_str() == Some(name))
+    })
+}
+
+#[test]
+fn nep11_manifest_contains_expected_metadata() -> Result<()> {
+    let overlay = json!({
+        "supportedstandards": ["NEP-11"],
+        "permissions": [
+            {"contract": "*", "methods": ["*"]}
+        ],
+        "trusts": ["*"],
+        "abi": {
+            "events": [
+                {
+                    "name": "TransferEvent",
+                    "parameters": [
+                        {"name": "from", "type": "ByteString"},
+                        {"name": "to", "type": "ByteString"},
+                        {"name": "token_id", "type": "ByteString"}
+                    ]
+                }
+            ]
+        }
+    });
+
+    let exports = vec![
+        (
+            "mint",
+            vec![ValType::I32, ValType::I32, ValType::I32],
+            vec![ValType::I32],
+        ),
+        (
+            "transfer",
+            vec![ValType::I32, ValType::I32],
+            vec![ValType::I32],
+        ),
+        ("tokens_of", vec![ValType::I32], vec![ValType::I32]),
+    ];
+
+    let wasm = module_with_exports(&exports, &overlay);
+    let translation = translate_module_with_safe(&wasm, "Nep11Token", &["tokens_of"])?;
+    let manifest = translation.manifest.value;
+
+    let standards: Vec<&str> = manifest["supportedstandards"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|value| value.as_str().unwrap())
+        .collect();
+    assert_eq!(standards, vec!["NEP-11"]);
+
+    let permissions = manifest["permissions"].as_array().unwrap();
+    assert_eq!(permissions.len(), 1);
+    assert_eq!(permissions[0]["contract"].as_str().unwrap(), "*");
+    assert_eq!(
+        permissions[0]["methods"].as_array().unwrap()[0]
+            .as_str()
+            .unwrap(),
+        "*"
+    );
+
+    let events = manifest["abi"]["events"].as_array().unwrap();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0]["name"].as_str().unwrap(), "TransferEvent");
+
+    let methods = manifest["abi"]["methods"].as_array().unwrap();
+    assert!(methods.iter().any(|m| m["name"].as_str() == Some("mint")));
+    assert!(methods
+        .iter()
+        .any(|m| m["name"].as_str() == Some("transfer")));
+    assert!(methods
+        .iter()
+        .any(|m| m["name"].as_str() == Some("tokens_of")));
+
+    let tokens_of = method_by_name(&manifest, "tokens_of").unwrap();
+    assert_eq!(tokens_of["safe"].as_bool().unwrap(), true);
+
+    let tmp = NamedTempFile::new()?;
+    write_nef_with_metadata(
+        &translation.script,
+        translation.source_url.as_deref(),
+        &translation.method_tokens,
+        tmp.path(),
+    )?;
+
+    Ok(())
+}
+
+#[test]
+fn nep17_manifest_supported_standard_and_safe_flag() -> Result<()> {
+    let overlay = json!({
+        "supportedstandards": ["NEP-17"],
+        "permissions": [
+            {"contract": "*", "methods": ["*"]}
+        ],
+        "trusts": ["*"]
+    });
+
+    let exports = vec![
+        (
+            "transfer",
+            vec![ValType::I32, ValType::I32, ValType::I32],
+            vec![ValType::I32],
+        ),
+        ("balance_of", vec![ValType::I32], vec![ValType::I32]),
+        ("total_supply", vec![], vec![ValType::I32]),
+    ];
+
+    let wasm = module_with_exports(&exports, &overlay);
+    let translation = translate_module_with_safe(&wasm, "Nep17Token", &["balance_of"])?;
+    let manifest = translation.manifest.value;
+
+    let standards: Vec<&str> = manifest["supportedstandards"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|value| value.as_str().unwrap())
+        .collect();
+    assert_eq!(standards, vec!["NEP-17"]);
+
+    let balance_of = method_by_name(&manifest, "balance_of").unwrap();
+    assert!(balance_of["safe"].as_bool().unwrap());
+
+    let transfer = method_by_name(&manifest, "transfer").unwrap();
+    assert!(!transfer["safe"].as_bool().unwrap());
+
+    Ok(())
+}
+
+#[test]
+fn oracle_manifest_includes_permissions_and_events() -> Result<()> {
+    let overlay = json!({
+        "permissions": [
+            {
+                "contract": "0xfe924b7cfe89ddd271abaf7210a80a7e11178758",
+                "methods": ["request"]
+            }
+        ],
+        "trusts": ["*"],
+        "abi": {
+            "events": [
+                {
+                    "name": "OracleRequested",
+                    "parameters": [
+                        {"name": "id", "type": "Integer"},
+                        {"name": "url", "type": "String"}
+                    ]
+                },
+                {
+                    "name": "OracleResponseReceived",
+                    "parameters": [
+                        {"name": "id", "type": "Integer"},
+                        {"name": "data", "type": "ByteString"}
+                    ]
+                }
+            ]
+        }
+    });
+
+    let exports = vec![
+        (
+            "request_data",
+            vec![ValType::I32, ValType::I32, ValType::I32, ValType::I32],
+            vec![ValType::I32],
+        ),
+        (
+            "oracle_callback",
+            vec![ValType::I32, ValType::I32],
+            vec![ValType::I32],
+        ),
+        ("response_for", vec![ValType::I32], vec![ValType::I32]),
+    ];
+
+    let wasm = module_with_exports(&exports, &overlay);
+    let translation = translate_module_with_safe(&wasm, "OracleConsumer", &["response_for"])?;
+    let manifest = translation.manifest.value;
+
+    let permissions = manifest["permissions"].as_array().unwrap();
+    assert_eq!(permissions.len(), 1);
+    assert_eq!(
+        permissions[0]["contract"].as_str().unwrap(),
+        "0xfe924b7cfe89ddd271abaf7210a80a7e11178758"
+    );
+    assert_eq!(
+        permissions[0]["methods"].as_array().unwrap()[0]
+            .as_str()
+            .unwrap(),
+        "request"
+    );
+
+    let events = manifest["abi"]["events"].as_array().unwrap();
+    let event_names: Vec<&str> = events
+        .iter()
+        .map(|event| event["name"].as_str().unwrap())
+        .collect();
+    assert!(event_names.contains(&"OracleRequested"));
+    assert!(event_names.contains(&"OracleResponseReceived"));
+
+    Ok(())
+}

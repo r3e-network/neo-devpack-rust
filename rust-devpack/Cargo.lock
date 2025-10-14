@@ -272,6 +272,7 @@ dependencies = [
  "neo-types",
  "proc-macro2",
  "quote",
+ "serde_json",
  "syn",
 ]
 

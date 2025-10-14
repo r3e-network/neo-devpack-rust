@@ -1,19 +1,19 @@
 //! Neo N3 Core Types
-//! 
+//!
 //! This crate provides the core types and data structures for Neo N3 smart contract development.
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(not(feature = "std"), no_main)]
 
+use core::cmp::{Eq, Ord, PartialEq, PartialOrd};
 use core::fmt;
-use core::ops::{Add, Sub, Mul, Div, Rem, BitAnd, BitOr, BitXor, Not, Shl, Shr};
-use core::cmp::{PartialEq, Eq, PartialOrd, Ord, Ordering};
+use core::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Not, Rem, Shl, Shr, Sub};
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
 #[cfg(feature = "alloc")]
-use alloc::{string::String, vec::Vec, boxed::Box};
+use alloc::{boxed::Box, string::String, vec::Vec};
 
 /// Neo N3 Integer type (32-bit)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -25,15 +25,15 @@ impl NeoInteger {
     pub const ONE: Self = Self(1);
     pub const MIN: Self = Self(i32::MIN);
     pub const MAX: Self = Self(i32::MAX);
-    
+
     pub fn new(value: i32) -> Self {
         Self(value)
     }
-    
+
     pub fn as_i32(self) -> i32 {
         self.0
     }
-    
+
     pub fn as_u32(self) -> u32 {
         self.0 as u32
     }
@@ -124,11 +124,11 @@ pub struct NeoBoolean(pub bool);
 impl NeoBoolean {
     pub const TRUE: Self = Self(true);
     pub const FALSE: Self = Self(false);
-    
+
     pub fn new(value: bool) -> Self {
         Self(value)
     }
-    
+
     pub fn as_bool(self) -> bool {
         self.0
     }
@@ -172,27 +172,29 @@ impl NeoByteString {
     pub fn new(data: Vec<u8>) -> Self {
         Self { data }
     }
-    
+
     pub fn from_slice(slice: &[u8]) -> Self {
-        Self { data: slice.to_vec() }
+        Self {
+            data: slice.to_vec(),
+        }
     }
-    
+
     pub fn as_slice(&self) -> &[u8] {
         &self.data
     }
-    
+
     pub fn len(&self) -> usize {
         self.data.len()
     }
-    
+
     pub fn is_empty(&self) -> bool {
         self.data.is_empty()
     }
-    
+
     pub fn push(&mut self, byte: u8) {
         self.data.push(byte);
     }
-    
+
     pub fn extend_from_slice(&mut self, slice: &[u8]) {
         self.data.extend_from_slice(slice);
     }
@@ -208,19 +210,21 @@ impl NeoString {
     pub fn new(data: String) -> Self {
         Self { data }
     }
-    
+
     pub fn from_str(s: &str) -> Self {
-        Self { data: s.to_string() }
+        Self {
+            data: s.to_string(),
+        }
     }
-    
+
     pub fn as_str(&self) -> &str {
         &self.data
     }
-    
+
     pub fn len(&self) -> usize {
         self.data.len()
     }
-    
+
     pub fn is_empty(&self) -> bool {
         self.data.is_empty()
     }
@@ -236,35 +240,37 @@ impl<T> NeoArray<T> {
     pub fn new() -> Self {
         Self { data: Vec::new() }
     }
-    
+
     pub fn with_capacity(capacity: usize) -> Self {
-        Self { data: Vec::with_capacity(capacity) }
+        Self {
+            data: Vec::with_capacity(capacity),
+        }
     }
-    
+
     pub fn from_vec(data: Vec<T>) -> Self {
         Self { data }
     }
-    
+
     pub fn push(&mut self, item: T) {
         self.data.push(item);
     }
-    
+
     pub fn pop(&mut self) -> Option<T> {
         self.data.pop()
     }
-    
+
     pub fn len(&self) -> usize {
         self.data.len()
     }
-    
+
     pub fn is_empty(&self) -> bool {
         self.data.is_empty()
     }
-    
+
     pub fn get(&self, index: usize) -> Option<&T> {
         self.data.get(index)
     }
-    
+
     pub fn get_mut(&mut self, index: usize) -> Option<&mut T> {
         self.data.get_mut(index)
     }
@@ -292,9 +298,9 @@ impl<K, V> NeoMap<K, V> {
     pub fn new() -> Self {
         Self { data: Vec::new() }
     }
-    
-    pub fn insert(&mut self, key: K, value: V) -> Option<V> 
-    where 
+
+    pub fn insert(&mut self, key: K, value: V) -> Option<V>
+    where
         K: PartialEq,
     {
         for (k, v) in &mut self.data {
@@ -305,9 +311,9 @@ impl<K, V> NeoMap<K, V> {
         self.data.push((key, value));
         None
     }
-    
-    pub fn get(&self, key: &K) -> Option<&V> 
-    where 
+
+    pub fn get(&self, key: &K) -> Option<&V>
+    where
         K: PartialEq,
     {
         for (k, v) in &self.data {
@@ -317,9 +323,9 @@ impl<K, V> NeoMap<K, V> {
         }
         None
     }
-    
-    pub fn get_mut(&mut self, key: &K) -> Option<&mut V> 
-    where 
+
+    pub fn get_mut(&mut self, key: &K) -> Option<&mut V>
+    where
         K: PartialEq,
     {
         for (k, v) in &mut self.data {
@@ -329,9 +335,9 @@ impl<K, V> NeoMap<K, V> {
         }
         None
     }
-    
-    pub fn remove(&mut self, key: &K) -> Option<V> 
-    where 
+
+    pub fn remove(&mut self, key: &K) -> Option<V>
+    where
         K: PartialEq,
     {
         for (i, (k, _)) in self.data.iter().enumerate() {
@@ -341,11 +347,11 @@ impl<K, V> NeoMap<K, V> {
         }
         None
     }
-    
+
     pub fn len(&self) -> usize {
         self.data.len()
     }
-    
+
     pub fn is_empty(&self) -> bool {
         self.data.is_empty()
     }
@@ -367,12 +373,12 @@ impl NeoStruct {
     pub fn new() -> Self {
         Self { fields: Vec::new() }
     }
-    
+
     pub fn with_field(mut self, name: &str, value: NeoValue) -> Self {
         self.fields.push((name.to_string(), value));
         self
     }
-    
+
     pub fn get_field(&self, name: &str) -> Option<&NeoValue> {
         for (field_name, value) in &self.fields {
             if field_name == name {
@@ -381,7 +387,7 @@ impl NeoStruct {
         }
         None
     }
-    
+
     pub fn set_field(&mut self, name: &str, value: NeoValue) {
         for (field_name, field_value) in &mut self.fields {
             if field_name == name {
@@ -391,11 +397,11 @@ impl NeoStruct {
         }
         self.fields.push((name.to_string(), value));
     }
-    
+
     pub fn insert(&mut self, name: NeoString, value: NeoValue) {
         self.set_field(name.as_str(), value);
     }
-    
+
     pub fn len(&self) -> usize {
         self.fields.len()
     }
@@ -424,49 +430,49 @@ impl NeoValue {
     pub fn is_null(&self) -> bool {
         matches!(self, NeoValue::Null)
     }
-    
+
     pub fn as_integer(&self) -> Option<NeoInteger> {
         match self {
             NeoValue::Integer(i) => Some(*i),
             _ => None,
         }
     }
-    
+
     pub fn as_boolean(&self) -> Option<NeoBoolean> {
         match self {
             NeoValue::Boolean(b) => Some(*b),
             _ => None,
         }
     }
-    
+
     pub fn as_byte_string(&self) -> Option<&NeoByteString> {
         match self {
             NeoValue::ByteString(bs) => Some(bs),
             _ => None,
         }
     }
-    
+
     pub fn as_string(&self) -> Option<&NeoString> {
         match self {
             NeoValue::String(s) => Some(s),
             _ => None,
         }
     }
-    
+
     pub fn as_array(&self) -> Option<&NeoArray<NeoValue>> {
         match self {
             NeoValue::Array(a) => Some(a),
             _ => None,
         }
     }
-    
+
     pub fn as_map(&self) -> Option<&NeoMap<NeoValue, NeoValue>> {
         match self {
             NeoValue::Map(m) => Some(m),
             _ => None,
         }
     }
-    
+
     pub fn as_struct(&self) -> Option<&NeoStruct> {
         match self {
             NeoValue::Struct(s) => Some(s),
@@ -528,7 +534,7 @@ impl<T> NeoIterator<T> {
     pub fn new(data: Vec<T>) -> Self {
         Self { data, index: 0 }
     }
-    
+
     pub fn next(&mut self) -> Option<T> {
         if self.index < self.data.len() {
             let item = self.data.remove(self.index);
@@ -537,7 +543,7 @@ impl<T> NeoIterator<T> {
             None
         }
     }
-    
+
     pub fn has_next(&self) -> bool {
         self.index < self.data.len()
     }
@@ -547,15 +553,41 @@ impl<T> NeoIterator<T> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NeoStorageContext {
     id: u32,
+    read_only: bool,
 }
 
 impl NeoStorageContext {
     pub fn new(id: u32) -> Self {
-        Self { id }
+        Self {
+            id,
+            read_only: false,
+        }
     }
-    
+
+    pub fn with_read_only(id: u32, read_only: bool) -> Self {
+        Self { id, read_only }
+    }
+
+    pub fn read_only(id: u32) -> Self {
+        Self {
+            id,
+            read_only: true,
+        }
+    }
+
     pub fn id(&self) -> u32 {
         self.id
+    }
+
+    pub fn is_read_only(&self) -> bool {
+        self.read_only
+    }
+
+    pub fn as_read_only(&self) -> Self {
+        Self {
+            id: self.id,
+            read_only: true,
+        }
     }
 }
 
@@ -648,7 +680,7 @@ impl NeoError {
     pub fn new(message: &str) -> Self {
         NeoError::Custom(message.to_string())
     }
-    
+
     pub fn message(&self) -> &str {
         match self {
             NeoError::Custom(msg) => msg,

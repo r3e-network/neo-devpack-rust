@@ -170,6 +170,25 @@ let event = TransferEvent {
 event.emit()?;
 ```
 
+To describe manifest metadata (events, permissions, supported standards, trusts, etc.) use the supplied macros instead of maintaining JSON by hand:
+
+```rust
+use neo_devpack::prelude::*;
+
+#[neo_event]
+pub struct ApprovalEvent {
+    pub owner: NeoByteString,
+    pub spender: NeoByteString,
+    pub amount: NeoInteger,
+}
+
+neo_permission!("0xff", ["balanceOf"]);
+neo_supported_standards!(["NEP-17"]);
+neo_trusts!(["*"]);
+```
+
+Each invocation emits a `neo.manifest` custom section that `wasm-neovm` merges during translation, keeping your NEF manifest aligned with the code without extra tooling.
+
 ## 🧪 Testing
 
 ### Unit Tests
