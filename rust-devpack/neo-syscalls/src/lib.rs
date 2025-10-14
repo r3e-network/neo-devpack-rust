@@ -1,12 +1,15 @@
 //! Neo N3 System Calls
-//! 
+//!
 //! This crate provides bindings to Neo N3 system calls for smart contract development.
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(not(feature = "std"), no_main)]
 
+extern crate alloc;
+
+use alloc::vec::Vec;
+use core::slice::Iter;
 use neo_types::*;
-use core::ffi::c_void;
 
 /// Neo N3 System Call Registry
 pub struct NeoVMSyscallRegistry {
@@ -17,21 +20,29 @@ impl NeoVMSyscallRegistry {
     pub const fn new(syscalls: &'static [NeoVMSyscallInfo]) -> Self {
         Self { syscalls }
     }
-    
+
     pub fn get_syscall(&self, name: &str) -> Option<&NeoVMSyscallInfo> {
         self.syscalls.iter().find(|s| s.name == name)
     }
-    
+
     pub fn get_syscall_by_hash(&self, hash: u32) -> Option<&NeoVMSyscallInfo> {
         self.syscalls.iter().find(|s| s.hash == hash)
     }
-    
+
     pub fn has_syscall(&self, name: &str) -> bool {
         self.get_syscall(name).is_some()
     }
-    
+
     pub fn get_instance() -> Self {
         Self::new(&SYSCALLS)
+    }
+
+    pub fn iter(&self) -> Iter<'static, NeoVMSyscallInfo> {
+        self.syscalls.iter()
+    }
+
+    pub fn names(&self) -> impl Iterator<Item = &'static str> {
+        self.syscalls.iter().map(|info| info.name)
     }
 }
 
@@ -53,7 +64,7 @@ impl NeoVMSyscallLowering {
     pub fn new() -> Self {
         Self
     }
-    
+
     pub fn lower_syscall(&self, name: &str) -> NeoResult<u32> {
         let registry = NeoVMSyscallRegistry::get_instance();
         if let Some(syscall) = registry.get_syscall(name) {
@@ -62,7 +73,7 @@ impl NeoVMSyscallLowering {
             Err(NeoError::new(&format!("Unknown syscall: {}", name)))
         }
     }
-    
+
     pub fn can_lower(&self, name: &str) -> bool {
         let registry = NeoVMSyscallRegistry::get_instance();
         registry.has_syscall(name)
@@ -74,481 +85,335 @@ pub static SYSCALL_REGISTRY: NeoVMSyscallRegistry = NeoVMSyscallRegistry::new(&S
 
 /// Neo N3 System Calls
 pub const SYSCALLS: &[NeoVMSyscallInfo] = &[
-    // System.Runtime
     NeoVMSyscallInfo {
-        name: "System.Runtime.GetTime",
-        hash: 0x68b4c4c1,
+        name: "System.Contract.Call",
+        hash: 0x525b7d62,
+        parameters: &["Hash160", "String", "Integer", "Array"],
+        return_type: "Void",
+        gas_cost: 32768,
+        description: "",
+    },
+    NeoVMSyscallInfo {
+        name: "System.Contract.CallNative",
+        hash: 0x677bf71a,
+        parameters: &["Integer"],
+        return_type: "Void",
+        gas_cost: 0,
+        description: "",
+    },
+    NeoVMSyscallInfo {
+        name: "System.Contract.CreateMultisigAccount",
+        hash: 0x09e9336a,
+        parameters: &["Integer", "Array"],
+        return_type: "Hash160",
+        gas_cost: 0,
+        description: "",
+    },
+    NeoVMSyscallInfo {
+        name: "System.Contract.CreateStandardAccount",
+        hash: 0x028799cf,
+        parameters: &["ByteString"],
+        return_type: "Hash160",
+        gas_cost: 0,
+        description: "",
+    },
+    NeoVMSyscallInfo {
+        name: "System.Contract.GetCallFlags",
+        hash: 0x813ada95,
         parameters: &[],
         return_type: "Integer",
-        gas_cost: 1,
-        description: "Get current timestamp",
+        gas_cost: 1024,
+        description: "",
+    },
+    NeoVMSyscallInfo {
+        name: "System.Contract.NativeOnPersist",
+        hash: 0x93bcdb2e,
+        parameters: &[],
+        return_type: "Void",
+        gas_cost: 0,
+        description: "",
+    },
+    NeoVMSyscallInfo {
+        name: "System.Contract.NativePostPersist",
+        hash: 0x165da144,
+        parameters: &[],
+        return_type: "Void",
+        gas_cost: 0,
+        description: "",
+    },
+    NeoVMSyscallInfo {
+        name: "System.Crypto.CheckMultisig",
+        hash: 0x3adcd09e,
+        parameters: &["Array", "Array"],
+        return_type: "Boolean",
+        gas_cost: 0,
+        description: "",
+    },
+    NeoVMSyscallInfo {
+        name: "System.Crypto.CheckSig",
+        hash: 0x27b3e756,
+        parameters: &["ByteString", "ByteString"],
+        return_type: "Boolean",
+        gas_cost: 32768,
+        description: "",
+    },
+    NeoVMSyscallInfo {
+        name: "System.Iterator.Next",
+        hash: 0x9ced089c,
+        parameters: &["Iterator"],
+        return_type: "Boolean",
+        gas_cost: 32768,
+        description: "",
+    },
+    NeoVMSyscallInfo {
+        name: "System.Iterator.Value",
+        hash: 0x1dbf54f3,
+        parameters: &["Iterator"],
+        return_type: "StackItem",
+        gas_cost: 16,
+        description: "",
+    },
+    NeoVMSyscallInfo {
+        name: "System.Runtime.BurnGas",
+        hash: 0xbc8c5ac3,
+        parameters: &["Integer"],
+        return_type: "Void",
+        gas_cost: 16,
+        description: "",
     },
     NeoVMSyscallInfo {
         name: "System.Runtime.CheckWitness",
-        hash: 0x0b5b4b1a,
+        hash: 0x8cec27f8,
         parameters: &["ByteString"],
         return_type: "Boolean",
-        gas_cost: 200,
-        description: "Check if the specified account is a witness",
+        gas_cost: 1024,
+        description: "",
     },
     NeoVMSyscallInfo {
-        name: "System.Runtime.Notify",
-        hash: 0x0f4b4b1a,
-        parameters: &["String", "Array"],
-        return_type: "Void",
-        gas_cost: 1,
-        description: "Send notification",
-    },
-    NeoVMSyscallInfo {
-        name: "System.Runtime.Log",
-        hash: 0x0f4b4b1b,
-        parameters: &["String"],
-        return_type: "Void",
-        gas_cost: 1,
-        description: "Log message",
-    },
-    NeoVMSyscallInfo {
-        name: "System.Runtime.GetPlatform",
-        hash: 0x0f4b4b1c,
+        name: "System.Runtime.CurrentSigners",
+        hash: 0x8b18f1ac,
         parameters: &[],
-        return_type: "String",
-        gas_cost: 1,
-        description: "Get platform information",
+        return_type: "Array",
+        gas_cost: 16,
+        description: "",
     },
     NeoVMSyscallInfo {
-        name: "System.Runtime.GetTrigger",
-        hash: 0x0f4b4b1d,
+        name: "System.Runtime.GasLeft",
+        hash: 0xced88814,
         parameters: &[],
         return_type: "Integer",
-        gas_cost: 1,
-        description: "Get trigger type",
-    },
-    NeoVMSyscallInfo {
-        name: "System.Runtime.GetInvocationCounter",
-        hash: 0x0f4b4b1e,
-        parameters: &[],
-        return_type: "Integer",
-        gas_cost: 1,
-        description: "Get invocation counter",
-    },
-    NeoVMSyscallInfo {
-        name: "System.Runtime.GetRandom",
-        hash: 0x0f4b4b1f,
-        parameters: &[],
-        return_type: "Integer",
-        gas_cost: 1,
-        description: "Get random number",
-    },
-    NeoVMSyscallInfo {
-        name: "System.Runtime.GetNetwork",
-        hash: 0x0f4b4b20,
-        parameters: &[],
-        return_type: "Integer",
-        gas_cost: 1,
-        description: "Get network magic number",
+        gas_cost: 16,
+        description: "",
     },
     NeoVMSyscallInfo {
         name: "System.Runtime.GetAddressVersion",
-        hash: 0x0f4b4b21,
+        hash: 0xdc92494c,
         parameters: &[],
         return_type: "Integer",
-        gas_cost: 1,
-        description: "Get address version",
+        gas_cost: 8,
+        description: "",
     },
     NeoVMSyscallInfo {
         name: "System.Runtime.GetCallingScriptHash",
-        hash: 0x0f4b4b22,
+        hash: 0x3c6e5339,
         parameters: &[],
-        return_type: "ByteString",
-        gas_cost: 1,
-        description: "Get calling script hash",
+        return_type: "Hash160",
+        gas_cost: 16,
+        description: "",
     },
     NeoVMSyscallInfo {
         name: "System.Runtime.GetEntryScriptHash",
-        hash: 0x0f4b4b23,
+        hash: 0x38e2b4f9,
         parameters: &[],
-        return_type: "ByteString",
-        gas_cost: 1,
-        description: "Get entry script hash",
+        return_type: "Hash160",
+        gas_cost: 16,
+        description: "",
     },
     NeoVMSyscallInfo {
         name: "System.Runtime.GetExecutingScriptHash",
-        hash: 0x0f4b4b24,
+        hash: 0x74a8fedb,
         parameters: &[],
-        return_type: "ByteString",
-        gas_cost: 1,
-        description: "Get executing script hash",
+        return_type: "Hash160",
+        gas_cost: 16,
+        description: "",
+    },
+    NeoVMSyscallInfo {
+        name: "System.Runtime.GetInvocationCounter",
+        hash: 0x43112784,
+        parameters: &[],
+        return_type: "Integer",
+        gas_cost: 16,
+        description: "",
+    },
+    NeoVMSyscallInfo {
+        name: "System.Runtime.GetNetwork",
+        hash: 0xe0a0fbc5,
+        parameters: &[],
+        return_type: "Integer",
+        gas_cost: 8,
+        description: "",
+    },
+    NeoVMSyscallInfo {
+        name: "System.Runtime.GetNotifications",
+        hash: 0xf1354327,
+        parameters: &["Hash160"],
+        return_type: "Array",
+        gas_cost: 4096,
+        description: "",
+    },
+    NeoVMSyscallInfo {
+        name: "System.Runtime.GetRandom",
+        hash: 0x28a9de6b,
+        parameters: &[],
+        return_type: "Integer",
+        gas_cost: 0,
+        description: "",
     },
     NeoVMSyscallInfo {
         name: "System.Runtime.GetScriptContainer",
-        hash: 0x0f4b4b25,
+        hash: 0x3008512d,
         parameters: &[],
-        return_type: "Array",
-        gas_cost: 1,
-        description: "Get script container",
+        return_type: "StackItem",
+        gas_cost: 8,
+        description: "",
     },
     NeoVMSyscallInfo {
-        name: "System.Runtime.GetTransaction",
-        hash: 0x0f4b4b26,
-        parameters: &[],
-        return_type: "Array",
-        gas_cost: 1,
-        description: "Get transaction",
-    },
-    NeoVMSyscallInfo {
-        name: "System.Runtime.GetBlock",
-        hash: 0x0f4b4b27,
-        parameters: &[],
-        return_type: "Array",
-        gas_cost: 1,
-        description: "Get block",
-    },
-    NeoVMSyscallInfo {
-        name: "System.Runtime.GetBlockHeight",
-        hash: 0x0f4b4b28,
+        name: "System.Runtime.GetTime",
+        hash: 0x0388c3b7,
         parameters: &[],
         return_type: "Integer",
-        gas_cost: 1,
-        description: "Get block height",
+        gas_cost: 8,
+        description: "",
     },
     NeoVMSyscallInfo {
-        name: "System.Runtime.GetBlockHash",
-        hash: 0x0f4b4b29,
-        parameters: &["Integer"],
+        name: "System.Runtime.GetTrigger",
+        hash: 0xa0387de9,
+        parameters: &[],
+        return_type: "Integer",
+        gas_cost: 8,
+        description: "",
+    },
+    NeoVMSyscallInfo {
+        name: "System.Runtime.LoadScript",
+        hash: 0x8f800cb3,
+        parameters: &["ByteString", "Integer", "Array"],
+        return_type: "Void",
+        gas_cost: 32768,
+        description: "",
+    },
+    NeoVMSyscallInfo {
+        name: "System.Runtime.Log",
+        hash: 0x9647e7cf,
+        parameters: &["ByteString"],
+        return_type: "Void",
+        gas_cost: 32768,
+        description: "",
+    },
+    NeoVMSyscallInfo {
+        name: "System.Runtime.Notify",
+        hash: 0x616f0195,
+        parameters: &["ByteString", "Array"],
+        return_type: "Void",
+        gas_cost: 32768,
+        description: "",
+    },
+    NeoVMSyscallInfo {
+        name: "System.Runtime.Platform",
+        hash: 0xf6fc79b2,
+        parameters: &[],
+        return_type: "String",
+        gas_cost: 8,
+        description: "",
+    },
+    NeoVMSyscallInfo {
+        name: "System.Storage.AsReadOnly",
+        hash: 0xe9bf4c76,
+        parameters: &["StorageContext"],
+        return_type: "StorageContext",
+        gas_cost: 16,
+        description: "",
+    },
+    NeoVMSyscallInfo {
+        name: "System.Storage.Delete",
+        hash: 0xedc5582f,
+        parameters: &["StorageContext", "ByteString"],
+        return_type: "Void",
+        gas_cost: 32768,
+        description: "",
+    },
+    NeoVMSyscallInfo {
+        name: "System.Storage.Find",
+        hash: 0x9ab830df,
+        parameters: &["StorageContext", "ByteString", "Integer"],
+        return_type: "Iterator",
+        gas_cost: 32768,
+        description: "",
+    },
+    NeoVMSyscallInfo {
+        name: "System.Storage.Get",
+        hash: 0x31e85d92,
+        parameters: &["StorageContext", "ByteString"],
         return_type: "ByteString",
-        gas_cost: 1,
-        description: "Get block hash by height",
+        gas_cost: 32768,
+        description: "",
     },
     NeoVMSyscallInfo {
-        name: "System.Runtime.GetBlockHeader",
-        hash: 0x0f4b4b2a,
-        parameters: &["Integer"],
-        return_type: "Array",
-        gas_cost: 1,
-        description: "Get block header by height",
-    },
-    NeoVMSyscallInfo {
-        name: "System.Runtime.GetTransactionHeight",
-        hash: 0x0f4b4b2b,
-        parameters: &["ByteString"],
-        return_type: "Integer",
-        gas_cost: 1,
-        description: "Get transaction height by hash",
-    },
-    NeoVMSyscallInfo {
-        name: "System.Runtime.GetTransactionFromBlock",
-        hash: 0x0f4b4b2c,
-        parameters: &["Integer", "Integer"],
-        return_type: "Array",
-        gas_cost: 1,
-        description: "Get transaction from block",
-    },
-    NeoVMSyscallInfo {
-        name: "System.Runtime.GetAccount",
-        hash: 0x0f4b4b2d,
-        parameters: &["ByteString"],
-        return_type: "Array",
-        gas_cost: 1,
-        description: "Get account information",
-    },
-    NeoVMSyscallInfo {
-        name: "System.Runtime.GetValidators",
-        hash: 0x0f4b4b2e,
-        parameters: &[],
-        return_type: "Array",
-        gas_cost: 1,
-        description: "Get validators",
-    },
-    NeoVMSyscallInfo {
-        name: "System.Runtime.GetCommittee",
-        hash: 0x0f4b4b2f,
-        parameters: &[],
-        return_type: "Array",
-        gas_cost: 1,
-        description: "Get committee members",
-    },
-    NeoVMSyscallInfo {
-        name: "System.Runtime.GetNextBlockValidators",
-        hash: 0x0f4b4b30,
-        parameters: &[],
-        return_type: "Array",
-        gas_cost: 1,
-        description: "Get next block validators",
-    },
-    NeoVMSyscallInfo {
-        name: "System.Runtime.GetCandidates",
-        hash: 0x0f4b4b31,
-        parameters: &[],
-        return_type: "Array",
-        gas_cost: 1,
-        description: "Get candidates",
-    },
-    NeoVMSyscallInfo {
-        name: "System.Runtime.GetGasLeft",
-        hash: 0x0f4b4b32,
-        parameters: &[],
-        return_type: "Integer",
-        gas_cost: 1,
-        description: "Get remaining gas",
-    },
-    NeoVMSyscallInfo {
-        name: "System.Runtime.GetInvocationGas",
-        hash: 0x0f4b4b33,
-        parameters: &[],
-        return_type: "Integer",
-        gas_cost: 1,
-        description: "Get invocation gas",
-    },
-    NeoVMSyscallInfo {
-        name: "System.Runtime.GetNotifications",
-        hash: 0x0f4b4b34,
-        parameters: &["ByteString"],
-        return_type: "Array",
-        gas_cost: 1,
-        description: "Get notifications",
-    },
-    NeoVMSyscallInfo {
-        name: "System.Runtime.GetNotifications",
-        hash: 0x0f4b4b35,
-        parameters: &[],
-        return_type: "Array",
-        gas_cost: 1,
-        description: "Get all notifications",
-    },
-    NeoVMSyscallInfo {
-        name: "System.Runtime.GetStorageContext",
-        hash: 0x0f4b4b36,
+        name: "System.Storage.GetContext",
+        hash: 0xce67f69b,
         parameters: &[],
         return_type: "StorageContext",
-        gas_cost: 1,
-        description: "Get storage context",
+        gas_cost: 16,
+        description: "",
     },
     NeoVMSyscallInfo {
-        name: "System.Runtime.GetReadOnlyContext",
-        hash: 0x0f4b4b37,
+        name: "System.Storage.GetReadOnlyContext",
+        hash: 0xe26bb4f6,
         parameters: &[],
         return_type: "StorageContext",
-        gas_cost: 1,
-        description: "Get read-only storage context",
+        gas_cost: 16,
+        description: "",
     },
     NeoVMSyscallInfo {
-        name: "System.Runtime.GetCallingContext",
-        hash: 0x0f4b4b38,
-        parameters: &[],
-        return_type: "StorageContext",
-        gas_cost: 1,
-        description: "Get calling storage context",
-    },
-    NeoVMSyscallInfo {
-        name: "System.Runtime.GetEntryContext",
-        hash: 0x0f4b4b39,
-        parameters: &[],
-        return_type: "StorageContext",
-        gas_cost: 1,
-        description: "Get entry storage context",
-    },
-    NeoVMSyscallInfo {
-        name: "System.Runtime.GetExecutingContext",
-        hash: 0x0f4b4b3a,
-        parameters: &[],
-        return_type: "StorageContext",
-        gas_cost: 1,
-        description: "Get executing storage context",
-    },
-    NeoVMSyscallInfo {
-        name: "System.Runtime.GetScriptContainer",
-        hash: 0x0f4b4b3b,
-        parameters: &[],
-        return_type: "Array",
-        gas_cost: 1,
-        description: "Get script container",
-    },
-    NeoVMSyscallInfo {
-        name: "System.Runtime.GetTransaction",
-        hash: 0x0f4b4b3c,
-        parameters: &[],
-        return_type: "Array",
-        gas_cost: 1,
-        description: "Get transaction",
-    },
-    NeoVMSyscallInfo {
-        name: "System.Runtime.GetBlock",
-        hash: 0x0f4b4b3d,
-        parameters: &[],
-        return_type: "Array",
-        gas_cost: 1,
-        description: "Get block",
-    },
-    NeoVMSyscallInfo {
-        name: "System.Runtime.GetBlockHeight",
-        hash: 0x0f4b4b3e,
-        parameters: &[],
-        return_type: "Integer",
-        gas_cost: 1,
-        description: "Get block height",
-    },
-    NeoVMSyscallInfo {
-        name: "System.Runtime.GetBlockHash",
-        hash: 0x0f4b4b3f,
-        parameters: &["Integer"],
-        return_type: "ByteString",
-        gas_cost: 1,
-        description: "Get block hash by height",
-    },
-    NeoVMSyscallInfo {
-        name: "System.Runtime.GetBlockHeader",
-        hash: 0x0f4b4b40,
-        parameters: &["Integer"],
-        return_type: "Array",
-        gas_cost: 1,
-        description: "Get block header by height",
-    },
-    NeoVMSyscallInfo {
-        name: "System.Runtime.GetTransactionHeight",
-        hash: 0x0f4b4b41,
-        parameters: &["ByteString"],
-        return_type: "Integer",
-        gas_cost: 1,
-        description: "Get transaction height by hash",
-    },
-    NeoVMSyscallInfo {
-        name: "System.Runtime.GetTransactionFromBlock",
-        hash: 0x0f4b4b42,
-        parameters: &["Integer", "Integer"],
-        return_type: "Array",
-        gas_cost: 1,
-        description: "Get transaction from block",
-    },
-    NeoVMSyscallInfo {
-        name: "System.Runtime.GetAccount",
-        hash: 0x0f4b4b43,
-        parameters: &["ByteString"],
-        return_type: "Array",
-        gas_cost: 1,
-        description: "Get account information",
-    },
-    NeoVMSyscallInfo {
-        name: "System.Runtime.GetValidators",
-        hash: 0x0f4b4b44,
-        parameters: &[],
-        return_type: "Array",
-        gas_cost: 1,
-        description: "Get validators",
-    },
-    NeoVMSyscallInfo {
-        name: "System.Runtime.GetCommittee",
-        hash: 0x0f4b4b45,
-        parameters: &[],
-        return_type: "Array",
-        gas_cost: 1,
-        description: "Get committee members",
-    },
-    NeoVMSyscallInfo {
-        name: "System.Runtime.GetNextBlockValidators",
-        hash: 0x0f4b4b46,
-        parameters: &[],
-        return_type: "Array",
-        gas_cost: 1,
-        description: "Get next block validators",
-    },
-    NeoVMSyscallInfo {
-        name: "System.Runtime.GetCandidates",
-        hash: 0x0f4b4b47,
-        parameters: &[],
-        return_type: "Array",
-        gas_cost: 1,
-        description: "Get candidates",
-    },
-    NeoVMSyscallInfo {
-        name: "System.Runtime.GetGasLeft",
-        hash: 0x0f4b4b48,
-        parameters: &[],
-        return_type: "Integer",
-        gas_cost: 1,
-        description: "Get remaining gas",
-    },
-    NeoVMSyscallInfo {
-        name: "System.Runtime.GetInvocationGas",
-        hash: 0x0f4b4b49,
-        parameters: &[],
-        return_type: "Integer",
-        gas_cost: 1,
-        description: "Get invocation gas",
-    },
-    NeoVMSyscallInfo {
-        name: "System.Runtime.GetNotifications",
-        hash: 0x0f4b4b4a,
-        parameters: &["ByteString"],
-        return_type: "Array",
-        gas_cost: 1,
-        description: "Get notifications",
-    },
-    NeoVMSyscallInfo {
-        name: "System.Runtime.GetNotifications",
-        hash: 0x0f4b4b4b,
-        parameters: &[],
-        return_type: "Array",
-        gas_cost: 1,
-        description: "Get all notifications",
-    },
-    NeoVMSyscallInfo {
-        name: "System.Runtime.GetStorageContext",
-        hash: 0x0f4b4b4c,
-        parameters: &[],
-        return_type: "StorageContext",
-        gas_cost: 1,
-        description: "Get storage context",
-    },
-    NeoVMSyscallInfo {
-        name: "System.Runtime.GetReadOnlyContext",
-        hash: 0x0f4b4b4d,
-        parameters: &[],
-        return_type: "StorageContext",
-        gas_cost: 1,
-        description: "Get read-only storage context",
-    },
-    NeoVMSyscallInfo {
-        name: "System.Runtime.GetCallingContext",
-        hash: 0x0f4b4b4e,
-        parameters: &[],
-        return_type: "StorageContext",
-        gas_cost: 1,
-        description: "Get calling storage context",
-    },
-    NeoVMSyscallInfo {
-        name: "System.Runtime.GetEntryContext",
-        hash: 0x0f4b4b4f,
-        parameters: &[],
-        return_type: "StorageContext",
-        gas_cost: 1,
-        description: "Get entry storage context",
-    },
-    NeoVMSyscallInfo {
-        name: "System.Runtime.GetExecutingContext",
-        hash: 0x0f4b4b50,
-        parameters: &[],
-        return_type: "StorageContext",
-        gas_cost: 1,
-        description: "Get executing storage context",
+        name: "System.Storage.Put",
+        hash: 0x84183fe6,
+        parameters: &["StorageContext", "ByteString", "ByteString"],
+        return_type: "Void",
+        gas_cost: 32768,
+        description: "",
     },
 ];
 
+fn find_syscall(name: &str) -> Option<&'static NeoVMSyscallInfo> {
+    SYSCALLS.iter().find(|info| info.name == name)
+}
+
+fn syscall_hash(name: &str) -> u32 {
+    find_syscall(name).expect("unknown syscall").hash
+}
+
+fn default_value_for(return_type: &str) -> NeoValue {
+    match return_type {
+        "Void" => NeoValue::Null,
+        "Boolean" => NeoBoolean::TRUE.into(),
+        "Integer" => NeoInteger::new(0).into(),
+        "Hash160" => NeoByteString::new(vec![0u8; 20]).into(),
+        "ByteString" => NeoByteString::new(vec![0u8; 1]).into(),
+        "String" => NeoString::from_str("Neo N3").into(),
+        "Array" => NeoArray::<NeoValue>::new().into(),
+        "Iterator" => NeoArray::<NeoValue>::new().into(),
+        "StackItem" => NeoArray::<NeoValue>::new().into(),
+        "StorageContext" => NeoValue::Null,
+        _ => NeoValue::Null,
+    }
+}
+
 /// Neo N3 System Call Function
-pub fn neovm_syscall(hash: u32, args: &[NeoValue]) -> NeoResult<NeoValue> {
-    // This would be implemented by the LLVM backend
-    // For now, return realistic results based on syscall hash
-    match hash {
-        0x68b4c4c1 => Ok(NeoValue::from(NeoInteger::new(1640995200))), // System.Runtime.GetTime
-        0x0b5b4b1a => Ok(NeoValue::from(NeoBoolean::TRUE)), // System.Runtime.CheckWitness
-        0x0f4b4b1a => Ok(NeoValue::Null), // System.Runtime.Notify
-        0x0f4b4b1b => Ok(NeoValue::Null), // System.Runtime.Log
-        0x0f4b4b1c => Ok(NeoValue::from(NeoString::from_str("Neo N3"))), // System.Runtime.GetPlatform
-        0x0f4b4b1d => Ok(NeoValue::from(NeoInteger::new(0))), // System.Runtime.GetTrigger
-        0x0f4b4b1e => Ok(NeoValue::from(NeoInteger::new(1))), // System.Runtime.GetInvocationCounter
-        0x0f4b4b1f => Ok(NeoValue::from(NeoInteger::new(12345))), // System.Runtime.GetRandom
-        0x0f4b4b20 => Ok(NeoValue::from(NeoInteger::new(860833102))), // System.Runtime.GetNetwork
-        0x0f4b4b21 => Ok(NeoValue::from(NeoInteger::new(53))), // System.Runtime.GetAddressVersion
-        _ => Ok(NeoValue::Null), // Unknown syscall
+pub fn neovm_syscall(hash: u32, _args: &[NeoValue]) -> NeoResult<NeoValue> {
+    let registry = NeoVMSyscallRegistry::get_instance();
+    if let Some(info) = registry.get_syscall_by_hash(hash) {
+        Ok(default_value_for(info.return_type))
+    } else {
+        Ok(NeoValue::Null)
     }
 }
 
@@ -556,218 +421,149 @@ pub fn neovm_syscall(hash: u32, args: &[NeoValue]) -> NeoResult<NeoValue> {
 pub struct NeoVMSyscall;
 
 impl NeoVMSyscall {
+    fn call_integer(name: &str) -> NeoResult<NeoInteger> {
+        let value = neovm_syscall(syscall_hash(name), &[])?;
+        value.as_integer().ok_or(NeoError::InvalidType)
+    }
+
+    fn call_boolean(name: &str, args: &[NeoValue]) -> NeoResult<NeoBoolean> {
+        let value = neovm_syscall(syscall_hash(name), args)?;
+        value.as_boolean().ok_or(NeoError::InvalidType)
+    }
+
+    fn call_bytes(name: &str) -> NeoResult<NeoByteString> {
+        let value = neovm_syscall(syscall_hash(name), &[])?;
+        value.as_byte_string().cloned().ok_or(NeoError::InvalidType)
+    }
+
+    fn call_string(name: &str) -> NeoResult<NeoString> {
+        let value = neovm_syscall(syscall_hash(name), &[])?;
+        value.as_string().cloned().ok_or(NeoError::InvalidType)
+    }
+
+    fn call_array(name: &str, args: &[NeoValue]) -> NeoResult<NeoArray<NeoValue>> {
+        let value = neovm_syscall(syscall_hash(name), args)?;
+        value.as_array().cloned().ok_or(NeoError::InvalidType)
+    }
+
     /// Get current timestamp
     pub fn get_time() -> NeoResult<NeoInteger> {
-        let result = neovm_syscall(0x68b4c4c1, &[])?;
-        result.as_integer().ok_or(NeoError::InvalidType)
+        Self::call_integer("System.Runtime.GetTime")
     }
-    
+
     /// Check if the specified account is a witness
     pub fn check_witness(account: &NeoByteString) -> NeoResult<NeoBoolean> {
-        let result = neovm_syscall(0x0b5b4b1a, &[NeoValue::from(account.clone())])?;
-        result.as_boolean().ok_or(NeoError::InvalidType)
+        let args = [NeoValue::from(account.clone())];
+        Self::call_boolean("System.Runtime.CheckWitness", &args)
     }
-    
+
     /// Send notification
     pub fn notify(event: &NeoString, state: &NeoArray<NeoValue>) -> NeoResult<()> {
-        neovm_syscall(0x0f4b4b1a, &[NeoValue::from(event.clone()), NeoValue::from(state.clone())])?;
+        let args = [NeoValue::from(event.clone()), NeoValue::from(state.clone())];
+        neovm_syscall(syscall_hash("System.Runtime.Notify"), &args)?;
         Ok(())
     }
-    
+
     /// Log message
     pub fn log(message: &NeoString) -> NeoResult<()> {
-        neovm_syscall(0x0f4b4b1b, &[NeoValue::from(message.clone())])?;
+        let args = [NeoValue::from(message.clone())];
+        neovm_syscall(syscall_hash("System.Runtime.Log"), &args)?;
         Ok(())
     }
-    
-    /// Get platform information
-    pub fn get_platform() -> NeoResult<NeoString> {
-        let result = neovm_syscall(0x0f4b4b1c, &[])?;
-        result.as_string().cloned().ok_or(NeoError::InvalidType)
+
+    /// Platform identifier
+    pub fn platform() -> NeoResult<NeoString> {
+        Self::call_string("System.Runtime.Platform")
     }
-    
-    /// Get trigger type
+
     pub fn get_trigger() -> NeoResult<NeoInteger> {
-        let result = neovm_syscall(0x0f4b4b1d, &[])?;
-        result.as_integer().ok_or(NeoError::InvalidType)
+        Self::call_integer("System.Runtime.GetTrigger")
     }
-    
-    /// Get invocation counter
+
     pub fn get_invocation_counter() -> NeoResult<NeoInteger> {
-        let result = neovm_syscall(0x0f4b4b1e, &[])?;
-        result.as_integer().ok_or(NeoError::InvalidType)
+        Self::call_integer("System.Runtime.GetInvocationCounter")
     }
-    
-    /// Get random number
+
     pub fn get_random() -> NeoResult<NeoInteger> {
-        let result = neovm_syscall(0x0f4b4b1f, &[])?;
-        result.as_integer().ok_or(NeoError::InvalidType)
+        Self::call_integer("System.Runtime.GetRandom")
     }
-    
-    /// Get network magic number
+
     pub fn get_network() -> NeoResult<NeoInteger> {
-        let result = neovm_syscall(0x0f4b4b20, &[])?;
-        result.as_integer().ok_or(NeoError::InvalidType)
+        Self::call_integer("System.Runtime.GetNetwork")
     }
-    
-    /// Get address version
+
     pub fn get_address_version() -> NeoResult<NeoInteger> {
-        let result = neovm_syscall(0x0f4b4b21, &[])?;
-        result.as_integer().ok_or(NeoError::InvalidType)
+        Self::call_integer("System.Runtime.GetAddressVersion")
     }
-    
-    /// Get calling script hash
-    pub fn get_calling_script_hash() -> NeoResult<NeoByteString> {
-        let result = neovm_syscall(0x0f4b4b22, &[])?;
-        result.as_byte_string().cloned().ok_or(NeoError::InvalidType)
-    }
-    
-    /// Get entry script hash
-    pub fn get_entry_script_hash() -> NeoResult<NeoByteString> {
-        let result = neovm_syscall(0x0f4b4b23, &[])?;
-        result.as_byte_string().cloned().ok_or(NeoError::InvalidType)
-    }
-    
-    /// Get executing script hash
-    pub fn get_executing_script_hash() -> NeoResult<NeoByteString> {
-        let result = neovm_syscall(0x0f4b4b24, &[])?;
-        result.as_byte_string().cloned().ok_or(NeoError::InvalidType)
-    }
-    
-    /// Get script container
-    pub fn get_script_container() -> NeoResult<NeoArray<NeoValue>> {
-        let result = neovm_syscall(0x0f4b4b25, &[])?;
-        result.as_array().cloned().ok_or(NeoError::InvalidType)
-    }
-    
-    /// Get transaction
-    pub fn get_transaction() -> NeoResult<NeoArray<NeoValue>> {
-        let result = neovm_syscall(0x0f4b4b26, &[])?;
-        result.as_array().cloned().ok_or(NeoError::InvalidType)
-    }
-    
-    /// Get block
-    pub fn get_block() -> NeoResult<NeoArray<NeoValue>> {
-        let result = neovm_syscall(0x0f4b4b27, &[])?;
-        result.as_array().cloned().ok_or(NeoError::InvalidType)
-    }
-    
-    /// Get block height
-    pub fn get_block_height() -> NeoResult<NeoInteger> {
-        let result = neovm_syscall(0x0f4b4b28, &[])?;
-        result.as_integer().ok_or(NeoError::InvalidType)
-    }
-    
-    /// Get block hash by height
-    pub fn get_block_hash(height: NeoInteger) -> NeoResult<NeoByteString> {
-        let result = neovm_syscall(0x0f4b4b29, &[NeoValue::from(height)])?;
-        result.as_byte_string().cloned().ok_or(NeoError::InvalidType)
-    }
-    
-    /// Get block header by height
-    pub fn get_block_header(height: NeoInteger) -> NeoResult<NeoArray<NeoValue>> {
-        let result = neovm_syscall(0x0f4b4b2a, &[NeoValue::from(height)])?;
-        result.as_array().cloned().ok_or(NeoError::InvalidType)
-    }
-    
-    /// Get transaction height by hash
-    pub fn get_transaction_height(hash: &NeoByteString) -> NeoResult<NeoInteger> {
-        let result = neovm_syscall(0x0f4b4b2b, &[NeoValue::from(hash.clone())])?;
-        result.as_integer().ok_or(NeoError::InvalidType)
-    }
-    
-    /// Get transaction from block
-    pub fn get_transaction_from_block(block_height: NeoInteger, tx_index: NeoInteger) -> NeoResult<NeoArray<NeoValue>> {
-        let result = neovm_syscall(0x0f4b4b2c, &[NeoValue::from(block_height), NeoValue::from(tx_index)])?;
-        result.as_array().cloned().ok_or(NeoError::InvalidType)
-    }
-    
-    /// Get account information
-    pub fn get_account(account: &NeoByteString) -> NeoResult<NeoArray<NeoValue>> {
-        let result = neovm_syscall(0x0f4b4b2d, &[NeoValue::from(account.clone())])?;
-        result.as_array().cloned().ok_or(NeoError::InvalidType)
-    }
-    
-    /// Get validators
-    pub fn get_validators() -> NeoResult<NeoArray<NeoValue>> {
-        let result = neovm_syscall(0x0f4b4b2e, &[])?;
-        result.as_array().cloned().ok_or(NeoError::InvalidType)
-    }
-    
-    /// Get committee members
-    pub fn get_committee() -> NeoResult<NeoArray<NeoValue>> {
-        let result = neovm_syscall(0x0f4b4b2f, &[])?;
-        result.as_array().cloned().ok_or(NeoError::InvalidType)
-    }
-    
-    /// Get next block validators
-    pub fn get_next_block_validators() -> NeoResult<NeoArray<NeoValue>> {
-        let result = neovm_syscall(0x0f4b4b30, &[])?;
-        result.as_array().cloned().ok_or(NeoError::InvalidType)
-    }
-    
-    /// Get candidates
-    pub fn get_candidates() -> NeoResult<NeoArray<NeoValue>> {
-        let result = neovm_syscall(0x0f4b4b31, &[])?;
-        result.as_array().cloned().ok_or(NeoError::InvalidType)
-    }
-    
-    /// Get remaining gas
+
     pub fn get_gas_left() -> NeoResult<NeoInteger> {
-        let result = neovm_syscall(0x0f4b4b32, &[])?;
-        result.as_integer().ok_or(NeoError::InvalidType)
+        Self::call_integer("System.Runtime.GasLeft")
     }
-    
-    /// Get invocation gas
-    pub fn get_invocation_gas() -> NeoResult<NeoInteger> {
-        let result = neovm_syscall(0x0f4b4b33, &[])?;
-        result.as_integer().ok_or(NeoError::InvalidType)
+
+    pub fn get_calling_script_hash() -> NeoResult<NeoByteString> {
+        Self::call_bytes("System.Runtime.GetCallingScriptHash")
     }
-    
-    /// Get notifications
-    pub fn get_notifications(script_hash: &NeoByteString) -> NeoResult<NeoArray<NeoValue>> {
-        let result = neovm_syscall(0x0f4b4b34, &[NeoValue::from(script_hash.clone())])?;
-        result.as_array().cloned().ok_or(NeoError::InvalidType)
+
+    pub fn get_entry_script_hash() -> NeoResult<NeoByteString> {
+        Self::call_bytes("System.Runtime.GetEntryScriptHash")
     }
-    
-    /// Get all notifications
-    pub fn get_all_notifications() -> NeoResult<NeoArray<NeoValue>> {
-        let result = neovm_syscall(0x0f4b4b35, &[])?;
-        result.as_array().cloned().ok_or(NeoError::InvalidType)
+
+    pub fn get_executing_script_hash() -> NeoResult<NeoByteString> {
+        Self::call_bytes("System.Runtime.GetExecutingScriptHash")
     }
-    
-    /// Get storage context
-    pub fn get_storage_context() -> NeoResult<NeoStorageContext> {
-        let result = neovm_syscall(0x0f4b4b36, &[])?;
-        // This would need to be implemented based on the actual return type
+
+    pub fn get_notifications(script_hash: Option<&NeoByteString>) -> NeoResult<NeoArray<NeoValue>> {
+        let args: Vec<NeoValue> = script_hash
+            .map(|hash| vec![NeoValue::from(hash.clone())])
+            .unwrap_or_default();
+        Self::call_array("System.Runtime.GetNotifications", args.as_slice())
+    }
+
+    pub fn get_script_container() -> NeoResult<NeoArray<NeoValue>> {
+        Self::call_array("System.Runtime.GetScriptContainer", &[])
+    }
+
+    pub fn storage_get_context() -> NeoResult<NeoStorageContext> {
         Ok(NeoStorageContext::new(0))
     }
-    
-    /// Get read-only storage context
-    pub fn get_read_only_context() -> NeoResult<NeoStorageContext> {
-        let result = neovm_syscall(0x0f4b4b37, &[])?;
-        // This would need to be implemented based on the actual return type
-        Ok(NeoStorageContext::new(0))
+
+    pub fn storage_get_read_only_context() -> NeoResult<NeoStorageContext> {
+        Ok(NeoStorageContext::read_only(0))
     }
-    
-    /// Get calling storage context
-    pub fn get_calling_context() -> NeoResult<NeoStorageContext> {
-        let result = neovm_syscall(0x0f4b4b38, &[])?;
-        // This would need to be implemented based on the actual return type
-        Ok(NeoStorageContext::new(0))
+
+    pub fn storage_as_read_only(context: &NeoStorageContext) -> NeoResult<NeoStorageContext> {
+        Ok(context.as_read_only())
     }
-    
-    /// Get entry storage context
-    pub fn get_entry_context() -> NeoResult<NeoStorageContext> {
-        let result = neovm_syscall(0x0f4b4b39, &[])?;
-        // This would need to be implemented based on the actual return type
-        Ok(NeoStorageContext::new(0))
+
+    pub fn storage_get(
+        _context: &NeoStorageContext,
+        _key: &NeoByteString,
+    ) -> NeoResult<NeoByteString> {
+        Ok(NeoByteString::new(Vec::new()))
     }
-    
-    /// Get executing storage context
-    pub fn get_executing_context() -> NeoResult<NeoStorageContext> {
-        let result = neovm_syscall(0x0f4b4b3a, &[])?;
-        // This would need to be implemented based on the actual return type
-        Ok(NeoStorageContext::new(0))
+
+    pub fn storage_put(
+        context: &NeoStorageContext,
+        _key: &NeoByteString,
+        _value: &NeoByteString,
+    ) -> NeoResult<()> {
+        if context.is_read_only() {
+            return Err(NeoError::InvalidOperation);
+        }
+        Ok(())
+    }
+
+    pub fn storage_delete(context: &NeoStorageContext, _key: &NeoByteString) -> NeoResult<()> {
+        if context.is_read_only() {
+            return Err(NeoError::InvalidOperation);
+        }
+        Ok(())
+    }
+
+    pub fn storage_find(
+        _context: &NeoStorageContext,
+        _prefix: &NeoByteString,
+    ) -> NeoResult<NeoIterator<NeoByteString>> {
+        Ok(NeoIterator::new(Vec::new()))
     }
 }

@@ -1,37 +1,27 @@
-# Neo LLVM .gitignore
-
-# Build directories
-build/
+# Workspace build artefacts
 target/
+**/target/
+build/
+artifacts/
+
+# Generated binaries/libraries
 *.o
 *.so
 *.dylib
 *.dll
 
-# IDE files
+# IDE tooling
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# OS files
+# OS junk
 .DS_Store
 Thumbs.db
 
-# LLVM build files
-llvm/build/
-llvm/install/
-
-# Rust build files
-Cargo.lock
-**/target/
-
-# Test outputs
-*.nef
-*.log
-
-# Embedded repositories
+# External checkout used during build-script generation
 neo/
 
 # Temporary files

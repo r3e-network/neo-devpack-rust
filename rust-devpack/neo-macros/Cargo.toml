@@ -15,6 +15,7 @@ syn = { version = "2.0", features = ["full"] }
 neo-types = { path = "../neo-types" }
 neo-syscalls = { path = "../neo-syscalls" }
 neo-runtime = { path = "../neo-runtime" }
+serde_json = "1.0"
 
 [features]
 default = ["std"]

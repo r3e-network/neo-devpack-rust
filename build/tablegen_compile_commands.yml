@@ -1,9 +1,0 @@
---- !FileInfo:
-  filepath: "/home/neo/git/neo-llvm/llvm/lib/Target/NeoVM/NeoVM.td"
-  includes: "/home/neo/git/neo-llvm/llvm/lib/Target/NeoVM;/usr/lib/llvm-18/include;/home/neo/git/neo-llvm/llvm/include;/usr/include/llvm-18"
---- !FileInfo:
-  filepath: "/home/neo/git/neo-llvm/llvm/lib/Target/NeoVM/NeoVM.td"
-  includes: "/home/neo/git/neo-llvm/llvm/lib/Target/NeoVM;/usr/lib/llvm-18/include;/home/neo/git/neo-llvm/llvm/include;/usr/include/llvm-18"
---- !FileInfo:
-  filepath: "/home/neo/git/neo-llvm/llvm/lib/Target/NeoVM/NeoVM.td"
-  includes: "/home/neo/git/neo-llvm/llvm/lib/Target/NeoVM;/usr/lib/llvm-18/include;/home/neo/git/neo-llvm/llvm/include;/usr/include/llvm-18"

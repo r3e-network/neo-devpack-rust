@@ -1,8 +1,0 @@
-; ModuleID = 'test'
-target triple = "neovm"
-
-define i32 @main(i32 %a, i32 %b) {
-entry:
-  %add = add i32 %a, %b
-  ret i32 %add
-}

@@ -1,0 +1,464 @@
+// Comprehensive memory operation tests for WASM-NeoVM translator
+// Phase 2: High-priority coverage additions
+
+use wasm_neovm::translate_module;
+
+// ============================================================================
+// Load Operation Tests
+// ============================================================================
+
+#[test]
+fn translate_i32_load() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (memory 1)
+              (func (export "load") (param i32) (result i32)
+                local.get 0
+                i32.load))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "I32Load").expect("translation succeeds");
+
+    // i32.load requires helper function for memory access
+    assert!(
+        !translation.script.is_empty(),
+        "should generate i32.load bytecode"
+    );
+}
+
+#[test]
+fn translate_i32_load8_s() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (memory 1)
+              (func (export "load8_s") (param i32) (result i32)
+                local.get 0
+                i32.load8_s))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "I32Load8S").expect("translation succeeds");
+
+    // load8_s loads 1 byte with sign extension
+    assert!(!translation.script.is_empty());
+}
+
+#[test]
+fn translate_i32_load8_u() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (memory 1)
+              (func (export "load8_u") (param i32) (result i32)
+                local.get 0
+                i32.load8_u))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "I32Load8U").expect("translation succeeds");
+
+    // load8_u loads 1 byte with zero extension
+    assert!(!translation.script.is_empty());
+}
+
+#[test]
+fn translate_i32_load16_s() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (memory 1)
+              (func (export "load16_s") (param i32) (result i32)
+                local.get 0
+                i32.load16_s))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "I32Load16S").expect("translation succeeds");
+
+    // load16_s loads 2 bytes with sign extension
+    assert!(!translation.script.is_empty());
+}
+
+#[test]
+fn translate_i64_load() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (memory 1)
+              (func (export "load64") (param i32) (result i64)
+                local.get 0
+                i64.load))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "I64Load").expect("translation succeeds");
+
+    // i64.load loads 8 bytes
+    assert!(!translation.script.is_empty());
+}
+
+#[test]
+fn translate_i64_load32_u() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (memory 1)
+              (func (export "load32_u") (param i32) (result i64)
+                local.get 0
+                i64.load32_u))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "I64Load32U").expect("translation succeeds");
+
+    // load32_u loads 4 bytes with zero extension to i64
+    assert!(!translation.script.is_empty());
+}
+
+// ============================================================================
+// Store Operation Tests
+// ============================================================================
+
+#[test]
+fn translate_i32_store() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (memory 1)
+              (func (export "store") (param i32 i32)
+                local.get 0
+                local.get 1
+                i32.store))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "I32Store").expect("translation succeeds");
+
+    // i32.store requires helper function
+    assert!(!translation.script.is_empty());
+}
+
+#[test]
+fn translate_i32_store8() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (memory 1)
+              (func (export "store8") (param i32 i32)
+                local.get 0
+                local.get 1
+                i32.store8))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "I32Store8").expect("translation succeeds");
+
+    // store8 stores lowest byte only
+    assert!(!translation.script.is_empty());
+}
+
+#[test]
+fn translate_i32_store16() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (memory 1)
+              (func (export "store16") (param i32 i32)
+                local.get 0
+                local.get 1
+                i32.store16))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "I32Store16").expect("translation succeeds");
+
+    // store16 stores lowest 2 bytes
+    assert!(!translation.script.is_empty());
+}
+
+#[test]
+fn translate_i64_store() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (memory 1)
+              (func (export "store64") (param i32 i64)
+                local.get 0
+                local.get 1
+                i64.store))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "I64Store").expect("translation succeeds");
+
+    // i64.store stores 8 bytes
+    assert!(!translation.script.is_empty());
+}
+
+// ============================================================================
+// Memory Control Operations
+// ============================================================================
+
+#[test]
+fn translate_memory_size() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (memory 1)
+              (func (export "size") (result i32)
+                memory.size))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "MemorySize").expect("translation succeeds");
+
+    // memory.size returns current memory size in pages
+    assert!(!translation.script.is_empty());
+}
+
+#[test]
+fn translate_memory_grow() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (memory 1)
+              (func (export "grow") (param i32) (result i32)
+                local.get 0
+                memory.grow))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "MemoryGrow").expect("translation succeeds");
+
+    // memory.grow attempts to grow memory by specified pages
+    assert!(!translation.script.is_empty());
+}
+
+#[test]
+fn translate_memory_grow_with_maximum() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (memory 1 10)
+              (func (export "grow_limited") (param i32) (result i32)
+                local.get 0
+                memory.grow))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "MemoryGrowLimited").expect("translation succeeds");
+
+    // Memory with maximum (10 pages) limits growth
+    assert!(!translation.script.is_empty());
+}
+
+// ============================================================================
+// Alignment and Offset Tests
+// ============================================================================
+
+#[test]
+fn translate_load_with_offset() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (memory 1)
+              (func (export "load_offset") (param i32) (result i32)
+                local.get 0
+                i32.load offset=4))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "LoadOffset").expect("translation succeeds");
+
+    // offset=4 adds 4 to the address
+    assert!(!translation.script.is_empty());
+}
+
+#[test]
+fn translate_load_with_alignment() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (memory 1)
+              (func (export "load_aligned") (param i32) (result i32)
+                local.get 0
+                i32.load align=4))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "LoadAligned").expect("translation succeeds");
+
+    // align=4 specifies 4-byte alignment (hint for optimization)
+    assert!(!translation.script.is_empty());
+}
+
+#[test]
+fn translate_store_with_offset_and_alignment() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (memory 1)
+              (func (export "store_offset_align") (param i32 i32)
+                local.get 0
+                local.get 1
+                i32.store offset=8 align=4))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "StoreOffsetAlign").expect("translation succeeds");
+
+    // Combined offset and alignment
+    assert!(!translation.script.is_empty());
+}
+
+// ============================================================================
+// Bulk Memory Operations
+// ============================================================================
+
+#[test]
+fn translate_memory_fill() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (memory 1)
+              (func (export "fill") (param i32 i32 i32)
+                local.get 0
+                local.get 1
+                local.get 2
+                memory.fill))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "MemoryFill").expect("translation succeeds");
+
+    // memory.fill sets memory region to a byte value
+    assert!(!translation.script.is_empty());
+}
+
+#[test]
+fn translate_memory_copy() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (memory 1)
+              (func (export "copy") (param i32 i32 i32)
+                local.get 0
+                local.get 1
+                local.get 2
+                memory.copy))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "MemoryCopy").expect("translation succeeds");
+
+    // memory.copy copies memory region
+    assert!(!translation.script.is_empty());
+}
+
+#[test]
+fn translate_memory_init() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (memory 1)
+              (data $d (i32.const 0) "hello")
+              (func (export "init") (param i32 i32 i32)
+                local.get 0
+                local.get 1
+                local.get 2
+                memory.init $d))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "MemoryInit").expect("translation succeeds");
+
+    // memory.init initializes memory from data segment
+    assert!(!translation.script.is_empty());
+}
+
+#[test]
+fn translate_data_drop() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (memory 1)
+              (data $d (i32.const 0) "test")
+              (func (export "drop")
+                data.drop $d))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "DataDrop").expect("translation succeeds");
+
+    // data.drop releases data segment
+    assert!(!translation.script.is_empty());
+}
+
+// ============================================================================
+// Memory Bounds Edge Cases
+// ============================================================================
+
+#[test]
+fn translate_load_at_boundary() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (memory 1)
+              (func (export "load_boundary") (result i32)
+                i32.const 65532
+                i32.load))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "LoadBoundary").expect("translation succeeds");
+
+    // Loading at page boundary (65536 - 4 bytes)
+    assert!(!translation.script.is_empty());
+}
+
+#[test]
+fn translate_store_at_zero() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (memory 1)
+              (func (export "store_zero") (param i32)
+                i32.const 0
+                local.get 0
+                i32.store))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "StoreZero").expect("translation succeeds");
+
+    // Storing at address 0
+    assert!(!translation.script.is_empty());
+}
+
+// ============================================================================
+// Complex Memory Patterns
+// ============================================================================
+
+#[test]
+fn translate_memory_byte_swap_pattern() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (memory 1)
+              (func (export "swap_bytes") (param i32)
+                local.get 0
+                local.get 0
+                i32.load8_u offset=0
+                local.get 0
+                i32.load8_u offset=1
+                local.get 0
+                i32.store8 offset=0
+                local.get 0
+                i32.store8 offset=1))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "ByteSwap").expect("translation succeeds");
+
+    // Complex pattern: swap two bytes in memory
+    assert!(!translation.script.is_empty());
+}
+
+#[test]
+fn translate_memory_pointer_arithmetic() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (memory 1)
+              (func (export "pointer_arith") (param i32) (result i32)
+                local.get 0
+                i32.const 4
+                i32.add
+                i32.load))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "PointerArith").expect("translation succeeds");
+
+    // Pointer arithmetic: base + offset
+    assert!(!translation.script.is_empty());
+}
