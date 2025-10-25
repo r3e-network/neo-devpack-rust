@@ -5,8 +5,9 @@ use anyhow::{Context, Result};
 use clap::Parser;
 
 use wasm_neovm::{
-    extract_nef_metadata, manifest::merge_manifest, translate_module_with_safe,
-    write_nef_with_metadata,
+    extract_nef_metadata,
+    manifest::{merge_manifest, propagate_safe_flags},
+    translate_module, write_nef_with_metadata,
 };
 
 #[derive(Parser, Debug)]
@@ -31,10 +32,6 @@ struct Cli {
     /// Contract name stored in the manifest
     #[arg(long, default_value = "Contract")]
     name: String,
-
-    /// Exported method names to mark as safe in the manifest
-    #[arg(long = "safe-method", value_name = "NAME")]
-    safe_methods: Vec<String>,
 
     /// Path to a JSON file providing manifest overlay data
     #[arg(long = "manifest-overlay")]
@@ -61,8 +58,7 @@ fn main() -> Result<()> {
     let module = fs::read(&cli.input)
         .with_context(|| format!("failed to read input module {}", cli.input.display()))?;
 
-    let safe_refs: Vec<&str> = cli.safe_methods.iter().map(|s| s.as_str()).collect();
-    let translation = translate_module_with_safe(&module, &cli.name, &safe_refs)?;
+    let translation = translate_module(&module, &cli.name)?;
 
     let mut manifest_value = translation.manifest.value.clone();
     if let Some(path) = &cli.manifest_overlay {
@@ -77,6 +73,7 @@ fn main() -> Result<()> {
             })?;
         merge_manifest(&mut manifest_value, &overlay);
     }
+    propagate_safe_flags(&mut manifest_value);
 
     let manifest_string =
         serde_json::to_string_pretty(&manifest_value).context("failed to render manifest JSON")?;

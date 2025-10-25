@@ -1,5 +1,6 @@
 use serde::Serialize;
 use serde_json::json;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ManifestParameter {
@@ -60,6 +61,7 @@ pub fn merge_manifest(base: &mut serde_json::Value, overlay: &serde_json::Value)
                 }
             }
         }
+        dedup_manifest_collections(base_map);
         return;
     }
 
@@ -69,6 +71,161 @@ pub fn merge_manifest(base: &mut serde_json::Value, overlay: &serde_json::Value)
     }
 
     *base = overlay.clone();
+}
+
+pub fn propagate_safe_flags(manifest: &mut serde_json::Value) {
+    let Some(abi) = manifest
+        .get_mut("abi")
+        .and_then(|value| value.as_object_mut())
+    else {
+        return;
+    };
+    let Some(methods) = abi
+        .get_mut("methods")
+        .and_then(|methods| methods.as_array_mut())
+    else {
+        return;
+    };
+
+    let mut safe_names: HashSet<String> = HashSet::new();
+    for method in methods.iter() {
+        if method
+            .get("safe")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+        {
+            if let Some(name) = method.get("name").and_then(serde_json::Value::as_str) {
+                safe_names.insert(name.to_string());
+            }
+        }
+    }
+
+    if safe_names.is_empty() {
+        return;
+    }
+
+    for method in methods.iter_mut() {
+        if let Some(name) = method.get("name").and_then(serde_json::Value::as_str) {
+            if safe_names.contains(name) {
+                if let Some(obj) = method.as_object_mut() {
+                    obj.insert("safe".to_string(), serde_json::Value::Bool(true));
+                }
+            }
+        }
+    }
+}
+
+fn dedup_manifest_collections(map: &mut serde_json::Map<String, serde_json::Value>) {
+    if let Some(value) = map.get_mut("supportedstandards") {
+        dedup_string_array(value);
+    }
+    if let Some(value) = map.get_mut("trusts") {
+        dedup_string_array(value);
+    }
+    if let Some(value) = map.get_mut("permissions") {
+        dedup_permissions(value);
+    }
+    if let Some(extra) = map.get_mut("abi").and_then(|abi| abi.as_object_mut()) {
+        if let Some(methods) = extra.get_mut("methods") {
+            dedup_method_offsets(methods);
+        }
+    }
+}
+
+fn dedup_string_array(value: &mut serde_json::Value) {
+    if let Some(array) = value.as_array_mut() {
+        let mut seen = HashSet::new();
+        array.retain(|item| {
+            if let Some(s) = item.as_str() {
+                seen.insert(s.to_string())
+            } else {
+                true
+            }
+        });
+    }
+}
+
+fn dedup_permissions(value: &mut serde_json::Value) {
+    let Some(array) = value.as_array_mut() else {
+        return;
+    };
+
+    let mut merged = Vec::new();
+    let mut index_by_contract: HashMap<String, usize> = HashMap::new();
+    let mut fallback_seen: HashSet<String> = HashSet::new();
+
+    for mut entry in array.drain(..) {
+        if let Some(contract) = entry
+            .get("contract")
+            .and_then(serde_json::Value::as_str)
+            .map(|s| s.to_string())
+        {
+            let position = index_by_contract
+                .entry(contract.clone())
+                .or_insert_with(|| {
+                    merged.push(serde_json::json!({
+                        "contract": contract,
+                        "methods": []
+                    }));
+                    merged.len() - 1
+                });
+
+            if let Some(methods) = entry.get_mut("methods") {
+                merge_methods(&mut merged[*position], methods);
+            }
+        } else {
+            let key = entry.to_string();
+            if fallback_seen.insert(key) {
+                merged.push(entry);
+            }
+        }
+    }
+
+    *array = merged;
+}
+
+fn merge_methods(target: &mut serde_json::Value, incoming: &serde_json::Value) {
+    let Some(target_obj) = target.as_object_mut() else {
+        return;
+    };
+    let Some(target_methods) = target_obj.get_mut("methods") else {
+        return;
+    };
+    if !target_methods.is_array() {
+        *target_methods = serde_json::Value::Array(Vec::new());
+    }
+    if let Some(array) = target_methods.as_array_mut() {
+        if let Some(incoming_array) = incoming.as_array() {
+            let mut seen: HashSet<String> = array
+                .iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect();
+            for method in incoming_array {
+                if let Some(name) = method.as_str() {
+                    if seen.insert(name.to_string()) {
+                        array.push(serde_json::Value::String(name.to_string()));
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn dedup_method_offsets(value: &mut serde_json::Value) {
+    if let Some(items) = value.as_array_mut() {
+        let mut seen = HashSet::new();
+        items.retain(|item| {
+            if let Some(name) = item
+                .get("name")
+                .and_then(serde_json::Value::as_str)
+                .map(|s| s.to_string())
+            {
+                seen.insert(name)
+            } else {
+                true
+            }
+        });
+    }
 }
 
 #[cfg(test)]
@@ -141,5 +298,38 @@ mod tests {
         let events = base["abi"]["events"].as_array().unwrap();
         assert_eq!(events.len(), 2);
         assert_eq!(events[1]["name"].as_str().unwrap(), "Second");
+    }
+
+    #[test]
+    fn merge_manifest_deduplicates_permissions_and_standards() {
+        let mut base = json!({
+            "permissions": [
+                {"contract": "0x01", "methods": ["a", "b"]}
+            ],
+            "supportedstandards": ["NEP-17"]
+        });
+
+        let overlay = json!({
+            "permissions": [
+                {"contract": "0x01", "methods": ["b", "c"]},
+                {"contract": "0x02", "methods": ["d"]}
+            ],
+            "supportedstandards": ["NEP-17", "NEP-11"]
+        });
+
+        merge_manifest(&mut base, &overlay);
+
+        let permissions = base["permissions"].as_array().unwrap();
+        assert_eq!(permissions.len(), 2);
+        let methods = permissions[0]["methods"].as_array().unwrap();
+        let method_set: std::collections::HashSet<_> =
+            methods.iter().map(|v| v.as_str().unwrap()).collect();
+        assert_eq!(method_set.len(), 3);
+        assert!(method_set.contains("a"));
+        assert!(method_set.contains("b"));
+        assert!(method_set.contains("c"));
+
+        let standards = base["supportedstandards"].as_array().unwrap();
+        assert_eq!(standards.len(), 2);
     }
 }

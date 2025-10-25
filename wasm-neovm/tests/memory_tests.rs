@@ -177,7 +177,6 @@ fn translate_memory_bulk_operations() {
     );
 }
 
-
 #[test]
 fn translate_memory_copy_overlap_safe() {
     let wasm = wat::parse_str(

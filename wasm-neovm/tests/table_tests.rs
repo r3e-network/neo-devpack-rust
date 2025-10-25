@@ -99,7 +99,6 @@ fn translate_table_grow() {
     );
 }
 
-
 #[test]
 fn translate_table_grow_failure_path() {
     let wasm = wat::parse_str(
@@ -152,8 +151,6 @@ fn translate_table_fill() {
         "table.fill should use helper"
     );
 }
-
-
 
 #[test]
 fn translate_table_declared_segment_ignored() {

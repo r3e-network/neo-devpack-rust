@@ -2,40 +2,64 @@
 //!
 //! This crate provides the core types and data structures for Neo N3 smart contract development.
 
-#![cfg_attr(not(feature = "std"), no_std)]
-#![cfg_attr(not(feature = "std"), no_main)]
+use std::cmp::{Eq, Ord, PartialEq, PartialOrd};
+use std::fmt;
+use std::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Not, Rem, Shl, Shr, Sub};
+use std::{string::String, vec::Vec};
 
-use core::cmp::{Eq, Ord, PartialEq, PartialOrd};
-use core::fmt;
-use core::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Not, Rem, Shl, Shr, Sub};
+use num_bigint::BigInt;
+use num_traits::{One, ToPrimitive, Zero};
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
 
-#[cfg(feature = "alloc")]
-extern crate alloc;
-
-#[cfg(feature = "alloc")]
-use alloc::{boxed::Box, string::String, vec::Vec};
-
-/// Neo N3 Integer type (32-bit)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-#[repr(transparent)]
-pub struct NeoInteger(pub i32);
+/// Neo N3 Integer type (arbitrary precision)
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct NeoInteger(BigInt);
 
 impl NeoInteger {
-    pub const ZERO: Self = Self(0);
-    pub const ONE: Self = Self(1);
-    pub const MIN: Self = Self(i32::MIN);
-    pub const MAX: Self = Self(i32::MAX);
-
-    pub fn new(value: i32) -> Self {
-        Self(value)
+    pub fn new<T: Into<BigInt>>(value: T) -> Self {
+        Self(value.into())
     }
 
-    pub fn as_i32(self) -> i32 {
+    pub fn zero() -> Self {
+        Self(BigInt::zero())
+    }
+
+    pub fn one() -> Self {
+        Self(BigInt::one())
+    }
+
+    pub fn min_i32() -> Self {
+        Self(BigInt::from(i32::MIN))
+    }
+
+    pub fn max_i32() -> Self {
+        Self(BigInt::from(i32::MAX))
+    }
+
+    pub fn as_bigint(&self) -> &BigInt {
+        &self.0
+    }
+
+    pub fn as_i32(&self) -> i32 {
         self.0
+            .to_i32()
+            .expect("NeoInteger value exceeds i32 range")
     }
 
-    pub fn as_u32(self) -> u32 {
-        self.0 as u32
+    pub fn as_u32(&self) -> u32 {
+        self.0
+            .to_u32()
+            .expect("NeoInteger value exceeds u32 range")
+    }
+
+    pub fn to_i32(&self) -> Option<i32> {
+        self.0.to_i32()
+    }
+
+    pub fn to_u32(&self) -> Option<u32> {
+        self.0.to_u32()
     }
 }
 
@@ -46,10 +70,52 @@ impl Add for NeoInteger {
     }
 }
 
+impl<'a> Add<&'a NeoInteger> for NeoInteger {
+    type Output = Self;
+    fn add(self, rhs: &'a NeoInteger) -> Self::Output {
+        Self(self.0 + rhs.0.clone())
+    }
+}
+
+impl<'a> Add<NeoInteger> for &'a NeoInteger {
+    type Output = NeoInteger;
+    fn add(self, rhs: NeoInteger) -> Self::Output {
+        NeoInteger::new(self.0.clone() + rhs.0)
+    }
+}
+
+impl<'a, 'b> Add<&'b NeoInteger> for &'a NeoInteger {
+    type Output = NeoInteger;
+    fn add(self, rhs: &'b NeoInteger) -> Self::Output {
+        NeoInteger::new(self.0.clone() + rhs.0.clone())
+    }
+}
+
 impl Sub for NeoInteger {
     type Output = Self;
     fn sub(self, rhs: Self) -> Self::Output {
         Self(self.0 - rhs.0)
+    }
+}
+
+impl<'a> Sub<&'a NeoInteger> for NeoInteger {
+    type Output = Self;
+    fn sub(self, rhs: &'a NeoInteger) -> Self::Output {
+        Self(self.0 - rhs.0.clone())
+    }
+}
+
+impl<'a> Sub<NeoInteger> for &'a NeoInteger {
+    type Output = NeoInteger;
+    fn sub(self, rhs: NeoInteger) -> Self::Output {
+        NeoInteger::new(self.0.clone() - rhs.0)
+    }
+}
+
+impl<'a, 'b> Sub<&'b NeoInteger> for &'a NeoInteger {
+    type Output = NeoInteger;
+    fn sub(self, rhs: &'b NeoInteger) -> Self::Output {
+        NeoInteger::new(self.0.clone() - rhs.0.clone())
     }
 }
 
@@ -60,10 +126,52 @@ impl Mul for NeoInteger {
     }
 }
 
+impl<'a> Mul<&'a NeoInteger> for NeoInteger {
+    type Output = Self;
+    fn mul(self, rhs: &'a NeoInteger) -> Self::Output {
+        Self(self.0 * rhs.0.clone())
+    }
+}
+
+impl<'a> Mul<NeoInteger> for &'a NeoInteger {
+    type Output = NeoInteger;
+    fn mul(self, rhs: NeoInteger) -> Self::Output {
+        NeoInteger::new(self.0.clone() * rhs.0)
+    }
+}
+
+impl<'a, 'b> Mul<&'b NeoInteger> for &'a NeoInteger {
+    type Output = NeoInteger;
+    fn mul(self, rhs: &'b NeoInteger) -> Self::Output {
+        NeoInteger::new(self.0.clone() * rhs.0.clone())
+    }
+}
+
 impl Div for NeoInteger {
     type Output = Self;
     fn div(self, rhs: Self) -> Self::Output {
         Self(self.0 / rhs.0)
+    }
+}
+
+impl<'a> Div<&'a NeoInteger> for NeoInteger {
+    type Output = Self;
+    fn div(self, rhs: &'a NeoInteger) -> Self::Output {
+        Self(self.0 / rhs.0.clone())
+    }
+}
+
+impl<'a> Div<NeoInteger> for &'a NeoInteger {
+    type Output = NeoInteger;
+    fn div(self, rhs: NeoInteger) -> Self::Output {
+        NeoInteger::new(self.0.clone() / rhs.0)
+    }
+}
+
+impl<'a, 'b> Div<&'b NeoInteger> for &'a NeoInteger {
+    type Output = NeoInteger;
+    fn div(self, rhs: &'b NeoInteger) -> Self::Output {
+        NeoInteger::new(self.0.clone() / rhs.0.clone())
     }
 }
 
@@ -74,10 +182,52 @@ impl Rem for NeoInteger {
     }
 }
 
+impl<'a> Rem<&'a NeoInteger> for NeoInteger {
+    type Output = Self;
+    fn rem(self, rhs: &'a NeoInteger) -> Self::Output {
+        Self(self.0 % rhs.0.clone())
+    }
+}
+
+impl<'a> Rem<NeoInteger> for &'a NeoInteger {
+    type Output = NeoInteger;
+    fn rem(self, rhs: NeoInteger) -> Self::Output {
+        NeoInteger::new(self.0.clone() % rhs.0)
+    }
+}
+
+impl<'a, 'b> Rem<&'b NeoInteger> for &'a NeoInteger {
+    type Output = NeoInteger;
+    fn rem(self, rhs: &'b NeoInteger) -> Self::Output {
+        NeoInteger::new(self.0.clone() % rhs.0.clone())
+    }
+}
+
 impl BitAnd for NeoInteger {
     type Output = Self;
     fn bitand(self, rhs: Self) -> Self::Output {
         Self(self.0 & rhs.0)
+    }
+}
+
+impl<'a> BitAnd<&'a NeoInteger> for NeoInteger {
+    type Output = Self;
+    fn bitand(self, rhs: &'a NeoInteger) -> Self::Output {
+        Self(self.0 & rhs.0.clone())
+    }
+}
+
+impl<'a> BitAnd<NeoInteger> for &'a NeoInteger {
+    type Output = NeoInteger;
+    fn bitand(self, rhs: NeoInteger) -> Self::Output {
+        NeoInteger::new(self.0.clone() & rhs.0)
+    }
+}
+
+impl<'a, 'b> BitAnd<&'b NeoInteger> for &'a NeoInteger {
+    type Output = NeoInteger;
+    fn bitand(self, rhs: &'b NeoInteger) -> Self::Output {
+        NeoInteger::new(self.0.clone() & rhs.0.clone())
     }
 }
 
@@ -88,10 +238,52 @@ impl BitOr for NeoInteger {
     }
 }
 
+impl<'a> BitOr<&'a NeoInteger> for NeoInteger {
+    type Output = Self;
+    fn bitor(self, rhs: &'a NeoInteger) -> Self::Output {
+        Self(self.0 | rhs.0.clone())
+    }
+}
+
+impl<'a> BitOr<NeoInteger> for &'a NeoInteger {
+    type Output = NeoInteger;
+    fn bitor(self, rhs: NeoInteger) -> Self::Output {
+        NeoInteger::new(self.0.clone() | rhs.0)
+    }
+}
+
+impl<'a, 'b> BitOr<&'b NeoInteger> for &'a NeoInteger {
+    type Output = NeoInteger;
+    fn bitor(self, rhs: &'b NeoInteger) -> Self::Output {
+        NeoInteger::new(self.0.clone() | rhs.0.clone())
+    }
+}
+
 impl BitXor for NeoInteger {
     type Output = Self;
     fn bitxor(self, rhs: Self) -> Self::Output {
         Self(self.0 ^ rhs.0)
+    }
+}
+
+impl<'a> BitXor<&'a NeoInteger> for NeoInteger {
+    type Output = Self;
+    fn bitxor(self, rhs: &'a NeoInteger) -> Self::Output {
+        Self(self.0 ^ rhs.0.clone())
+    }
+}
+
+impl<'a> BitXor<NeoInteger> for &'a NeoInteger {
+    type Output = NeoInteger;
+    fn bitxor(self, rhs: NeoInteger) -> Self::Output {
+        NeoInteger::new(self.0.clone() ^ rhs.0)
+    }
+}
+
+impl<'a, 'b> BitXor<&'b NeoInteger> for &'a NeoInteger {
+    type Output = NeoInteger;
+    fn bitxor(self, rhs: &'b NeoInteger) -> Self::Output {
+        NeoInteger::new(self.0.clone() ^ rhs.0.clone())
     }
 }
 
@@ -109,6 +301,13 @@ impl Shl<u32> for NeoInteger {
     }
 }
 
+impl<'a> Shl<u32> for &'a NeoInteger {
+    type Output = NeoInteger;
+    fn shl(self, rhs: u32) -> Self::Output {
+        NeoInteger::new(self.0.clone() << rhs)
+    }
+}
+
 impl Shr<u32> for NeoInteger {
     type Output = Self;
     fn shr(self, rhs: u32) -> Self::Output {
@@ -116,8 +315,46 @@ impl Shr<u32> for NeoInteger {
     }
 }
 
+impl<'a> Shr<u32> for &'a NeoInteger {
+    type Output = NeoInteger;
+    fn shr(self, rhs: u32) -> Self::Output {
+        NeoInteger::new(self.0.clone() >> rhs)
+    }
+}
+
+impl From<i32> for NeoInteger {
+    fn from(value: i32) -> Self {
+        NeoInteger::new(value)
+    }
+}
+
+impl From<i64> for NeoInteger {
+    fn from(value: i64) -> Self {
+        NeoInteger::new(value)
+    }
+}
+
+impl From<u32> for NeoInteger {
+    fn from(value: u32) -> Self {
+        NeoInteger::new(value)
+    }
+}
+
+impl From<BigInt> for NeoInteger {
+    fn from(value: BigInt) -> Self {
+        NeoInteger::new(value)
+    }
+}
+
+impl From<&BigInt> for NeoInteger {
+    fn from(value: &BigInt) -> Self {
+        NeoInteger::new(value.clone())
+    }
+}
+
 /// Neo N3 Boolean type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[repr(transparent)]
 pub struct NeoBoolean(pub bool);
 
@@ -164,6 +401,7 @@ impl Not for NeoBoolean {
 
 /// Neo N3 ByteString type
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct NeoByteString {
     data: Vec<u8>,
 }
@@ -202,6 +440,7 @@ impl NeoByteString {
 
 /// Neo N3 String type
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct NeoString {
     data: String,
 }
@@ -228,10 +467,16 @@ impl NeoString {
     pub fn is_empty(&self) -> bool {
         self.data.is_empty()
     }
+
 }
 
 /// Neo N3 Array type
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "serde",
+    serde(bound(serialize = "T: Serialize", deserialize = "T: Deserialize<'de>"))
+)]
 pub struct NeoArray<T> {
     data: Vec<T>,
 }
@@ -274,6 +519,10 @@ impl<T> NeoArray<T> {
     pub fn get_mut(&mut self, index: usize) -> Option<&mut T> {
         self.data.get_mut(index)
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = &T> {
+        self.data.iter()
+    }
 }
 
 impl<T> Default for NeoArray<T> {
@@ -290,6 +539,14 @@ impl<T> From<Vec<T>> for NeoArray<T> {
 
 /// Neo N3 Map type
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "serde",
+    serde(bound(
+        serialize = "K: Serialize + Eq, V: Serialize",
+        deserialize = "K: Deserialize<'de> + Eq, V: Deserialize<'de>"
+    ))
+)]
 pub struct NeoMap<K, V> {
     data: Vec<(K, V)>,
 }
@@ -355,6 +612,10 @@ impl<K, V> NeoMap<K, V> {
     pub fn is_empty(&self) -> bool {
         self.data.is_empty()
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&K, &V)> {
+        self.data.iter().map(|(k, v)| (k, v))
+    }
 }
 
 impl<K, V> Default for NeoMap<K, V> {
@@ -365,6 +626,7 @@ impl<K, V> Default for NeoMap<K, V> {
 
 /// Neo N3 Struct type
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct NeoStruct {
     fields: Vec<(String, NeoValue)>,
 }
@@ -405,6 +667,10 @@ impl NeoStruct {
     pub fn len(&self) -> usize {
         self.fields.len()
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &NeoValue)> {
+        self.fields.iter().map(|(name, value)| (name.as_str(), value))
+    }
 }
 
 impl Default for NeoStruct {
@@ -415,6 +681,7 @@ impl Default for NeoStruct {
 
 /// Neo N3 Value type (union of all Neo types)
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum NeoValue {
     Integer(NeoInteger),
     Boolean(NeoBoolean),
@@ -433,7 +700,7 @@ impl NeoValue {
 
     pub fn as_integer(&self) -> Option<NeoInteger> {
         match self {
-            NeoValue::Integer(i) => Some(*i),
+            NeoValue::Integer(i) => Some(i.clone()),
             _ => None,
         }
     }
@@ -551,6 +818,7 @@ impl<T> NeoIterator<T> {
 
 /// Neo N3 Storage Context type
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct NeoStorageContext {
     id: u32,
     read_only: bool,
@@ -593,6 +861,7 @@ impl NeoStorageContext {
 
 /// Neo N3 Contract Manifest
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct NeoContractManifest {
     pub name: String,
     pub version: String,
@@ -607,6 +876,7 @@ pub struct NeoContractManifest {
 
 /// Neo N3 Contract ABI
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct NeoContractABI {
     pub hash: String,
     pub methods: Vec<NeoContractMethod>,
@@ -615,6 +885,7 @@ pub struct NeoContractABI {
 
 /// Neo N3 Contract Method
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct NeoContractMethod {
     pub name: String,
     pub parameters: Vec<NeoContractParameter>,
@@ -625,6 +896,7 @@ pub struct NeoContractMethod {
 
 /// Neo N3 Contract Event
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct NeoContractEvent {
     pub name: String,
     pub parameters: Vec<NeoContractParameter>,
@@ -632,6 +904,7 @@ pub struct NeoContractEvent {
 
 /// Neo N3 Contract Parameter
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct NeoContractParameter {
     pub name: String,
     pub r#type: String,
@@ -639,6 +912,7 @@ pub struct NeoContractParameter {
 
 /// Neo N3 Contract Permission
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct NeoContractPermission {
     pub contract: String,
     pub methods: Vec<String>,
@@ -718,7 +992,7 @@ pub trait NeoContractMethodTrait {
 // Default implementations for Neo types
 impl Default for NeoInteger {
     fn default() -> Self {
-        Self::ZERO
+        NeoInteger::zero()
     }
 }
 

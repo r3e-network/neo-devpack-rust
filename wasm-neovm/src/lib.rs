@@ -10,4 +10,4 @@ pub mod translator;
 pub use manifest::RenderedManifest;
 pub use metadata::{extract_nef_metadata, NefMetadata};
 pub use nef::{write_nef, write_nef_with_metadata, MethodToken};
-pub use translator::{translate_module, translate_module_with_safe, Translation};
+pub use translator::{translate_module, Translation};

@@ -5,6 +5,10 @@ use wasmparser::{ConstExpr, FuncType, Operator, ValType};
 
 use crate::nef::{MethodToken, HASH160_LENGTH};
 
+const BASE_MEMORY_STATIC_SLOTS: usize = 4;
+const INIT_FLAG_SLOT: usize = BASE_MEMORY_STATIC_SLOTS;
+const BASE_STATIC_SLOTS: usize = INIT_FLAG_SLOT + 1;
+
 use super::constants::*;
 use super::helpers::*;
 use super::translation::{emit_binary_op, handle_import_call};
@@ -129,7 +133,10 @@ impl RuntimeHelpers {
         self.table_helpers.entry(kind).or_default()
     }
     pub(crate) fn emit_memory_init_call(&mut self, script: &mut Vec<u8>) -> Result<()> {
+        emit_load_static(script, INIT_FLAG_SLOT)?;
+        let skip_call = emit_jump_placeholder(script, "JMPIF_L")?;
         let call_pos = emit_call_placeholder(script)?;
+        patch_jump(script, skip_call, script.len())?;
         self.memory_init_calls.push(call_pos);
         Ok(())
     }
@@ -147,7 +154,7 @@ impl RuntimeHelpers {
 
         let global_count = self.globals.len();
         let table_count = self.tables.len();
-        let table_base = 4 + global_count;
+        let table_base = BASE_STATIC_SLOTS + global_count;
 
         for (idx, table) in self.tables.iter_mut().enumerate() {
             table.slot = Some(table_base + idx);
@@ -276,7 +283,7 @@ impl RuntimeHelpers {
             .collect();
 
         let start_helper = start.map(|descriptor| StartHelper {
-            slot: 4
+            slot: BASE_STATIC_SLOTS
                 + global_layouts.len()
                 + table_layouts.len()
                 + passive_layout_vec.len() * 2
@@ -284,7 +291,7 @@ impl RuntimeHelpers {
             descriptor,
         });
 
-        let static_slot_count = 4
+        let static_slot_count = BASE_STATIC_SLOTS
             + global_layouts.len()
             + table_layouts.len()
             + passive_layout_vec.len() * 2
@@ -730,7 +737,7 @@ impl RuntimeHelpers {
     }
 
     pub(crate) fn table_slot(&mut self, index: usize) -> Result<usize> {
-        let base = 4 + self.globals.len();
+        let base = BASE_STATIC_SLOTS + self.globals.len();
         let table = self.table_descriptor_mut(index)?;
         if table.slot.is_none() {
             table.slot = Some(base + index);
@@ -846,7 +853,7 @@ impl RuntimeHelpers {
     }
 
     pub(crate) fn register_global(&mut self, mutable: bool, initial_value: i128) -> usize {
-        let slot = 4 + self.globals.len();
+        let slot = BASE_STATIC_SLOTS + self.globals.len();
         let const_value = if mutable { None } else { Some(initial_value) };
         self.globals.push(GlobalDescriptor {
             slot,
@@ -1086,6 +1093,9 @@ fn emit_runtime_init_helper(
     }
     script.push(lookup_opcode("STSFLD3")?.byte);
 
+    script.push(lookup_opcode("PUSH0")?.byte);
+    emit_store_static(script, INIT_FLAG_SLOT)?;
+
     for table in tables {
         let len = table.entries.len();
         if len == 0 {
@@ -1194,6 +1204,9 @@ fn emit_runtime_init_helper(
     patch_endtry(script, endtry_pos, end_label)?;
     patch_endtry(script, catch_endtry_pos, end_label)?;
     patch_jump(script, skip_catch_jump, end_label)?;
+
+    let _ = emit_push_int(script, 1);
+    emit_store_static(script, INIT_FLAG_SLOT)?;
 
     script.push(RET);
 

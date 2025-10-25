@@ -6,7 +6,7 @@ use wasm_encoder::{
     CodeSection, CustomSection, ExportKind, ExportSection, Function, FunctionSection, Module,
     TypeSection, ValType,
 };
-use wasm_neovm::{translate_module_with_safe, write_nef_with_metadata};
+use wasm_neovm::{translate_module, write_nef_with_metadata};
 
 fn module_with_exports(exports: &[(&str, Vec<ValType>, Vec<ValType>)], overlay: &Value) -> Vec<u8> {
     let mut module = Module::new();
@@ -68,6 +68,9 @@ fn nep11_manifest_contains_expected_metadata() -> Result<()> {
         ],
         "trusts": ["*"],
         "abi": {
+            "methods": [
+                {"name": "tokens_of", "safe": true}
+            ],
             "events": [
                 {
                     "name": "TransferEvent",
@@ -96,7 +99,7 @@ fn nep11_manifest_contains_expected_metadata() -> Result<()> {
     ];
 
     let wasm = module_with_exports(&exports, &overlay);
-    let translation = translate_module_with_safe(&wasm, "Nep11Token", &["tokens_of"])?;
+    let translation = translate_module(&wasm, "Nep11Token")?;
     let manifest = translation.manifest.value;
 
     let standards: Vec<&str> = manifest["supportedstandards"]
@@ -151,7 +154,12 @@ fn nep17_manifest_supported_standard_and_safe_flag() -> Result<()> {
         "permissions": [
             {"contract": "*", "methods": ["*"]}
         ],
-        "trusts": ["*"]
+        "trusts": ["*"],
+        "abi": {
+            "methods": [
+                {"name": "balance_of", "safe": true}
+            ]
+        }
     });
 
     let exports = vec![
@@ -165,7 +173,7 @@ fn nep17_manifest_supported_standard_and_safe_flag() -> Result<()> {
     ];
 
     let wasm = module_with_exports(&exports, &overlay);
-    let translation = translate_module_with_safe(&wasm, "Nep17Token", &["balance_of"])?;
+    let translation = translate_module(&wasm, "Nep17Token")?;
     let manifest = translation.manifest.value;
 
     let standards: Vec<&str> = manifest["supportedstandards"]
@@ -196,6 +204,9 @@ fn oracle_manifest_includes_permissions_and_events() -> Result<()> {
         ],
         "trusts": ["*"],
         "abi": {
+            "methods": [
+                {"name": "response_for", "safe": true}
+            ],
             "events": [
                 {
                     "name": "OracleRequested",
@@ -230,7 +241,7 @@ fn oracle_manifest_includes_permissions_and_events() -> Result<()> {
     ];
 
     let wasm = module_with_exports(&exports, &overlay);
-    let translation = translate_module_with_safe(&wasm, "OracleConsumer", &["response_for"])?;
+    let translation = translate_module(&wasm, "OracleConsumer")?;
     let manifest = translation.manifest.value;
 
     let permissions = manifest["permissions"].as_array().unwrap();

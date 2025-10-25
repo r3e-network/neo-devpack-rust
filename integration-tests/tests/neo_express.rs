@@ -1,0 +1,40 @@
+use std::env;
+use std::fs;
+use std::path::Path;
+
+#[test]
+#[ignore = "requires a running Neo Express instance"]
+fn hello_world_nef_is_deployable() {
+    // Ensure the translated artefacts exist before hitting Neo Express.
+    let nef = Path::new("build/HelloWorld.nef");
+    let manifest = Path::new("build/HelloWorld.manifest.json");
+    assert!(nef.exists(), "expected {} to exist; run `make examples` first", nef.display());
+    assert!(manifest.exists(), "expected {} to exist; run `make examples` first", manifest.display());
+
+    // When Neo Express is available, provide the RPC endpoint via NEO_EXPRESS_RPC
+    // (for example: http://localhost:50012). If the variable is unset we skip
+    // without failing the test suite.
+    let rpc = match env::var("NEO_EXPRESS_RPC") {
+        Ok(value) => value,
+        Err(_) => {
+            eprintln!(
+                "Skipping Neo Express integration test – set NEO_EXPRESS_RPC to enable."
+            );
+            return;
+        }
+    };
+
+    // Record the artefact hashes – callers can use these with neo-express `contract deploy`.
+    let nef_bytes = fs::read(nef).expect("failed to read NEF");
+    let manifest_bytes = fs::read(manifest).expect("failed to read manifest");
+    eprintln!(
+        "Ready to deploy HelloWorld (NEF {} bytes, manifest {} bytes) via {rpc}",
+        nef_bytes.len(),
+        manifest_bytes.len()
+    );
+
+    // The actual deployment/invocation steps are environment-specific and rely
+    // on the neo-express CLI. Wire those commands into your CI/CD pipeline by
+    // using the artefacts above together with `neo-express contract deploy`
+    // and `neo-express contract invoke`.
+}

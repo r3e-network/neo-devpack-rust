@@ -12,8 +12,12 @@ Rust contract (neo-devpack) ──cargo build --target wasm32-unknown-unknown─
 
 - **`wasm-neovm`** – a Rust CLI/library that translates a Wasm module into NeoVM bytecode and emits the accompanying NEF+manifest pair.
 - **`rust-devpack`** – the existing Rust developer tooling (types, macros, runtime stubs) for authoring Neo contracts.
+- **`contracts/`** – assemble-ready Rust smart-contracts (`hello-world`, `nep17-token`, `constant-product`) showcasing different patterns.
+- See [`contracts/README.md`](contracts/README.md) for per-contract entry points and build notes.
 - **`scripts/build_contract.sh`** – helper script that builds a contract to Wasm and invokes the translator in a single step.
+- **`integration-tests/`** – optional Neo Express harness (see [`docs/neoexpress-integration.md`](docs/neoexpress-integration.md)) for exercising generated NEF artefacts.
 - **Documentation** – updated notes on the new pipeline in [`docs/wasm-pipeline.md`](docs/wasm-pipeline.md) and the NEF container format in [`docs/nef-format-specification.md`](docs/nef-format-specification.md).
+- **Rust contract quickstart** – step-by-step instructions for authoring and compiling contracts live in [`docs/rust-smart-contract-quickstart.md`](docs/rust-smart-contract-quickstart.md).
 
 ## Quick Start
 
@@ -26,7 +30,7 @@ Rust contract (neo-devpack) ──cargo build --target wasm32-unknown-unknown─
    scripts/build_contract.sh contracts/hello Hello
    ```
    The script compiles the crate for `wasm32-unknown-unknown` (release mode) and then runs the translator to produce `Hello.nef` and `Hello.manifest.json` next to the `.wasm` artefact.
-   Append additional translator flags after the optional contract name, for example `--safe-method main` to mark the exported entry point as safe.
+   Append additional translator flags after the optional contract name if needed. Safe methods are typically declared inside the contract (via `#[neo_safe]`) so no CLI flags are required for that metadata.
 
 3. Alternatively, run the translator manually:
    ```bash
@@ -38,11 +42,28 @@ Rust contract (neo-devpack) ──cargo build --target wasm32-unknown-unknown─
      --nef build/Hello.nef \
      --manifest build/Hello.manifest.json \
      --name Hello \
-     --safe-method main \
      --manifest-overlay contracts/hello/manifest-extra.json
    ```
 
-   Use one or more `--safe-method <name>` flags to mark exported methods as safe in the generated manifest. Supply `--manifest-overlay <file>` to merge additional JSON metadata when needed.
+   Supply `--manifest-overlay <file>` to merge additional JSON metadata when needed. Use the `#[neo_safe]` attribute (or manifest overlays) inside your contract to declare safe methods.
+
+4. To compile *all* bundled examples (Wasm build + NEF/manifest generation) run the Makefile target:
+   ```bash
+   make examples
+   ```
+   Outputs are written to `build/`. Use `make clean` to remove generated artefacts.
+
+5. Individual contracts can be built with their dedicated targets, for example:
+   ```bash
+   make nep11-nft
+   ```
+
+6. To deploy a generated contract to a running Neo Express instance you can use the
+   helper script:
+   ```bash
+   export NEO_EXPRESS_RPC=http://localhost:50012
+   scripts/neoexpress_deploy.sh build/HelloWorld.nef build/HelloWorld.manifest.json HelloWorld
+   ```
 
 Rust contracts can now embed manifest metadata directly via DevPack macros:
 

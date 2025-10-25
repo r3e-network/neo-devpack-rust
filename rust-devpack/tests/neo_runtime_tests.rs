@@ -67,6 +67,47 @@ fn storage_operations_succeed_for_writable_context() {
 }
 
 #[test]
+fn storage_find_returns_struct_entries() {
+    let ctx = NeoStorage::get_context().unwrap();
+    let prefix = NeoByteString::from_slice(b"market:");
+    let key_a = NeoByteString::from_slice(b"market:alpha");
+    let key_b = NeoByteString::from_slice(b"market:beta");
+    let val_a = NeoByteString::from_slice(b"one");
+    let val_b = NeoByteString::from_slice(b"two");
+
+    NeoStorage::put(&ctx, &key_a, &val_a).unwrap();
+    NeoStorage::put(&ctx, &key_b, &val_b).unwrap();
+
+    let mut iter = NeoStorage::find(&ctx, &prefix).unwrap();
+    let mut seen = Vec::new();
+    while iter.has_next() {
+        if let Some(entry) = iter.next() {
+            let st = entry.as_struct().expect("expected key/value struct");
+            let key_field = st
+                .get_field("key")
+                .and_then(NeoValue::as_byte_string)
+                .expect("missing key field");
+            let value_field = st
+                .get_field("value")
+                .and_then(NeoValue::as_byte_string)
+                .expect("missing value field");
+            seen.push((key_field.clone(), value_field.clone()));
+        }
+    }
+
+    assert_eq!(seen.len(), 2);
+    assert!(seen
+        .iter()
+        .any(|(k, v)| k.as_slice() == key_a.as_slice() && v.as_slice() == val_a.as_slice()));
+    assert!(seen
+        .iter()
+        .any(|(k, v)| k.as_slice() == key_b.as_slice() && v.as_slice() == val_b.as_slice()));
+
+    NeoStorage::delete(&ctx, &key_a).unwrap();
+    NeoStorage::delete(&ctx, &key_b).unwrap();
+}
+
+#[test]
 fn storage_put_fails_for_read_only_context() {
     let ctx = NeoStorage::get_read_only_context().unwrap();
     let key = NeoByteString::from_slice(b"demo");

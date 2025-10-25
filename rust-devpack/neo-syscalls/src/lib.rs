@@ -2,14 +2,12 @@
 //!
 //! This crate provides bindings to Neo N3 system calls for smart contract development.
 
-#![cfg_attr(not(feature = "std"), no_std)]
-#![cfg_attr(not(feature = "std"), no_main)]
-
-extern crate alloc;
-
-use alloc::vec::Vec;
-use core::slice::Iter;
 use neo_types::*;
+use once_cell::sync::Lazy;
+use std::collections::HashMap;
+use std::slice::Iter;
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::{Arc, RwLock};
 
 /// Neo N3 System Call Registry
 pub struct NeoVMSyscallRegistry {
@@ -383,6 +381,96 @@ pub const SYSCALLS: &[NeoVMSyscallInfo] = &[
     },
 ];
 
+const DEFAULT_CONTRACT_HASH: [u8; 20] = [0u8; 20];
+
+#[derive(Clone)]
+struct ContextHandle {
+    read_only: bool,
+    contract: [u8; 20],
+    store: Arc<RwLock<HashMap<Vec<u8>, Vec<u8>>>>,
+}
+
+struct StorageState {
+    next_context: AtomicU32,
+    contexts: RwLock<HashMap<u32, ContextHandle>>,
+    contract_stores: RwLock<HashMap<[u8; 20], Arc<RwLock<HashMap<Vec<u8>, Vec<u8>>>>>>,
+}
+
+impl StorageState {
+    fn new() -> Self {
+        Self {
+            next_context: AtomicU32::new(1),
+            contexts: RwLock::new(HashMap::new()),
+            contract_stores: RwLock::new(HashMap::new()),
+        }
+    }
+
+    fn create_context(&self, contract: [u8; 20], read_only: bool) -> NeoResult<NeoStorageContext> {
+        let store = self.get_or_create_store(contract);
+        let id = self.next_context.fetch_add(1, Ordering::SeqCst);
+        let handle = ContextHandle {
+            read_only,
+            contract,
+            store,
+        };
+        self.contexts
+            .write()
+            .map_err(|_| NeoError::InvalidState)?
+            .insert(id, handle);
+        Ok(if read_only {
+            NeoStorageContext::read_only(id)
+        } else {
+            NeoStorageContext::new(id)
+        })
+    }
+
+    fn clone_as_read_only(&self, context: &NeoStorageContext) -> NeoResult<NeoStorageContext> {
+        let handle = self
+            .contexts
+            .read()
+            .map_err(|_| NeoError::InvalidState)?
+            .get(&context.id())
+            .cloned()
+            .ok_or(NeoError::InvalidState)?;
+        let id = self.next_context.fetch_add(1, Ordering::SeqCst);
+        let ro_handle = ContextHandle {
+            read_only: true,
+            contract: handle.contract,
+            store: handle.store,
+        };
+        self.contexts
+            .write()
+            .map_err(|_| NeoError::InvalidState)?
+            .insert(id, ro_handle);
+        Ok(NeoStorageContext::read_only(id))
+    }
+
+    fn get_handle(&self, context: &NeoStorageContext) -> NeoResult<ContextHandle> {
+        self.contexts
+            .read()
+            .map_err(|_| NeoError::InvalidState)?
+            .get(&context.id())
+            .cloned()
+            .ok_or(NeoError::InvalidState)
+    }
+
+    fn get_or_create_store(
+        &self,
+        contract: [u8; 20],
+    ) -> Arc<RwLock<HashMap<Vec<u8>, Vec<u8>>>> {
+        let mut stores = self
+            .contract_stores
+            .write()
+            .expect("storage contract lock poisoned");
+        stores
+            .entry(contract)
+            .or_insert_with(|| Arc::new(RwLock::new(HashMap::new())))
+            .clone()
+    }
+}
+
+static STORAGE_STATE: Lazy<StorageState> = Lazy::new(StorageState::new);
+
 fn find_syscall(name: &str) -> Option<&'static NeoVMSyscallInfo> {
     SYSCALLS.iter().find(|info| info.name == name)
 }
@@ -524,46 +612,92 @@ impl NeoVMSyscall {
     }
 
     pub fn storage_get_context() -> NeoResult<NeoStorageContext> {
-        Ok(NeoStorageContext::new(0))
+        STORAGE_STATE.create_context(DEFAULT_CONTRACT_HASH, false)
     }
 
     pub fn storage_get_read_only_context() -> NeoResult<NeoStorageContext> {
-        Ok(NeoStorageContext::read_only(0))
+        STORAGE_STATE.create_context(DEFAULT_CONTRACT_HASH, true)
     }
 
     pub fn storage_as_read_only(context: &NeoStorageContext) -> NeoResult<NeoStorageContext> {
-        Ok(context.as_read_only())
+        STORAGE_STATE.clone_as_read_only(context)
     }
 
     pub fn storage_get(
-        _context: &NeoStorageContext,
-        _key: &NeoByteString,
+        context: &NeoStorageContext,
+        key: &NeoByteString,
     ) -> NeoResult<NeoByteString> {
-        Ok(NeoByteString::new(Vec::new()))
+        let handle = STORAGE_STATE.get_handle(context)?;
+        let store = handle
+            .store
+            .read()
+            .map_err(|_| NeoError::InvalidState)?;
+        let value = store
+            .get(key.as_slice())
+            .cloned()
+            .unwrap_or_else(Vec::new);
+        Ok(NeoByteString::new(value))
     }
 
     pub fn storage_put(
         context: &NeoStorageContext,
-        _key: &NeoByteString,
-        _value: &NeoByteString,
+        key: &NeoByteString,
+        value: &NeoByteString,
     ) -> NeoResult<()> {
-        if context.is_read_only() {
+        let handle = STORAGE_STATE.get_handle(context)?;
+        if handle.read_only {
             return Err(NeoError::InvalidOperation);
         }
+        let mut store = handle
+            .store
+            .write()
+            .map_err(|_| NeoError::InvalidState)?;
+        store.insert(key.as_slice().to_vec(), value.as_slice().to_vec());
         Ok(())
     }
 
-    pub fn storage_delete(context: &NeoStorageContext, _key: &NeoByteString) -> NeoResult<()> {
-        if context.is_read_only() {
+    pub fn storage_delete(context: &NeoStorageContext, key: &NeoByteString) -> NeoResult<()> {
+        let handle = STORAGE_STATE.get_handle(context)?;
+        if handle.read_only {
             return Err(NeoError::InvalidOperation);
         }
+        let mut store = handle
+            .store
+            .write()
+            .map_err(|_| NeoError::InvalidState)?;
+        store.remove(key.as_slice());
         Ok(())
     }
 
     pub fn storage_find(
-        _context: &NeoStorageContext,
-        _prefix: &NeoByteString,
-    ) -> NeoResult<NeoIterator<NeoByteString>> {
-        Ok(NeoIterator::new(Vec::new()))
+        context: &NeoStorageContext,
+        prefix: &NeoByteString,
+    ) -> NeoResult<NeoIterator<NeoValue>> {
+        let handle = STORAGE_STATE.get_handle(context)?;
+        let prefix_bytes = prefix.as_slice();
+        let store = handle
+            .store
+            .read()
+            .map_err(|_| NeoError::InvalidState)?;
+        let matches: Vec<NeoValue> = store
+            .iter()
+            .filter_map(|(key_bytes, value)| {
+                if key_bytes.starts_with(prefix_bytes) {
+                    let mut entry = NeoStruct::new();
+                    entry.set_field(
+                        "key",
+                        NeoValue::from(NeoByteString::from_slice(key_bytes)),
+                    );
+                    entry.set_field(
+                        "value",
+                        NeoValue::from(NeoByteString::from_slice(value)),
+                    );
+                    Some(NeoValue::from(entry))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        Ok(NeoIterator::new(matches))
     }
 }

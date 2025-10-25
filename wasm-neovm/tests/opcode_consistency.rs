@@ -44,7 +44,11 @@ fn parse_neovm_opcodes() -> Result<Vec<OpcodeEntry>, Box<dyn std::error::Error>>
             continue;
         }
 
-        if trimmed.starts_with("//") || trimmed.starts_with("/*") || trimmed.starts_with("*") || trimmed.starts_with("///") {
+        if trimmed.starts_with("//")
+            || trimmed.starts_with("/*")
+            || trimmed.starts_with("*")
+            || trimmed.starts_with("///")
+        {
             continue;
         }
         if let Some(eq_index) = trimmed.find('=') {
@@ -59,7 +63,10 @@ fn parse_neovm_opcodes() -> Result<Vec<OpcodeEntry>, Box<dyn std::error::Error>>
             if let Some(idx) = value.find("//") {
                 value = value[..idx].trim();
             }
-            let byte = if let Some(hex) = value.strip_prefix("0x").or_else(|| value.strip_prefix("0X")) {
+            let byte = if let Some(hex) = value
+                .strip_prefix("0x")
+                .or_else(|| value.strip_prefix("0X"))
+            {
                 u8::from_str_radix(hex, 16)?
             } else {
                 value.parse::<u16>()? as u8

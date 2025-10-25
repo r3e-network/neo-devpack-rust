@@ -3,6 +3,8 @@ target/
 **/target/
 build/
 artifacts/
+*.nef
+*.manifest.json
 
 # Generated binaries/libraries
 *.o

@@ -329,10 +329,7 @@ fn translate_unreachable_after_branch() {
     let stack_issue = err
         .chain()
         .any(|cause| cause.to_string().contains("stack underflow"));
-    assert!(
-        stack_issue,
-        "unexpected unreachable-code error: {message}"
-    );
+    assert!(stack_issue, "unexpected unreachable-code error: {message}");
 }
 
 #[test]

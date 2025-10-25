@@ -14,7 +14,7 @@ pub struct SimpleStorage {
 impl Default for SimpleStorage {
     fn default() -> Self {
         Self {
-            value: NeoInteger::ZERO,
+            value: NeoInteger::zero(),
             name: NeoString::from_str("default"),
         }
     }
@@ -48,7 +48,7 @@ impl SimpleContract {
 
     /// Get the current value
     pub fn get_value(&self) -> NeoResult<NeoInteger> {
-        Ok(self.storage.value)
+        Ok(self.storage.value.clone())
     }
 
     /// Set a new value
@@ -70,12 +70,12 @@ impl SimpleContract {
 
     /// Add two numbers
     pub fn add(&self, a: NeoInteger, b: NeoInteger) -> NeoResult<NeoInteger> {
-        Ok(NeoInteger::new(a.as_i32() + b.as_i32()))
+        Ok(a + b)
     }
 
     /// Multiply two numbers
     pub fn multiply(&self, a: NeoInteger, b: NeoInteger) -> NeoResult<NeoInteger> {
-        Ok(NeoInteger::new(a.as_i32() * b.as_i32()))
+        Ok(a * b)
     }
 }
 

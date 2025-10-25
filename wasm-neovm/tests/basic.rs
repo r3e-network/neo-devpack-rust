@@ -3,10 +3,7 @@ use sha2::{Digest, Sha256};
 use std::convert::TryInto;
 use std::fs;
 use tempfile::tempdir;
-use wasm_neovm::{
-    opcodes, translate_module, translate_module_with_safe, write_nef, write_nef_with_metadata,
-    MethodToken,
-};
+use wasm_neovm::{opcodes, translate_module, write_nef, write_nef_with_metadata, MethodToken};
 
 #[test]
 fn write_nef_with_metadata_serializes_tokens_and_source() {
@@ -178,14 +175,14 @@ fn translate_simple_constant_addition() {
 fn translate_marks_safe_methods() {
     let wasm = wat::parse_str(
         r#"(module
+              (@custom "neo.manifest" "{\"abi\":{\"methods\":[{\"name\":\"main\",\"safe\":true}]}}")
               (func (export "main") (result i32)
                 i32.const 1)
             )"#,
     )
     .expect("valid wat");
 
-    let translation = translate_module_with_safe(&wasm, "Adder", &["main"])
-        .expect("translation succeeds with safe method");
+    let translation = translate_module(&wasm, "Adder").expect("translation succeeds");
 
     let methods = translation
         .manifest
@@ -308,17 +305,17 @@ fn translate_calls_imported_start_opcode() {
 fn translate_missing_safe_method_errors() {
     let wasm = wat::parse_str(
         r#"(module
+              (@custom "neo.manifest" "{\"abi\":{\"methods\":[{\"name\":\"unknown\",\"safe\":true}]}}")
               (func (export "main") (result i32)
                 i32.const 1)
             )"#,
     )
     .expect("valid wat");
 
-    let error = translate_module_with_safe(&wasm, "Adder", &["unknown"])
-        .expect_err("unknown safe method should error");
+    let error = translate_module(&wasm, "Adder").expect_err("unknown safe method should error");
 
     let message = error.to_string();
-    assert!(message.contains("safe methods"));
+    assert!(message.contains("manifest overlays"));
     assert!(message.contains("unknown"));
 }
 
@@ -528,8 +525,12 @@ fn translate_memory_size_uses_runtime_helper() {
 
     let translation = translate_module(&wasm, "MemSize").expect("translation succeeds");
 
+    let guard_ldsfld = wasm_neovm::opcodes::lookup("LDSFLD4").unwrap().byte;
+    let guard_jump = wasm_neovm::opcodes::lookup("JMPIF_L").unwrap().byte;
     let call_l = wasm_neovm::opcodes::lookup("CALL_L").unwrap().byte;
-    assert_eq!(translation.script[0], call_l);
+    assert_eq!(translation.script[0], guard_ldsfld);
+    assert_eq!(translation.script[1], guard_jump);
+    assert!(translation.script.iter().any(|&b| b == call_l));
 
     let ldsfld2 = wasm_neovm::opcodes::lookup("LDSFLD2").unwrap().byte;
     assert!(translation.script.contains(&ldsfld2));
@@ -557,12 +558,23 @@ fn translate_i32_load_uses_helper() {
     let translation = translate_module(&wasm, "MemLoad").expect("translation succeeds");
 
     let push0 = wasm_neovm::opcodes::lookup("PUSH0").unwrap().byte;
+    let guard_ldsfld = wasm_neovm::opcodes::lookup("LDSFLD4").unwrap().byte;
+    let guard_jump = wasm_neovm::opcodes::lookup("JMPIF_L").unwrap().byte;
     let call_l = wasm_neovm::opcodes::lookup("CALL_L").unwrap().byte;
     let ret = wasm_neovm::opcodes::lookup("RET").unwrap().byte;
 
     assert_eq!(translation.script[0], push0);
-    assert_eq!(translation.script[1], call_l);
-    assert_eq!(translation.script[6], call_l);
+    assert_eq!(translation.script[1], guard_ldsfld);
+    assert_eq!(translation.script[2], guard_jump);
+
+    let call_sites: Vec<_> = translation
+        .script
+        .iter()
+        .enumerate()
+        .filter(|(_, &byte)| byte == call_l)
+        .map(|(idx, _)| idx)
+        .collect();
+    assert!(call_sites.len() >= 2, "expected helper calls to be emitted");
 
     assert!(translation
         .script

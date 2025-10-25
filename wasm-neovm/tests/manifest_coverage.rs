@@ -1,13 +1,13 @@
 use wasm_neovm::{
     metadata::{extract_nef_metadata, method_tokens_to_json, update_manifest_metadata},
-    write_nef_with_metadata,
-    translate_module_with_safe,
+    translate_module, write_nef_with_metadata,
 };
 
 #[test]
 fn manifest_and_nef_generation_round_trip() -> anyhow::Result<()> {
     let wasm = wat::parse_str(
         r#"(module
+              (@custom "neo.manifest" "{\"abi\":{\"methods\":[{\"name\":\"foo\",\"safe\":true}]}}")
               (memory 1)
               (func (export "foo") (result i32)
                 i32.const 42)
@@ -18,9 +18,12 @@ fn manifest_and_nef_generation_round_trip() -> anyhow::Result<()> {
             )"#,
     )?;
 
-    let translation = translate_module_with_safe(&wasm, "MyContract", &["foo"])?;
+    let translation = translate_module(&wasm, "MyContract")?;
     let methods = translation.manifest.value["abi"]["methods"].clone();
-    assert!(methods.as_array().unwrap().len() >= 2, "expected exported methods");
+    assert!(
+        methods.as_array().unwrap().len() >= 2,
+        "expected exported methods"
+    );
     assert!(translation.manifest.to_string()?.contains("MyContract"));
 
     // Extract metadata from manifest and ensure it feeds into NEF generation.
@@ -45,6 +48,9 @@ fn manifest_and_nef_generation_round_trip() -> anyhow::Result<()> {
         tmp.path(),
     )?;
     let bytes = std::fs::read(tmp.path())?;
-    assert!(bytes.len() > translation.script.len(), "NEF should include header/footer");
+    assert!(
+        bytes.len() > translation.script.len(),
+        "NEF should include header/footer"
+    );
     Ok(())
 }

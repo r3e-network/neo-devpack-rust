@@ -7,7 +7,9 @@ use wasmparser::{
     RefType, TypeRef, ValType,
 };
 
-use crate::manifest::{build_manifest, merge_manifest, ManifestMethod, ManifestParameter};
+use crate::manifest::{
+    build_manifest, merge_manifest, propagate_safe_flags, ManifestMethod, ManifestParameter,
+};
 use crate::metadata::{
     dedup_method_tokens, extract_nef_metadata, parse_method_token_section, update_manifest_metadata,
 };
@@ -54,22 +56,10 @@ struct ControlFrame {
 }
 
 pub fn translate_module(bytes: &[u8], contract_name: &str) -> Result<Translation> {
-    translate_module_with_safe(bytes, contract_name, &[])
+    translate_module_internal(bytes, contract_name)
 }
 
-pub fn translate_module_with_safe(
-    bytes: &[u8],
-    contract_name: &str,
-    safe_methods: &[&str],
-) -> Result<Translation> {
-    translate_module_internal(bytes, contract_name, safe_methods)
-}
-
-fn translate_module_internal(
-    bytes: &[u8],
-    contract_name: &str,
-    safe_methods: &[&str],
-) -> Result<Translation> {
+fn translate_module_internal(bytes: &[u8], contract_name: &str) -> Result<Translation> {
     let parser = Parser::new(0);
     let mut types: Vec<FuncType> = Vec::new();
     let mut func_type_indices: Vec<u32> = Vec::new();
@@ -79,7 +69,7 @@ fn translate_module_internal(
     let mut script: Vec<u8> = Vec::new();
     let mut runtime = RuntimeHelpers::default();
     let mut methods: Vec<ManifestMethod> = Vec::new();
-    let mut remaining_safe: HashSet<&str> = safe_methods.iter().copied().collect();
+    let mut overlay_safe_methods: HashSet<String> = HashSet::new();
     let mut manifest_overlay: Option<Value> = None;
     let mut section_method_tokens: Vec<MethodToken> = Vec::new();
     let mut section_source: Option<String> = None;
@@ -226,10 +216,11 @@ fn translate_module_internal(
                     }
                 }
 
-                let function_name = maybe_export
+                let function_name_owned = maybe_export
                     .as_ref()
-                    .map(|(name, _)| name.as_str())
-                    .unwrap_or("<internal>");
+                    .map(|(name, _)| name.clone())
+                    .unwrap_or_else(|| format!("<internal:{}>", func_index));
+                let function_name = function_name_owned.as_str();
 
                 let type_index =
                     func_type_indices
@@ -272,16 +263,9 @@ fn translate_module_internal(
                     functions,
                     func_index,
                     start_function,
+                    function_name,
                 )
-                .with_context(|| {
-                    format!(
-                        "failed to translate function '{}'",
-                        maybe_export
-                            .as_ref()
-                            .map(|(name, _)| name.as_str())
-                            .unwrap_or("<internal>")
-                    )
-                })?;
+                .with_context(|| format!("failed to translate function '{}'", function_name))?;
 
                 if let Some(entry) = maybe_export {
                     let parameters: Vec<ManifestParameter> = func_type
@@ -295,13 +279,12 @@ fn translate_module_internal(
                         })
                         .collect();
 
-                    let is_safe = remaining_safe.remove(entry.0.as_str());
                     let method = ManifestMethod {
                         name: entry.0.clone(),
                         parameters,
                         return_type: return_kind,
                         offset: offset as u32,
-                        safe: is_safe,
+                        safe: false,
                     };
                     methods.push(method);
                     entry.1 = true;
@@ -445,6 +428,7 @@ fn translate_module_internal(
             Payload::CustomSection(section) => match classify_custom_section(section.name()) {
                 Some(CustomSectionKind::Manifest) => {
                     for overlay in parse_concatenated_json(section.data(), "neo.manifest")? {
+                        collect_safe_methods(&overlay, &mut overlay_safe_methods);
                         if let Some(existing) = manifest_overlay.as_mut() {
                             merge_manifest(existing, &overlay);
                         } else {
@@ -503,11 +487,16 @@ fn translate_module_internal(
         );
     }
 
-    if !remaining_safe.is_empty() {
-        let mut missing: Vec<&str> = remaining_safe.iter().copied().collect();
+    for method in &mut methods {
+        if overlay_safe_methods.remove(&method.name) {
+            method.safe = true;
+        }
+    }
+    if !overlay_safe_methods.is_empty() {
+        let mut missing: Vec<String> = overlay_safe_methods.into_iter().collect();
         missing.sort_unstable();
         bail!(
-            "the following safe methods were not found among exported functions: {}",
+            "manifest overlays marked the following methods safe but they were not exported: {}",
             missing.join(", ")
         );
     }
@@ -573,6 +562,7 @@ fn translate_module_internal(
     if let Some(overlay) = manifest_overlay {
         merge_manifest(&mut manifest.value, &overlay);
     }
+    propagate_safe_flags(&mut manifest.value);
 
     let mut metadata = extract_nef_metadata(&manifest.value)?;
     metadata.method_tokens.extend(section_method_tokens);
@@ -597,6 +587,36 @@ fn translate_module_internal(
     })
 }
 
+fn collect_safe_methods(value: &Value, accumulator: &mut HashSet<String>) {
+    match value {
+        Value::Object(map) => {
+            if let Some(methods) = map
+                .get("abi")
+                .and_then(Value::as_object)
+                .and_then(|abi| abi.get("methods"))
+                .and_then(Value::as_array)
+            {
+                for method in methods {
+                    if method.get("safe").and_then(Value::as_bool).unwrap_or(false) {
+                        if let Some(name) = method.get("name").and_then(Value::as_str) {
+                            accumulator.insert(name.to_string());
+                        }
+                    }
+                }
+            }
+            for child in map.values() {
+                collect_safe_methods(child, accumulator);
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                collect_safe_methods(item, accumulator);
+            }
+        }
+        _ => {}
+    }
+}
+
 fn translate_function(
     func_type: &FuncType,
     body: &wasmparser::FunctionBody,
@@ -609,6 +629,7 @@ fn translate_function(
     functions: &mut FunctionRegistry,
     function_index: usize,
     start_function: Option<u32>,
+    function_name: &str,
 ) -> Result<String> {
     let params = func_type.params();
     for ty in params {
@@ -2061,10 +2082,12 @@ fn translate_function(
             }
             _ => {
                 if let Some(desc) = describe_float_op(&op) {
-                    return numeric::unsupported_float(&desc);
+                    let context = format!("{} in function {}", desc, function_name);
+                    return numeric::unsupported_float(&context);
                 }
                 if let Some(desc) = describe_simd_op(&op) {
-                    return numeric::unsupported_simd(&desc);
+                    let context = format!("{} in function {}", desc, function_name);
+                    return numeric::unsupported_simd(&context);
                 }
                 bail!(format!("unsupported Wasm operator {:?} ({}).", op, UNSUPPORTED_FEATURE_DOC));
             }

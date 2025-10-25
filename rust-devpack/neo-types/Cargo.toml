@@ -9,10 +9,10 @@ description = "Neo N3 Core Types for Smart Contract Development"
 serde = { version = "1.0", features = ["derive"], optional = true }
 thiserror = "1.0"
 anyhow = "1.0"
+num-bigint = { version = "0.4", features = ["std"] }
+num-traits = "0.2"
 
 [features]
 default = ["std", "serde"]
 std = []
-no-std = []
-alloc = []
-serde = ["dep:serde"]
+serde = ["dep:serde", "num-bigint/serde"]

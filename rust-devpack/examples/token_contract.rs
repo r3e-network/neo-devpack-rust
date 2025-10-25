@@ -3,8 +3,9 @@
 //! This example demonstrates a more complex Neo N3 smart contract
 //! with storage, events, and advanced functionality.
 
+use neo_devpack::neo_storage;
 use neo_devpack::prelude::*;
-use neo_devpack::{neo_storage, NeoStorageContext};
+use neo_devpack::serde::{Deserialize, Serialize};
 
 /// Token Transfer Event
 #[neo_event]
@@ -26,7 +27,7 @@ pub struct TokenContract {
 }
 
 /// Token Storage
-#[derive(Default)]
+#[derive(Default, Serialize, Deserialize)]
 #[neo_storage]
 pub struct TokenStorage {
     balances: NeoMap<NeoByteString, NeoInteger>,
@@ -68,13 +69,13 @@ impl TokenContract {
     /// Get token decimals
     #[neo_method]
     pub fn decimals(&self) -> NeoResult<NeoInteger> {
-        Ok(self.decimals)
+        Ok(self.decimals.clone())
     }
 
     /// Get total supply
     #[neo_method]
     pub fn total_supply(&self) -> NeoResult<NeoInteger> {
-        Ok(self.total_supply)
+        Ok(self.total_supply.clone())
     }
 
     /// Get balance of an account
@@ -85,14 +86,14 @@ impl TokenContract {
             .balances
             .get(account)
             .cloned()
-            .unwrap_or(NeoInteger::ZERO))
+            .unwrap_or(NeoInteger::zero()))
     }
 
     /// Transfer tokens
     #[neo_method]
     pub fn transfer(&mut self, to: &NeoByteString, amount: NeoInteger) -> NeoResult<NeoBoolean> {
         // Check if amount is positive
-        if amount <= NeoInteger::ZERO {
+        if amount <= NeoInteger::zero() {
             return Ok(NeoBoolean::FALSE);
         }
 
@@ -109,7 +110,7 @@ impl TokenContract {
         let mut storage = TokenStorage::load(&NeoRuntime::get_storage_context()?);
 
         // Subtract from sender
-        let new_from_balance = balance - amount;
+        let new_from_balance = balance - amount.clone();
         storage.balances.insert(from.clone(), new_from_balance);
 
         // Add to receiver
@@ -117,8 +118,8 @@ impl TokenContract {
             .balances
             .get(to)
             .cloned()
-            .unwrap_or(NeoInteger::ZERO);
-        let new_to_balance = to_balance + amount;
+            .unwrap_or(NeoInteger::zero());
+        let new_to_balance = to_balance + amount.clone();
         storage.balances.insert(to.clone(), new_to_balance);
 
         // Save storage
@@ -128,7 +129,7 @@ impl TokenContract {
         let event = TransferEvent {
             from,
             to: to.clone(),
-            amount,
+            amount: amount.clone(),
         };
         event.emit()?;
 
@@ -143,7 +144,7 @@ impl TokenContract {
         amount: NeoInteger,
     ) -> NeoResult<NeoBoolean> {
         // Check if amount is positive
-        if amount < NeoInteger::ZERO {
+        if amount < NeoInteger::zero() {
             return Ok(NeoBoolean::FALSE);
         }
 
@@ -159,7 +160,7 @@ impl TokenContract {
             .cloned()
             .unwrap_or(NeoMap::new());
 
-        owner_allowances.insert(spender.clone(), amount);
+        owner_allowances.insert(spender.clone(), amount.clone());
         storage.allowances.insert(owner, owner_allowances);
 
         // Save storage
@@ -181,9 +182,9 @@ impl TokenContract {
             Ok(owner_allowances
                 .get(spender)
                 .cloned()
-                .unwrap_or(NeoInteger::ZERO))
+                .unwrap_or(NeoInteger::zero()))
         } else {
-            Ok(NeoInteger::ZERO)
+            Ok(NeoInteger::zero())
         }
     }
 
@@ -196,7 +197,7 @@ impl TokenContract {
         amount: NeoInteger,
     ) -> NeoResult<NeoBoolean> {
         // Check if amount is positive
-        if amount <= NeoInteger::ZERO {
+        if amount <= NeoInteger::zero() {
             return Ok(NeoBoolean::FALSE);
         }
 
@@ -219,7 +220,7 @@ impl TokenContract {
         let mut storage = TokenStorage::load(&NeoRuntime::get_storage_context()?);
 
         // Subtract from sender
-        let new_from_balance = balance - amount;
+        let new_from_balance = balance - amount.clone();
         storage.balances.insert(from.clone(), new_from_balance);
 
         // Add to receiver
@@ -227,8 +228,8 @@ impl TokenContract {
             .balances
             .get(to)
             .cloned()
-            .unwrap_or(NeoInteger::ZERO);
-        let new_to_balance = to_balance + amount;
+            .unwrap_or(NeoInteger::zero());
+        let new_to_balance = to_balance + amount.clone();
         storage.balances.insert(to.clone(), new_to_balance);
 
         // Update allowance
@@ -238,7 +239,7 @@ impl TokenContract {
             .cloned()
             .unwrap_or(NeoMap::new());
 
-        let new_allowance = allowance - amount;
+        let new_allowance = allowance - amount.clone();
         owner_allowances.insert(spender, new_allowance);
         storage.allowances.insert(from.clone(), owner_allowances);
 
@@ -249,7 +250,7 @@ impl TokenContract {
         let event = TransferEvent {
             from: from.clone(),
             to: to.clone(),
-            amount,
+            amount: amount.clone(),
         };
         event.emit()?;
 
@@ -265,13 +266,13 @@ pub fn deploy_contract() -> NeoResult<()> {
         NeoString::from_str("Neo Token"),
         NeoString::from_str("NEO"),
         NeoInteger::new(8), // 8 decimals
-        total_supply,
+        total_supply.clone(),
     );
 
     // Distribute initial supply to deployer
     let deployer = NeoRuntime::get_calling_script_hash()?;
     let mut storage = TokenStorage::load(&NeoRuntime::get_storage_context()?);
-    storage.balances.insert(deployer, total_supply);
+    storage.balances.insert(deployer, total_supply.clone());
     storage.save(&NeoRuntime::get_storage_context()?)?;
 
     Ok(())

@@ -4,5 +4,5 @@ mod runtime;
 mod translation;
 mod types;
 
-pub use translation::{translate_module, translate_module_with_safe};
+pub use translation::translate_module;
 pub use types::{ManifestData, Translation};

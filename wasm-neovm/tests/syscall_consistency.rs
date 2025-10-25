@@ -1,8 +1,8 @@
+use regex::Regex;
 use std::collections::BTreeSet;
 use std::fs;
-use regex::Regex;
-use walkdir::WalkDir;
 use std::path::PathBuf;
+use walkdir::WalkDir;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 struct SyscallEntry {
@@ -61,7 +61,11 @@ fn neo_syscalls_match_reference() -> anyhow::Result<()> {
 
     assert_eq!(expected.len(), actual.len(), "syscall count mismatch");
     for (exp, act) in expected.iter().zip(actual.iter()) {
-        assert_eq!(exp, act, "syscall mismatch: expected {:?}, got {:?}", exp, act);
+        assert_eq!(
+            exp, act,
+            "syscall mismatch: expected {:?}, got {:?}",
+            exp, act
+        );
     }
 
     Ok(())

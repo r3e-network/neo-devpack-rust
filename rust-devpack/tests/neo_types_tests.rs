@@ -12,27 +12,27 @@ fn test_neo_integer() {
 
     // Test arithmetic operations
     let int2 = NeoInteger::new(10);
-    assert_eq!((int + int2).as_i32(), 52);
-    assert_eq!((int - int2).as_i32(), 32);
-    assert_eq!((int * int2).as_i32(), 420);
-    assert_eq!((int / int2).as_i32(), 4);
-    assert_eq!((int % int2).as_i32(), 2);
+    assert_eq!((&int + &int2).as_i32(), 52);
+    assert_eq!((&int - &int2).as_i32(), 32);
+    assert_eq!((&int * &int2).as_i32(), 420);
+    assert_eq!((&int / &int2).as_i32(), 4);
+    assert_eq!((&int % &int2).as_i32(), 2);
 
     // Test bitwise operations
-    assert_eq!((int & int2).as_i32(), 10);
-    assert_eq!((int | int2).as_i32(), 42);
-    assert_eq!((int ^ int2).as_i32(), 32);
-    assert_eq!((!int).as_i32(), -43);
+    assert_eq!((&int & &int2).as_i32(), 10);
+    assert_eq!((&int | &int2).as_i32(), 42);
+    assert_eq!((&int ^ &int2).as_i32(), 32);
+    assert_eq!((!int.clone()).as_i32(), -43);
 
     // Test shift operations
-    assert_eq!((int << 2).as_i32(), 168);
-    assert_eq!((int >> 2).as_i32(), 10);
+    assert_eq!((&int << 2).as_i32(), 168);
+    assert_eq!((&int >> 2).as_i32(), 10);
 
     // Test constants
-    assert_eq!(NeoInteger::ZERO.as_i32(), 0);
-    assert_eq!(NeoInteger::ONE.as_i32(), 1);
-    assert_eq!(NeoInteger::MIN.as_i32(), i32::MIN);
-    assert_eq!(NeoInteger::MAX.as_i32(), i32::MAX);
+    assert_eq!(NeoInteger::zero().as_i32(), 0);
+    assert_eq!(NeoInteger::one().as_i32(), 1);
+    assert_eq!(NeoInteger::min_i32().as_i32(), i32::MIN);
+    assert_eq!(NeoInteger::max_i32().as_i32(), i32::MAX);
 }
 
 #[test]

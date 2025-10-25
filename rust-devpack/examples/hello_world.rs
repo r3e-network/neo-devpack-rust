@@ -19,7 +19,7 @@ impl HelloWorld {
     pub fn new() -> Self {
         Self {
             greeting: NeoString::from_str("Hello, Neo N3!"),
-            counter: NeoInteger::ZERO,
+            counter: NeoInteger::zero(),
         }
     }
 
@@ -39,14 +39,14 @@ impl HelloWorld {
     /// Get the current counter value
     #[neo_method]
     pub fn get_counter(&self) -> NeoResult<NeoInteger> {
-        Ok(self.counter)
+        Ok(self.counter.clone())
     }
 
     /// Increment the counter
     #[neo_method]
     pub fn increment_counter(&mut self) -> NeoResult<NeoInteger> {
-        self.counter = self.counter + NeoInteger::ONE;
-        Ok(self.counter)
+        self.counter = self.counter.clone() + NeoInteger::one();
+        Ok(self.counter.clone())
     }
 
     /// Say hello with the current greeting

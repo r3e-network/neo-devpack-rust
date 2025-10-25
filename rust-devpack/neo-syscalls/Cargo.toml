@@ -9,9 +9,8 @@ description = "Neo N3 System Calls for Smart Contract Development"
 neo-types = { path = "../neo-types" }
 thiserror = "1.0"
 anyhow = "1.0"
+once_cell = "1.19"
 
 [features]
 default = ["std"]
 std = []
-no-std = []
-alloc = []

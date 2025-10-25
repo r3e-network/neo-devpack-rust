@@ -3,10 +3,11 @@
 //! This example demonstrates Neo N3 storage operations and data persistence.
 
 use neo_devpack::prelude::*;
-use neo_devpack::{neo_serialize, neo_storage, NeoStorageContext};
+use neo_devpack::serde::{Deserialize, Serialize};
+use neo_devpack::{neo_serialize, neo_storage};
 
 /// User Data Structure
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Serialize, Deserialize)]
 #[neo_serialize]
 pub struct UserData {
     pub name: NeoString,
@@ -25,7 +26,7 @@ pub struct StorageContract {
 }
 
 /// Contract Storage
-#[derive(Default)]
+#[derive(Default, Serialize, Deserialize)]
 #[neo_storage]
 pub struct ContractStorage {
     users: NeoMap<NeoByteString, UserData>,
@@ -42,7 +43,7 @@ impl StorageContract {
     pub fn new() -> Self {
         Self {
             owner: NeoByteString::new(vec![]),
-            user_count: NeoInteger::ZERO,
+            user_count: NeoInteger::zero(),
         }
     }
 
@@ -51,14 +52,15 @@ impl StorageContract {
     pub fn initialize(&mut self) -> NeoResult<()> {
         // Set owner
         self.owner = NeoRuntime::get_calling_script_hash()?;
-        self.user_count = NeoInteger::ZERO;
+        self.user_count = NeoInteger::zero();
 
         // Initialize storage
-        let mut storage = ContractStorage::load(&NeoRuntime::get_storage_context()?);
+        let context = NeoRuntime::get_storage_context()?;
+        let mut storage = ContractStorage::load(&context);
         storage
             .counters
-            .insert(NeoString::from_str("user_count"), NeoInteger::ZERO);
-        storage.save(&NeoRuntime::get_storage_context()?)?;
+            .insert(NeoString::from_str("user_count"), NeoInteger::zero());
+        storage.save(&context)?;
 
         Ok(())
     }
@@ -70,8 +72,8 @@ impl StorageContract {
         user_id: &NeoByteString,
         user_data: UserData,
     ) -> NeoResult<NeoBoolean> {
-        // Check if user already exists
-        let mut storage = ContractStorage::load(&NeoRuntime::get_storage_context()?);
+        let context = NeoRuntime::get_storage_context()?;
+        let mut storage = ContractStorage::load(&context);
         if storage.users.get(user_id).is_some() {
             return Ok(NeoBoolean::FALSE);
         }
@@ -84,15 +86,15 @@ impl StorageContract {
             .counters
             .get(&NeoString::from_str("user_count"))
             .cloned()
-            .unwrap_or(NeoInteger::ZERO);
-        let new_count = current_count + NeoInteger::ONE;
+            .unwrap_or(NeoInteger::zero());
+        let new_count = current_count + NeoInteger::one();
         storage
             .counters
-            .insert(NeoString::from_str("user_count"), new_count);
-        self.user_count = new_count;
+            .insert(NeoString::from_str("user_count"), new_count.clone());
+        self.user_count = new_count.clone();
 
         // Save storage
-        storage.save(&NeoRuntime::get_storage_context()?)?;
+        storage.save(&context)?;
 
         Ok(NeoBoolean::TRUE)
     }
@@ -106,8 +108,8 @@ impl StorageContract {
         age: NeoInteger,
         email: NeoString,
     ) -> NeoResult<NeoBoolean> {
-        // Check if user already exists
-        let mut storage = ContractStorage::load(&NeoRuntime::get_storage_context()?);
+        let context = NeoRuntime::get_storage_context()?;
+        let mut storage = ContractStorage::load(&context);
         if storage.users.get(user_id).is_some() {
             return Ok(NeoBoolean::FALSE);
         }
@@ -117,7 +119,7 @@ impl StorageContract {
             name,
             age,
             email,
-            balance: NeoInteger::ZERO,
+            balance: NeoInteger::zero(),
         };
 
         // Store user
@@ -128,15 +130,15 @@ impl StorageContract {
             .counters
             .get(&NeoString::from_str("user_count"))
             .cloned()
-            .unwrap_or(NeoInteger::ZERO);
-        let new_count = current_count + NeoInteger::ONE;
+            .unwrap_or(NeoInteger::zero());
+        let new_count = current_count + NeoInteger::one();
         storage
             .counters
-            .insert(NeoString::from_str("user_count"), new_count);
+            .insert(NeoString::from_str("user_count"), new_count.clone());
         self.user_count = new_count;
 
         // Save storage
-        storage.save(&NeoRuntime::get_storage_context()?)?;
+        storage.save(&context)?;
 
         Ok(NeoBoolean::TRUE)
     }
@@ -144,15 +146,16 @@ impl StorageContract {
     /// Get user data
     #[neo_method]
     pub fn get_user(&self, user_id: &NeoByteString) -> NeoResult<NeoValue> {
-        let storage = ContractStorage::load(&NeoRuntime::get_storage_context()?);
+        let context = NeoRuntime::get_storage_context()?;
+        let storage = ContractStorage::load(&context);
 
         if let Some(user_data) = storage.users.get(user_id) {
             // Create a struct representation
             let mut user_struct = NeoStruct::new();
             user_struct.set_field("name", NeoValue::from(user_data.name.clone()));
-            user_struct.set_field("age", NeoValue::from(user_data.age));
+            user_struct.set_field("age", NeoValue::from(user_data.age.clone()));
             user_struct.set_field("email", NeoValue::from(user_data.email.clone()));
-            user_struct.set_field("balance", NeoValue::from(user_data.balance));
+            user_struct.set_field("balance", NeoValue::from(user_data.balance.clone()));
 
             Ok(NeoValue::from(user_struct))
         } else {
@@ -167,11 +170,12 @@ impl StorageContract {
         user_id: &NeoByteString,
         new_balance: NeoInteger,
     ) -> NeoResult<NeoBoolean> {
-        let mut storage = ContractStorage::load(&NeoRuntime::get_storage_context()?);
+        let context = NeoRuntime::get_storage_context()?;
+        let mut storage = ContractStorage::load(&context);
 
         if let Some(user_data) = storage.users.get_mut(user_id) {
             user_data.balance = new_balance;
-            storage.save(&NeoRuntime::get_storage_context()?)?;
+            storage.save(&context)?;
             Ok(NeoBoolean::TRUE)
         } else {
             Ok(NeoBoolean::FALSE)
@@ -181,39 +185,43 @@ impl StorageContract {
     /// Get user count
     #[neo_method]
     pub fn get_user_count(&self) -> NeoResult<NeoInteger> {
-        Ok(self.user_count)
+        Ok(self.user_count.clone())
     }
 
     /// Set a setting
     #[neo_method]
     pub fn set_setting(&mut self, key: NeoString, value: NeoValue) -> NeoResult<()> {
-        let mut storage = ContractStorage::load(&NeoRuntime::get_storage_context()?);
+        let context = NeoRuntime::get_storage_context()?;
+        let mut storage = ContractStorage::load(&context);
         storage.settings.insert(key, value);
-        storage.save(&NeoRuntime::get_storage_context()?)?;
+        storage.save(&context)?;
         Ok(())
     }
 
     /// Get a setting
     #[neo_method]
     pub fn get_setting(&self, key: &NeoString) -> NeoResult<NeoValue> {
-        let storage = ContractStorage::load(&NeoRuntime::get_storage_context()?);
+        let context = NeoRuntime::get_storage_context()?;
+        let storage = ContractStorage::load(&context);
         Ok(storage.settings.get(key).cloned().unwrap_or(NeoValue::Null))
     }
 
     /// Increment a counter
     #[neo_method]
     pub fn increment_counter(&mut self, counter_name: NeoString) -> NeoResult<NeoInteger> {
-        let mut storage = ContractStorage::load(&NeoRuntime::get_storage_context()?);
+        let context = NeoRuntime::get_storage_context()?;
+        let mut storage = ContractStorage::load(&context);
 
         let current_value = storage
             .counters
             .get(&counter_name)
             .cloned()
-            .unwrap_or(NeoInteger::ZERO);
-        let new_value = current_value + NeoInteger::ONE;
+            .unwrap_or(NeoInteger::zero());
+        let new_value = current_value + NeoInteger::one();
+        let persisted = new_value.clone();
 
-        storage.counters.insert(counter_name, new_value);
-        storage.save(&NeoRuntime::get_storage_context()?)?;
+        storage.counters.insert(counter_name, persisted);
+        storage.save(&context)?;
 
         Ok(new_value)
     }
@@ -221,12 +229,13 @@ impl StorageContract {
     /// Get counter value
     #[neo_method]
     pub fn get_counter(&self, counter_name: &NeoString) -> NeoResult<NeoInteger> {
-        let storage = ContractStorage::load(&NeoRuntime::get_storage_context()?);
+        let context = NeoRuntime::get_storage_context()?;
+        let storage = ContractStorage::load(&context);
         Ok(storage
             .counters
             .get(counter_name)
             .cloned()
-            .unwrap_or(NeoInteger::ZERO))
+            .unwrap_or(NeoInteger::zero()))
     }
 
     /// Clear all data (owner only)
@@ -239,11 +248,12 @@ impl StorageContract {
         }
 
         // Clear storage
-        let mut storage = ContractStorage::load(&NeoRuntime::get_storage_context()?);
+        let context = NeoRuntime::get_storage_context()?;
+        let mut storage = ContractStorage::load(&context);
         storage.users = NeoMap::new();
         storage.settings = NeoMap::new();
         storage.counters = NeoMap::new();
-        storage.save(&NeoRuntime::get_storage_context()?)?;
+        storage.save(&context)?;
 
         Ok(NeoBoolean::TRUE)
     }

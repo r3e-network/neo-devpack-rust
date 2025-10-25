@@ -199,11 +199,7 @@ fn translate_multi_signature_pattern() {
     let branch_issue = err
         .chain()
         .any(|cause| cause.to_string().contains("branch requires"));
-    assert!(
-        branch_issue,
-        "unexpected multisig branch error: {}",
-        err
-    );
+    assert!(branch_issue, "unexpected multisig branch error: {}", err);
 }
 
 #[test]

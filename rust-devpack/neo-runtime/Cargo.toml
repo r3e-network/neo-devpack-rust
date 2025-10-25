@@ -10,9 +10,9 @@ neo-types = { path = "../neo-types" }
 neo-syscalls = { path = "../neo-syscalls" }
 thiserror = "1.0"
 anyhow = "1.0"
+serde_json = "1.0"
+num-bigint = { version = "0.4", features = ["std"] }
 
 [features]
 default = ["std"]
 std = []
-no-std = []
-alloc = []

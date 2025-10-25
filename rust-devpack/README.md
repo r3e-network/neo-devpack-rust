@@ -340,11 +340,11 @@ pub fn debug_info(&self) -> NeoResult<NeoString> {
 ```rust
 #[neo_method]
 pub fn safe_operation(&self, input: NeoInteger) -> NeoResult<NeoInteger> {
-    if input < NeoInteger::ZERO {
+    if &input < &NeoInteger::zero() {
         return Err(NeoError::InvalidArgument);
     }
     
-    if input > NeoInteger::MAX {
+    if &input > &NeoInteger::max_i32() {
         return Err(NeoError::Overflow);
     }
     

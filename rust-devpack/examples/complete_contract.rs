@@ -1,8 +1,9 @@
 // Complete Neo N3 Smart Contract Example
 // Demonstrates all features of the Neo N3 Rust devpack
 
+use neo_devpack::neo_storage;
 use neo_devpack::prelude::*;
-use neo_devpack::{neo_storage, NeoStorageContext};
+use neo_devpack::serde::{Deserialize, Serialize};
 
 /// Complete Smart Contract
 ///
@@ -24,7 +25,7 @@ pub struct CompleteContract {
 }
 
 /// Contract Storage
-#[derive(Default)]
+#[derive(Default, Serialize, Deserialize)]
 #[neo_storage]
 pub struct CompleteStorage {
     balances: NeoMap<NeoByteString, NeoInteger>,
@@ -98,25 +99,25 @@ impl CompleteContract {
         );
         storage.metadata.insert(
             NeoString::from_str("total_supply"),
-            NeoValue::from(self.total_supply),
+            NeoValue::from(self.total_supply.clone()),
         );
         storage.metadata.insert(
             NeoString::from_str("decimals"),
-            NeoValue::from(self.decimals),
+            NeoValue::from(self.decimals.clone()),
         );
 
         // Initialize counters
         storage
             .counters
-            .insert(NeoString::from_str("transfer_count"), NeoInteger::ZERO);
+            .insert(NeoString::from_str("transfer_count"), NeoInteger::zero());
         storage
             .counters
-            .insert(NeoString::from_str("approval_count"), NeoInteger::ZERO);
+            .insert(NeoString::from_str("approval_count"), NeoInteger::zero());
 
         // Distribute initial supply to owner
         storage
             .balances
-            .insert(self.owner.clone(), self.total_supply);
+            .insert(self.owner.clone(), self.total_supply.clone());
 
         // Save storage
         storage.save(&NeoRuntime::get_storage_context()?)?;
@@ -153,13 +154,13 @@ impl CompleteContract {
     /// Get total supply
     #[neo_method]
     pub fn total_supply(&self) -> NeoResult<NeoInteger> {
-        Ok(self.total_supply)
+        Ok(self.total_supply.clone())
     }
 
     /// Get decimals
     #[neo_method]
     pub fn decimals(&self) -> NeoResult<NeoInteger> {
-        Ok(self.decimals)
+        Ok(self.decimals.clone())
     }
 
     /// Get balance of an account
@@ -170,14 +171,14 @@ impl CompleteContract {
             .balances
             .get(account)
             .cloned()
-            .unwrap_or(NeoInteger::ZERO))
+            .unwrap_or(NeoInteger::zero()))
     }
 
     /// Transfer tokens
     #[neo_method]
     pub fn transfer(&mut self, to: &NeoByteString, amount: NeoInteger) -> NeoResult<NeoBoolean> {
         // Validate amount
-        if amount <= NeoInteger::ZERO {
+        if amount <= NeoInteger::zero() {
             return Ok(NeoBoolean::FALSE);
         }
 
@@ -194,7 +195,7 @@ impl CompleteContract {
         let mut storage = CompleteStorage::load(&NeoRuntime::get_storage_context()?);
 
         // Subtract from sender
-        let new_from_balance = balance - amount;
+        let new_from_balance = balance - amount.clone();
         storage.balances.insert(from.clone(), new_from_balance);
 
         // Add to receiver
@@ -202,8 +203,8 @@ impl CompleteContract {
             .balances
             .get(to)
             .cloned()
-            .unwrap_or(NeoInteger::ZERO);
-        let new_to_balance = to_balance + amount;
+            .unwrap_or(NeoInteger::zero());
+        let new_to_balance = to_balance + amount.clone();
         storage.balances.insert(to.clone(), new_to_balance);
 
         // Update transfer counter
@@ -211,10 +212,10 @@ impl CompleteContract {
             .counters
             .get(&NeoString::from_str("transfer_count"))
             .cloned()
-            .unwrap_or(NeoInteger::ZERO);
+            .unwrap_or(NeoInteger::zero());
         storage.counters.insert(
             NeoString::from_str("transfer_count"),
-            transfer_count + NeoInteger::ONE,
+            transfer_count + NeoInteger::one(),
         );
 
         // Save storage
@@ -224,7 +225,7 @@ impl CompleteContract {
         let event = TransferEvent {
             from,
             to: to.clone(),
-            amount,
+            amount: amount.clone(),
         };
         event.emit()?;
 
@@ -239,7 +240,7 @@ impl CompleteContract {
         amount: NeoInteger,
     ) -> NeoResult<NeoBoolean> {
         // Validate amount
-        if amount < NeoInteger::ZERO {
+        if amount < NeoInteger::zero() {
             return Ok(NeoBoolean::FALSE);
         }
 
@@ -255,7 +256,7 @@ impl CompleteContract {
             .cloned()
             .unwrap_or(NeoMap::new());
 
-        owner_allowances.insert(spender.clone(), amount);
+        owner_allowances.insert(spender.clone(), amount.clone());
         storage.allowances.insert(owner.clone(), owner_allowances);
 
         // Update approval counter
@@ -263,10 +264,10 @@ impl CompleteContract {
             .counters
             .get(&NeoString::from_str("approval_count"))
             .cloned()
-            .unwrap_or(NeoInteger::ZERO);
+            .unwrap_or(NeoInteger::zero());
         storage.counters.insert(
             NeoString::from_str("approval_count"),
-            approval_count + NeoInteger::ONE,
+            approval_count + NeoInteger::one(),
         );
 
         // Save storage
@@ -276,7 +277,7 @@ impl CompleteContract {
         let event = ApprovalEvent {
             owner,
             spender: spender.clone(),
-            amount,
+            amount: amount.clone(),
         };
         event.emit()?;
 
@@ -296,9 +297,9 @@ impl CompleteContract {
             Ok(owner_allowances
                 .get(spender)
                 .cloned()
-                .unwrap_or(NeoInteger::ZERO))
+                .unwrap_or(NeoInteger::zero()))
         } else {
-            Ok(NeoInteger::ZERO)
+            Ok(NeoInteger::zero())
         }
     }
 
@@ -311,7 +312,7 @@ impl CompleteContract {
         amount: NeoInteger,
     ) -> NeoResult<NeoBoolean> {
         // Validate amount
-        if amount <= NeoInteger::ZERO {
+        if amount <= NeoInteger::zero() {
             return Ok(NeoBoolean::FALSE);
         }
 
@@ -334,7 +335,7 @@ impl CompleteContract {
         let mut storage = CompleteStorage::load(&NeoRuntime::get_storage_context()?);
 
         // Subtract from sender
-        let new_from_balance = balance - amount;
+        let new_from_balance = balance - amount.clone();
         storage.balances.insert(from.clone(), new_from_balance);
 
         // Add to receiver
@@ -342,8 +343,8 @@ impl CompleteContract {
             .balances
             .get(to)
             .cloned()
-            .unwrap_or(NeoInteger::ZERO);
-        let new_to_balance = to_balance + amount;
+            .unwrap_or(NeoInteger::zero());
+        let new_to_balance = to_balance + amount.clone();
         storage.balances.insert(to.clone(), new_to_balance);
 
         // Update allowance
@@ -353,7 +354,7 @@ impl CompleteContract {
             .cloned()
             .unwrap_or(NeoMap::new());
 
-        let new_allowance = allowance - amount;
+        let new_allowance = allowance - amount.clone();
         owner_allowances.insert(spender, new_allowance);
         storage.allowances.insert(from.clone(), owner_allowances);
 
@@ -362,10 +363,10 @@ impl CompleteContract {
             .counters
             .get(&NeoString::from_str("transfer_count"))
             .cloned()
-            .unwrap_or(NeoInteger::ZERO);
+            .unwrap_or(NeoInteger::zero());
         storage.counters.insert(
             NeoString::from_str("transfer_count"),
-            transfer_count + NeoInteger::ONE,
+            transfer_count + NeoInteger::one(),
         );
 
         // Save storage
@@ -375,7 +376,7 @@ impl CompleteContract {
         let event = TransferEvent {
             from: from.clone(),
             to: to.clone(),
-            amount,
+            amount: amount.clone(),
         };
         event.emit()?;
 
@@ -390,7 +391,7 @@ impl CompleteContract {
             .counters
             .get(&NeoString::from_str("transfer_count"))
             .cloned()
-            .unwrap_or(NeoInteger::ZERO))
+            .unwrap_or(NeoInteger::zero()))
     }
 
     /// Get approval count
@@ -401,7 +402,7 @@ impl CompleteContract {
             .counters
             .get(&NeoString::from_str("approval_count"))
             .cloned()
-            .unwrap_or(NeoInteger::ZERO))
+            .unwrap_or(NeoInteger::zero()))
     }
 
     /// Get contract metadata
@@ -466,8 +467,8 @@ impl CompleteContract {
         let storage = CompleteStorage::load(&NeoRuntime::get_storage_context()?);
 
         let mut stats = NeoStruct::new();
-        stats.set_field("total_supply", NeoValue::from(self.total_supply));
-        stats.set_field("decimals", NeoValue::from(self.decimals));
+        stats.set_field("total_supply", NeoValue::from(self.total_supply.clone()));
+        stats.set_field("decimals", NeoValue::from(self.decimals.clone()));
         stats.set_field(
             "transfer_count",
             NeoValue::from(
@@ -475,7 +476,7 @@ impl CompleteContract {
                     .counters
                     .get(&NeoString::from_str("transfer_count"))
                     .cloned()
-                    .unwrap_or(NeoInteger::ZERO),
+                    .unwrap_or(NeoInteger::zero()),
             ),
         );
         stats.set_field(
@@ -485,7 +486,7 @@ impl CompleteContract {
                     .counters
                     .get(&NeoString::from_str("approval_count"))
                     .cloned()
-                    .unwrap_or(NeoInteger::ZERO),
+                    .unwrap_or(NeoInteger::zero()),
             ),
         );
         stats.set_field(

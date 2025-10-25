@@ -70,7 +70,8 @@ fn contract_crypto_and_json_helpers_behave_consistently() {
     assert_eq!(NeoCrypto::sha256(&data).unwrap().len(), 32);
 
     let json = NeoJSON::serialize(&NeoValue::from(NeoInteger::new(7))).unwrap();
-    assert!(json.as_str().contains("integer"));
+    let parsed: serde_json::Value = serde_json::from_str(json.as_str()).unwrap();
+    assert_eq!(parsed["type"].as_str(), Some("Integer"));
     let value = NeoJSON::deserialize(&json).unwrap();
     assert!(value.as_integer().is_some());
 }

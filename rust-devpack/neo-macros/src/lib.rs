@@ -4,12 +4,12 @@
 
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
-use quote::{format_ident, quote};
+use quote::{format_ident, quote, ToTokens};
 use serde_json::{json, Value as JsonValue};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
-use syn::{bracketed, parse_macro_input, DeriveInput, ItemFn, LitStr, Token};
+use syn::{bracketed, parse_macro_input, DeriveInput, Fields, ItemFn, LitStr, Token};
 
 static MANIFEST_OVERLAY_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
@@ -114,6 +114,45 @@ pub fn neo_supported_standards(input: TokenStream) -> TokenStream {
     });
 
     manifest_overlay_tokens(&overlay.to_string()).into()
+}
+
+/// Declare safe methods for the contract manifest.
+#[proc_macro]
+pub fn neo_safe_methods(input: TokenStream) -> TokenStream {
+    let list = parse_macro_input!(input as StringList);
+    let methods: Vec<serde_json::Value> = list
+        .items
+        .into_iter()
+        .map(|lit| {
+            let name = lit.value();
+            json!({"name": name, "safe": true})
+        })
+        .collect();
+
+    let overlay = json!({
+        "abi": { "methods": methods }
+    });
+
+    manifest_overlay_tokens(&overlay.to_string()).into()
+}
+
+/// Mark a single exported function as safe in the manifest.
+#[proc_macro_attribute]
+pub fn neo_safe(_args: TokenStream, input: TokenStream) -> TokenStream {
+    let func = parse_macro_input!(input as ItemFn);
+    let name = func.sig.ident.to_string();
+
+    let overlay = json!({
+        "abi": { "methods": [ { "name": name, "safe": true } ] }
+    });
+
+    let overlay_tokens = manifest_overlay_tokens(&overlay.to_string());
+
+    quote! {
+        #func
+        #overlay_tokens
+    }
+    .into()
 }
 
 /// Declare trusted contracts for the contract manifest.
@@ -233,21 +272,69 @@ pub fn neo_method(_args: TokenStream, input: TokenStream) -> TokenStream {
 pub fn neo_event(_args: TokenStream, input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let name = &input.ident;
-    
-    let expanded = quote! {
-        #input
-        
-        impl #name {
-            pub fn emit(&self) -> NeoResult<()> {
-                let event_name = stringify!(#name);
-                let state = NeoArray::new();
-                // Add event data to state
-                NeoRuntime::notify(&NeoString::from_str(event_name), &state)
+    let fields = match &input.data {
+        syn::Data::Struct(struct_data) => match &struct_data.fields {
+            Fields::Named(named) => named.named.iter().collect::<Vec<_>>(),
+            Fields::Unnamed(_) | Fields::Unit => {
+                return syn::Error::new_spanned(
+                    &input,
+                    "#[neo_event] requires a struct with named fields",
+                )
+                .to_compile_error()
+                .into();
             }
+        },
+        _ => {
+            return syn::Error::new_spanned(&input, "#[neo_event] can only be applied to structs")
+                .to_compile_error()
+                .into();
         }
     };
-    
-    TokenStream::from(expanded)
+
+    let push_fields = fields.iter().map(|field| {
+        let ident = field.ident.as_ref().expect("named field");
+        quote! {
+            state.push(::neo_devpack::NeoValue::from(::core::clone::Clone::clone(&self.#ident)));
+        }
+    });
+
+    let event_name_string = name.to_string();
+    let parameters: Vec<serde_json::Value> = fields
+        .iter()
+        .map(|field| {
+            let field_name = field.ident.as_ref().unwrap().to_string();
+            let ty_string = field.ty.to_token_stream().to_string();
+            json!({
+                "name": field_name,
+                "type": ty_string,
+            })
+        })
+        .collect();
+    let metadata = json!({
+        "event": {
+            "name": event_name_string,
+            "parameters": parameters,
+        }
+    });
+    let overlay = manifest_overlay_tokens(&metadata.to_string());
+
+    let expanded = quote! {
+        #input
+
+        impl #name {
+            pub fn emit(&self) -> ::neo_devpack::NeoResult<()> {
+                let event_name = stringify!(#name);
+                let mut state = ::neo_devpack::NeoArray::new();
+                #(#push_fields)*
+                let label = ::neo_devpack::NeoString::from_str(event_name);
+                ::neo_devpack::NeoRuntime::notify(&label, &state)
+            }
+        }
+
+        #overlay
+    };
+
+    expanded.into()
 }
 
 /// Neo N3 Storage macro
@@ -267,25 +354,56 @@ pub fn neo_event(_args: TokenStream, input: TokenStream) -> TokenStream {
 pub fn neo_storage(_args: TokenStream, input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let name = &input.ident;
-    
+    let storage_key = format!("{}::storage", name);
+
     let expanded = quote! {
         #input
-        
+
         impl #name {
-            pub fn load(context: &NeoStorageContext) -> Self {
-                // This would be implemented by the LLVM backend
-                // Return default instance - fields will be populated by actual storage operations
-                Self::default()
+            pub fn load_result(
+                context: &::neo_devpack::NeoStorageContext,
+            ) -> ::neo_devpack::NeoResult<Self>
+            where
+                Self: ::core::default::Default
+                    + ::neo_devpack::serde::de::DeserializeOwned,
+            {
+                let key = ::neo_devpack::NeoByteString::from_slice(#storage_key.as_bytes());
+                let bytes = ::neo_devpack::NeoStorage::get(context, &key)?;
+                if bytes.is_empty() {
+                    return Ok(Self::default());
+                }
+                ::neo_devpack::codec::deserialize(bytes.as_slice())
             }
-            
-            pub fn save(&self, context: &NeoStorageContext) -> NeoResult<()> {
-                // This would be implemented by the LLVM backend
-                Ok(())
+
+            pub fn load(
+                context: &::neo_devpack::NeoStorageContext,
+            ) -> Self
+            where
+                Self: ::core::default::Default
+                    + ::neo_devpack::serde::de::DeserializeOwned,
+            {
+                Self::load_result(context).unwrap_or_else(|_| Self::default())
+            }
+
+            pub fn save(
+                &self,
+                context: &::neo_devpack::NeoStorageContext,
+            ) -> ::neo_devpack::NeoResult<()>
+            where
+                Self: ::neo_devpack::serde::Serialize,
+            {
+                if context.is_read_only() {
+                    return Err(::neo_devpack::NeoError::InvalidOperation);
+                }
+                let key = ::neo_devpack::NeoByteString::from_slice(#storage_key.as_bytes());
+                let bytes = ::neo_devpack::codec::serialize(self)?;
+                let payload = ::neo_devpack::NeoByteString::new(bytes);
+                ::neo_devpack::NeoStorage::put(context, &key, &payload)
             }
         }
     };
-    
-    TokenStream::from(expanded)
+
+    expanded.into()
 }
 
 /// Neo N3 Entry Point macro
@@ -303,31 +421,30 @@ pub fn neo_storage(_args: TokenStream, input: TokenStream) -> TokenStream {
 /// ```
 #[proc_macro_attribute]
 pub fn neo_entry(_args: TokenStream, input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as ItemFn);
-    let name = &input.sig.ident;
-    let vis = &input.vis;
-    let sig = &input.sig;
-    let block = &input.block;
-    
-    let expanded = quote! {
-        #vis #sig #block
-        
-        impl NeoContractEntry for #name {
-            fn deploy() -> NeoResult<()> {
-                #name()
-            }
-            
-            fn update() -> NeoResult<()> {
-                #name()
-            }
-            
-            fn destroy() -> NeoResult<()> {
-                #name()
-            }
-        }
+    let input_fn = parse_macro_input!(input as ItemFn);
+    let name = &input_fn.sig.ident;
+    let entry_name = name.to_string();
+    let kind = match entry_name.as_str() {
+        "deploy" => "deploy",
+        "update" => "update",
+        "destroy" => "destroy",
+        other => other,
     };
-    
-    TokenStream::from(expanded)
+
+    let metadata = json!({
+        "entry": {
+            "name": entry_name,
+            "kind": kind,
+        }
+    });
+    let overlay = manifest_overlay_tokens(&metadata.to_string());
+
+    let expanded = quote! {
+        #input_fn
+        #overlay
+    };
+
+    expanded.into()
 }
 
 /// Neo N3 Test macro
@@ -350,17 +467,19 @@ pub fn neo_test(_args: TokenStream, input: TokenStream) -> TokenStream {
     let vis = &input.vis;
     let sig = &input.sig;
     let block = &input.block;
+    let test_mod = format_ident!("__neo_test_{}", name);
+    let test_fn = format_ident!("{}_case", name);
     
     let expanded = quote! {
         #vis #sig #block
         
         #[cfg(test)]
-        mod #name {
+        mod #test_mod {
             use super::*;
             
             #[test]
-            fn #name() {
-                #name()
+            fn #test_fn() {
+                super::#name()
             }
         }
     };
@@ -390,24 +509,25 @@ pub fn neo_bench(_args: TokenStream, input: TokenStream) -> TokenStream {
     let vis = &input.vis;
     let sig = &input.sig;
     let block = &input.block;
+    let bench_mod = format_ident!("__neo_bench_{}", name);
     
     let expanded = quote! {
         #vis #sig #block
         
         #[cfg(feature = "bench")]
-        mod #name {
+        mod #bench_mod {
             use super::*;
             use criterion::*;
             
-            fn #name(c: &mut Criterion) {
+            fn run(c: &mut Criterion) {
                 c.bench_function(stringify!(#name), |b| {
                     b.iter(|| {
-                        #name()
+                        super::#name()
                     });
                 });
             }
             
-            criterion_group!(benches, #name);
+            criterion_group!(benches, run);
             criterion_main!(benches);
         }
     };
@@ -472,8 +592,8 @@ pub fn neo_config(_args: TokenStream, input: TokenStream) -> TokenStream {
         impl #name {
             pub fn default() -> Self {
                 Self {
-                    max_value: NeoInteger::MAX,
-                    min_value: NeoInteger::MIN,
+                    max_value: NeoInteger::max_i32(),
+                    min_value: NeoInteger::min_i32(),
                 }
             }
             
@@ -501,7 +621,7 @@ pub fn neo_config(_args: TokenStream, input: TokenStream) -> TokenStream {
 /// ```rust
 /// #[neo_validate]
 /// pub fn validate_value(value: NeoInteger) -> NeoResult<()> {
-///     if value < NeoInteger::ZERO {
+///     if value < NeoInteger::zero() {
 ///         return Err(NeoError::InvalidArgument);
 ///     }
 ///     Ok(())
@@ -550,15 +670,13 @@ pub fn neo_serialize(_args: TokenStream, input: TokenStream) -> TokenStream {
         #input
         
         impl #name {
-            pub fn serialize(&self) -> NeoResult<NeoByteString> {
-                // This would be implemented by the LLVM backend
-                Ok(NeoByteString::new(vec![]))
+            pub fn serialize(&self) -> ::neo_devpack::NeoResult<::neo_devpack::NeoByteString> {
+                let bytes = ::neo_devpack::codec::serialize(self)?;
+                Ok(::neo_devpack::NeoByteString::new(bytes))
             }
             
-            pub fn deserialize(data: &NeoByteString) -> NeoResult<Self> {
-                // This would be implemented by the LLVM backend
-                // Return default instance - fields will be populated by actual deserialization
-                unsafe { std::mem::zeroed() }
+            pub fn deserialize(data: &::neo_devpack::NeoByteString) -> ::neo_devpack::NeoResult<Self> {
+                ::neo_devpack::codec::deserialize(data.as_slice())
             }
         }
     };
