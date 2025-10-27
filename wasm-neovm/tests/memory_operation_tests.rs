@@ -1,7 +1,7 @@
 // Comprehensive memory operation tests for WASM-NeoVM translator
 // Phase 2: High-priority coverage additions
 
-use wasm_neovm::translate_module;
+use wasm_neovm::{opcodes, translate_module};
 
 // ============================================================================
 // Load Operation Tests
@@ -76,6 +76,37 @@ fn translate_i32_load16_s() {
 
     // load16_s loads 2 bytes with sign extension
     assert!(!translation.script.is_empty());
+}
+
+#[test]
+fn translate_i32_load8_u_zero_extend_without_shifts() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (memory 1)
+              (func (export "load8_u") (param i32) (result i32)
+                local.get 0
+                i32.load8_u))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "I32Load8UZeroExtend").expect("translation succeeds");
+
+    let and = opcodes::lookup("AND").unwrap().byte;
+    let shl = opcodes::lookup("SHL").unwrap().byte;
+    let shr = opcodes::lookup("SHR").unwrap().byte;
+
+    assert!(
+        translation.script.contains(&and),
+        "zero extension should mask high bits with AND"
+    );
+    assert!(
+        !translation.script.contains(&shl),
+        "unsigned load should not perform arithmetic shifts"
+    );
+    assert!(
+        !translation.script.contains(&shr),
+        "unsigned load should not perform arithmetic shifts"
+    );
 }
 
 #[test]

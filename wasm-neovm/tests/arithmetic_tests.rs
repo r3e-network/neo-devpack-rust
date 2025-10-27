@@ -91,6 +91,35 @@ fn translate_i64_mul_overflow() {
     );
 }
 
+#[test]
+fn translate_i32_add_wraps_constants() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (func (export "wrap") (result i32)
+                (local i32)
+                i32.const -2147483648
+                i32.const -2147483648
+                i32.add
+                local.set 0
+                local.get 0))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "I32Wrap").expect("translation succeeds");
+
+    let push0 = wasm_neovm::opcodes::lookup("PUSH0").unwrap().byte;
+    let pushint64 = wasm_neovm::opcodes::lookup("PUSHINT64").unwrap().byte;
+
+    assert!(
+        translation.script.contains(&push0),
+        "local.get should push zero after wrapping"
+    );
+    assert!(
+        !translation.script.contains(&pushint64),
+        "wrapping addition must not materialise large negative constants"
+    );
+}
+
 // ============================================================================
 // Division Edge Cases
 // ============================================================================

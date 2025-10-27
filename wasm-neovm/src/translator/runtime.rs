@@ -1299,20 +1299,24 @@ pub(crate) fn translate_memory_load(
         .emit_memory_load_call(script, bytes)
         .with_context(|| format!("failed to emit helper call for {}", context))?;
 
-    let raw_value = StackValue {
+    let mut raw_value = StackValue {
         const_value: None,
         bytecode_start: None,
     };
 
+    let load_bits = bytes * 8;
     let result = if let Some((from_bits, to_bits)) = sign_extend {
         emit_sign_extend(script, raw_value, from_bits, to_bits)?
     } else {
-        if result_bits < bytes * 8 {
+        if result_bits < load_bits {
             bail!(
                 "result bit-width {} smaller than load width {}",
                 result_bits,
-                bytes * 8
+                load_bits
             );
+        }
+        if result_bits > load_bits {
+            raw_value = emit_zero_extend(script, raw_value, load_bits)?;
         }
         raw_value
     };
