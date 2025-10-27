@@ -25,27 +25,27 @@ Rust contract (neo-devpack) ──cargo build --target wasm32-unknown-unknown─
    ```bash
    rustup target add wasm32-unknown-unknown
    ```
-2. Build your contract crate (for example `contracts/hello`):
+2. Build your contract crate (for example `contracts/hello-world`):
    ```bash
-   scripts/build_contract.sh contracts/hello Hello
+   scripts/build_contract.sh contracts/hello-world
    ```
-   The script compiles the crate for `wasm32-unknown-unknown` (release mode) and then runs the translator to produce `Hello.nef` and `Hello.manifest.json` next to the `.wasm` artefact.
+   The script compiles the crate for `wasm32-unknown-unknown` (release mode) and then runs the translator to produce `hello_world.nef` and `hello_world.manifest.json` next to the `.wasm` artefact.
    Append additional translator flags after the optional contract name if needed. Safe methods are typically declared inside the contract (via `#[neo_safe]`) so no CLI flags are required for that metadata.
 
 3. Alternatively, run the translator manually:
    ```bash
-   cargo build --manifest-path contracts/hello/Cargo.toml \
+   cargo build --manifest-path contracts/hello-world/Cargo.toml \
      --release --target wasm32-unknown-unknown
 
    cargo run --manifest-path wasm-neovm/Cargo.toml -- \
-     --input contracts/hello/target/wasm32-unknown-unknown/release/Hello.wasm \
-     --nef build/Hello.nef \
-     --manifest build/Hello.manifest.json \
-     --name Hello \
-     --manifest-overlay contracts/hello/manifest-extra.json
+     --input contracts/hello-world/target/wasm32-unknown-unknown/release/hello_world.wasm \
+     --nef build/hello_world.nef \
+     --manifest build/hello_world.manifest.json \
+     --name hello-world \
+     --manifest-overlay contracts/hello-world/manifest.overlay.json
    ```
 
-   Supply `--manifest-overlay <file>` to merge additional JSON metadata when needed. Use the `#[neo_safe]` attribute (or manifest overlays) inside your contract to declare safe methods.
+   Supply `--manifest-overlay <file>` to merge additional JSON metadata when needed (for example, create `contracts/hello-world/manifest.overlay.json`). Use the `#[neo_safe]` attribute (or manifest overlays) inside your contract to declare safe methods.
 
 4. To compile *all* bundled examples (Wasm build + NEF/manifest generation) run the Makefile target:
    ```bash
@@ -106,6 +106,25 @@ Example (in WAT form):
 The accompanying Rust contract can declare the imports with `#[link(wasm_import_module = "syscall")]` / `#[link(wasm_import_module = "neo")]` / `#[link(wasm_import_module = "opcode")]` attributes. To emit raw bytes, bind to `opcode::RAW`/`opcode::RAW4` and pass literal constants.
 
 ## Translator Capabilities
+
+### Feature Checklist
+
+**Implemented**
+- [x] Wasm → NeoVM translation pipeline (`wasm-neovm`) with manifest/NEF generation
+- [x] Safe method detection via in-contract attributes/overlays (no CLI flags required)
+- [x] Manifest overlay merge + permission deduplication
+- [x] Method-token inference for `System.Contract.Call` and syscall usage
+- [x] Comprehensive unit tests for translator modules
+- [x] Production-grade Rust contract examples (10 templates covering NEP‑17, NEP‑11, multisig, escrow, DAO, oracle, NFT marketplace, etc.)
+- [x] Makefile automation (`make examples`) to build and translate every contract
+- [x] Documentation for quick start, contract catalogue, and Neo Express deployment
+
+**Planned / In Progress**
+- [ ] Extend Wasm coverage (floating-point operations, SIMD, multi-memory)
+- [ ] Enhanced Neo Express integration tests with automated deploy/invoke smoke checks
+- [ ] Additional dApp templates (router/aggregator, oracle publisher, governance extensions)
+- [ ] CLI UX improvements (manifest diffing, dry-run validation)
+- [ ] Linting rules for contract ABI compliance and storage layout verification
 
 `wasm-neovm` already lowers a useful subset of Wasm into NeoVM bytecode:
 

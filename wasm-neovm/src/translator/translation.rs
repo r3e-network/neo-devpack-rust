@@ -2463,6 +2463,14 @@ fn emit_indexed_opcode(
     let opcode =
         opcodes::lookup(base_opcode).ok_or_else(|| anyhow!("unknown opcode: {}", base_opcode))?;
 
+    if index > u8::MAX as u32 {
+        bail!(
+            "{} index {} exceeds NeoVM operand limit (0-255)",
+            base_opcode,
+            index
+        );
+    }
+
     script.push(opcode.byte);
     script.push(index as u8);
     Ok(())
@@ -2809,19 +2817,48 @@ fn ensure_param_count(
     Ok(())
 }
 
+fn literal_instruction_len(script: &[u8], start: usize) -> Result<usize> {
+    if start >= script.len() {
+        bail!(
+            "invalid literal start {} for script of length {}",
+            start,
+            script.len()
+        );
+    }
+
+    let opcode = script[start];
+    let len = if opcode == PUSHM1 || opcode == PUSH0 {
+        1usize
+    } else if (PUSH_BASE + 1..=PUSH_BASE + 16).contains(&opcode) {
+        1usize
+    } else if opcode == PUSHINT8 {
+        1usize + 1
+    } else if opcode == PUSHINT16 {
+        1usize + 2
+    } else if opcode == PUSHINT32 {
+        1usize + 4
+    } else if opcode == PUSHINT64 {
+        1usize + 8
+    } else if opcode == PUSHINT128 {
+        1usize + 16
+    } else {
+        bail!(
+            "unable to determine literal length for opcode 0x{:02X}",
+            opcode
+        );
+    };
+
+    if start + len > script.len() {
+        bail!("literal extends beyond script bounds");
+    }
+
+    Ok(len)
+}
+
 fn truncate_literal(param: &StackValue, script: &mut Vec<u8>, max_bytes: usize) -> Result<i128> {
     let value = param
         .const_value
         .ok_or_else(|| anyhow!("import argument must be a compile-time constant"))?;
-    if let Some(start) = param.bytecode_start {
-        if start > script.len() {
-            bail!("internal error: literal start beyond current script length");
-        }
-        script.truncate(start);
-    } else {
-        bail!("import argument cannot be materialised as an immediate; ensure it is a literal");
-    }
-
     // Treat the literal as signed; validate it fits within the requested bytes.
     let bits = max_bytes * 8;
     if bits == 0 || bits > 64 {
@@ -2836,6 +2873,23 @@ fn truncate_literal(param: &StackValue, script: &mut Vec<u8>, max_bytes: usize) 
             value,
             max_bytes
         );
+    }
+
+    let Some(start) = param.bytecode_start else {
+        bail!("import argument cannot be materialised as an immediate; ensure it is a literal");
+    };
+
+    if start >= script.len() {
+        bail!("internal error: literal start beyond current script length");
+    }
+
+    let literal_len = literal_instruction_len(script, start)?;
+    let literal_end = start + literal_len;
+    if literal_end == script.len() {
+        script.truncate(start);
+    } else {
+        let drop = lookup_opcode("DROP")?;
+        script.push(drop.byte);
     }
 
     Ok(value)
