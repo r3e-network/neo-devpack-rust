@@ -493,3 +493,94 @@ fn translate_memory_pointer_arithmetic() {
     // Pointer arithmetic: base + offset
     assert!(!translation.script.is_empty());
 }
+
+// ============================================================================
+// Env Imports
+// ============================================================================
+
+#[test]
+fn translate_env_memcpy_call() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (memory 1)
+              (import "env" "memcpy" (func $memcpy (param i32 i32 i32) (result i32)))
+              (func (export "copy_bytes") (param i32 i32 i32) (result i32)
+                local.get 0
+                local.get 1
+                local.get 2
+                call $memcpy))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "EnvMemcpy").expect("translation succeeds");
+    let methods = translation
+        .manifest
+        .value
+        .get("abi")
+        .and_then(|abi| abi.get("methods"))
+        .and_then(|methods| methods.as_array())
+        .expect("methods present");
+    assert_eq!(
+        methods[0].get("returntype").and_then(|v| v.as_str()),
+        Some("Integer")
+    );
+    assert!(!translation.script.is_empty());
+}
+
+#[test]
+fn translate_env_memset_call() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (memory 1)
+              (import "env" "memset" (func $memset (param i32 i32 i32) (result i32)))
+              (func (export "clear") (param i32 i32 i32) (result i32)
+                local.get 0
+                local.get 1
+                local.get 2
+                call $memset))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "EnvMemset").expect("translation succeeds");
+    let methods = translation
+        .manifest
+        .value
+        .get("abi")
+        .and_then(|abi| abi.get("methods"))
+        .and_then(|methods| methods.as_array())
+        .expect("methods present");
+    assert_eq!(
+        methods[0].get("returntype").and_then(|v| v.as_str()),
+        Some("Integer")
+    );
+    assert!(!translation.script.is_empty());
+}
+
+#[test]
+fn translate_env_memmove_call() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (memory 1)
+              (import "env" "memmove" (func $memmove (param i32 i32 i32) (result i32)))
+              (func (export "move") (param i32 i32 i32) (result i32)
+                local.get 0
+                local.get 1
+                local.get 2
+                call $memmove))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "EnvMemmove").expect("translation succeeds");
+    let methods = translation
+        .manifest
+        .value
+        .get("abi")
+        .and_then(|abi| abi.get("methods"))
+        .and_then(|methods| methods.as_array())
+        .expect("methods present");
+    assert_eq!(
+        methods[0].get("returntype").and_then(|v| v.as_str()),
+        Some("Integer")
+    );
+    assert!(!translation.script.is_empty());
+}

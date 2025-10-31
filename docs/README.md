@@ -9,5 +9,6 @@ This repository is now focused solely on the Wasm → NeoVM translator and the R
 - **[wasm-memory-design.md](wasm-memory-design.md)** – Deep dive into the linear memory helper architecture.
 - **[wasm-table-design.md](wasm-table-design.md)** – Table runtime design and helper behaviour.
 - **[nef-format-specification.md](nef-format-specification.md)** – Reference for the NEF container format.
+- **[c-smart-contract-quickstart.md](c-smart-contract-quickstart.md)** – Step-by-step guide for compiling C contracts to NEF.
 
 These documents evolve with the translator and DevPack; please keep them in sync with code changes.

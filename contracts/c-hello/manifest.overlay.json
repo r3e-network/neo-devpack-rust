@@ -1,0 +1,39 @@
+{
+  "name": "CExample",
+  "abi": {
+    "methods": [
+      {
+        "name": "sum",
+        "parameters": [
+          { "name": "a", "type": "Integer" },
+          { "name": "b", "type": "Integer" }
+        ],
+        "returntype": "Integer",
+        "safe": true
+      },
+      {
+        "name": "version",
+        "parameters": [],
+        "returntype": "Integer",
+        "safe": true
+      },
+      {
+        "name": "clamp_add",
+        "parameters": [
+          { "name": "value", "type": "Integer" },
+          { "name": "delta", "type": "Integer" },
+          { "name": "max", "type": "Integer" }
+        ],
+        "returntype": "Integer",
+        "safe": true
+      }
+    ]
+  },
+  "supportedstandards": [
+    "NEP-17"
+  ],
+  "extra": {
+    "description": "Sample NeoVM contract authored in C",
+    "source": "contracts/c-hello/contract.c"
+  }
+}

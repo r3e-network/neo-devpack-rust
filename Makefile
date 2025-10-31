@@ -38,7 +38,7 @@ MARKET_WASM       := contracts/nft-marketplace/target/$(WASM_TARGET)/release/nft
 MARKET_NEF        := $(OUTDIR)/NFTMarketplace.nef
 MARKET_MANIFEST   := $(OUTDIR)/NFTMarketplace.manifest.json
 
-.PHONY: help examples hello-world nep17-token constant-product nep11-nft multisig-wallet escrow crowdfunding governance-dao oracle-consumer nft-marketplace fmt lint test integration-tests clean
+.PHONY: help examples hello-world nep17-token constant-product nep11-nft multisig-wallet escrow crowdfunding governance-dao oracle-consumer nft-marketplace c-hello fmt lint test integration-tests clean
 
 help:
 	@echo "Usage: make <target>"
@@ -55,6 +55,7 @@ help:
 	@echo "  governance-dao  Generate GovernanceDAO.nef and manifest"
 	@echo "  oracle-consumer Generate OracleConsumer.nef and manifest"
 	@echo "  nft-marketplace Generate NFTMarketplace.nef and manifest"
+	@echo "  c-hello        Build the sample C contract and translate it"
 	@echo
 	@echo "Maintenance targets:"
 	@echo "  fmt             Run cargo fmt across the workspace"
@@ -63,7 +64,7 @@ help:
 	@echo "  integration-tests  Run optional Neo Express integration harness"
 	@echo "  clean           Remove generated build artefacts"
 
-examples: hello-world nep17-token constant-product nep11-nft multisig-wallet escrow crowdfunding governance-dao oracle-consumer nft-marketplace
+examples: hello-world nep17-token constant-product nep11-nft multisig-wallet escrow crowdfunding governance-dao oracle-consumer nft-marketplace c-hello
 
 hello-world: $(HELLO_NEF) $(HELLO_MANIFEST)
 	@echo "✔ hello-world artifacts are in $(OUTDIR)/"
@@ -194,6 +195,9 @@ $(ORACLE_WASM):
 
 $(MARKET_WASM):
 	cargo build --manifest-path contracts/nft-marketplace/Cargo.toml --release --target $(WASM_TARGET) --quiet
+
+c-hello:
+	scripts/build_c_contract.sh contracts/c-hello
 
 $(OUTDIR):
 	@mkdir -p $(OUTDIR)

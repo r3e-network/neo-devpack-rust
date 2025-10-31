@@ -1,7 +1,8 @@
 # Sample Contracts
 
-This directory provides ready-to-build Rust contracts that exercise the Wasm → NeoVM pipeline.
-Each contract is a standalone crate compiling to a `cdylib` Wasm module.
+This directory provides ready-to-build contracts that exercise the Wasm → NeoVM
+pipeline. Most samples are Rust crates that compile to `cdylib` Wasm modules,
+and a standalone C example is included to demonstrate the clang workflow.
 
 | Contract | Description | Entry Points | Notes |
 | --- | --- | --- | --- |
@@ -15,6 +16,7 @@ Each contract is a standalone crate compiling to a `cdylib` Wasm module.
 | `governance-dao` | Stake-weighted governance with proposals, voting, execution, and staking. | `configure(...)`, `propose(...)`, `vote(...)`, `execute(proposal_id)`, `unstake(...)`, `onNEP17Payment(from, amount, data)`, `getConfig()`, `getProposal(id)`, `stakeOf(address)` | Safe accessors for config/proposals/stakes; proposal execution triggers contract calls. |
 | `oracle-consumer` | Oracle request/response manager for off-chain data retrieval. | `configure(...)`, `request(url, filter, user_data)`, `onOracleResponse(request_id, code, data)`, `getResponse(id)`, `lastRequestId()` | Responses stored as JSON; safe getters for config and responses. |
 | `nft-marketplace` | Custodial NEP‑11 marketplace settling sales with NEP‑17 payments. | `createListing(...)`, `cancelListing(...)`, `onNEP11Payment(from, token_id, amount, data)`, `onNEP17Payment(from, amount, data)`, `getListing(id)` | Listings persisted in storage; safe listing lookup for tooling. |
+| `c-hello` | Minimal C contract compiled via clang helper. | `sum(a, b)`, `version()`, `clamp_add(value, delta, max)` | Uses `manifest.overlay.json` to declare ABI metadata and safe flags. |
 
 ## Building
 

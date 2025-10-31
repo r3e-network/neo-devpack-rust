@@ -15,7 +15,7 @@ This document tracks the current translation coverage. It should be kept up to d
 | Exceptions (`exception-handling`) | ❌ | No mapping; translator treats unknown operators as unsupported. |
 | Panic semantics | ⚠️ Uses `ABORT` | Rust panics that survive to Wasm become `ABORT`; richer diagnostics TBD. |
 | Gas accounting | ❌ | Gas model integration not yet designed; relies on NeoVM defaults. |
-| Host interop | ✅ Syscalls generated via pre-hashed table<br>✅ Opcode imports<br>✅ Friendly `neo::` aliases resolved at translation time | Translator recognises both canonical `syscall::*` descriptors and DevPack-style `neo::*` imports, lowering everything to the appropriate `SYSCALL` sequence. |
+| Host interop | ✅ Syscalls generated via pre-hashed table<br>✅ Opcode imports<br>✅ Friendly `neo::` aliases resolved at translation time<br>✅ Common `env::` shims (`memcpy`/`memmove`/`memset`) | Translator recognises canonical `syscall::*` descriptors, DevPack-style `neo::*` imports, and bridges common C runtime shims emitted as `env::` imports, lowering everything to the appropriate NeoVM helpers with overlap-safe semantics. |
 | Manifest emission | ✅ ABI (methods, safe flag)<br>✅ Custom overlays merged<br>✅ Auto method-token inference<br>⚠️ Complex type annotations limited to integers | `wasm-neovm` infers method tokens for literal `SYSCALL` patterns, including `System.Contract.Call` (with hash/method/flags) and zero-hash placeholders for other interops. |
 | NEF metadata | ✅ `nefSource`, `nefMethodTokens` | See `metadata.rs` helpers. |
 | Testing | ✅ Comprehensive translator suites (~120 focused tests) | Arithmetic, control-flow, memory, table, syscall, and optimisation suites exercise the lowering logic end-to-end. |
@@ -33,7 +33,7 @@ contracts. The currently supported surface is:
 - **Imports**: `syscall::`, `opcode::`, and whitelisted `neo::` imports that map to NeoVM syscalls; other host imports are rejected.
 - **Determinism**: no floating-point, random host interaction, or instructions with implementation-defined behaviour. Panics translate to `ABORT`, preserving consensus safety.
 
-> **Compiler guidance**: when compiling Rust or C/C++ contracts use `wasm32-unknown-unknown` (or equivalent) and disable features that emit unsupported instructions (e.g. `RUSTFLAGS="-C target-feature=-simd128"`). Enabling bulk-memory is fine; atomics, threads, and exceptions must remain disabled.
+> **Compiler guidance**: when compiling Rust or C/C++ contracts use `wasm32-unknown-unknown` (or equivalent) and disable features that emit unsupported instructions (e.g. `RUSTFLAGS="-C target-feature=-simd128"`). Enabling bulk-memory is fine; atomics, threads, and exceptions must remain disabled. For C/C++, prefer the repository's `scripts/build_c_contract.sh`, which passes `-nostdlib`/`-fno-builtin` to avoid `env::` imports such as `memcpy`.
 
 This matrix complements the capability table below and serves as the contract for what the translator will accept.
 

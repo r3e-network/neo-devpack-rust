@@ -18,6 +18,7 @@ The translator can initially focus on the minimal instruction subset required by
 
 - Add a dedicated target dir such as `contracts/<name>/Cargo.toml` with `crate-type = ["cdylib"]` so `cargo build --target wasm32-unknown-unknown --release` produces `<name>.wasm`.
 - The repository provides `scripts/build_contract.sh` which builds the Wasm artefact and runs the translator.
+- Plain C contracts can use `scripts/build_c_contract.sh`, a thin wrapper around clang that mirrors the same Wasm → NeoVM flow.
 - A future improvement is to expose a `cargo neovm` subcommand that shells out to both the Wasm build and the translator.
 
 ## 3. Translator architecture (`crates/wasm-neovm`)

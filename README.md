@@ -14,7 +14,8 @@ Rust contract (neo-devpack) ──cargo build --target wasm32-unknown-unknown─
 - **`rust-devpack`** – the existing Rust developer tooling (types, macros, runtime stubs) for authoring Neo contracts.
 - **`contracts/`** – assemble-ready Rust smart-contracts (`hello-world`, `nep17-token`, `constant-product`) showcasing different patterns.
 - See [`contracts/README.md`](contracts/README.md) for per-contract entry points and build notes.
-- **`scripts/build_contract.sh`** – helper script that builds a contract to Wasm and invokes the translator in a single step.
+- **`scripts/build_contract.sh`** – helper script that builds a Rust contract to Wasm and invokes the translator in a single step.
+- **`scripts/build_c_contract.sh`** – clang-based helper that compiles plain C contracts to Wasm before translating them.
 - **`integration-tests/`** – optional Neo Express harness (see [`docs/neoexpress-integration.md`](docs/neoexpress-integration.md)) for exercising generated NEF artefacts.
 - **Documentation** – updated notes on the new pipeline in [`docs/wasm-pipeline.md`](docs/wasm-pipeline.md) and the NEF container format in [`docs/nef-format-specification.md`](docs/nef-format-specification.md).
 - **Rust contract quickstart** – step-by-step instructions for authoring and compiling contracts live in [`docs/rust-smart-contract-quickstart.md`](docs/rust-smart-contract-quickstart.md).
@@ -25,11 +26,14 @@ Rust contract (neo-devpack) ──cargo build --target wasm32-unknown-unknown─
    ```bash
    rustup target add wasm32-unknown-unknown
    ```
-2. Build your contract crate (for example `contracts/hello-world`):
+2. Build your contract (for example `contracts/hello-world` or the C sample in `contracts/c-hello`):
    ```bash
    scripts/build_contract.sh contracts/hello-world
+   # or
+   scripts/build_c_contract.sh contracts/c-hello
    ```
-   The script compiles the crate for `wasm32-unknown-unknown` (release mode) and then runs the translator to produce `hello_world.nef` and `hello_world.manifest.json` next to the `.wasm` artefact.
+   The Rust helper compiles the crate for `wasm32-unknown-unknown` (release mode) and then runs the translator to produce `hello_world.nef` and `hello_world.manifest.json` next to the `.wasm` artefact.  
+   The C helper wraps `clang --target wasm32-unknown-unknown` (with `-nostdlib`/`-fno-builtin` to avoid `env::` imports) and writes the Wasm/NEF/manifest trio into `contracts/c-hello/build/`.
    Append additional translator flags after the optional contract name if needed. Safe methods are typically declared inside the contract (via `#[neo_safe]`) so no CLI flags are required for that metadata.
 
 3. Alternatively, run the translator manually:
