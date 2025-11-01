@@ -1,5 +1,6 @@
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+use std::collections::HashSet;
 use std::convert::TryInto;
 use std::fs;
 use tempfile::tempdir;
@@ -1530,6 +1531,38 @@ fn translate_drop_eliminates_literal() {
 }
 
 #[test]
+fn translate_duplicate_exports_preserve_all_aliases() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (func (export "foo") (export "bar"))
+            )"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "MultiExport").expect("translation succeeds");
+    let methods = translation.manifest.value["abi"]["methods"]
+        .as_array()
+        .expect("methods array");
+    let names: HashSet<_> = methods
+        .iter()
+        .map(|entry| entry["name"].as_str().unwrap())
+        .collect();
+    assert!(names.contains("foo"));
+    assert!(names.contains("bar"));
+    assert_eq!(names.len(), 2, "expected both export aliases to remain");
+
+    let offsets: HashSet<_> = methods
+        .iter()
+        .map(|entry| entry["offset"].as_u64().unwrap())
+        .collect();
+    assert_eq!(
+        offsets.len(),
+        1,
+        "all aliases should point at the same function offset"
+    );
+}
+
+#[test]
 fn translate_unreachable_emits_abort() {
     let wasm = wat::parse_str(
         r#"(module
@@ -1542,6 +1575,28 @@ fn translate_unreachable_emits_abort() {
     let translation = translate_module(&wasm, "Trap").expect("translation succeeds");
     let abort = wasm_neovm::opcodes::lookup("ABORT").unwrap().byte;
     assert_eq!(translation.script.first().copied(), Some(abort));
+}
+
+#[test]
+fn translate_import_reexport_generates_stub() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (import "syscall" "System.Runtime.GetTime" (func (result i64)))
+              (export "get_time" (func 0))
+            )"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "ReExport").expect("translation succeeds");
+    assert!(
+        !translation.script.is_empty(),
+        "stub should emit executable script bytes"
+    );
+    let methods = translation.manifest.value["abi"]["methods"]
+        .as_array()
+        .expect("methods array");
+    assert_eq!(methods.len(), 1);
+    assert_eq!(methods[0]["name"].as_str().unwrap(), "get_time");
 }
 
 #[test]

@@ -1,7 +1,7 @@
 // Required imports
 use anyhow::{anyhow, bail, Context, Result};
 use serde_json::Value;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use wasmparser::{
     CompositeInnerType, DataKind, ExternalKind, FuncType, HeapType, Operator, Parser, Payload,
     RefType, TypeRef, ValType,
@@ -55,6 +55,17 @@ struct ControlFrame {
     has_else: bool,
 }
 
+#[derive(Debug, Default)]
+struct ExportedFunction {
+    names: Vec<ExportAlias>,
+}
+
+#[derive(Debug)]
+struct ExportAlias {
+    name: String,
+    processed: bool,
+}
+
 pub fn translate_module(bytes: &[u8], contract_name: &str) -> Result<Translation> {
     translate_module_internal(bytes, contract_name)
 }
@@ -63,7 +74,8 @@ fn translate_module_internal(bytes: &[u8], contract_name: &str) -> Result<Transl
     let parser = Parser::new(0);
     let mut types: Vec<FuncType> = Vec::new();
     let mut func_type_indices: Vec<u32> = Vec::new();
-    let mut exported_funcs: BTreeMap<u32, (String, bool)> = BTreeMap::new();
+    let mut exported_funcs: BTreeMap<u32, ExportedFunction> = BTreeMap::new();
+    let mut import_export_indices: BTreeSet<usize> = BTreeSet::new();
     let mut tables: Vec<TableInfo> = Vec::new();
     let mut imports: Vec<FunctionImport> = Vec::new();
     let mut script: Vec<u8> = Vec::new();
@@ -168,7 +180,16 @@ fn translate_module_internal(bytes: &[u8], contract_name: &str) -> Result<Transl
                 for export in reader {
                     let export = export?;
                     if export.kind == ExternalKind::Func {
-                        exported_funcs.insert(export.index, (export.name.to_string(), false));
+                        let entry = exported_funcs
+                            .entry(export.index)
+                            .or_insert_with(ExportedFunction::default);
+                        entry.names.push(ExportAlias {
+                            name: export.name.to_string(),
+                            processed: false,
+                        });
+                        if (export.index as usize) < imports.len() {
+                            import_export_indices.insert(export.index as usize);
+                        }
                     }
                 }
             }
@@ -210,15 +231,10 @@ fn translate_module_internal(bytes: &[u8], contract_name: &str) -> Result<Transl
                 let func_index = imports.len() + defined_index;
                 let func_index_u32 = func_index as u32;
                 let maybe_export = exported_funcs.get_mut(&func_index_u32);
-                if let Some(entry) = maybe_export.as_ref() {
-                    if entry.1 {
-                        bail!("function index {} exported multiple times", func_index_u32);
-                    }
-                }
 
                 let function_name_owned = maybe_export
                     .as_ref()
-                    .map(|(name, _)| name.clone())
+                    .and_then(|entry| entry.names.first().map(|alias| alias.name.clone()))
                     .unwrap_or_else(|| format!("<internal:{}>", func_index));
                 let function_name = function_name_owned.as_str();
 
@@ -268,7 +284,7 @@ fn translate_module_internal(bytes: &[u8], contract_name: &str) -> Result<Transl
                 .with_context(|| format!("failed to translate function '{}'", function_name))?;
 
                 if let Some(entry) = maybe_export {
-                    let parameters: Vec<ManifestParameter> = func_type
+                    let parameter_defs: Vec<ManifestParameter> = func_type
                         .params()
                         .iter()
                         .enumerate()
@@ -279,15 +295,17 @@ fn translate_module_internal(bytes: &[u8], contract_name: &str) -> Result<Transl
                         })
                         .collect();
 
-                    let method = ManifestMethod {
-                        name: entry.0.clone(),
-                        parameters,
-                        return_type: return_kind,
-                        offset: offset as u32,
-                        safe: false,
-                    };
-                    methods.push(method);
-                    entry.1 = true;
+                    for alias in entry.names.iter_mut() {
+                        let method = ManifestMethod {
+                            name: alias.name.clone(),
+                            parameters: parameter_defs.clone(),
+                            return_type: return_kind.clone(),
+                            offset: offset as u32,
+                            safe: false,
+                        };
+                        methods.push(method);
+                        alias.processed = true;
+                    }
                 }
             }
             Payload::ElementSection(reader) => {
@@ -465,14 +483,88 @@ fn translate_module_internal(bytes: &[u8], contract_name: &str) -> Result<Transl
         }
     }
 
-    if !saw_code_section {
+    if !saw_code_section && import_export_indices.is_empty() {
         bail!("input module does not contain a code section");
     }
 
-    let missing: Vec<String> = exported_funcs
-        .into_iter()
-        .filter_map(|(_, (name, processed))| if processed { None } else { Some(name) })
+    for &import_idx in &import_export_indices {
+        let Some(entry) = exported_funcs.get_mut(&(import_idx as u32)) else {
+            continue;
+        };
+        if !entry.names.iter().any(|alias| !alias.processed) {
+            continue;
+        }
+
+        let import = imports.get(import_idx).ok_or_else(|| {
+            anyhow!(
+                "export references missing import function index {}",
+                import_idx
+            )
+        })?;
+        let type_index = get_import_type_index(import)?;
+        let func_type = types.get(type_index as usize).ok_or_else(|| {
+            anyhow!(
+                "invalid type index {} for import {}::{}",
+                type_index,
+                import.module,
+                import.name
+            )
+        })?;
+
+        if func_type.results().len() > 1 {
+            bail!(
+                "multi-value returns are not supported for exported import {}::{}",
+                import.module,
+                import.name
+            );
+        }
+
+        let parameter_defs: Vec<ManifestParameter> = func_type
+            .params()
+            .iter()
+            .enumerate()
+            .map(|(idx, param)| ManifestParameter {
+                name: format!("arg{}", idx),
+                kind: wasm_val_type_to_manifest(param).unwrap_or_else(|_| "Any".to_string()),
+            })
+            .collect();
+
+        let offset = script.len();
+        let return_kind =
+            emit_import_export_stub(&mut script, &mut runtime, &imports, &types, import_idx)
+                .with_context(|| {
+                    format!(
+                        "failed to synthesise export stub for import {}::{}",
+                        import.module, import.name
+                    )
+                })?;
+
+        for alias in entry.names.iter_mut() {
+            if alias.processed {
+                continue;
+            }
+            methods.push(ManifestMethod {
+                name: alias.name.clone(),
+                parameters: parameter_defs.clone(),
+                return_type: return_kind.clone(),
+                offset: offset as u32,
+                safe: false,
+            });
+            alias.processed = true;
+        }
+    }
+
+    let mut missing: Vec<String> = exported_funcs
+        .values()
+        .flat_map(|entry| {
+            entry
+                .names
+                .iter()
+                .filter(|alias| !alias.processed)
+                .map(|alias| alias.name.clone())
+        })
         .collect();
+    missing.sort_unstable();
 
     if !missing.is_empty() {
         bail!(
@@ -585,6 +677,88 @@ fn translate_module_internal(bytes: &[u8], contract_name: &str) -> Result<Transl
         method_tokens: metadata.method_tokens.clone(),
         source_url: metadata.source.clone(),
     })
+}
+
+fn emit_import_export_stub(
+    script: &mut Vec<u8>,
+    runtime: &mut RuntimeHelpers,
+    imports: &[FunctionImport],
+    types: &[FuncType],
+    import_index: usize,
+) -> Result<String> {
+    let import = imports
+        .get(import_index)
+        .ok_or_else(|| anyhow!("import index {} out of range", import_index))?;
+    let type_index = get_import_type_index(import)?;
+    let func_type = types.get(type_index as usize).ok_or_else(|| {
+        anyhow!(
+            "invalid type index {} for import {}::{}",
+            type_index,
+            import.module,
+            import.name
+        )
+    })?;
+
+    for ty in func_type.params() {
+        match ty {
+            ValType::I32 | ValType::I64 => {}
+            other => bail!(
+                "import '{}::{}' exported with unsupported parameter type {:?}",
+                import.module,
+                import.name,
+                other
+            ),
+        }
+    }
+
+    if func_type.results().len() > 1 {
+        bail!(
+            "import '{}::{}' exported with unsupported multi-value return",
+            import.module,
+            import.name
+        );
+    }
+
+    let mut params_stack: Vec<StackValue> = Vec::with_capacity(func_type.params().len());
+    for (idx, _) in func_type.params().iter().enumerate() {
+        emit_load_arg(script, idx as u32)?;
+        params_stack.push(StackValue {
+            const_value: None,
+            bytecode_start: None,
+        });
+    }
+
+    let mut synthetic_stack: Vec<StackValue> = Vec::new();
+    if try_handle_env_import(
+        import,
+        func_type,
+        &params_stack,
+        runtime,
+        script,
+        &mut synthetic_stack,
+    )? {
+        script.push(RET);
+        let return_kind = func_type
+            .results()
+            .first()
+            .map(|ty| wasm_val_type_to_manifest(ty))
+            .transpose()?
+            .unwrap_or_else(|| "Void".to_string());
+        return Ok(return_kind);
+    }
+
+    handle_import_call(import_index as u32, script, imports, types, &params_stack)?;
+
+    script.push(RET);
+
+    let return_kind = func_type
+        .results()
+        .first()
+        .map(|ty| wasm_val_type_to_manifest(ty))
+        .transpose()?
+        .unwrap_or_else(|| "Void".to_string());
+
+    Ok(return_kind)
 }
 
 fn collect_safe_methods(value: &Value, accumulator: &mut HashSet<String>) {
