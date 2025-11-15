@@ -1,5 +1,4 @@
-use neo_devpack::prelude::*;
-use neo_devpack::utils;
+use neo_devpack::{prelude::*, utils::bytes_to_json};
 
 const TOTAL_SUPPLY_KEY: &[u8] = b"__total_nft_supply";
 const OWNER_PREFIX: &[u8] = b"owner:";
@@ -55,6 +54,26 @@ fn storage_context() -> Option<NeoStorageContext> {
     NeoStorage::get_context().ok()
 }
 
+fn read_i64(bytes: &NeoByteString) -> i64 {
+    let data = bytes.as_slice();
+    if data.is_empty() {
+        return 0;
+    }
+
+    if let Some(value) = bytes_to_json::<i64>(bytes) {
+        return value;
+    }
+
+    let mut buf = [0u8; 8];
+    let len = data.len().min(8);
+    buf[..len].copy_from_slice(&data[..len]);
+    i64::from_le_bytes(buf)
+}
+
+fn write_i64(value: i64) -> NeoByteString {
+    NeoByteString::from_slice(&value.to_le_bytes())
+}
+
 fn owner_key(token_id: i64) -> Vec<u8> {
     let mut key = OWNER_PREFIX.to_vec();
     key.extend_from_slice(&token_id.to_le_bytes());
@@ -73,13 +92,13 @@ fn load_owner(ctx: &NeoStorageContext, token_id: i64) -> NeoResult<Option<i64>> 
     if value.is_empty() {
         return Ok(None);
     }
-    Ok(utils::bytes_to_json::<i64>(&value))
+    Ok(Some(read_i64(&value)))
 }
 
 fn store_owner(ctx: &NeoStorageContext, token_id: i64, owner: Option<i64>) -> NeoResult<()> {
     let key = NeoByteString::from_slice(&owner_key(token_id));
     match owner {
-        Some(id) => NeoStorage::put(ctx, &key, &utils::json_to_bytes(&id)),
+        Some(id) => NeoStorage::put(ctx, &key, &write_i64(id)),
         None => NeoStorage::delete(ctx, &key),
     }
 }
@@ -90,7 +109,7 @@ fn load_balance(ctx: &NeoStorageContext, account: i64) -> NeoResult<i64> {
     if value.is_empty() {
         Ok(0)
     } else {
-        Ok(utils::bytes_to_json::<i64>(&value).unwrap_or(0))
+        Ok(read_i64(&value))
     }
 }
 
@@ -99,7 +118,7 @@ fn store_balance(ctx: &NeoStorageContext, account: i64, balance: i64) -> NeoResu
     if balance == 0 {
         NeoStorage::delete(ctx, &key)
     } else {
-        NeoStorage::put(ctx, &key, &utils::json_to_bytes(&balance))
+        NeoStorage::put(ctx, &key, &write_i64(balance))
     }
 }
 
@@ -109,13 +128,13 @@ fn load_total_supply(ctx: &NeoStorageContext) -> NeoResult<i64> {
     if value.is_empty() {
         Ok(0)
     } else {
-        Ok(utils::bytes_to_json::<i64>(&value).unwrap_or(0))
+        Ok(read_i64(&value))
     }
 }
 
 fn store_total_supply(ctx: &NeoStorageContext, supply: i64) -> NeoResult<()> {
     let key = NeoByteString::from_slice(TOTAL_SUPPLY_KEY);
-    NeoStorage::put(ctx, &key, &utils::json_to_bytes(&supply))
+    NeoStorage::put(ctx, &key, &write_i64(supply))
 }
 
 #[neo_safe]
