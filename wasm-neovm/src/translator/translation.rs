@@ -7,9 +7,7 @@ use wasmparser::{
     RefType, TypeRef, ValType,
 };
 
-use crate::manifest::{
-    build_manifest, merge_manifest, propagate_safe_flags, ManifestMethod, ManifestParameter,
-};
+use crate::manifest::{merge_manifest, ManifestBuilder, ManifestMethod, ManifestParameter};
 use crate::metadata::{
     dedup_method_tokens, extract_nef_metadata, parse_method_token_section, update_manifest_metadata,
 };
@@ -28,7 +26,8 @@ use super::runtime::{
     translate_memory_store, BitHelperKind, CallTarget, FunctionRegistry, RuntimeHelpers,
     StartDescriptor, StartKind, TableHelperKind, TableInfo,
 };
-use super::types::{FunctionImport, StackValue, Translation};
+use super::types::{StackValue, Translation, TranslationConfig};
+use super::{FunctionImport, ModuleFrontend};
 
 // ============================================================================
 // Control Flow Types
@@ -67,17 +66,20 @@ struct ExportAlias {
 }
 
 pub fn translate_module(bytes: &[u8], contract_name: &str) -> Result<Translation> {
-    translate_module_internal(bytes, contract_name)
+    translate_with_config(bytes, TranslationConfig::new(contract_name))
 }
 
-fn translate_module_internal(bytes: &[u8], contract_name: &str) -> Result<Translation> {
+pub fn translate_with_config(bytes: &[u8], config: TranslationConfig) -> Result<Translation> {
+    translate_module_internal(bytes, config)
+}
+
+fn translate_module_internal(bytes: &[u8], config: TranslationConfig) -> Result<Translation> {
+    let contract_name = config.contract_name;
     let parser = Parser::new(0);
-    let mut types: Vec<FuncType> = Vec::new();
-    let mut func_type_indices: Vec<u32> = Vec::new();
+    let mut frontend = ModuleFrontend::new();
     let mut exported_funcs: BTreeMap<u32, ExportedFunction> = BTreeMap::new();
     let mut import_export_indices: BTreeSet<usize> = BTreeSet::new();
     let mut tables: Vec<TableInfo> = Vec::new();
-    let mut imports: Vec<FunctionImport> = Vec::new();
     let mut script: Vec<u8> = Vec::new();
     let mut runtime = RuntimeHelpers::default();
     let mut methods: Vec<ManifestMethod> = Vec::new();
@@ -99,7 +101,7 @@ fn translate_module_internal(bytes: &[u8], contract_name: &str) -> Result<Transl
                     let group = group?;
                     for (_, subtype) in group.into_types_and_offsets() {
                         match subtype.composite_type.inner {
-                            CompositeInnerType::Func(func) => types.push(func),
+                            CompositeInnerType::Func(func) => frontend.register_signature(func),
                             _ => {}
                         }
                     }
@@ -110,11 +112,7 @@ fn translate_module_internal(bytes: &[u8], contract_name: &str) -> Result<Transl
                     let import = import?;
                     match import.ty {
                         TypeRef::Func(type_index) => {
-                            imports.push(FunctionImport {
-                                module: import.module.to_string(),
-                                name: import.name.to_string(),
-                                type_index,
-                            });
+                            frontend.register_import(import.module, import.name, type_index);
                         }
                         TypeRef::Global(_) => {
                             bail!(
@@ -131,7 +129,7 @@ fn translate_module_internal(bytes: &[u8], contract_name: &str) -> Result<Transl
             }
             Payload::FunctionSection(reader) => {
                 for idx in reader {
-                    func_type_indices.push(idx?);
+                    frontend.register_defined_function(idx?);
                 }
             }
             Payload::TableSection(reader) => {
@@ -187,7 +185,7 @@ fn translate_module_internal(bytes: &[u8], contract_name: &str) -> Result<Transl
                             name: export.name.to_string(),
                             processed: false,
                         });
-                        if (export.index as usize) < imports.len() {
+                        if (export.index as usize) < frontend.import_len() {
                             import_export_indices.insert(export.index as usize);
                         }
                     }
@@ -218,7 +216,8 @@ fn translate_module_internal(bytes: &[u8], contract_name: &str) -> Result<Transl
             Payload::CodeSectionStart { .. } => {
                 saw_code_section = true;
                 next_defined_index = 0;
-                let total_functions = imports.len() + func_type_indices.len();
+                let total_functions =
+                    frontend.import_len() + frontend.module_types().defined_functions_len();
                 function_registry = Some(FunctionRegistry::new(total_functions));
             }
             Payload::CodeSectionEntry(body) => {
@@ -228,7 +227,7 @@ fn translate_module_internal(bytes: &[u8], contract_name: &str) -> Result<Transl
                 let defined_index = next_defined_index;
                 next_defined_index += 1;
 
-                let func_index = imports.len() + defined_index;
+                let func_index = frontend.import_len() + defined_index;
                 let func_index_u32 = func_index as u32;
                 let maybe_export = exported_funcs.get_mut(&func_index_u32);
 
@@ -238,19 +237,21 @@ fn translate_module_internal(bytes: &[u8], contract_name: &str) -> Result<Transl
                     .unwrap_or_else(|| format!("<internal:{}>", func_index));
                 let function_name = function_name_owned.as_str();
 
-                let type_index =
-                    func_type_indices
-                        .get(defined_index)
-                        .copied()
-                        .ok_or_else(|| {
-                            anyhow!(
-                                "no type index recorded for function '{}' (defined index {})",
-                                function_name,
-                                defined_index
-                            )
-                        })?;
+                let type_index = frontend
+                    .module_types()
+                    .defined_type_index(defined_index)
+                    .ok_or_else(|| {
+                        anyhow!(
+                            "no type index recorded for function '{}' (defined index {})",
+                            function_name,
+                            defined_index
+                        )
+                    })?;
 
-                let func_type = types.get(type_index as usize).ok_or_else(|| {
+                let func_type = frontend
+                    .module_types()
+                    .signature(type_index as usize)
+                    .ok_or_else(|| {
                     anyhow!(
                         "type index {} referenced by function '{}' out of bounds",
                         type_index,
@@ -271,9 +272,9 @@ fn translate_module_internal(bytes: &[u8], contract_name: &str) -> Result<Transl
                     func_type,
                     &body,
                     &mut script,
-                    &imports,
-                    &types,
-                    &func_type_indices,
+                    frontend.imports(),
+                    frontend.module_types().signatures(),
+                    frontend.module_types().defined_type_indices(),
                     &mut runtime,
                     &tables,
                     functions,
@@ -495,15 +496,21 @@ fn translate_module_internal(bytes: &[u8], contract_name: &str) -> Result<Transl
             continue;
         }
 
-        let import = imports.get(import_idx).ok_or_else(|| {
+        let import = frontend
+            .imports()
+            .get(import_idx)
+            .ok_or_else(|| {
             anyhow!(
                 "export references missing import function index {}",
                 import_idx
             )
         })?;
         let type_index = get_import_type_index(import)?;
-        let func_type = types.get(type_index as usize).ok_or_else(|| {
-            anyhow!(
+        let func_type = frontend
+            .module_types()
+            .signature(type_index as usize)
+            .ok_or_else(|| {
+                anyhow!(
                 "invalid type index {} for import {}::{}",
                 type_index,
                 import.module,
@@ -530,14 +537,19 @@ fn translate_module_internal(bytes: &[u8], contract_name: &str) -> Result<Transl
             .collect();
 
         let offset = script.len();
-        let return_kind =
-            emit_import_export_stub(&mut script, &mut runtime, &imports, &types, import_idx)
-                .with_context(|| {
-                    format!(
-                        "failed to synthesise export stub for import {}::{}",
-                        import.module, import.name
-                    )
-                })?;
+        let return_kind = emit_import_export_stub(
+            &mut script,
+            &mut runtime,
+            frontend.imports(),
+            frontend.module_types().signatures(),
+            import_idx,
+        )
+        .with_context(|| {
+            format!(
+                "failed to synthesise export stub for import {}::{}",
+                import.module, import.name
+            )
+        })?;
 
         for alias in entry.names.iter_mut() {
             if alias.processed {
@@ -594,19 +606,23 @@ fn translate_module_internal(bytes: &[u8], contract_name: &str) -> Result<Transl
     }
 
     let start_descriptor = if let Some(start_idx) = start_function {
-        if (start_idx as usize) < imports.len() {
-            let import = imports
+        if (start_idx as usize) < frontend.import_len() {
+            let import = frontend
+                .imports()
                 .get(start_idx as usize)
                 .ok_or_else(|| anyhow!("start section references missing import {}", start_idx))?;
             let type_index = get_import_type_index(import)?;
-            let func_type = types.get(type_index as usize).ok_or_else(|| {
-                anyhow!(
-                    "invalid type index {} for start import {}::{}",
-                    type_index,
-                    import.module,
-                    import.name
-                )
-            })?;
+            let func_type = frontend
+                .module_types()
+                .signature(type_index as usize)
+                .ok_or_else(|| {
+                    anyhow!(
+                        "invalid type index {} for start import {}::{}",
+                        type_index,
+                        import.module,
+                        import.name
+                    )
+                })?;
             if !func_type.params().is_empty() {
                 bail!("start function must not take parameters");
             }
@@ -619,14 +635,15 @@ fn translate_module_internal(bytes: &[u8], contract_name: &str) -> Result<Transl
             })
         } else {
             let defined_index = (start_idx as usize)
-                .checked_sub(imports.len())
+                .checked_sub(frontend.import_len())
                 .ok_or_else(|| anyhow!("start function index underflow"))?;
-            let type_index = func_type_indices
-                .get(defined_index)
-                .copied()
+            let type_index = frontend
+                .module_types()
+                .defined_type_index(defined_index)
                 .ok_or_else(|| anyhow!("no type index recorded for start function"))?;
-            let func_type = types
-                .get(type_index as usize)
+            let func_type = frontend
+                .module_types()
+                .signature(type_index as usize)
                 .ok_or_else(|| anyhow!("invalid type index {} for start function", type_index))?;
             if !func_type.params().is_empty() {
                 bail!("start function must not take parameters");
@@ -648,15 +665,27 @@ fn translate_module_internal(bytes: &[u8], contract_name: &str) -> Result<Transl
         None
     };
 
-    runtime.finalize(&mut script, start_descriptor.as_ref(), &imports, &types)?;
+    runtime.finalize(
+        &mut script,
+        start_descriptor.as_ref(),
+        frontend.imports(),
+        frontend.module_types().signatures(),
+    )?;
 
-    let mut manifest = build_manifest(contract_name, &methods);
+    let mut manifest_builder = ManifestBuilder::new(contract_name, &methods);
     if let Some(overlay) = manifest_overlay {
-        merge_manifest(&mut manifest.value, &overlay);
+        manifest_builder.merge_overlay(
+            &overlay,
+            Some("embedded neo.manifest sections".to_string()),
+        );
     }
-    propagate_safe_flags(&mut manifest.value);
+    if let Some(extra) = config.extra_manifest_overlay {
+        manifest_builder.merge_overlay(&extra.value, extra.label);
+    }
+    manifest_builder.propagate_safe_flags();
+    manifest_builder.ensure_method_parity()?;
 
-    let mut metadata = extract_nef_metadata(&manifest.value)?;
+    let mut metadata = extract_nef_metadata(manifest_builder.manifest_value())?;
     metadata.method_tokens.extend(section_method_tokens);
     let inferred_tokens = infer_contract_tokens(&script);
     metadata.method_tokens.extend(inferred_tokens);
@@ -666,14 +695,14 @@ fn translate_module_internal(bytes: &[u8], contract_name: &str) -> Result<Transl
     }
 
     update_manifest_metadata(
-        &mut manifest.value,
+        manifest_builder.manifest_value_mut(),
         metadata.source.as_deref(),
         &metadata.method_tokens,
     )?;
 
     Ok(Translation {
         script,
-        manifest,
+        manifest: manifest_builder.into_rendered(),
         method_tokens: metadata.method_tokens.clone(),
         source_url: metadata.source.clone(),
     })

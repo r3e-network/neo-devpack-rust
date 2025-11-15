@@ -55,11 +55,27 @@ cannot be inferred automatically:
         "parameters": [],
         "returntype": "Integer",
         "safe": true
+      },
+      {
+        "name": "clamp_add",
+        "parameters": [
+          { "name": "value", "type": "Integer" },
+          { "name": "delta", "type": "Integer" },
+          { "name": "max", "type": "Integer" }
+        ],
+        "returntype": "Integer",
+        "safe": true
       }
     ]
-  }
+  },
+  "supportedstandards": ["NEP-17"]
 }
 ```
+
+Overlay entries must correspond to real exports—if the JSON introduces a method
+that is not present in the Wasm module (or omits one that is), the translator
+fails so your manifest always mirrors the NEF script. For more overlay tips,
+see [`docs/manifest-overlay-guide.md`](../manifest-overlay-guide.md).
 
 ## 3. Compile C → Wasm
 

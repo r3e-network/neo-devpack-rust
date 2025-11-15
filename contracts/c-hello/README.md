@@ -29,4 +29,6 @@ Outputs are written to `contracts/c-hello/build/`:
 
 Exported methods and their parameter metadata live in
 `manifest.overlay.json`. Update this file whenever the C exports change to keep
-the manifest in sync.
+the manifest in sync—overlays are now validated against the actual Wasm exports,
+so introducing or removing method names in the overlay triggers an error instead
+of silently drifting out of sync.

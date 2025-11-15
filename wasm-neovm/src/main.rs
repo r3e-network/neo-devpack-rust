@@ -3,11 +3,11 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use clap::Parser;
+use serde_json::{Map, Value};
 
 use wasm_neovm::{
-    extract_nef_metadata,
-    manifest::{merge_manifest, propagate_safe_flags},
-    translate_module, write_nef_with_metadata,
+    extract_nef_metadata, translate_with_config, write_nef_with_metadata, ManifestOverlay,
+    TranslationConfig,
 };
 
 #[derive(Parser, Debug)]
@@ -59,31 +59,32 @@ fn main() -> Result<()> {
     let module = fs::read(&cli.input)
         .with_context(|| format!("failed to read input module {}", cli.input.display()))?;
 
-    let translation = translate_module(&module, &cli.name)?;
-
-    let mut manifest_value = translation.manifest.value.clone();
+    let mut config = TranslationConfig::new(&cli.name);
     if let Some(path) = &cli.manifest_overlay {
         let overlay_bytes = fs::read_to_string(path)
             .with_context(|| format!("failed to read manifest overlay {}", path.display()))?;
-        let overlay: serde_json::Value =
-            serde_json::from_str(&overlay_bytes).with_context(|| {
-                format!(
-                    "failed to parse manifest overlay JSON from {}",
-                    path.display()
-                )
-            })?;
-        merge_manifest(&mut manifest_value, &overlay);
+        let overlay: Value = serde_json::from_str(&overlay_bytes).with_context(|| {
+            format!(
+                "failed to parse manifest overlay JSON from {}",
+                path.display()
+            )
+        })?;
+        config = config.with_manifest_overlay(ManifestOverlay {
+            value: overlay,
+            label: Some(path.display().to_string()),
+        });
     }
-    propagate_safe_flags(&mut manifest_value);
+    let translation = translate_with_config(&module, config)?;
+
+    let mut manifest_value = translation.manifest.value.clone();
+    if let Some(cli_source) = &cli.source_url {
+        apply_source_url(&mut manifest_value, cli_source);
+    }
 
     let manifest_string =
         serde_json::to_string_pretty(&manifest_value).context("failed to render manifest JSON")?;
 
     let metadata = extract_nef_metadata(&manifest_value)?;
-    let mut source_url = metadata.source.clone();
-    if let Some(cli_source) = &cli.source_url {
-        source_url = Some(cli_source.clone());
-    }
 
     let nef_path = cli
         .nef
@@ -91,7 +92,7 @@ fn main() -> Result<()> {
         .unwrap_or_else(|| derive_output_path(&cli.input, "nef"));
     write_nef_with_metadata(
         &translation.script,
-        source_url.as_deref(),
+        metadata.source.as_deref(),
         &metadata.method_tokens,
         &nef_path,
     )?;
@@ -141,5 +142,17 @@ mod tests {
         let input = Path::new(".");
         let derived = derive_output_path(input, "nef");
         assert_eq!(derived, Path::new("./contract.nef"));
+    }
+}
+
+fn apply_source_url(manifest: &mut Value, source: &str) {
+    if let Some(obj) = manifest.as_object_mut() {
+        obj.insert("source".to_string(), Value::String(source.to_string()));
+        let extra = obj
+            .entry("extra")
+            .or_insert_with(|| Value::Object(Map::new()));
+        if let Some(extra_obj) = extra.as_object_mut() {
+            extra_obj.insert("nefSource".to_string(), Value::String(source.to_string()));
+        }
     }
 }

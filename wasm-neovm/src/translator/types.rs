@@ -1,5 +1,6 @@
 use crate::manifest::{ManifestMethod, RenderedManifest};
 use crate::nef::MethodToken;
+use serde_json::Value;
 
 #[derive(Debug, Clone)]
 pub(crate) struct StackValue {
@@ -20,9 +21,28 @@ pub struct ManifestData {
     pub methods: Vec<ManifestMethod>,
 }
 
-#[derive(Debug, Clone)]
-pub struct FunctionImport {
-    pub module: String,
-    pub name: String,
-    pub type_index: u32,
+#[derive(Debug)]
+pub struct TranslationConfig<'a> {
+    pub contract_name: &'a str,
+    pub extra_manifest_overlay: Option<ManifestOverlay>,
+}
+
+impl<'a> TranslationConfig<'a> {
+    pub fn new(contract_name: &'a str) -> Self {
+        Self {
+            contract_name,
+            extra_manifest_overlay: None,
+        }
+    }
+
+    pub fn with_manifest_overlay(mut self, overlay: ManifestOverlay) -> Self {
+        self.extra_manifest_overlay = Some(overlay);
+        self
+    }
+}
+
+#[derive(Debug)]
+pub struct ManifestOverlay {
+    pub value: Value,
+    pub label: Option<String>,
 }

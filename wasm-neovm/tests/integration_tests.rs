@@ -1,4 +1,8 @@
-use wasm_neovm::{opcodes, translate_module, write_nef_with_metadata, MethodToken};
+use serde_json::json;
+use wasm_neovm::{
+    opcodes, translate_module, translate_with_config, write_nef_with_metadata, ManifestOverlay,
+    TranslationConfig, MethodToken,
+};
 
 #[test]
 fn translate_complete_nep17_token_pattern() {
@@ -532,5 +536,42 @@ fn translate_complex_state_machine() {
     assert!(
         translation.script.contains(&jmpifnot),
         "should have conditional branches"
+    );
+
+    let overlay = ManifestOverlay {
+        value: json!({
+            "abi": {
+                "methods": [
+                    {"name": "transition", "safe": true}
+                ]
+            },
+            "supportedstandards": ["NEP-11"]
+        }),
+        label: Some("state machine overlay".into()),
+    };
+    let config = TranslationConfig::new("StateMachineOverlay").with_manifest_overlay(overlay);
+    let translation_with_overlay =
+        translate_with_config(&wasm, config).expect("translation with overlay succeeds");
+    let manifest = &translation_with_overlay.manifest.value;
+    assert!(
+        manifest["supportedstandards"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|v| v.as_str() == Some("NEP-11")),
+        "overlay should add supported standard"
+    );
+    let transition_method = manifest["abi"]["methods"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|method| method.get("name").and_then(|v| v.as_str()) == Some("transition"))
+        .expect("transition method exists");
+    assert!(
+        transition_method
+            .get("safe")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false),
+        "overlay should mark transition safe"
     );
 }

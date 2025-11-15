@@ -49,7 +49,7 @@ Rust contract (neo-devpack) ──cargo build --target wasm32-unknown-unknown─
      --manifest-overlay contracts/hello-world/manifest.overlay.json
    ```
 
-   Supply `--manifest-overlay <file>` to merge additional JSON metadata when needed (for example, create `contracts/hello-world/manifest.overlay.json`). Use the `#[neo_safe]` attribute (or manifest overlays) inside your contract to declare safe methods.
+  Supply `--manifest-overlay <file>` to merge additional JSON metadata when needed (for example, create `contracts/hello-world/manifest.overlay.json`). Overlay entries must reference exports that actually exist in the Wasm module—the translator now errors if an overlay adds or removes ABI methods. Use the `#[neo_safe]` attribute (or manifest overlays) inside your contract to declare safe methods.
 
 4. To compile *all* bundled examples (Wasm build + NEF/manifest generation) run the Makefile target:
    ```bash
@@ -139,7 +139,7 @@ The accompanying Rust contract can declare the imports with `#[link(wasm_import_
 - Globals – `global.get`/`global.set` for `i32`/`i64` globals, initialised from constant expressions and stored in module-scoped static slots.
 - Indirect calls – `call_indirect` over funcref tables populated via `elem` segments, lowering to bounds-checked dispatch that traps on uninitialised entries.
 - Reference types – `ref.null`, `ref.func`, `ref.is_null`, `ref.eq`, and `ref.as_non_null`, with funcref values represented as sentinel-aware integers.
-- Table operations – full support for `table.get/set/size/grow/fill/copy` across multiple tables, passive segment initialisation via `table.init`, inline table initialisers, and `elem.drop`, all routed through shared runtime helpers with bounds checks.
+- Table operations – full support for `table.get/set/size/grow/fill/copy` across any declared `funcref` tables (used internally for `call_indirect`), passive element initialisation via `table.init`, inline table initialisers, and `elem.drop`, all routed through shared runtime helpers with bounds checks. ABI signatures still need to stay in the supported `i32`/`i64` space, so reference types cannot cross the module boundary.
 - Structured control flow – `block`, `loop`, `if`/`else`, `br`, `br_if`, and `br_table`, using patched `JMP*_L` sequences while maintaining Wasm stack height guarantees (single-value or void blocks today).
 - Conditional selection – `select` (and typed select with a single `i32`/`i64` result) lowered via `JMPIFNOT_L`, `DROP`, and `NIP` patterns.
 - Integer conversions – `i32.wrap_i64`, `i64.extend_i32_{s,u}`, and sign-extension helpers (`i32.extend{8,16}_s`, `i64.extend{8,16,32}_s`).

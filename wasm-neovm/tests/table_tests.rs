@@ -41,7 +41,7 @@ fn translate_table_indirect_calls() {
 }
 
 #[test]
-fn translate_table_multiple_tables() {
+fn translate_table_multiple_tables_supported() {
     let wasm = wat::parse_str(
         r#"(module
               (table $t1 5 10 funcref)
@@ -52,21 +52,54 @@ fn translate_table_multiple_tables() {
               (func $f3 (result i32) i32.const 3)
 
               (elem $t1 (i32.const 0) $f1 $f2)
-              (elem $t2 (i32.const 0) $f3)
+              (elem $t2 (i32.const 0) $f2 $f3)
 
-              (func (export "get_table1") (param i32) (result funcref)
-                local.get 0
-                table.get $t1)
-
-              (func (export "get_table2") (param i32) (result funcref)
-                local.get 0
-                table.get $t2)
+              (func (export "sum_sizes") (result i32)
+                table.size $t1
+                table.size $t2
+                i32.add)
             )"#,
     )
     .expect("valid wat");
 
-    let err = translate_module(&wasm, "MultipleTables")
-        .expect_err("translator should reject multiple tables");
+    let translation =
+        translate_module(&wasm, "MultipleTables").expect("translator should accept tables");
+
+    let methods = translation
+        .manifest
+        .value
+        .get("abi")
+        .and_then(|abi| abi.get("methods"))
+        .and_then(|m| m.as_array())
+        .expect("manifest abi methods array");
+    assert_eq!(
+        methods.len(),
+        1,
+        "expected single exported method in manifest"
+    );
+
+    let call_l = opcodes::lookup("CALL_L").unwrap().byte;
+    assert!(
+        translation.script.iter().any(|&byte| byte == call_l),
+        "expected helper calls for table operations in script"
+    );
+}
+
+#[test]
+fn translate_table_funcref_exports_rejected() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (table 5 funcref)
+
+              (func (export "get_table") (param i32) (result funcref)
+                local.get 0
+                table.get 0)
+            )"#,
+    )
+    .expect("valid wat");
+
+    let err = translate_module(&wasm, "FuncrefExport")
+        .expect_err("translator should reject funcref ABI returns");
     let has_ref_error = err
         .chain()
         .any(|cause| cause.to_string().contains("reference type"));

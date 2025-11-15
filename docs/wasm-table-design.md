@@ -16,7 +16,7 @@ complete support for reference-type instructions over funcref tables.
   slot initialisation routine so globals, memory, and tables are wired up in a
   single helper.
 - Surface descriptive failures when Wasm modules attempt to use unsupported
-  reference features (e.g., externref, multiple tables).
+  reference features (e.g., externref).
 
 ## Representation
 

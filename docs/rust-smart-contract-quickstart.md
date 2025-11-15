@@ -35,6 +35,7 @@ pub extern "C" fn hello() -> i64 {
 ```
 
 The `#[neo_safe]` attribute marks the exported function safe in the manifest so it can be invoked by other contracts without additional CLI arguments.
+Any overlay fragments (from `neo_manifest_overlay!` or external files) must reference real exports—if a fragment introduces a method name the Wasm module does not actually export, the translator now fails so the manifest always matches the NEF script. Refer to [`docs/manifest-overlay-guide.md`](manifest-overlay-guide.md) for a full template and CLI tooling notes.
 
 ## 3. Build the Wasm Artifact
 

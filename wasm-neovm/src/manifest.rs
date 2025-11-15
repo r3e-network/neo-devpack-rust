@@ -1,5 +1,6 @@
+use anyhow::{bail, Result};
 use serde::Serialize;
-use serde_json::json;
+use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, Serialize)]
@@ -247,8 +248,9 @@ fn dedup_method_offsets(value: &mut serde_json::Value) {
 
 #[cfg(test)]
 mod tests {
-    use super::merge_manifest;
+    use super::{collect_method_names, ensure_manifest_methods_match, merge_manifest};
     use serde_json::json;
+    use std::collections::HashSet;
 
     #[test]
     fn merge_manifest_deeply_combines_objects() {
@@ -348,5 +350,143 @@ mod tests {
 
         let standards = base["supportedstandards"].as_array().unwrap();
         assert_eq!(standards.len(), 2);
+    }
+
+    #[test]
+    fn collect_method_names_extracts_unique_set() {
+        let manifest = json!({
+            "abi": {
+                "methods": [
+                    {"name": "foo"},
+                    {"name": "foo"},
+                    {"name": "bar"}
+                ]
+            }
+        });
+        let names = collect_method_names(&manifest);
+        assert_eq!(names.len(), 2);
+        assert!(names.contains("foo"));
+        assert!(names.contains("bar"));
+    }
+
+    #[test]
+    fn ensure_manifest_methods_catches_added_entries() {
+        let manifest = json!({
+            "abi": { "methods": [
+                {"name": "hello"},
+                {"name": "ghost"}
+            ]}
+        });
+        let baseline = HashSet::from(["hello".to_string()]);
+        assert!(ensure_manifest_methods_match(&manifest, &baseline, Some("overlay.json")).is_err());
+    }
+
+    #[test]
+    fn ensure_manifest_methods_catches_removed_entries() {
+        let manifest = json!({
+            "abi": { "methods": [
+                {"name": "hello"}
+            ]}
+        });
+        let baseline = HashSet::from(["hello".to_string(), "extra".to_string()]);
+        assert!(ensure_manifest_methods_match(&manifest, &baseline, None).is_err());
+    }
+}
+
+pub fn collect_method_names(manifest: &Value) -> HashSet<String> {
+    manifest
+        .get("abi")
+        .and_then(|abi| abi.get("methods"))
+        .and_then(Value::as_array)
+        .map(|methods| {
+            methods
+                .iter()
+                .filter_map(|method| method.get("name").and_then(Value::as_str))
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+pub fn ensure_manifest_methods_match(
+    manifest: &Value,
+    baseline: &HashSet<String>,
+    overlay_label: Option<&str>,
+) -> Result<()> {
+    let final_names = collect_method_names(manifest);
+    let mut introduced: Vec<String> = final_names.difference(baseline).cloned().collect();
+    let mut missing: Vec<String> = baseline.difference(&final_names).cloned().collect();
+    introduced.sort_unstable();
+    missing.sort_unstable();
+
+    if !introduced.is_empty() || !missing.is_empty() {
+        let hint = overlay_label
+            .map(|label| format!(" ({label})"))
+            .unwrap_or_default();
+        if !introduced.is_empty() {
+            bail!(
+                "manifest overlay{} introduced ABI methods that do not match the translated exports: {}",
+                hint,
+                introduced.join(", ")
+            );
+        }
+        bail!(
+            "manifest overlay{} removed exported ABI methods: {}",
+            hint,
+            missing.join(", ")
+        );
+    }
+
+    Ok(())
+}
+
+#[derive(Debug)]
+pub struct ManifestBuilder {
+    manifest: Value,
+    baseline_methods: HashSet<String>,
+    overlay_label: Option<String>,
+}
+
+impl ManifestBuilder {
+    pub fn new(name: &str, methods: &[ManifestMethod]) -> Self {
+        let manifest = build_manifest(name, methods).value;
+        ManifestBuilder {
+            baseline_methods: collect_method_names(&manifest),
+            manifest,
+            overlay_label: None,
+        }
+    }
+
+    pub fn merge_overlay(&mut self, overlay: &Value, label: Option<String>) {
+        merge_manifest(&mut self.manifest, overlay);
+        if let Some(label) = label {
+            self.overlay_label = Some(label);
+        }
+    }
+
+    pub fn propagate_safe_flags(&mut self) {
+        propagate_safe_flags(&mut self.manifest);
+    }
+
+    pub fn ensure_method_parity(&self) -> Result<()> {
+        ensure_manifest_methods_match(
+            &self.manifest,
+            &self.baseline_methods,
+            self.overlay_label.as_deref(),
+        )
+    }
+
+    pub fn manifest_value(&self) -> &Value {
+        &self.manifest
+    }
+
+    pub fn manifest_value_mut(&mut self) -> &mut Value {
+        &mut self.manifest
+    }
+
+    pub fn into_rendered(self) -> RenderedManifest {
+        RenderedManifest {
+            value: self.manifest,
+        }
     }
 }
