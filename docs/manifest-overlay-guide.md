@@ -59,9 +59,12 @@ Any valid manifest field can be specified. Common structure:
   these flags so duplicates are harmless.
 - **Method tokens** – if your overlay includes `extra.nefMethodTokens`, ensure
   the contract hash/method entries match the actual syscalls you emit.
-- **Events** – declare event schema here if not using `#[neo_event]`.
+- **Events** – `#[neo_event]` automatically emits `abi.events` entries (with canonical parameter types) so manual JSON is rarely needed. Only declare events explicitly if you are not using the macro or need to override metadata.
 - **Permissions/trusts** – overlays deduplicate `permissions`, `supportedstandards`,
-  and `trusts`, so additional entries are merged automatically.
+  and `trusts`, so additional entries are merged automatically. You generally no longer
+  need to toggle the `storage` or `payable` flags manually—using `System.Storage.*`
+  syscalls flips `features.storage`, and exporting `onPayment`/`onNEP17Payment`/
+  `onNEP11Payment` enables `features.payable`.
 
 ## CLI Usage
 

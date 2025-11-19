@@ -11,7 +11,7 @@ const BASE_STATIC_SLOTS: usize = INIT_FLAG_SLOT + 1;
 
 use super::constants::*;
 use super::helpers::*;
-use super::translation::{emit_binary_op, handle_import_call};
+use super::translation::{emit_binary_op, handle_import_call, FeatureTracker};
 use super::types::StackValue;
 use super::FunctionImport;
 
@@ -866,11 +866,7 @@ impl RuntimeHelpers {
         Ok(helper_offset)
     }
 
-    fn realize_bit_helper(
-        &mut self,
-        script: &mut Vec<u8>,
-        kind: BitHelperKind,
-    ) -> Result<usize> {
+    fn realize_bit_helper(&mut self, script: &mut Vec<u8>, kind: BitHelperKind) -> Result<usize> {
         let record = self
             .bit_helpers
             .entry(kind)
@@ -941,8 +937,13 @@ impl RuntimeHelpers {
         if let Some(record) = self.table_helpers.get_mut(&kind) {
             record.offset = Some(helper_offset);
         } else {
-            self.table_helpers
-                .insert(kind, HelperRecord { offset: Some(helper_offset), calls: Vec::new() });
+            self.table_helpers.insert(
+                kind,
+                HelperRecord {
+                    offset: Some(helper_offset),
+                    calls: Vec::new(),
+                },
+            );
         }
         Ok(helper_offset)
     }
@@ -1230,12 +1231,14 @@ fn emit_runtime_init_helper(
                 patch_call(script, call_pos, *offset)?;
             }
             StartKind::Import => {
+                let mut unused_features = FeatureTracker::default();
                 handle_import_call(
                     start_helper.descriptor.function_index,
                     script,
                     imports,
                     types,
                     &[],
+                    &mut unused_features,
                 )?;
             }
         }

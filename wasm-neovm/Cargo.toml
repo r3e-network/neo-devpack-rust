@@ -1,6 +1,6 @@
 [package]
 name = "wasm-neovm"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "WebAssembly to NeoVM translator"
 license = "MIT"
@@ -17,6 +17,7 @@ wasmparser = "0.239"
 bytes = "1.6"
 hex = "0.4"
 sha2 = "0.10"
+diff = "0.1"
 
 [dev-dependencies]
 assert_cmd = "2.0"

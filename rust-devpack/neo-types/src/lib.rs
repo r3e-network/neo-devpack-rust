@@ -43,15 +43,11 @@ impl NeoInteger {
     }
 
     pub fn as_i32(&self) -> i32 {
-        self.0
-            .to_i32()
-            .expect("NeoInteger value exceeds i32 range")
+        self.0.to_i32().expect("NeoInteger value exceeds i32 range")
     }
 
     pub fn as_u32(&self) -> u32 {
-        self.0
-            .to_u32()
-            .expect("NeoInteger value exceeds u32 range")
+        self.0.to_u32().expect("NeoInteger value exceeds u32 range")
     }
 
     pub fn to_i32(&self) -> Option<i32> {
@@ -467,7 +463,6 @@ impl NeoString {
     pub fn is_empty(&self) -> bool {
         self.data.is_empty()
     }
-
 }
 
 /// Neo N3 Array type
@@ -669,7 +664,9 @@ impl NeoStruct {
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&str, &NeoValue)> {
-        self.fields.iter().map(|(name, value)| (name.as_str(), value))
+        self.fields
+            .iter()
+            .map(|(name, value)| (name.as_str(), value))
     }
 }
 

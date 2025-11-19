@@ -1,0 +1,248 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{enumitem}
+\usepackage{graphicx}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{hyperref}
+
+\title{Wasm to NeoVM Translation Specification}
+\author{neo-llvm Project}
+\date{\today}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+\section{Scope}
+This specification defines the normative behaviour of the \texttt{wasm-neovm} translator that lowers WebAssembly (Wasm) modules into NeoVM scripts and emits the accompanying NEF and manifest artefacts. It covers:
+\begin{itemize}[nosep]
+    \item Accepted Wasm module structure, imports/exports, and custom sections.
+    \item Translation of supported instructions to NeoVM opcodes.
+    \item Runtime helper synthesis for memory, tables, and data/element segments.
+    \item Manifest generation, overlay application, safe-flag propagation, and validation.
+\item NEF emission with metadata (source URL, method tokens).
+\end{itemize}
+
+\section{Definitions}
+\begin{description}[style=unboxed,leftmargin=0cm]
+    \item[Wasm module] A binary payload conforming to the WebAssembly core spec.
+    \item[NeoVM script] A byte sequence of NeoVM opcodes produced by the translator.
+    \item[Manifest overlay] A JSON fragment (embedded or external) merged into the generated manifest.
+    \item[Translation configuration] The tuple of contract name and optional overlays supplied to the translator.
+\end{description}
+
+\section{Pipeline Overview}
+\subsection{Stages}
+\begin{enumerate}[label=\arabic*., nosep]
+    \item \textbf{Wasm Parsing (Frontend)}: Parse sections, record type signatures, imports, exports, memories, tables, globals, data/element segments, and embedded custom sections (\texttt{neo.manifest}, \texttt{neo.methodtokens}, \texttt{neo.source}).
+    \item \textbf{Translation}: Lower functions to NeoVM opcodes, synthesise runtime helpers, accumulate method offsets and metadata.
+    \item \textbf{Manifest Assembly}: Build a baseline manifest from translated exports, merge overlays, propagate safe flags, and ensure ABI parity.
+    \item \textbf{NEF Emission}: Serialize script + metadata into NEF, including compiler ID, optional source URL, and method tokens.
+\end{enumerate}
+
+\subsection{Data Flow}
+\begin{center}
+\begin{tabular}{>{\raggedright}p{3.5cm} >{\raggedright}p{5cm} >{\raggedright\arraybackslash}p{4cm}}
+\toprule
+Stage & Inputs & Outputs \\
+\midrule
+Frontend & Wasm bytes, \texttt{ModuleTypes} accumulator & IR: types, imports, exports, tables, globals, segments, custom sections \\
+Translation & IR, \texttt{RuntimeHelpers} & Script bytes, translated methods (name, params, return, offset), method tokens, inferred source \\
+Manifest & Methods, overlays & JSON manifest (validated), safe flags applied \\
+NEF Writer & Script, manifest metadata & \texttt{*.nef}, \texttt{*.manifest.json} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Configuration Interfaces}
+\subsection{Library Entry Point}
+\begin{itemize}[nosep]
+    \item \texttt{translate\_with\_config(bytes, TranslationConfig)} is the normative API. It requires:
+          \begin{itemize}[nosep]
+              \item \texttt{contract\_name}: manifest \texttt{name} field.
+              \item Optional \texttt{ManifestOverlay} (value + label) merged during manifest assembly.
+          \end{itemize}
+    \item \texttt{translate\_module(bytes, name)} is a convenience wrapper equivalent to calling \texttt{translate\_with\_config} with no overlays.
+\end{itemize}
+
+\subsection{CLI}
+\begin{itemize}[nosep]
+    \item \texttt{--input}: Wasm module path (required).
+    \item \texttt{--nef}, \texttt{--manifest}: Output paths (default: derived from input basename).
+    \item \texttt{--name}: Contract name (defaults to \texttt{Contract}).
+    \item \texttt{--manifest-overlay}: Path to an external overlay merged with embedded overlays.
+    \item \texttt{--source-url}: Overrides the source URL used in NEF metadata.
+\end{itemize}
+
+\section{Wasm Module Acceptance Rules}
+\subsection{Types and Functions}
+\begin{itemize}[nosep]
+    \item Function types: parameters/results limited to \texttt{i32} and \texttt{i64}. Multi-value returns are rejected.
+    \item Imports: only function imports are permitted; globals, memories, and tables cannot be imported.
+    \item Exports: only functions are exported. Duplicate export aliases are allowed; all aliases must reference translated functions.
+\end{itemize}
+
+\subsection{Memories}
+\begin{itemize}[nosep]
+    \item At most one memory; \texttt{memory64} and shared memories are rejected.
+    \item Memory index must be zero for all instructions; non-zero indices are rejected.
+\end{itemize}
+
+\subsection{Tables}
+\begin{itemize}[nosep]
+    \item Element type must be \texttt{funcref}; \texttt{externref} and other reference types are rejected.
+    \item \texttt{table64} and shared tables are rejected.
+    \item Declared element segments must be active or passive; declared-only segments are rejected.
+\end{itemize}
+
+\subsection{Globals}
+\begin{itemize}[nosep]
+    \item Global value types restricted to \texttt{i32} and \texttt{i64}.
+    \item Immutable globals may be constant-folded; mutable globals lose constant-propagation after writes.
+\end{itemize}
+
+\subsection{Custom Sections}
+\begin{itemize}[nosep]
+    \item \texttt{neo.manifest}: concatenated JSON fragments merged into the manifest.
+    \item \texttt{neo.methodtokens}: concatenated JSON fragments parsed into method tokens and optional source URL.
+    \item Unknown sections are ignored.
+\end{itemize}
+
+\subsection{Reserved Import Modules}
+\begin{itemize}[nosep]
+    \item \texttt{syscall}: names must match Neo interop descriptors (for example, \texttt{System.Storage.Get}). Each import lowers to a \texttt{SYSCALL} opcode carrying the hashed descriptor bytes.
+    \item \texttt{neo}: exposes DevPack-friendly aliases (\texttt{neo::storage\_read}, \texttt{neo::notify}, \texttt{neo::call\_contract}, ...). The translator resolves these aliases to canonical descriptors before emitting \texttt{SYSCALL}, keeping existing contracts source-compatible.
+    \item \texttt{opcode}: imports map directly to NeoVM opcodes. Literal operands are supplied via Wasm immediates; the special helpers \texttt{opcode::RAW} and \texttt{opcode::RAW4} append arbitrary bytes to the script for advanced patterns.
+    \item \texttt{env}: limited to C runtime memory utilities (\texttt{memcpy}, \texttt{memmove}, \texttt{memset}). Each function must accept three \texttt{i32} parameters (destination, source-or-value, length) and return \texttt{i32}. The translator synthesises helper stubs that operate on the linear memory buffer so contracts compiled with \texttt{-nostdlib -fno-builtin} remain self-contained.
+\end{itemize}
+
+\section{Compatibility Matrix}
+This matrix summarises the currently supported Wasm surface. Inputs outside these bounds fail translation with descriptive diagnostics.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}p{3.6cm}p{9cm}@{}}
+\toprule
+Area & Status / Notes \\
+\midrule
+Linear memory & Exactly one 32-bit, non-shared memory is allowed. Passive data segments require a defined memory; multi-memory and shared memories are rejected. \\
+Tables and references & Tables must be \texttt{funcref}; \texttt{table64}, shared tables, and reference types beyond \texttt{funcref} are rejected. Runtime helpers cover \texttt{table.get/set/size/grow/fill/copy}, \texttt{table.init}, and \texttt{elem.drop}. \\
+Imports & Only functions may be imported. Reserved modules \texttt{syscall}, \texttt{neo}, \texttt{opcode}, and \texttt{env} receive dedicated lowering; importing globals, memories, or tables is unsupported. \\
+Globals & Value types must be \texttt{i32}/\texttt{i64}. Initialisers are constant-folded and stored in static slots; mutable globals lose literal tracking once written. \\
+Function signatures & Exported ABI methods and \texttt{call\_indirect} signatures accept \texttt{i32}/\texttt{i64} parameters and at most one result. Typed \texttt{select} likewise requires a single \texttt{i32}/\texttt{i64} result. \\
+Numeric features & Integer arithmetic, comparisons, conversions, bit counts, and shifts are supported. Floating-point, SIMD, atomics, and threads are not yet implemented and produce explicit errors. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Instruction Lowering}
+\subsection{Supported Operators}
+Each operator lowers to NeoVM opcodes while preserving Wasm stack discipline. Representative mappings are shown in Table~\ref{tab:ops}.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}lll@{}}
+\toprule
+Wasm Operator & NeoVM Emission & Notes \\
+\midrule
+\texttt{i32.const}/\texttt{i64.const} & Minimal \texttt{PUSHINT*} & Literal tracking retained \\
+\texttt{local.get/set/tee} & \texttt{LDARG*}/\texttt{STARG*}, \texttt{LDLOC*}/\texttt{STLOC*} & Params vs locals \\
+\texttt{add, sub, mul} & \texttt{ADD}/\texttt{SUB}/\texttt{MUL} & 32/64-bit share ops \\
+\texttt{and, or, xor} & \texttt{AND}/\texttt{OR}/\texttt{XOR} & Bitwise ops \\
+\texttt{shl, shr\_s, shr\_u} & \texttt{SHL}/\texttt{SHR} with masking & Mask to bit-width \\
+\texttt{rotl, rotr} & \texttt{ROT*} sequences & Masked shift counts \\
+\texttt{eq, ne, lt, gt, le, ge} & \texttt{EQUAL}/\texttt{NUMERIC} compares & Signed/unsigned masking for unsigned ops \\
+\texttt{div\_s, div\_u, rem\_s, rem\_u} & \texttt{DIV}/\texttt{MOD} with masking & Division by zero traps \\
+\texttt{select} & \texttt{JMPIFNOT\_L}/\texttt{DROP}/\texttt{NIP} & Typed/untypeed single-result \\
+\texttt{block, loop, if, br, br\_if, br\_table} & \texttt{JMP\_L}/\texttt{JMPIF\_L} patched & Stack height verified \\
+\texttt{call, call\_indirect} & \texttt{CALL\_L} + helper stubs & Indirect uses table helpers \\
+\texttt{memory.load/store, size, grow} & Helper calls via \texttt{RuntimeHelpers} & Bounds-checked \\
+\texttt{memory.fill, memory.copy, memory.init, data.drop} & Helper calls & Passive/active segment support \\
+\texttt{table.get/set/size/grow/fill/copy, table.init, elem.drop} & Table helpers & Bounds-checked, funcref only \\
+\texttt{ref.null, ref.func, ref.is\_null, ref.eq} & Integer sentinels (\texttt{-1} for null) & Funcref only \\
+\texttt{unreachable} & \texttt{ABORT} & Terminates execution \\
+\bottomrule
+\end{tabular}
+\caption{Representative Wasm to NeoVM operator mappings}
+\label{tab:ops}
+\end{table}
+
+\subsection{Unsupported Features}
+\begin{itemize}[nosep]
+    \item Floating-point, SIMD, atomics, threads.
+    \item Multiple memories, \texttt{memory64}, shared memory, shared tables.
+    \item Reference types other than \texttt{funcref}; declared element segments.
+    \item Multi-value returns.
+\end{itemize}
+
+\section{Runtime Helpers}
+\subsection{Memory Helpers}
+\begin{itemize}[nosep]
+    \item \textbf{Init}: allocates linear memory buffer and caches length in static slots.
+    \item \textbf{Load/Store}: perform bounds checks, mask/store with endianness fixed to LE.
+    \item \textbf{Grow}: appends pages, returns previous size or \texttt{-1} on failure.
+    \item \textbf{Fill/Copy/Init/Drop}: honour passive/active data segments and drop flags.
+\end{itemize}
+
+\subsection{Table Helpers}
+\begin{itemize}[nosep]
+    \item Represent funcref values as signed integers; \texttt{-1} denotes null.
+    \item \textbf{Get/Set/Size/Grow/Fill/Copy}: bounds-checked; grow respects optional maximum.
+    \item \textbf{InitFromPassive}/\textbf{ElemDrop}: copy from cached passive segments and mark them dropped.
+\end{itemize}
+
+\section{Manifest Generation}
+\subsection{Baseline Manifest}
+The translator synthesizes a manifest with:
+\begin{itemize}[nosep]
+    \item \texttt{name}: contract name passed via configuration.
+    \item \texttt{abi.methods}: one entry per exported function (alias preserved), including parameter types (\texttt{Integer}) and return types (\texttt{Integer}/\texttt{Void}).
+    \item \texttt{features}: populated with \texttt{storage} when storage is used.
+    \item \texttt{extra}: author/description defaults.
+\end{itemize}
+
+\subsection{Overlay Application}
+\begin{itemize}[nosep]
+    \item Overlays come from embedded \texttt{neo.manifest} sections and optional external overlays (\texttt{ManifestOverlay}).
+    \item Merging is deep and deduplicates \texttt{supportedstandards}, \texttt{permissions}, \texttt{trusts}, and method entries by name.
+    \item Safe flags are propagated across duplicate method entries.
+    \item ABI parity check: if overlays introduce or remove methods relative to translated exports, translation fails with the overlay label in the diagnostic.
+    \item DevPack macros mirror the JSON structure: \texttt{neo\_event} emits canonical \texttt{abi.events} entries (Boolean/Integer/ByteArray/\dots), while \texttt{neo\_permission!}, \texttt{neo\_supported\_standards!}, and \texttt{neo\_trusts!} append the corresponding manifest fragments before merging.
+    \item The translator infers `features.storage` automatically whenever translated code invokes a `System.Storage.*` syscall, and enables `features.payable` when an exported entry point named `onPayment`, `onNEP17Payment`, or `onNEP11Payment` is present, so overlays rarely need to toggle either flag manually.
+\end{itemize}
+
+\section{NEF Emission}
+\subsection{Metadata}
+\begin{itemize}[nosep]
+    \item Compiler ID: fixed string embedded in NEF header.
+    \item Source URL: taken from \texttt{neo.source} custom section or CLI/config override (\texttt{TranslationConfig}); optional.
+    \item Method tokens: parsed from custom sections, inferred from contract calls, and deduplicated before writing.
+\end{itemize}
+
+\subsection{File Format Requirements}
+\begin{itemize}[nosep]
+    \item NEF header includes magic, compiler, source URL, reserved byte, method tokens, script, checksum.
+    \item Manifest and NEF must remain in sync; the translator writes both or fails.
+\end{itemize}
+
+\section{Errors and Diagnostics}
+Translation aborts with descriptive errors on:
+\begin{itemize}[nosep]
+    \item Unsupported Wasm features (floating point, multi-memory, non-funcref tables, etc.).
+    \item ABI mismatch introduced by overlays.
+    \item Out-of-bounds segment initialisation or table/memory access during helper generation.
+    \item Invalid custom-section payloads for \texttt{neo.manifest} or \texttt{neo.methodtokens}.
+\end{itemize}
+
+\section{Conformance}
+An implementation conforms to this specification if, given any Wasm module satisfying the acceptance rules, it:
+\begin{itemize}[nosep]
+    \item Produces a NeoVM script whose observable behaviour matches the specified lowering.
+    \item Emits NEF and manifest artefacts that reflect the translated ABI and overlays, with safe flags and metadata propagated.
+    \item Rejects inputs that violate acceptance rules or manifest parity, emitting diagnostics that identify the violating feature or overlay.
+\end{itemize}
+
+\end{document}

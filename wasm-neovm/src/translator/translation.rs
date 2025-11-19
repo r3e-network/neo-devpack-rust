@@ -65,6 +65,59 @@ struct ExportAlias {
     processed: bool,
 }
 
+#[derive(Default)]
+pub(super) struct FeatureTracker {
+    storage: bool,
+    payable: bool,
+}
+
+impl FeatureTracker {
+    fn register_syscall(&mut self, descriptor: &str) {
+        let lower = descriptor.to_ascii_lowercase();
+        if lower.starts_with("system.storage") {
+            self.storage = true;
+        }
+    }
+
+    fn register_export(&mut self, export: &str) {
+        let mut lowered = export.to_ascii_lowercase();
+        lowered.retain(|c| c != '_');
+        if matches!(
+            lowered.as_str(),
+            "onpayment" | "onnep17payment" | "onnep11payment"
+        ) {
+            self.payable = true;
+        }
+    }
+
+    fn apply(&self, manifest: &mut ManifestBuilder) {
+        if self.storage {
+            manifest.enable_feature("storage");
+        }
+        if self.payable {
+            manifest.enable_feature("payable");
+        }
+    }
+}
+
+fn register_import_features(import: &FunctionImport, features: &mut FeatureTracker) -> Result<()> {
+    let module = import.module.to_ascii_lowercase();
+    match module.as_str() {
+        "syscall" => {
+            let syscall = syscalls::lookup(&import.name)
+                .ok_or_else(|| anyhow!("unknown syscall '{}'", import.name))?;
+            features.register_syscall(syscall.name);
+        }
+        "neo" => {
+            let descriptor = neo_syscalls::lookup_neo_syscall(&import.name)
+                .ok_or_else(|| anyhow!("unknown Neo syscall import '{}'", import.name))?;
+            features.register_syscall(descriptor);
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
 pub fn translate_module(bytes: &[u8], contract_name: &str) -> Result<Translation> {
     translate_with_config(bytes, TranslationConfig::new(contract_name))
 }
@@ -82,6 +135,7 @@ fn translate_module_internal(bytes: &[u8], config: TranslationConfig) -> Result<
     let mut tables: Vec<TableInfo> = Vec::new();
     let mut script: Vec<u8> = Vec::new();
     let mut runtime = RuntimeHelpers::default();
+    let mut feature_tracker = FeatureTracker::default();
     let mut methods: Vec<ManifestMethod> = Vec::new();
     let mut overlay_safe_methods: HashSet<String> = HashSet::new();
     let mut manifest_overlay: Option<Value> = None;
@@ -252,12 +306,12 @@ fn translate_module_internal(bytes: &[u8], config: TranslationConfig) -> Result<
                     .module_types()
                     .signature(type_index as usize)
                     .ok_or_else(|| {
-                    anyhow!(
-                        "type index {} referenced by function '{}' out of bounds",
-                        type_index,
-                        function_name
-                    )
-                })?;
+                        anyhow!(
+                            "type index {} referenced by function '{}' out of bounds",
+                            type_index,
+                            function_name
+                        )
+                    })?;
 
                 let offset = script.len();
                 functions
@@ -281,6 +335,7 @@ fn translate_module_internal(bytes: &[u8], config: TranslationConfig) -> Result<
                     func_index,
                     start_function,
                     function_name,
+                    &mut feature_tracker,
                 )
                 .with_context(|| format!("failed to translate function '{}'", function_name))?;
 
@@ -305,6 +360,7 @@ fn translate_module_internal(bytes: &[u8], config: TranslationConfig) -> Result<
                             safe: false,
                         };
                         methods.push(method);
+                        feature_tracker.register_export(&alias.name);
                         alias.processed = true;
                     }
                 }
@@ -496,10 +552,7 @@ fn translate_module_internal(bytes: &[u8], config: TranslationConfig) -> Result<
             continue;
         }
 
-        let import = frontend
-            .imports()
-            .get(import_idx)
-            .ok_or_else(|| {
+        let import = frontend.imports().get(import_idx).ok_or_else(|| {
             anyhow!(
                 "export references missing import function index {}",
                 import_idx
@@ -511,12 +564,12 @@ fn translate_module_internal(bytes: &[u8], config: TranslationConfig) -> Result<
             .signature(type_index as usize)
             .ok_or_else(|| {
                 anyhow!(
-                "invalid type index {} for import {}::{}",
-                type_index,
-                import.module,
-                import.name
-            )
-        })?;
+                    "invalid type index {} for import {}::{}",
+                    type_index,
+                    import.module,
+                    import.name
+                )
+            })?;
 
         if func_type.results().len() > 1 {
             bail!(
@@ -543,6 +596,7 @@ fn translate_module_internal(bytes: &[u8], config: TranslationConfig) -> Result<
             frontend.imports(),
             frontend.module_types().signatures(),
             import_idx,
+            &mut feature_tracker,
         )
         .with_context(|| {
             format!(
@@ -562,6 +616,7 @@ fn translate_module_internal(bytes: &[u8], config: TranslationConfig) -> Result<
                 offset: offset as u32,
                 safe: false,
             });
+            feature_tracker.register_export(&alias.name);
             alias.processed = true;
         }
     }
@@ -629,6 +684,7 @@ fn translate_module_internal(bytes: &[u8], config: TranslationConfig) -> Result<
             if !func_type.results().is_empty() {
                 bail!("start function must not return values");
             }
+            register_import_features(import, &mut feature_tracker)?;
             Some(StartDescriptor {
                 function_index: start_idx,
                 kind: StartKind::Import,
@@ -674,14 +730,13 @@ fn translate_module_internal(bytes: &[u8], config: TranslationConfig) -> Result<
 
     let mut manifest_builder = ManifestBuilder::new(contract_name, &methods);
     if let Some(overlay) = manifest_overlay {
-        manifest_builder.merge_overlay(
-            &overlay,
-            Some("embedded neo.manifest sections".to_string()),
-        );
+        manifest_builder
+            .merge_overlay(&overlay, Some("embedded neo.manifest sections".to_string()));
     }
     if let Some(extra) = config.extra_manifest_overlay {
         manifest_builder.merge_overlay(&extra.value, extra.label);
     }
+    feature_tracker.apply(&mut manifest_builder);
     manifest_builder.propagate_safe_flags();
     manifest_builder.ensure_method_parity()?;
 
@@ -714,6 +769,7 @@ fn emit_import_export_stub(
     imports: &[FunctionImport],
     types: &[FuncType],
     import_index: usize,
+    features: &mut FeatureTracker,
 ) -> Result<String> {
     let import = imports
         .get(import_index)
@@ -776,7 +832,14 @@ fn emit_import_export_stub(
         return Ok(return_kind);
     }
 
-    handle_import_call(import_index as u32, script, imports, types, &params_stack)?;
+    handle_import_call(
+        import_index as u32,
+        script,
+        imports,
+        types,
+        &params_stack,
+        features,
+    )?;
 
     script.push(RET);
 
@@ -833,6 +896,7 @@ fn translate_function(
     function_index: usize,
     start_function: Option<u32>,
     function_name: &str,
+    features: &mut FeatureTracker,
 ) -> Result<String> {
     let params = func_type.params();
     for ty in params {
@@ -2087,7 +2151,14 @@ fn translate_function(
                         continue;
                     }
 
-                    handle_import_call(function_index, script, imports, types, &params)?;
+                    handle_import_call(
+                        function_index,
+                        script,
+                        imports,
+                        types,
+                        &params,
+                        features,
+                    )?;
                     if !func_sig.results().is_empty() {
                         value_stack.push(StackValue {
                             const_value: None,
@@ -2221,7 +2292,14 @@ fn translate_function(
                     script.push(lookup_opcode("DROP")?.byte);
                     match target {
                         CallTarget::Import(idx) => {
-                            handle_import_call(idx, script, imports, types, &params)?;
+                            handle_import_call(
+                                idx,
+                                script,
+                                imports,
+                                types,
+                                &params,
+                                features,
+                            )?;
                         }
                         CallTarget::Defined(idx) => {
                             functions.emit_call(script, idx)?;
@@ -2902,6 +2980,7 @@ pub(crate) fn handle_import_call(
     imports: &[FunctionImport],
     types: &[FuncType],
     params: &[StackValue],
+    features: &mut FeatureTracker,
 ) -> Result<()> {
     let import = imports
         .get(function_index as usize)
@@ -2919,11 +2998,13 @@ pub(crate) fn handle_import_call(
     match module.as_str() {
         "opcode" => emit_opcode_call(import, func_type, params, script),
         "syscall" => {
-            emit_syscall_call(import, script)?;
+            let descriptor = emit_syscall_call(import, script)?;
+            features.register_syscall(descriptor);
             Ok(())
         }
         "neo" => {
-            emit_neo_syscall(import, script)?;
+            let descriptor = emit_neo_syscall(import, script)?;
+            features.register_syscall(descriptor);
             Ok(())
         }
         other => bail!("unsupported import module '{}::{}'", other, import.name),
@@ -3096,7 +3177,7 @@ fn emit_opcode_call(
     Ok(())
 }
 
-fn emit_syscall_call(import: &FunctionImport, script: &mut Vec<u8>) -> Result<()> {
+fn emit_syscall_call(import: &FunctionImport, script: &mut Vec<u8>) -> Result<&'static str> {
     let syscall = syscalls::lookup(&import.name)
         .ok_or_else(|| anyhow!("unknown syscall '{}'", import.name))?;
     let opcode =
@@ -3109,10 +3190,10 @@ fn emit_syscall_call(import: &FunctionImport, script: &mut Vec<u8>) -> Result<()
 
     script.push(opcode.byte);
     script.extend_from_slice(&syscall.hash.to_le_bytes());
-    Ok(())
+    Ok(syscall.name)
 }
 
-fn emit_neo_syscall(import: &FunctionImport, script: &mut Vec<u8>) -> Result<()> {
+fn emit_neo_syscall(import: &FunctionImport, script: &mut Vec<u8>) -> Result<&'static str> {
     let syscall_name = neo_syscalls::lookup_neo_syscall(&import.name)
         .ok_or_else(|| anyhow!("unknown Neo syscall import '{}'", import.name))?;
     let syscall = syscalls::lookup(syscall_name)
@@ -3126,7 +3207,7 @@ fn emit_neo_syscall(import: &FunctionImport, script: &mut Vec<u8>) -> Result<()>
 
     script.push(opcode.byte);
     script.extend_from_slice(&syscall.hash.to_le_bytes());
-    Ok(())
+    Ok(syscall.name)
 }
 
 fn ensure_param_count(

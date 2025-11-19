@@ -17,7 +17,7 @@ Rust contract (neo-devpack) ──cargo build --target wasm32-unknown-unknown─
 - **`scripts/build_contract.sh`** – helper script that builds a Rust contract to Wasm and invokes the translator in a single step.
 - **`scripts/build_c_contract.sh`** – clang-based helper that compiles plain C contracts to Wasm before translating them.
 - **`integration-tests/`** – optional Neo Express harness (see [`docs/neoexpress-integration.md`](docs/neoexpress-integration.md)) for exercising generated NEF artefacts.
-- **Documentation** – updated notes on the new pipeline in [`docs/wasm-pipeline.md`](docs/wasm-pipeline.md) and the NEF container format in [`docs/nef-format-specification.md`](docs/nef-format-specification.md).
+- **Documentation** – updated notes on the new pipeline in [`docs/wasm-pipeline.md`](docs/wasm-pipeline.md) and the NEF container format in [`docs/nef-format-specification.md`](docs/nef-format-specification.md). See [`spec/wasm-neovm-spec.tex`](spec/wasm-neovm-spec.tex) for the full normative translation spec (buildable via `make -C spec`).
 - **Rust contract quickstart** – step-by-step instructions for authoring and compiling contracts live in [`docs/rust-smart-contract-quickstart.md`](docs/rust-smart-contract-quickstart.md).
 
 ## Quick Start
@@ -46,10 +46,13 @@ Rust contract (neo-devpack) ──cargo build --target wasm32-unknown-unknown─
      --nef build/hello_world.nef \
      --manifest build/hello_world.manifest.json \
      --name hello-world \
-     --manifest-overlay contracts/hello-world/manifest.overlay.json
+     --manifest-overlay contracts/hello-world/manifest.overlay.json \
+     --compare-manifest contracts/hello-world/expected.manifest.json
    ```
 
   Supply `--manifest-overlay <file>` to merge additional JSON metadata when needed (for example, create `contracts/hello-world/manifest.overlay.json`). Overlay entries must reference exports that actually exist in the Wasm module—the translator now errors if an overlay adds or removes ABI methods. Use the `#[neo_safe]` attribute (or manifest overlays) inside your contract to declare safe methods.
+
+  Use `--compare-manifest <file>` to assert that the generated manifest matches a checked-in reference; any difference aborts the translation after printing a unified diff.
 
 4. To compile *all* bundled examples (Wasm build + NEF/manifest generation) run the Makefile target:
    ```bash
@@ -86,7 +89,11 @@ neo_supported_standards!(["NEP-17"]);
 neo_trusts!(["*"]);
 ```
 
-Each `#[neo_event]` declaration automatically registers the event schema, and `neo_permission!` records required permissions. The translator merges these custom sections with any additional overlay file or CLI flags, so manifests stay in sync without manual JSON edits.
+Each `#[neo_event]` declaration automatically registers the event schema using canonical manifest parameter types (Boolean, Integer, ByteArray, …), and the helper macros (`neo_permission!`, `neo_trusts!`, `neo_supported_standards!`) record additional metadata. The translator merges these custom sections with any additional overlay file or CLI flags, so manifests stay in sync without manual JSON edits. Storage-heavy contracts no longer need to opt into the `storage` feature manually—the translator watches for `System.Storage.*` syscalls and flips `features.storage` on their behalf. Likewise, exporting `onPayment`/`onNEP17Payment`/`onNEP11Payment` automatically enables `features.payable`.
+
+### Supported Wasm Features & Limits
+
+The translator currently supports integer-only Wasm modules with a single linear memory and funcref tables. Arithmetic, control flow, locals/globals, data segments, tables, bulk memory instructions, and `call_indirect` lowering are available today. Floating-point/SIMD operators, multi-memory modules, and reference types beyond `funcref` will produce descriptive translation errors. See [`docs/wasm-pipeline.md`](docs/wasm-pipeline.md#10-current-compatibility-matrix) for the up-to-date compatibility matrix covering imports, globals, signatures, and runtime helpers.
 
 ### Emitting Opcodes and Syscalls
 
@@ -167,6 +174,10 @@ The accompanying Rust contract can declare the imports with `#[link(wasm_import_
   cargo fmt --all
   cargo clippy --all-targets --all-features
   ```
+- Rebuild the formal spec PDF (optional, requires LaTeX tooling):
+  ```bash
+  make -C spec
+  ```
 
 ## Directory Layout
 
@@ -180,8 +191,8 @@ The accompanying Rust contract can declare the imports with `#[link(wasm_import_
 
 ## Next Steps
 
-- Extend table support (table grow/set operations, reference types) and richer element segment initialisers.
-- Add floating-point/SIMD instruction lowering once integer semantics are fully settled.
-- Enrich manifest generation with devpack metadata (events, permissions, standards) and exercise NEF output in the NeoVM reference runner.
+- Broaden instruction coverage with floating-point/SIMD lowering once the current integer semantics are fully settled.
+- Surface additional devpack metadata (events, permissions, supported standards) directly into manifest generation so JSON overlays remain optional.
+- Tighten end-to-end validation by replaying generated NEFs in the NeoVM reference runner / neo-cli as part of CI.
 
 Contributions towards these milestones are welcome.

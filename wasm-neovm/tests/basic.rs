@@ -173,6 +173,49 @@ fn translate_simple_constant_addition() {
 }
 
 #[test]
+fn translate_marks_storage_feature_when_storage_syscall_used() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (import "syscall" "System.Storage.Get" (func $storage_get (param i32 i32) (result i32)))
+              (func (export "main") (result i32)
+                i32.const 0
+                i32.const 0
+                call $storage_get))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "StorageUser").expect("translation succeeds");
+    let manifest_json: Value = serde_json::from_str(
+        &translation
+            .manifest
+            .to_string()
+            .expect("manifest serialises"),
+    )
+    .expect("manifest parses");
+    assert_eq!(manifest_json["features"]["storage"].as_bool(), Some(true));
+}
+
+#[test]
+fn translate_marks_payable_feature_for_on_nep17_payment() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (func (export "onNEP17Payment") (param i32 i32 i32) (result i32)
+                i32.const 0))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "PayableContract").expect("translation succeeds");
+    let manifest_json: Value = serde_json::from_str(
+        &translation
+            .manifest
+            .to_string()
+            .expect("manifest serialises"),
+    )
+    .expect("manifest parses");
+    assert_eq!(manifest_json["features"]["payable"].as_bool(), Some(true));
+}
+
+#[test]
 fn translate_marks_safe_methods() {
     let wasm = wat::parse_str(
         r#"(module

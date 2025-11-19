@@ -46,4 +46,3 @@ impl ModuleTypes {
         self.defined_function_types.len()
     }
 }
-

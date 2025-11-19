@@ -1,6 +1,6 @@
 use anyhow::{bail, Result};
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, Serialize)]
@@ -130,6 +130,9 @@ fn dedup_manifest_collections(map: &mut serde_json::Map<String, serde_json::Valu
         if let Some(methods) = extra.get_mut("methods") {
             dedup_method_offsets(methods);
         }
+        if let Some(events) = extra.get_mut("events") {
+            dedup_events(events);
+        }
     }
 }
 
@@ -224,6 +227,40 @@ fn dedup_method_offsets(value: &mut serde_json::Value) {
                 .map(|s| s.to_string());
 
             if let Some(name) = method_name {
+                if let Some(existing_index) = index_by_name.get(&name).copied() {
+                    if let (Some(existing), Some(overlay)) =
+                        (merged[existing_index].as_object_mut(), entry.as_object())
+                    {
+                        for (key, value) in overlay {
+                            existing.insert(key.clone(), value.clone());
+                        }
+                    }
+                    continue;
+                }
+
+                index_by_name.insert(name, merged.len());
+                merged.push(entry);
+            } else {
+                merged.push(entry);
+            }
+        }
+
+        *items = merged;
+    }
+}
+
+fn dedup_events(value: &mut serde_json::Value) {
+    if let Some(items) = value.as_array_mut() {
+        let mut merged: Vec<serde_json::Value> = Vec::new();
+        let mut index_by_name: HashMap<String, usize> = HashMap::new();
+
+        for entry in items.drain(..) {
+            let event_name = entry
+                .get("name")
+                .and_then(serde_json::Value::as_str)
+                .map(|s| s.to_string());
+
+            if let Some(name) = event_name {
                 if let Some(existing_index) = index_by_name.get(&name).copied() {
                     if let (Some(existing), Some(overlay)) =
                         (merged[existing_index].as_object_mut(), entry.as_object())
@@ -353,6 +390,37 @@ mod tests {
     }
 
     #[test]
+    fn merge_manifest_deduplicates_events() {
+        let mut base = json!({
+            "abi": {
+                "events": [
+                    {"name": "Transfer", "parameters": [{"name": "from", "type": "ByteArray"}]}
+                ]
+            }
+        });
+
+        let overlay = json!({
+            "abi": {
+                "events": [
+                    {"name": "Transfer", "parameters": [{"name": "to", "type": "ByteArray"}], "extra": true},
+                    {"name": "Approval", "parameters": []}
+                ]
+            }
+        });
+
+        merge_manifest(&mut base, &overlay);
+
+        let events = base["abi"]["events"].as_array().unwrap();
+        assert_eq!(events.len(), 2);
+        let transfer = events
+            .iter()
+            .find(|entry| entry["name"].as_str() == Some("Transfer"))
+            .unwrap();
+        assert_eq!(transfer["extra"].as_bool(), Some(true));
+        assert_eq!(transfer["parameters"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
     fn collect_method_names_extracts_unique_set() {
         let manifest = json!({
             "abi": {
@@ -474,6 +542,22 @@ impl ManifestBuilder {
             &self.baseline_methods,
             self.overlay_label.as_deref(),
         )
+    }
+
+    pub fn enable_feature(&mut self, feature: &str) {
+        let manifest_obj = self
+            .manifest
+            .as_object_mut()
+            .expect("manifest root must be an object");
+        let entry = manifest_obj
+            .entry("features".to_string())
+            .or_insert_with(|| Value::Object(Map::new()));
+        if !entry.is_object() {
+            *entry = Value::Object(Map::new());
+        }
+        if let Some(map) = entry.as_object_mut() {
+            map.insert(feature.to_string(), Value::Bool(true));
+        }
     }
 
     pub fn manifest_value(&self) -> &Value {

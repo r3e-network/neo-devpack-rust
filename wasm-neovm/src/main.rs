@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use clap::Parser;
 use serde_json::{Map, Value};
 
@@ -40,6 +40,10 @@ struct Cli {
     /// Source URL recorded in the NEF header
     #[arg(long = "source-url")]
     source_url: Option<String>,
+
+    /// Path to an existing manifest to compare against (translation fails when they differ)
+    #[arg(long = "compare-manifest")]
+    compare_manifest: Option<PathBuf>,
 }
 
 fn derive_output_path(input: &Path, extension: &str) -> PathBuf {
@@ -86,6 +90,15 @@ fn main() -> Result<()> {
 
     let metadata = extract_nef_metadata(&manifest_value)?;
 
+    if let Some(compare_path) = &cli.compare_manifest {
+        compare_manifest(compare_path, &manifest_value).with_context(|| {
+            format!(
+                "failed to compare manifest against {}",
+                compare_path.display()
+            )
+        })?;
+    }
+
     let nef_path = cli
         .nef
         .clone()
@@ -112,10 +125,43 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+fn compare_manifest(reference_path: &Path, generated: &Value) -> Result<()> {
+    let bytes = fs::read_to_string(reference_path)
+        .with_context(|| format!("failed to read manifest {}", reference_path.display()))?;
+    let reference: Value = serde_json::from_str(&bytes).with_context(|| {
+        format!(
+            "failed to parse manifest JSON from {}",
+            reference_path.display()
+        )
+    })?;
+    if &reference == generated {
+        println!("Manifest matches {}", reference_path.display());
+        return Ok(());
+    }
+
+    let expected = serde_json::to_string_pretty(&reference)?;
+    let actual = serde_json::to_string_pretty(generated)?;
+    println!("Manifest differs from {}:", reference_path.display());
+    for diff in diff::lines(&expected, &actual) {
+        use diff::Result::{Both, Left, Right};
+        match diff {
+            Left(line) => println!("-{}", line),
+            Right(line) => println!("+{}", line),
+            Both(_, _) => {}
+        }
+    }
+    bail!(
+        "generated manifest does not match {}",
+        reference_path.display()
+    );
+}
+
 #[cfg(test)]
 mod tests {
-    use super::derive_output_path;
+    use super::{compare_manifest, derive_output_path};
+    use serde_json::json;
     use std::path::Path;
+    use tempfile::NamedTempFile;
 
     #[test]
     fn derive_output_preserves_directory_for_nef() {
@@ -142,6 +188,26 @@ mod tests {
         let input = Path::new(".");
         let derived = derive_output_path(input, "nef");
         assert_eq!(derived, Path::new("./contract.nef"));
+    }
+
+    #[test]
+    fn compare_manifest_matches_reference_file() {
+        let file = NamedTempFile::new().unwrap();
+        let value = json!({"name": "Contract"});
+        std::fs::write(file.path(), serde_json::to_string(&value).unwrap()).unwrap();
+        compare_manifest(file.path(), &value).unwrap();
+    }
+
+    #[test]
+    fn compare_manifest_detects_difference() {
+        let file = NamedTempFile::new().unwrap();
+        let reference = json!({"name": "Reference"});
+        let generated = json!({"name": "Generated"});
+        std::fs::write(file.path(), serde_json::to_string(&reference).unwrap()).unwrap();
+        let err = compare_manifest(file.path(), &generated).unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("generated manifest does not match"));
     }
 }
 

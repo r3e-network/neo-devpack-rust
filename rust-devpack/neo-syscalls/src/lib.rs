@@ -454,10 +454,7 @@ impl StorageState {
             .ok_or(NeoError::InvalidState)
     }
 
-    fn get_or_create_store(
-        &self,
-        contract: [u8; 20],
-    ) -> Arc<RwLock<HashMap<Vec<u8>, Vec<u8>>>> {
+    fn get_or_create_store(&self, contract: [u8; 20]) -> Arc<RwLock<HashMap<Vec<u8>, Vec<u8>>>> {
         let mut stores = self
             .contract_stores
             .write()
@@ -628,14 +625,8 @@ impl NeoVMSyscall {
         key: &NeoByteString,
     ) -> NeoResult<NeoByteString> {
         let handle = STORAGE_STATE.get_handle(context)?;
-        let store = handle
-            .store
-            .read()
-            .map_err(|_| NeoError::InvalidState)?;
-        let value = store
-            .get(key.as_slice())
-            .cloned()
-            .unwrap_or_else(Vec::new);
+        let store = handle.store.read().map_err(|_| NeoError::InvalidState)?;
+        let value = store.get(key.as_slice()).cloned().unwrap_or_else(Vec::new);
         Ok(NeoByteString::new(value))
     }
 
@@ -648,10 +639,7 @@ impl NeoVMSyscall {
         if handle.read_only {
             return Err(NeoError::InvalidOperation);
         }
-        let mut store = handle
-            .store
-            .write()
-            .map_err(|_| NeoError::InvalidState)?;
+        let mut store = handle.store.write().map_err(|_| NeoError::InvalidState)?;
         store.insert(key.as_slice().to_vec(), value.as_slice().to_vec());
         Ok(())
     }
@@ -661,10 +649,7 @@ impl NeoVMSyscall {
         if handle.read_only {
             return Err(NeoError::InvalidOperation);
         }
-        let mut store = handle
-            .store
-            .write()
-            .map_err(|_| NeoError::InvalidState)?;
+        let mut store = handle.store.write().map_err(|_| NeoError::InvalidState)?;
         store.remove(key.as_slice());
         Ok(())
     }
@@ -675,23 +660,14 @@ impl NeoVMSyscall {
     ) -> NeoResult<NeoIterator<NeoValue>> {
         let handle = STORAGE_STATE.get_handle(context)?;
         let prefix_bytes = prefix.as_slice();
-        let store = handle
-            .store
-            .read()
-            .map_err(|_| NeoError::InvalidState)?;
+        let store = handle.store.read().map_err(|_| NeoError::InvalidState)?;
         let matches: Vec<NeoValue> = store
             .iter()
             .filter_map(|(key_bytes, value)| {
                 if key_bytes.starts_with(prefix_bytes) {
                     let mut entry = NeoStruct::new();
-                    entry.set_field(
-                        "key",
-                        NeoValue::from(NeoByteString::from_slice(key_bytes)),
-                    );
-                    entry.set_field(
-                        "value",
-                        NeoValue::from(NeoByteString::from_slice(value)),
-                    );
+                    entry.set_field("key", NeoValue::from(NeoByteString::from_slice(key_bytes)));
+                    entry.set_field("value", NeoValue::from(NeoByteString::from_slice(value)));
                     Some(NeoValue::from(entry))
                 } else {
                     None

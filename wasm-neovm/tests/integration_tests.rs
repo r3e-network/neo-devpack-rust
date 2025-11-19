@@ -1,7 +1,7 @@
 use serde_json::json;
 use wasm_neovm::{
     opcodes, translate_module, translate_with_config, write_nef_with_metadata, ManifestOverlay,
-    TranslationConfig, MethodToken,
+    MethodToken, TranslationConfig,
 };
 
 #[test]

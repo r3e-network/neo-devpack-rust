@@ -44,4 +44,3 @@ impl ModuleFrontend {
         self.imports.len()
     }
 }
-

@@ -38,7 +38,7 @@ MARKET_WASM       := contracts/nft-marketplace/target/$(WASM_TARGET)/release/nft
 MARKET_NEF        := $(OUTDIR)/NFTMarketplace.nef
 MARKET_MANIFEST   := $(OUTDIR)/NFTMarketplace.manifest.json
 
-.PHONY: help examples hello-world nep17-token constant-product nep11-nft multisig-wallet escrow crowdfunding governance-dao oracle-consumer nft-marketplace c-hello fmt lint test integration-tests clean
+.PHONY: help examples hello-world nep17-token constant-product nep11-nft multisig-wallet escrow crowdfunding governance-dao oracle-consumer nft-marketplace c-hello fmt lint test integration-tests spec clean
 
 help:
 	@echo "Usage: make <target>"
@@ -62,6 +62,7 @@ help:
 	@echo "  lint            Run cargo clippy across the workspace"
 	@echo "  test            Execute cargo test for translator + devpack"
 	@echo "  integration-tests  Run optional Neo Express integration harness"
+	@echo "  spec            Build the LaTeX specification in spec/"
 	@echo "  clean           Remove generated build artefacts"
 
 examples: hello-world nep17-token constant-product nep11-nft multisig-wallet escrow crowdfunding governance-dao oracle-consumer nft-marketplace c-hello
@@ -216,6 +217,9 @@ integration-tests:
 	@echo "Running integration tests (requires NEO_EXPRESS_RPC)..."
 	cargo test --manifest-path integration-tests/Cargo.toml -- --ignored
 
+spec:
+	$(MAKE) -C spec
+
 clean:
 	rm -rf $(OUTDIR)
 	rm -rf contracts/hello-world/target contracts/nep17-token/target contracts/constant-product/target \
@@ -223,3 +227,4 @@ clean:
 	       contracts/crowdfunding/target contracts/governance-dao/target contracts/oracle-consumer/target \
 	       contracts/nft-marketplace/target
 	rm -rf wasm-neovm/target rust-devpack/target
+	$(MAKE) -C spec clean
