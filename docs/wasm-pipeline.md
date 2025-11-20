@@ -56,12 +56,12 @@ Only the stub offset (here `0x0c`) is written to the manifest; the start body re
 The workspace ships a `.cargo/config.toml` entry for `wasm32-unknown-unknown` that sets
 
 ```
--C panic=abort -C target-feature=-simd128
+-C panic=abort -C target-feature=-simd128,-atomics,-reference-types,-multivalue,-tail-call
 ```
 
 Any attempt to compile a contract that uses SIMD, atomics, reference types beyond `funcref`, tail calls, or multi-value returns fails during `cargo build` before the translator is invoked. `scripts/build_contract.sh` inherits those defaults and adds `-C opt-level=z` / `-C strip=symbols`; the environment variable `NEO_WASM_RUSTFLAGS` can override the entire flag string when required (for example, to re-enable bulk-memory experiments).
 
-Note: the default script opts for a stable-safe feature mask (`-C target-feature=-simd128`) to avoid rustc warnings about unstable feature flags. If you need stricter masking (e.g., disabling atomics/reference-types/multivalue/tail-call) set `NEO_WASM_RUSTFLAGS` explicitly; rustc may emit warnings for those unstable feature names on stable toolchains.
+Note: the full mask includes unstable feature names; rustc may emit warnings on stable toolchains. They are safe to ignore and keep unsupported instructions out of the pipeline. Override via `NEO_WASM_RUSTFLAGS` if you want to relax or adjust the mask.
 
 The C helper (`scripts/build_c_contract.sh`) mirrors the restriction via `-mattr=-simd128` by default so Clang emits an error instead of producing SIMD bytecode. Projects that compile Wasm outside these scripts should mirror the same mask; if you need to disable additional features, extend `DEFAULT_CFLAGS` or pass extra `-mattr` flags after the first `--`.
 

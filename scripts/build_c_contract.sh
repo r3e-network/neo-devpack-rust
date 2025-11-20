@@ -77,7 +77,7 @@ DEFAULT_CFLAGS=(
   -fvisibility=hidden
   -fno-exceptions
   -fno-rtti
-  -mattr=-simd128
+  -mattr=-simd128,-atomics,-reference-types,-multivalue,-tail-call
 )
 DEFAULT_LDFLAGS=(
   -Wl,--no-entry
