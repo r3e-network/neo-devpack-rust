@@ -304,8 +304,7 @@ fn br_table_targets_across_loop_and_block_void_ok() {
     )
     .expect("valid wat");
 
-    let translation =
-        translate_module(&wasm, "BrTableLoopBlockOk").expect("translation succeeds");
+    let translation = translate_module(&wasm, "BrTableLoopBlockOk").expect("translation succeeds");
     let ret = opcodes::lookup("RET").unwrap().byte;
     assert_eq!(translation.script.last().copied(), Some(ret));
 }
@@ -437,8 +436,8 @@ fn loop_result_break_requires_value() {
     )
     .expect("valid wat");
 
-    let err =
-        translate_module(&wasm, "BadBreak").expect_err("break without value should fail translation");
+    let err = translate_module(&wasm, "BadBreak")
+        .expect_err("break without value should fail translation");
     let message = err.to_string();
     assert!(
         err.chain()
