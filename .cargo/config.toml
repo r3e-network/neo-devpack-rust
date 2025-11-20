@@ -3,5 +3,5 @@
 # fails immediately when a contract attempts to use them.
 rustflags = [
     "-C", "panic=abort",
-    "-C", "target-feature=-simd128,-atomics,-reference-types,-multivalue,-tail-call",
+    "-C", "target-feature=-simd128",
 ]

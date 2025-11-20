@@ -56,7 +56,7 @@ Only the stub offset (here `0x0c`) is written to the manifest; the start body re
 The workspace ships a `.cargo/config.toml` entry for `wasm32-unknown-unknown` that sets
 
 ```
--C panic=abort -C target-feature=-simd128,-atomics,-reference-types,-multivalue,-tail-call
+-C panic=abort -C target-feature=-simd128
 ```
 
 Any attempt to compile a contract that uses SIMD, atomics, reference types beyond `funcref`, tail calls, or multi-value returns fails during `cargo build` before the translator is invoked. `scripts/build_contract.sh` inherits those defaults and adds `-C opt-level=z` / `-C strip=symbols`; the environment variable `NEO_WASM_RUSTFLAGS` can override the entire flag string when required (for example, to re-enable bulk-memory experiments).
