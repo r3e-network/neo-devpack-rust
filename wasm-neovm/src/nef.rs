@@ -8,6 +8,7 @@ use sha2::{Digest, Sha256};
 const NEF_MAGIC: u32 = 0x3346_454E; // "NEF3"
 const COMPILER: &str = concat!("neo-llvm wasm-neovm ", env!("CARGO_PKG_VERSION"));
 const MAX_SOURCE_LENGTH: usize = 256;
+const MAX_METHOD_NAME_LENGTH: usize = 32;
 
 /// Write a NEF artefact containing the provided script payload.
 pub fn write_nef<P: AsRef<Path>>(script: &[u8], output_path: P) -> Result<()> {
@@ -105,6 +106,12 @@ pub const HASH160_LENGTH: usize = 20;
 fn write_method_tokens(buffer: &mut Vec<u8>, method_tokens: &[MethodToken]) -> Result<()> {
     write_var_uint(buffer, method_tokens.len() as u64);
     for token in method_tokens {
+        ensure!(
+            token.method.as_bytes().len() <= MAX_METHOD_NAME_LENGTH,
+            "method token name '{}' exceeds {} bytes",
+            token.method,
+            MAX_METHOD_NAME_LENGTH
+        );
         buffer.extend_from_slice(&token.contract_hash);
         write_var_string(buffer, &token.method)?;
         buffer.extend_from_slice(&token.parameters_count.to_le_bytes());

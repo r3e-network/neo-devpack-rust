@@ -13,6 +13,7 @@ pub const TOKEN_HAS_RETURN_KEY: &str = "hasreturnvalue";
 pub const TOKEN_CALLFLAGS_KEY: &str = "callflags";
 pub const SOURCE_TOP_LEVEL_KEY: &str = "source";
 pub const SOURCE_EXTRA_KEY: &str = "nefSource";
+const MAX_TOKEN_METHOD_LENGTH: usize = 32;
 
 #[derive(Debug, Default, Clone)]
 pub struct NefMetadata {
@@ -231,6 +232,13 @@ fn parse_method_token_object(
             )
         })?
         .to_owned();
+    ensure!(
+        method.as_bytes().len() <= MAX_TOKEN_METHOD_LENGTH,
+        "{} method token #{} has method name exceeding {} bytes",
+        context,
+        index,
+        MAX_TOKEN_METHOD_LENGTH
+    );
 
     let paramcount = obj
         .get(TOKEN_PARAMCOUNT_KEY)

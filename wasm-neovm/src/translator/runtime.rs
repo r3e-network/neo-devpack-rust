@@ -6,7 +6,7 @@ use wasmparser::{ConstExpr, FuncType, Operator, ValType};
 use crate::nef::{MethodToken, HASH160_LENGTH};
 
 const BASE_MEMORY_STATIC_SLOTS: usize = 4;
-const INIT_FLAG_SLOT: usize = BASE_MEMORY_STATIC_SLOTS;
+pub(crate) const INIT_FLAG_SLOT: usize = BASE_MEMORY_STATIC_SLOTS;
 const BASE_STATIC_SLOTS: usize = INIT_FLAG_SLOT + 1;
 
 use super::constants::*;
@@ -29,6 +29,7 @@ pub(crate) struct RuntimeHelpers {
     next_element_index: usize,
     globals: Vec<GlobalDescriptor>,
     tables: Vec<TableDescriptor>,
+    start_slot: Option<usize>,
 }
 
 impl Default for RuntimeHelpers {
@@ -47,6 +48,7 @@ impl Default for RuntimeHelpers {
             next_element_index: 0,
             globals: Vec::new(),
             tables: Vec::new(),
+            start_slot: None,
         }
     }
 }
@@ -291,6 +293,7 @@ impl RuntimeHelpers {
                 + passive_element_layouts.len() * 2,
             descriptor,
         });
+        self.start_slot = start_helper.as_ref().map(|helper| helper.slot);
 
         let static_slot_count = BASE_STATIC_SLOTS
             + global_layouts.len()
@@ -688,6 +691,18 @@ impl RuntimeHelpers {
             table.slot = Some(base + index);
         }
         Ok(table.slot.expect("table slot should be assigned"))
+    }
+
+    pub(crate) fn start_slot(&self) -> Option<usize> {
+        self.start_slot
+    }
+
+    pub(crate) fn memory_init_offset(&self) -> Option<usize> {
+        self.memory_init_offset
+    }
+
+    pub(crate) fn has_memory_init_calls(&self) -> bool {
+        !self.memory_init_calls.is_empty()
     }
 
     pub(crate) fn register_active_element(
@@ -1256,6 +1271,7 @@ fn emit_runtime_init_helper(
     let catch_pos = script.len();
     script.push(lookup_opcode("DROP")?.byte);
     let catch_endtry_pos = emit_endtry_placeholder(script)?;
+    script.push(lookup_opcode("ABORT")?.byte);
 
     let end_label = script.len();
 
@@ -1577,33 +1593,45 @@ fn emit_memory_grow_helper(script: &mut Vec<u8>, _config: &MemoryConfig) -> Resu
     script.push(lookup_opcode("EQUAL")?.byte);
     let zero_branch = emit_jump_placeholder(script, "JMPIF_L")?;
 
-    script.push(lookup_opcode("LDSFLD2")?.byte);
-    script.push(lookup_opcode("SWAP")?.byte);
-    script.push(lookup_opcode("OVER")?.byte);
-    script.push(lookup_opcode("SWAP")?.byte);
-    script.push(lookup_opcode("ADD")?.byte);
+    script.push(lookup_opcode("INITSLOT")?.byte);
+    script.push(3);
+    script.push(0);
 
+    script.push(lookup_opcode("STLOC0")?.byte); // delta pages
+
+    script.push(lookup_opcode("LDSFLD2")?.byte); // current pages
     script.push(lookup_opcode("DUP")?.byte);
-    script.push(lookup_opcode("LDSFLD3")?.byte);
+    script.push(lookup_opcode("STLOC1")?.byte); // save for return
+
+    script.push(lookup_opcode("LDLOC1")?.byte);
+    script.push(lookup_opcode("LDLOC0")?.byte);
+    script.push(lookup_opcode("ADD")?.byte);
+    script.push(lookup_opcode("DUP")?.byte);
+    script.push(lookup_opcode("STLOC2")?.byte); // new pages
+
+    script.push(lookup_opcode("LDLOC2")?.byte); // new pages
+    script.push(lookup_opcode("LDSFLD3")?.byte); // maximum
     script.push(lookup_opcode("DUP")?.byte);
     script.push(lookup_opcode("PUSHM1")?.byte);
     script.push(lookup_opcode("EQUAL")?.byte);
     let skip_limit = emit_jump_placeholder(script, "JMPIF_L")?;
 
+    script.push(lookup_opcode("SWAP")?.byte);
     script.push(lookup_opcode("GT")?.byte);
     let fail_on_max = emit_jump_placeholder(script, "JMPIF_L")?;
-    let after_limit = emit_jump_placeholder(script, "JMP_L")?;
+    let after_normal = emit_jump_placeholder(script, "JMP_L")?;
 
-    let skip_label = script.len();
-    script.push(lookup_opcode("DROP")?.byte);
-    script.push(lookup_opcode("DROP")?.byte);
-    let after_label = script.len();
-    patch_jump(script, skip_limit, skip_label)?;
-    patch_jump(script, after_limit, after_label)?;
+    let skip_limit_label = script.len();
+    script.push(lookup_opcode("DROP")?.byte); // drop max when unlimited
+    script.push(lookup_opcode("DROP")?.byte); // drop duplicated new_pages to normalise stack
 
-    script.push(lookup_opcode("DUP")?.byte);
+    let after_limit = script.len();
+    patch_jump(script, skip_limit, skip_limit_label)?;
+    patch_jump(script, after_normal, after_limit)?;
+
+    script.push(lookup_opcode("LDLOC2")?.byte);
     let _ = emit_push_int(script, 16);
-    script.push(lookup_opcode("SHL")?.byte);
+    script.push(lookup_opcode("SHL")?.byte); // new byte length
     script.push(lookup_opcode("DUP")?.byte);
     script.push(lookup_opcode("NEWBUFFER")?.byte);
     script.push(lookup_opcode("DUP")?.byte);
@@ -1613,11 +1641,11 @@ fn emit_memory_grow_helper(script: &mut Vec<u8>, _config: &MemoryConfig) -> Resu
     script.push(lookup_opcode("LDSFLD1")?.byte);
     script.push(lookup_opcode("MEMCPY")?.byte);
 
-    script.push(lookup_opcode("STSFLD0")?.byte);
-    script.push(lookup_opcode("STSFLD1")?.byte);
-    script.push(lookup_opcode("DUP")?.byte);
-    script.push(lookup_opcode("STSFLD2")?.byte);
-    script.push(lookup_opcode("DROP")?.byte);
+    script.push(lookup_opcode("STSFLD0")?.byte); // buffer
+    script.push(lookup_opcode("STSFLD1")?.byte); // byte length
+    script.push(lookup_opcode("LDLOC2")?.byte);
+    script.push(lookup_opcode("STSFLD2")?.byte); // page count
+    script.push(lookup_opcode("LDLOC1")?.byte); // return old pages
     script.push(RET);
 
     let zero_label = script.len();
@@ -1626,8 +1654,6 @@ fn emit_memory_grow_helper(script: &mut Vec<u8>, _config: &MemoryConfig) -> Resu
     script.push(RET);
 
     let fail_label = script.len();
-    script.push(lookup_opcode("DROP")?.byte);
-    script.push(lookup_opcode("DROP")?.byte);
     script.push(lookup_opcode("PUSHM1")?.byte);
     script.push(RET);
 
@@ -1710,7 +1736,7 @@ fn emit_memory_fill_helper(script: &mut Vec<u8>) -> Result<()> {
 
 fn emit_memory_copy_helper(script: &mut Vec<u8>) -> Result<()> {
     script.push(lookup_opcode("INITSLOT")?.byte);
-    script.push(3);
+    script.push(5);
     script.push(0);
 
     script.push(lookup_opcode("STLOC2")?.byte);
@@ -1751,12 +1777,64 @@ fn emit_memory_copy_helper(script: &mut Vec<u8>) -> Result<()> {
     let trap_src_oob = emit_jump_placeholder(script, "JMPIF_L")?;
     script.push(lookup_opcode("DROP")?.byte);
 
+    script.push(lookup_opcode("LDLOC2")?.byte);
+    script.push(lookup_opcode("PUSH0")?.byte);
+    script.push(lookup_opcode("EQUAL")?.byte);
+    let zero_len = emit_jump_placeholder(script, "JMPIF_L")?;
+    script.push(lookup_opcode("DROP")?.byte);
+
+    script.push(lookup_opcode("LDLOC0")?.byte);
+    script.push(lookup_opcode("LDLOC1")?.byte);
+    script.push(lookup_opcode("LT")?.byte);
+    let forward_copy = emit_jump_placeholder(script, "JMPIF_L")?;
+    script.push(lookup_opcode("DROP")?.byte);
+
+    script.push(lookup_opcode("LDLOC2")?.byte);
+    script.push(lookup_opcode("STLOC3")?.byte);
+
+    let back_loop = script.len();
+    script.push(lookup_opcode("LDLOC3")?.byte);
+    script.push(lookup_opcode("PUSH0")?.byte);
+    script.push(lookup_opcode("EQUAL")?.byte);
+    let back_exit = emit_jump_placeholder(script, "JMPIF_L")?;
+    script.push(lookup_opcode("DROP")?.byte);
+
+    script.push(lookup_opcode("LDLOC3")?.byte);
+    script.push(lookup_opcode("DEC")?.byte);
+    script.push(lookup_opcode("STLOC3")?.byte);
+
+    script.push(lookup_opcode("LDSFLD0")?.byte);
+    script.push(lookup_opcode("LDLOC1")?.byte);
+    script.push(lookup_opcode("LDLOC3")?.byte);
+    script.push(lookup_opcode("ADD")?.byte);
+    script.push(lookup_opcode("PICKITEM")?.byte);
+    script.push(lookup_opcode("STLOC4")?.byte);
+
+    script.push(lookup_opcode("LDSFLD0")?.byte);
+    script.push(lookup_opcode("LDLOC0")?.byte);
+    script.push(lookup_opcode("LDLOC3")?.byte);
+    script.push(lookup_opcode("ADD")?.byte);
+    script.push(lookup_opcode("LDLOC4")?.byte);
+    script.push(lookup_opcode("SETITEM")?.byte);
+
+    let back_jump = emit_jump_placeholder(script, "JMP_L")?;
+
+    let back_exit_label = script.len();
+    script.push(RET);
+
+    patch_jump(script, back_exit, back_exit_label)?;
+    patch_jump(script, back_jump, back_loop)?;
+
+    let forward_label = script.len();
     script.push(lookup_opcode("LDSFLD0")?.byte);
     script.push(lookup_opcode("LDLOC0")?.byte);
     script.push(lookup_opcode("LDSFLD0")?.byte);
     script.push(lookup_opcode("LDLOC1")?.byte);
     script.push(lookup_opcode("LDLOC2")?.byte);
     script.push(lookup_opcode("MEMCPY")?.byte);
+    script.push(RET);
+
+    let zero_label = script.len();
     script.push(RET);
 
     let trap_label = script.len();
@@ -1767,6 +1845,8 @@ fn emit_memory_copy_helper(script: &mut Vec<u8>) -> Result<()> {
     patch_jump(script, trap_src_negative, trap_label)?;
     patch_jump(script, trap_dest_oob, trap_label)?;
     patch_jump(script, trap_src_oob, trap_label)?;
+    patch_jump(script, zero_len, zero_label)?;
+    patch_jump(script, forward_copy, forward_label)?;
     Ok(())
 }
 
@@ -2514,6 +2594,8 @@ pub(crate) fn infer_contract_tokens(script: &[u8]) -> Vec<MethodToken> {
     use crate::opcodes;
     use crate::syscalls;
 
+    const MAX_TOKEN_METHOD_LEN: usize = 32;
+
     #[derive(Debug, Clone)]
     enum Literal {
         Integer(i128),
@@ -2758,14 +2840,17 @@ pub(crate) fn infer_contract_tokens(script: &[u8]) -> Vec<MethodToken> {
                         method.clone(),
                         call_flags.clone(),
                         args.clone(),
-                    ) {
-                        if contract_hash.len() == HASH160_LENGTH {
-                            if let Ok(method_name) = String::from_utf8(method_bytes.clone()) {
-                                if flags >= 0 && flags <= u8::MAX as i128 {
-                                    let has_return_value = {
-                                        if pc < script.len() {
-                                            Some(script[pc]) != drop_op
-                                        } else {
+                        ) {
+                            if contract_hash.len() == HASH160_LENGTH {
+                                if let Ok(method_name) = String::from_utf8(method_bytes.clone()) {
+                                    if method_name.as_bytes().len() > MAX_TOKEN_METHOD_LEN {
+                                        continue;
+                                    }
+                                    if flags >= 0 && flags <= u8::MAX as i128 {
+                                        let has_return_value = {
+                                            if pc < script.len() {
+                                                Some(script[pc]) != drop_op
+                                            } else {
                                             true
                                         }
                                     };
@@ -2786,6 +2871,10 @@ pub(crate) fn infer_contract_tokens(script: &[u8]) -> Vec<MethodToken> {
                         }
                     }
                 } else {
+                    if info.name.as_bytes().len() > MAX_TOKEN_METHOD_LEN {
+                        stack.push(Literal::Unknown);
+                        continue;
+                    }
                     let has_return_value = {
                         if pc < script.len() {
                             Some(script[pc]) != drop_op

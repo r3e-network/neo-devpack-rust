@@ -16,6 +16,7 @@ use crate::neo_syscalls;
 use crate::numeric;
 use crate::opcodes;
 use crate::syscalls;
+use crate::translator::runtime::INIT_FLAG_SLOT;
 
 use super::constants::*;
 use super::helpers::*;
@@ -721,12 +722,44 @@ fn translate_module_internal(bytes: &[u8], config: TranslationConfig) -> Result<
         None
     };
 
+    let had_memory_init_calls = runtime.has_memory_init_calls();
+
     runtime.finalize(
         &mut script,
         start_descriptor.as_ref(),
         frontend.imports(),
         frontend.module_types().signatures(),
     )?;
+
+    if !had_memory_init_calls {
+        if let Some(descriptor) = &start_descriptor {
+            if let (Some(init_offset), Some(start_slot)) =
+                (runtime.memory_init_offset(), runtime.start_slot())
+            {
+                let start_names: Vec<String> = exported_funcs
+                    .get(&descriptor.function_index)
+                    .map(|entry| entry.names.iter().map(|alias| alias.name.clone()).collect())
+                    .unwrap_or_default();
+                if !start_names.is_empty() {
+                    let start_body_offset = match descriptor.kind {
+                        StartKind::Defined { offset } => Some(offset),
+                        StartKind::Import => None,
+                    };
+                    let stub_offset = append_start_stub(
+                        &mut script,
+                        init_offset,
+                        start_body_offset,
+                        start_slot,
+                    )?;
+                    for method in &mut methods {
+                        if start_names.contains(&method.name) {
+                            method.offset = stub_offset as u32;
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     let mut manifest_builder = ManifestBuilder::new(contract_name, &methods);
     if let Some(overlay) = manifest_overlay {
@@ -761,6 +794,36 @@ fn translate_module_internal(bytes: &[u8], config: TranslationConfig) -> Result<
         method_tokens: metadata.method_tokens.clone(),
         source_url: metadata.source.clone(),
     })
+}
+
+fn append_start_stub(
+    script: &mut Vec<u8>,
+    init_helper_offset: usize,
+    start_offset: Option<usize>,
+    start_slot: usize,
+) -> Result<usize> {
+    let stub_offset = script.len();
+
+    emit_load_static(script, INIT_FLAG_SLOT)?;
+    let skip_init = emit_jump_placeholder(script, "JMPIF_L")?;
+    let init_call = emit_call_placeholder(script)?;
+    patch_call(script, init_call, init_helper_offset)?;
+    let after_init = script.len();
+    patch_jump(script, skip_init, after_init)?;
+
+    emit_load_static(script, start_slot)?;
+    let skip_start = emit_jump_placeholder(script, "JMPIF_L")?;
+
+    if let Some(offset) = start_offset {
+        let start_call = emit_call_placeholder(script)?;
+        patch_call(script, start_call, offset)?;
+    }
+    let after_start = script.len();
+    patch_jump(script, skip_start, after_start)?;
+
+    script.push(RET);
+
+    Ok(stub_offset)
 }
 
 fn emit_import_export_stub(

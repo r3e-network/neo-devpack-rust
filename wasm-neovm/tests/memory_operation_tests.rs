@@ -202,6 +202,44 @@ fn translate_i32_store16() {
 }
 
 #[test]
+fn memory_copy_handles_overlap() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (memory 1)
+              (func (export "copy") (param i32 i32 i32)
+                local.get 0
+                local.get 1
+                local.get 2
+                memory.copy))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "CopyOverlap").expect("translation succeeds");
+
+    let dec = opcodes::lookup("DEC").unwrap().byte;
+    let pickitem = opcodes::lookup("PICKITEM").unwrap().byte;
+    let setitem = opcodes::lookup("SETITEM").unwrap().byte;
+    let memcpy = opcodes::lookup("MEMCPY").unwrap().byte;
+
+    assert!(
+        translation.script.contains(&dec),
+        "overlap-safe copy should include backward loop with DEC"
+    );
+    assert!(
+        translation.script.contains(&pickitem),
+        "backward branch should read from source"
+    );
+    assert!(
+        translation.script.contains(&setitem),
+        "backward branch should write to destination"
+    );
+    assert!(
+        translation.script.contains(&memcpy),
+        "forward branch should still use MEMCPY fast path"
+    );
+}
+
+#[test]
 fn translate_i64_store() {
     let wasm = wat::parse_str(
         r#"(module
@@ -502,8 +540,8 @@ fn translate_memory_pointer_arithmetic() {
 fn translate_env_memcpy_call() {
     let wasm = wat::parse_str(
         r#"(module
-              (memory 1)
               (import "env" "memcpy" (func $memcpy (param i32 i32 i32) (result i32)))
+              (memory 1)
               (func (export "copy_bytes") (param i32 i32 i32) (result i32)
                 local.get 0
                 local.get 1
@@ -531,8 +569,8 @@ fn translate_env_memcpy_call() {
 fn translate_env_memset_call() {
     let wasm = wat::parse_str(
         r#"(module
-              (memory 1)
               (import "env" "memset" (func $memset (param i32 i32 i32) (result i32)))
+              (memory 1)
               (func (export "clear") (param i32 i32 i32) (result i32)
                 local.get 0
                 local.get 1
@@ -560,8 +598,8 @@ fn translate_env_memset_call() {
 fn translate_env_memmove_call() {
     let wasm = wat::parse_str(
         r#"(module
-              (memory 1)
               (import "env" "memmove" (func $memmove (param i32 i32 i32) (result i32)))
+              (memory 1)
               (func (export "move") (param i32 i32 i32) (result i32)
                 local.get 0
                 local.get 1

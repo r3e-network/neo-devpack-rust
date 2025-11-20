@@ -23,6 +23,18 @@ The translator can initially focus on the minimal instruction subset required by
 - Plain C contracts can use `scripts/build_c_contract.sh`, a thin wrapper around clang that mirrors the same Wasm → NeoVM flow.
 - A future improvement is to expose a `cargo neovm` subcommand that shells out to both the Wasm build and the translator.
 
+### 2.1 Enforcing the supported Wasm surface
+
+The workspace ships a `.cargo/config.toml` entry for `wasm32-unknown-unknown` that sets
+
+```
+-C panic=abort -C target-feature=-simd128,-atomics,-reference-types,-multivalue,-tail-call
+```
+
+Any attempt to compile a contract that uses SIMD, atomics, reference types beyond `funcref`, tail calls, or multi-value returns fails during `cargo build` before the translator is invoked. `scripts/build_contract.sh` inherits those defaults and adds `-C opt-level=z` / `-C strip=symbols`; the environment variable `NEO_WASM_RUSTFLAGS` can override the entire flag string when required (for example, to re-enable bulk-memory experiments).
+
+The C helper (`scripts/build_c_contract.sh`) applies the same restriction via `-mattr=-simd128,-atomics,-reference-types,-multivalue,-tail-call` so Clang emits an error instead of producing unsupported bytecode. Projects that compile Wasm outside these scripts should mirror the same `target-feature`/`-mattr` masks to keep incompatible instructions from slipping into the pipeline.
+
 ## 3. Translator architecture (`crates/wasm-neovm`)
 
 `wasm-neovm` lives in the repository as a Rust crate that depends on `wasmparser`, `serde_json`, `anyhow`, and `clap`. Build-time helpers scan the upstream `neo` repository to generate exhaustive opcode/syscall tables so every NeoVM instruction and interop hash is available to the translator. The current layout is:
@@ -77,7 +89,7 @@ Maintain a small interpreter over the Wasm operand stack. For every operator, em
 | Integer conversions (`i32.wrap_i64`, `i64.extend_i32_{s,u}`, `i32.extend{8,16}_s`, `i64.extend{8,16,32}_s`) | Masks operands with `AND` and applies `SHL`/`SHR` pairs when required to reproduce Wasm sign-extension semantics |
 | `i32`/`i64` `clz` / `ctz` / `popcnt` | Compile-time literals fold to immediates; dynamic operands call compact helpers (constructed from `INITSLOT`, `SETITEM`, and arithmetic opcodes) that exactly reproduce Wasm bit-counting semantics |
 | `global.get` / `global.set`          | Module globals are stored in static slots initialised from constant expressions; immutable globals fold to literals, mutable globals use `STSFLD*`/`LDSFLD*` |
-| `memory.size` / `memory.grow` / `memory.load*` / `memory.store*` / `memory.fill` / `memory.copy` / `memory.init` / `data.drop` | Linear memory lives in a static buffer slot; helpers handle bounds checks, (re)allocation via `NEWBUFFER` + `MEMCPY`, byte slicing with `SUBSTR`, staged writes through `SETITEM`, bulk operations (`MEMCPY` for copy/init) and lazily-applied drop flags so repeated `memory.init`/`data.drop` calls follow Wasm semantics |
+| `memory.size` / `memory.grow` / `memory.load*` / `memory.store*` / `memory.fill` / `memory.copy` / `memory.init` / `data.drop` | Linear memory lives in a static buffer slot; helpers handle bounds checks, (re)allocation via `NEWBUFFER` + `MEMCPY`, byte slicing with `SUBSTR`, staged writes through `SETITEM`, bulk operations (`MEMCPY` for copy/init) with memmove-style overlap handling, and lazily-applied drop flags so repeated `memory.init`/`data.drop` calls follow Wasm semantics |
 | `call_indirect`                      | Funcref tables dispatch via runtime lookups that honour dynamic table mutations and trap when entries are null or out of range |
 | `table.get` / `table.set` / `table.size` / `table.grow` / `table.fill` / `table.copy` / `table.init` / `elem.drop` | Tables live in static slots backed by NeoVM arrays; helpers validate indices, enforce declared maxima, copy passive segments, and mark dropped elements |
 | `drop`                                | Elide the literal push when possible, otherwise emit `DROP`                               |
@@ -113,9 +125,11 @@ All translation failures return a structured error variant. Include the offendin
 The translator owns a small NEF writer (`nef.rs`) that:
 
 1. Streams the generated script bytes (and optional metadata) into the NEF container via `write_nef_with_metadata`.
-2. Collects ABI information (export names, parameter types, return types) while translating and renders it with `manifest::build_manifest`.
-3. Scans the emitted script for literal `SYSCALL` patterns. `System.Contract.Call` invocations still produce contract/method tokens when the hash/method/argument array are constant, and every other syscall contributes a zero-hash `MethodToken` so the NEF metadata lists each interop touched by the contract.
+2. Collects ABI information (export names, parameter types, return types) while translating and renders it with `manifest::build_manifest`. Manifest overlays may not mutate translated signatures/offsets; mismatches abort translation.
+3. Scans the emitted script for literal `SYSCALL` patterns. `System.Contract.Call` invocations still produce contract/method tokens when the hash/method/argument array are constant, and every other syscall contributes a zero-hash `MethodToken` so the NEF metadata lists each interop touched by the contract. Method-token names are capped at 32 bytes; oversized entries are rejected/ignored.
 4. Writes `<contract>.nef` and `<contract>.manifest.json` next to the Wasm artefact, ready for packaging.
+
+Method-token names are capped at 32 bytes to match the NEF format; longer syscall names are ignored during inference, and overlays/embedded sections are validated at parse time.
 
 ### Opcode & syscall imports
 
@@ -137,7 +151,7 @@ These facilities complement automatic lowering of core Wasm instructions (`i32.c
 
 1. Arithmetic & locals (in progress → achieved for `i32`/`i64` adds, subs, muls, comparisons, literal tracking).
 2. Control flow – translate `block/loop/if`, `br`, `br_if`, and user function calls.
-3. Memory & buffers – current helpers cover `memory.size`, `memory.grow`, the `load*`/`store*` family, and bulk operations (`memory.fill`/`memory.copy`); remaining work tracks data segments and multi-memory modules.
+3. Memory & buffers – current helpers cover `memory.size`, `memory.grow`, the `load*`/`store*` family, and bulk operations (`memory.fill`/`memory.copy`) with overlap-safe copies; remaining work tracks data segments and multi-memory modules. Init failures propagate rather than being swallowed.
 4. Heap abstractions – translate `Vec`, `String` usage to Neo array operations.
 5. Events & manifests – `neo_event` macros emit canonical `abi.events` entries (Boolean/Integer/ByteArray/etc.) via custom sections; the translator merges and deduplicates them alongside any manual overlays. Storage usage is inferred directly from `System.Storage.*` syscalls so `features.storage` flips on automatically, and exporting payment handlers (`onPayment`, `onNEP17Payment`, `onNEP11Payment`) toggles `features.payable`.
 6. Debug metadata – attach sequence points, contract hash hints, gas metering.

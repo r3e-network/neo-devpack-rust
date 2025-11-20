@@ -7,9 +7,11 @@
 \usepackage{booktabs}
 \usepackage{longtable}
 \usepackage{hyperref}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning}
 
 \title{Wasm to NeoVM Translation Specification}
-\author{neo-llvm Project}
+\author{R3E Network}
 \date{\today}
 
 \begin{document}
@@ -60,6 +62,27 @@ NEF Writer & Script, metadata & \texttt{*.nef} + \texttt{*.manifest.json} artefa
 \bottomrule
 \end{tabular}
 \end{center}
+Figure~\ref{fig:pipeline} illustrates the stages and optional inputs at a glance.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[>=Stealth, node distance=2cm, every node/.style={font=\small}]
+\tikzstyle{stage}=[draw, rounded corners, fill=gray!10, minimum width=3.8cm, minimum height=1.1cm]
+\node[stage] (frontend) {\shortstack{1. Frontend\\{\footnotesize Parse Wasm sections}}};
+\node[stage, right=1.8cm of frontend] (translator) {\shortstack{2. Translation\\{\footnotesize Emit NeoVM + helpers}}};
+\node[stage, right=1.8cm of translator] (manifest) {\shortstack{3. Manifest\\{\footnotesize Merge overlays, infer flags}}};
+\node[stage, right=1.8cm of manifest] (nef) {\shortstack{4. NEF Writer\\{\footnotesize Script + metadata}}};
+\draw[->, thick] (frontend) -- node[above]{IR} (translator);
+\draw[->, thick] (translator) -- node[above]{Script + metadata} (manifest);
+\draw[->, thick] (manifest) -- node[above]{Manifest JSON} (nef);
+\node[below=1.3cm of translator, align=center, font=\footnotesize] (helpers) {Runtime helper synthesis\\(memory, table, data)};
+\draw[->, thick, dashed] (helpers) -- (translator);
+\node[below=1.3cm of manifest, align=center, font=\footnotesize] (overlays) {Embedded + CLI overlays};
+\draw[->, thick, dashed] (overlays) -- (manifest);
+\caption{High-level Wasm $\rightarrow$ NeoVM translation pipeline. Solid arrows show the main data path, dashed arrows highlight auxiliary inputs.}
+\label{fig:pipeline}
+\end{tikzpicture}
+\end{figure}
 
 \section{Configuration Interfaces}
 \subsection{Library Entry Point}
@@ -323,7 +346,7 @@ Stores: \texttt{i32.store}, \texttt{i64.store}, \texttt{i32.store8}, \texttt{i32
 \tabularnewline
 \texttt{memory.grow} & Helper routine & Masks the delta to 32 bits, enforces the declared maximum (or returns \texttt{-1}), allocates a new buffer when necessary, copies existing bytes, and returns the previous page count.
 \tabularnewline
-\texttt{memory.fill}, \texttt{memory.copy}, \texttt{memory.init} & Helper routines & Validate offsets/lengths, operate on the buffer in-place, and reference passive data slots for \texttt{memory.init}. Out-of-bounds or negative arguments trap via \texttt{ABORT}.
+\texttt{memory.fill}, \texttt{memory.copy}, \texttt{memory.init} & Helper routines & Validate offsets/lengths, operate on the buffer in-place (with overlap-safe copies), and reference passive data slots for \texttt{memory.init}. Out-of-bounds or negative arguments trap via \texttt{ABORT}.
 \tabularnewline
 \texttt{data.drop} & Helper routine & Each passive segment has a drop flag. Dropping more than once triggers \texttt{ABORT}.
 \tabularnewline
@@ -392,9 +415,24 @@ Slot & Purpose \\
 \end{tabular}
 \caption{Base static slot layout}
 \end{table}
-Memory initialisation allocates static slots via \texttt{INITSSLOT}, creates the buffer, records the declared limits, and stores \texttt{0} in the init flag. Additional slots are allocated sequentially for globals, tables, passive data (two slots per segment: bytes + drop flag), passive elements (two slots per segment: value array + drop flag), and an optional start guard bit.
+Memory initialisation allocates static slots via \texttt{INITSSLOT}, creates the buffer, records the declared limits, and stores \texttt{0} in the init flag. Additional slots are allocated sequentially for globals, tables, passive data (two slots per segment: bytes + drop flag), passive elements (two slots per segment: value array + drop flag), and an optional start guard bit; see Figure~\ref{fig:memory-slots}.
 
 Every instruction that may touch runtime state begins with \texttt{emit\_memory\_init\_call}, which loads slot~4. If zero, the helper allocates memory, applies active data segments, initialises tables/elements, runs the start function exactly once, and sets the flag to 1. Subsequent calls skip the helper entirely.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[every node/.style={font=\small}, node distance=0cm]
+\tikzstyle{slot}=[draw, minimum width=7cm, minimum height=0.9cm, anchor=west, fill=gray!5]
+\node[slot] (slot0) {Slot 0 \textbf{Buffer handle} (\texttt{LDSFLD0})};
+\node[slot, below=0cm of slot0] (slot1) {Slot 1 \textbf{Buffer length} (bytes)};
+\node[slot, below=0cm of slot1] (slot2) {Slot 2 \textbf{Page count} (32-bit pages)};
+\node[slot, below=0cm of slot2] (slot3) {Slot 3 \textbf{Max pages} (\texttt{-1} = unbounded)};
+\node[slot, below=0cm of slot3, fill=gray!15] (slot4) {Slot 4 \textbf{Init flag} (0 prior to helper, 1 afterwards)};
+\draw[decorate, decoration={brace, amplitude=6pt}] ([xshift=-0.4cm]slot0.north west) -- node[left=0.2cm, align=right]{\footnotesize Base memory slots\\(always reserved)} ([xshift=-0.4cm]slot4.south west);
+\node[below=0.2cm of slot4, align=center, font=\footnotesize] {Slots for globals, tables, passive data/element caches, and the optional start guard extend the layout further.};
+\caption{Static slot layout reserved by the memory initialiser. Figure~\ref{fig:pipeline} shows where the helper sits in the overall pipeline.}
+\label{fig:memory-slots}
+\end{figure}
 
 \subsection{Memory Helpers}
 Load/store helpers take an address, ensure it is non-negative, check that \texttt{address + width} does not exceed the current length, and operate on the buffer using \texttt{SUBSTR}, \texttt{CONVERT}, and \texttt{SETITEM}. \texttt{memory.grow} masks the delta, enforces the maximum, and copies the old buffer into the new allocation via \texttt{MEMCPY}. \texttt{memory.fill}, \texttt{memory.copy}, and \texttt{memory.init} allocate local slots, validate lengths, and call the corresponding NeoVM primitives. Passive data segments keep their bytes plus a drop flag; \texttt{memory.init} requires the segment to be present and \texttt{data.drop} flips the flag (aborting when invoked twice). Imported \texttt{env::memcpy}, \texttt{env::memmove}, and \texttt{env::memset} invoke the same helpers, ensuring \texttt{-nostdlib -fno-builtin} contracts remain pure Wasm.
@@ -403,7 +441,7 @@ Load/store helpers take an address, ensure it is non-negative, check that \textt
 Each Wasm table becomes a NeoVM array stored in a static slot. Entries encode function indices as signed integers with \texttt{-1} representing null. Helpers exist for \texttt{table.get}, \texttt{table.set}, \texttt{table.size}, \texttt{table.grow} (respecting maxima), \texttt{table.fill}, \texttt{table.copy}, \texttt{table.init}, and \texttt{elem.drop}. Passive element segments store two slots (value array + drop flag); \texttt{table.init} copies values into the destination slice after verifying both the table bounds and the segment drop flag. \texttt{elem.drop} writes \texttt{1} into the flag and aborts if repeated.
 
 \subsection{Start Execution Guard}
-If a start section is present, the runtime helper stores an additional guard slot. Every translated function (except the start function itself) emits \texttt{emit\_memory\_init\_call} at entry so the start function runs before contract code touches any global state. Imported start functions call the respective import bridge; defined start functions reuse their translated offset. The guard ensures the start code executes exactly once even when only manifest overlays or runtime helpers touch memory.
+If a start section is present, the runtime helper stores an additional guard slot. Every translated function (except the start function itself) emits \texttt{emit\_memory\_init\_call} at entry so the start function runs before contract code touches any global state. Imported start functions call the respective import bridge; defined start functions reuse their translated offset. When the start function is the only exported entry, the translator appends a stub that first runs the init helper and then dispatches to the start body, updating the exported offset accordingly. Init failures propagate (the helper traps instead of swallowing errors), and the guard still ensures the start code executes exactly once.
 
 \section{Custom Sections and Metadata}
 \subsection{Manifest Overlays}
@@ -417,7 +455,7 @@ If a start section is present, the runtime helper stores an additional guard slo
 Each exported alias becomes an \texttt{abi.methods} entry named after the alias. Parameters are rendered as \texttt{Integer} with names \texttt{arg0}, \texttt{arg1}, etc. Return values translate to \texttt{Integer} or \texttt{Void}. Default metadata includes empty \texttt{groups}, \texttt{supportedstandards}, \texttt{permissions}, \texttt{trusts}, and an \texttt{extra} block with author/description placeholders.
 
 \subsection{Overlay Application and Parity}
-Embedded \texttt{neo.manifest} fragments are merged first, then the CLI-provided overlay (if any). The \texttt{ManifestBuilder} keeps the baseline method set and records the label of the last overlay file so that diagnostics can point to the offending source. After merging, safe flags propagate across duplicate entries, features are inferred automatically, and \texttt{ensure\_manifest\_methods\_match} aborts if overlays introduce or remove ABI methods. The CLI's \texttt{--compare-manifest} flag compares the rendered manifest against a reference file and prints a diff when they diverge.
+Embedded \texttt{neo.manifest} fragments are merged first, then the CLI-provided overlay (if any). The \texttt{ManifestBuilder} keeps the baseline method set and records the label of the last overlay file so that diagnostics can point to the offending source. After merging, safe flags propagate across duplicate entries, features are inferred automatically, and the builder aborts if overlays introduce or remove ABI methods \emph{or} mutate existing signatures/offsets. The CLI's \texttt{--compare-manifest} flag compares the rendered manifest against a reference file and prints a diff when they diverge.
 
 \subsection{Feature Inference}
 The \texttt{FeatureTracker} inspects imported syscalls and exported method names. Invoking \texttt{System.Storage.*} sets \texttt{features.storage=true}. Exporting \texttt{onPayment}, \texttt{onNEP17Payment}, or \texttt{onNEP11Payment} toggles \texttt{features.payable=true}. The manifest rarely needs to toggle these flags manually.
@@ -433,6 +471,8 @@ The \texttt{FeatureTracker} inspects imported syscalls and exported method names
     \item Script payload as a VarBytes field and a trailing double-SHA256 checksum.
 \end{itemize}
 Method tokens come from overlay metadata, \texttt{neo.methodtokens} sections, inferred call sequences, and manifest \texttt{extra.nefMethodTokens}. Duplicates are removed before writing. NEF emission guarantees the manifest and script stay in sync; failures abort before writing either artefact.
+
+Method names in tokens are limited to 32 bytes per the NEF schema. Oversized names (e.g., long syscall identifiers) are rejected at parse time, and the inference pass skips any detected sequences whose method literal exceeds the limit.
 
 \section{Errors and Diagnostics}
 Translation aborts with descriptive diagnostics on:
