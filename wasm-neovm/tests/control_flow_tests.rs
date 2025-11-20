@@ -289,6 +289,28 @@ fn br_table_loop_continue_with_extra_stack_fails() {
 }
 
 #[test]
+fn br_table_targets_across_loop_and_block_void_ok() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (func (export "mix_ok") (param i32) (result i32)
+                block $outer
+                  loop $loop
+                    local.get 0
+                    br_table $loop $outer
+                  end
+                end
+                i32.const 1)
+            )"#,
+    )
+    .expect("valid wat");
+
+    let translation =
+        translate_module(&wasm, "BrTableLoopBlockOk").expect("translation succeeds");
+    let ret = opcodes::lookup("RET").unwrap().byte;
+    assert_eq!(translation.script.last().copied(), Some(ret));
+}
+
+#[test]
 fn br_table_mismatched_label_arities_fail() {
     let wasm = wat::parse_str(
         r#"(module
