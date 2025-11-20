@@ -263,6 +263,57 @@ fn translate_br_table_large() {
 }
 
 #[test]
+fn br_table_loop_continue_with_extra_stack_fails() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (func (export "mix_bad") (param i32) (result i32)
+                (local i32)
+                block $outer (result i32)
+                  loop $loop
+                    local.get 0
+                    br_table $loop $outer  ;; extra stack value when continuing
+                  end
+                  i32.const 99
+                end)
+            )"#,
+    )
+    .expect("valid wat");
+
+    let err = translate_module(&wasm, "BrTableLoopBlockBad")
+        .expect_err("unbalanced br_table to loop should fail");
+    assert!(
+        err.chain()
+            .any(|cause| cause.to_string().contains("branch requires")),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn br_table_mismatched_label_arities_fail() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (func (export "mix_mismatch") (param i32) (result i32)
+                block $outer (result i32)
+                  loop $loop
+                    local.get 0
+                    br_table $loop $outer   ;; loop label expects 0, outer expects 1
+                  end
+                  i32.const 7
+                end)
+            )"#,
+    )
+    .expect("valid wat");
+
+    let err = translate_module(&wasm, "BrTableMismatch")
+        .expect_err("br_table with mixed label arities should fail");
+    assert!(
+        err.chain()
+            .any(|cause| cause.to_string().contains("branch requires")),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
 fn translate_early_return_in_blocks() {
     let wasm = wat::parse_str(
         r#"(module
