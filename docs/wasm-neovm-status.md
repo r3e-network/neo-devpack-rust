@@ -27,10 +27,10 @@ contracts. The currently supported surface is:
 
 - **Numeric operations**: `i32`/`i64` integer arithmetic, bit-twiddling, comparisons. No floating-point, SIMD or saturating integer instructions.
 - **Control flow**: structured `block`/`loop`/`if`/`else`/`br`/`br_if`, function calls, `call_indirect` via a single `funcref` table, and `return`. Tail calls, exception handling, and indirect references to non-function types are rejected.
-- **Memory model**: one 32-bit linear memory (`memory 0`) with deterministic helpers for loads, stores, grow/size, passive/active data segments, and bulk-memory opcodes that operate on that memory. Shared memories, `memory64`, multiple memories, and threads are not accepted.
+- **Memory model**: one 32-bit linear memory (`memory 0`) with deterministic helpers for loads, stores, grow/size, passive/active data segments, and bulk-memory opcodes that operate on that memory. Shared memories, `memory64`, multiple memories, and threads are not accepted. Exported start functions are wrapped in an init stub that runs exactly once, preventing recursive initialisation when start bodies touch memory.
 - **Tables**: one `funcref` table with element segments populated through the runtime helpers. Table64, typed tables, and GC/reference-proposal tables are out of scope.
 - **Globals & locals**: mutable and immutable integer globals, locals, and parameters. The start function must have signature `() -> ()`.
-- **Imports**: `syscall::`, `opcode::`, and whitelisted `neo::` imports that map to NeoVM syscalls; other host imports are rejected.
+- **Imports**: `syscall::`, `opcode::`, and whitelisted `neo::` imports that map to NeoVM syscalls; other host imports are rejected. `env::mem*` shims are allowed and lowered to bounded helpers.
 - **Determinism**: no floating-point, random host interaction, or instructions with implementation-defined behaviour. Panics translate to `ABORT`, preserving consensus safety.
 
 > **Compiler guidance**: when compiling Rust or C/C++ contracts use `wasm32-unknown-unknown` (or equivalent) and disable features that emit unsupported instructions (e.g. `RUSTFLAGS="-C target-feature=-simd128"`). Enabling bulk-memory is fine; atomics, threads, and exceptions must remain disabled. For C/C++, prefer the repository's `scripts/build_c_contract.sh`, which passes `-nostdlib`/`-fno-builtin` to avoid `env::` imports such as `memcpy`.

@@ -487,9 +487,7 @@ mod tests {
         builder.merge_overlay(&overlay, Some("overlay.json".to_string()));
         builder.propagate_safe_flags();
         let err = builder.ensure_method_parity().unwrap_err();
-        assert!(err
-            .to_string()
-            .contains("mutated ABI for existing methods"));
+        assert!(err.to_string().contains("mutated ABI for existing methods"));
     }
 }
 

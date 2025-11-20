@@ -77,6 +77,7 @@ DEFAULT_CFLAGS=(
   -fvisibility=hidden
   -fno-exceptions
   -fno-rtti
+  -mattr=-simd128
 )
 DEFAULT_LDFLAGS=(
   -Wl,--no-entry

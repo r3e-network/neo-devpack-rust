@@ -3,8 +3,8 @@ use anyhow::{anyhow, bail, Context, Result};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use wasmparser::{
-    CompositeInnerType, DataKind, ExternalKind, FuncType, HeapType, Operator, Parser, Payload,
-    RefType, TypeRef, ValType,
+    BlockType, CompositeInnerType, DataKind, ExternalKind, FuncType, HeapType, Operator, Parser,
+    Payload, RefType, TypeRef, ValType,
 };
 
 use crate::manifest::{merge_manifest, ManifestBuilder, ManifestMethod, ManifestParameter};
@@ -323,7 +323,9 @@ fn translate_module_internal(bytes: &[u8], config: TranslationConfig) -> Result<
                     start_defined_offset = Some(offset);
                 }
 
-                let return_kind = translate_function(
+                let suppress_init = start_function == Some(func_index as u32);
+                let was_suppressed = runtime.set_memory_init_suppressed(suppress_init);
+                let translation_result = translate_function(
                     func_type,
                     &body,
                     &mut script,
@@ -337,8 +339,10 @@ fn translate_module_internal(bytes: &[u8], config: TranslationConfig) -> Result<
                     start_function,
                     function_name,
                     &mut feature_tracker,
-                )
-                .with_context(|| format!("failed to translate function '{}'", function_name))?;
+                );
+                runtime.set_memory_init_suppressed(was_suppressed);
+                let return_kind = translation_result
+                    .with_context(|| format!("failed to translate function '{}'", function_name))?;
 
                 if let Some(entry) = maybe_export {
                     let parameter_defs: Vec<ManifestParameter> = func_type
@@ -722,8 +726,6 @@ fn translate_module_internal(bytes: &[u8], config: TranslationConfig) -> Result<
         None
     };
 
-    let had_memory_init_calls = runtime.has_memory_init_calls();
-
     runtime.finalize(
         &mut script,
         start_descriptor.as_ref(),
@@ -731,30 +733,25 @@ fn translate_module_internal(bytes: &[u8], config: TranslationConfig) -> Result<
         frontend.module_types().signatures(),
     )?;
 
-    if !had_memory_init_calls {
-        if let Some(descriptor) = &start_descriptor {
-            if let (Some(init_offset), Some(start_slot)) =
-                (runtime.memory_init_offset(), runtime.start_slot())
-            {
-                let start_names: Vec<String> = exported_funcs
-                    .get(&descriptor.function_index)
-                    .map(|entry| entry.names.iter().map(|alias| alias.name.clone()).collect())
-                    .unwrap_or_default();
-                if !start_names.is_empty() {
-                    let start_body_offset = match descriptor.kind {
-                        StartKind::Defined { offset } => Some(offset),
-                        StartKind::Import => None,
-                    };
-                    let stub_offset = append_start_stub(
-                        &mut script,
-                        init_offset,
-                        start_body_offset,
-                        start_slot,
-                    )?;
-                    for method in &mut methods {
-                        if start_names.contains(&method.name) {
-                            method.offset = stub_offset as u32;
-                        }
+    if let Some(descriptor) = &start_descriptor {
+        if let (Some(init_offset), Some(start_slot)) =
+            (runtime.memory_init_offset(), runtime.start_slot())
+        {
+            let start_names: Vec<String> = exported_funcs
+                .get(&descriptor.function_index)
+                .map(|entry| entry.names.iter().map(|alias| alias.name.clone()).collect())
+                .unwrap_or_default();
+            if !start_names.is_empty() {
+                let start_body_offset = match descriptor.kind {
+                    StartKind::Defined { offset } => Some(offset),
+                    StartKind::Import => None,
+                };
+                let stub_offset =
+                    append_start_stub(&mut script, init_offset, start_body_offset, start_slot)?;
+                runtime.patch_start_calls(&mut script, stub_offset)?;
+                for method in &mut methods {
+                    if start_names.contains(&method.name) {
+                        method.offset = stub_offset as u32;
                     }
                 }
             }
@@ -820,6 +817,8 @@ fn append_start_stub(
     }
     let after_start = script.len();
     patch_jump(script, skip_start, after_start)?;
+    let _ = emit_push_int(script, 1);
+    emit_store_static(script, start_slot)?;
 
     script.push(RET);
 
@@ -1377,11 +1376,12 @@ fn translate_function(
                 let result = emit_sign_extend(script, value, 32, 64)?;
                 value_stack.push(result);
             }
-            Operator::Block { .. } => {
+            Operator::Block { blockty: ty, .. } => {
+                let result_count = block_result_count(ty, types)?;
                 control_stack.push(ControlFrame {
                     kind: ControlKind::Block,
                     stack_height: value_stack.len(),
-                    result_count: 0,  // Blocks don't affect function return
+                    result_count,
                     start_offset: script.len(),
                     end_fixups: Vec::new(),
                     if_false_fixup: None,
@@ -1390,11 +1390,12 @@ fn translate_function(
                 // Entering a new block resets unreachable state
                 is_unreachable = false;
             }
-            Operator::Loop { .. } => {
+            Operator::Loop { blockty: ty, .. } => {
+                let result_count = block_result_count(ty, types)?;
                 control_stack.push(ControlFrame {
                     kind: ControlKind::Loop,
                     stack_height: value_stack.len(),
-                    result_count: 0,  // Loops don't affect function return
+                    result_count,
                     start_offset: script.len(),
                     end_fixups: Vec::new(),
                     if_false_fixup: None,
@@ -1403,14 +1404,15 @@ fn translate_function(
                 // Entering a new loop resets unreachable state
                 is_unreachable = false;
             }
-            Operator::If { .. } => {
+            Operator::If { blockty: ty, .. } => {
+                let result_count = block_result_count(ty, types)?;
                 let _cond = pop_value(&mut value_stack, "if condition")?;
                 // Condition already materialised on stack
                 let jump_pos = emit_jump_placeholder(script, "JMPIFNOT_L")?;
                 control_stack.push(ControlFrame {
                     kind: ControlKind::If,
                     stack_height: value_stack.len(),
-                    result_count: 0,  // If blocks don't affect function return
+                    result_count,
                     start_offset: script.len(),
                     end_fixups: Vec::new(),
                     if_false_fixup: Some(jump_pos),
@@ -1434,6 +1436,16 @@ fn translate_function(
                 frame.end_fixups.push(jump_end);
                 frame.has_else = true;
                 frame.start_offset = script.len();
+                if !is_unreachable {
+                    let expected = frame.stack_height + frame.result_count;
+                    if value_stack.len() < expected {
+                        bail!(
+                            "if branch must leave {} value(s) on the stack (found {})",
+                            frame.result_count,
+                            value_stack.len().saturating_sub(frame.stack_height)
+                        );
+                    }
+                }
                 value_stack.truncate(frame.stack_height);
                 // Entering ELSE resets unreachable state
                 is_unreachable = false;
@@ -1448,6 +1460,9 @@ fn translate_function(
                         if let Some(pos) = frame.if_false_fixup {
                             patch_jump(script, pos, script.len())?;
                         }
+                        if frame.result_count > 0 && !frame.has_else && !is_unreachable {
+                            bail!("if with a result type requires an else branch");
+                        }
                     }
                     ControlKind::Loop | ControlKind::Block => {}
                     ControlKind::Function => {
@@ -1459,7 +1474,20 @@ fn translate_function(
                 for fixup in frame.end_fixups {
                     patch_jump(script, fixup, script.len())?;
                 }
-                value_stack.truncate(frame.stack_height);
+                let target_height = frame.stack_height + frame.result_count;
+                if !is_unreachable {
+                    if value_stack.len() < target_height {
+                        bail!(
+                            "{:?} block expected at least {} value(s) on the stack at end but found {}",
+                            frame.kind,
+                            frame.result_count,
+                            value_stack.len().saturating_sub(frame.stack_height)
+                        );
+                    }
+                    value_stack.truncate(target_height);
+                } else {
+                    value_stack.truncate(target_height);
+                }
                 // Code after END is reachable again
                 is_unreachable = false;
             }
@@ -2882,6 +2910,39 @@ fn wasm_val_type_to_manifest(ty: &ValType) -> Result<String> {
     Ok(repr.to_string())
 }
 
+fn block_result_count(ty: BlockType, types: &[FuncType]) -> Result<usize> {
+    let results: Vec<ValType> = match ty {
+        BlockType::Empty => Vec::new(),
+        BlockType::Type(ty) => vec![ty],
+        BlockType::FuncType(idx) => {
+            let func = types
+                .get(idx as usize)
+                .ok_or_else(|| anyhow!("block type index {} out of bounds", idx))?;
+            if !func.params().is_empty() {
+                bail!(
+                    "block type index {} carries parameters; block parameters are unsupported",
+                    idx
+                );
+            }
+            func.results().to_vec()
+        }
+    };
+
+    if results.len() > 1 {
+        bail!("blocks with multi-value results are not supported");
+    }
+    for ty in &results {
+        match ty {
+            ValType::I32 | ValType::I64 => {}
+            ValType::F32 | ValType::F64 => return numeric::unsupported_float("block result type"),
+            ValType::V128 => return numeric::unsupported_simd("block result type"),
+            ValType::Ref(_) => return numeric::unsupported_reference_type("block result type"),
+        }
+    }
+
+    Ok(results.len())
+}
+
 fn handle_branch(
     script: &mut Vec<u8>,
     value_stack: &mut Vec<StackValue>,
@@ -2902,12 +2963,12 @@ fn handle_branch(
 
     // Only validate stack height if we're not already in unreachable code
     // For Function frames: branching means providing return values, validate against result_count
-    // For other frames: branching means jumping to end of block, validate against stack_height
+    // For other frames: branching means jumping to end of block, validate against entry height + results
     if !*is_unreachable {
-        let expected = if frame.kind == ControlKind::Function {
-            frame.result_count
-        } else {
-            frame.stack_height
+        let expected = match frame.kind {
+            ControlKind::Function => frame.result_count,
+            ControlKind::Loop => frame.stack_height,
+            _ => frame.stack_height + frame.result_count,
         };
         if value_stack.len() != expected {
             bail!(
@@ -2932,11 +2993,11 @@ fn handle_branch(
 
     if !conditional {
         // For Function frames, keep result_count values on stack for return
-        // For other frames, truncate to stack_height
-        let target_size = if frame.kind == ControlKind::Function {
-            frame.result_count
-        } else {
-            frame.stack_height
+        // For other frames, truncate to stack_height + result_count so block results are preserved
+        let target_size = match frame.kind {
+            ControlKind::Function => frame.result_count,
+            ControlKind::Loop => frame.stack_height,
+            _ => frame.stack_height + frame.result_count,
         };
         value_stack.truncate(target_size);
         // Unconditional branch makes subsequent code unreachable

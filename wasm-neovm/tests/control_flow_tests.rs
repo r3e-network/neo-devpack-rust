@@ -63,6 +63,50 @@ fn translate_deeply_nested_blocks() {
 }
 
 #[test]
+fn block_results_are_preserved_and_tracked() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (func (export "preserve") (result i32)
+                block (result i32)
+                  i32.const 8
+                end
+                i32.const 1
+                i32.add)
+            )"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "BlockResults").expect("translation succeeds");
+
+    let add = opcodes::lookup("ADD").unwrap().byte;
+    let ret = opcodes::lookup("RET").unwrap().byte;
+    assert!(
+        translation.script.iter().any(|&b| b == add),
+        "expected ADD after using block result"
+    );
+    assert_eq!(translation.script.last().copied(), Some(ret));
+}
+
+#[test]
+fn branch_to_block_with_result_is_allowed() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (func (export "br_result") (result i32)
+                block (result i32)
+                  i32.const 42
+                  br 0
+                end)
+            )"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "BranchResult").expect("translation succeeds");
+
+    let ret = opcodes::lookup("RET").unwrap().byte;
+    assert_eq!(translation.script.last().copied(), Some(ret));
+}
+
+#[test]
 fn translate_nested_loops_with_breaks() {
     let wasm = wat::parse_str(
         r#"(module
@@ -307,6 +351,92 @@ fn translate_loop_with_multiple_exits() {
         branch_issue,
         "unexpected multi-exit branch error: {message}"
     );
+}
+
+#[test]
+fn loop_result_break_requires_value() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (func (export "bad_break") (result i32)
+                loop (result i32)
+                  br 1
+                end))"#,
+    )
+    .expect("valid wat");
+
+    let err =
+        translate_module(&wasm, "BadBreak").expect_err("break without value should fail translation");
+    let message = err.to_string();
+    assert!(
+        err.chain()
+            .any(|cause| cause.to_string().contains("branch requires")),
+        "unexpected error for missing loop result: {message}"
+    );
+}
+
+#[test]
+fn loop_result_break_with_value_succeeds() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (func (export "good_break") (result i32)
+                loop (result i32)
+                  i32.const 7
+                  br 1
+                end))"#,
+    )
+    .expect("valid wat");
+
+    let translation =
+        translate_module(&wasm, "GoodBreak").expect("break supplying result should succeed");
+    let ret = opcodes::lookup("RET").unwrap().byte;
+    assert_eq!(translation.script.last().copied(), Some(ret));
+}
+
+#[test]
+fn loop_continue_requires_entry_stack_height() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (func (export "bad_continue")
+                loop
+                  i32.const 1
+                  br 0   ;; extra stack item: should be rejected
+                end))"#,
+    )
+    .expect("valid wat");
+
+    let err = translate_module(&wasm, "BadContinue")
+        .expect_err("continue with mismatched stack should fail");
+    let message = err.to_string();
+    assert!(
+        err.chain()
+            .any(|cause| cause.to_string().contains("branch requires")),
+        "unexpected continue stack error: {message}"
+    );
+}
+
+#[test]
+fn loop_continue_with_matching_stack_succeeds() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (func (export "good_continue")
+                (local i32)
+                loop
+                  local.get 0
+                  i32.const 1
+                  i32.add
+                  local.set 0
+                  local.get 0
+                  i32.const 3
+                  i32.lt_s
+                  br_if 0
+                end))"#,
+    )
+    .expect("valid wat");
+
+    let translation =
+        translate_module(&wasm, "GoodContinue").expect("continue with balanced stack should pass");
+    let ret = opcodes::lookup("RET").unwrap().byte;
+    assert_eq!(translation.script.last().copied(), Some(ret));
 }
 
 #[test]

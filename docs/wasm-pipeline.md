@@ -23,6 +23,34 @@ The translator can initially focus on the minimal instruction subset required by
 - Plain C contracts can use `scripts/build_c_contract.sh`, a thin wrapper around clang that mirrors the same Wasm → NeoVM flow.
 - A future improvement is to expose a `cargo neovm` subcommand that shells out to both the Wasm build and the translator.
 
+Start sections are wrapped in an init-aware stub: the stub checks the runtime `INIT_FLAG`, runs the memory/table/global initialiser once, and only then executes the exported start body. This prevents start functions that touch memory from recursively entering the initialiser and makes the stub offset the one recorded in the manifest for exported `start` methods (that is, `abi.methods[].offset` points at the stub, not the raw body).
+
+Example manifest slice and matching stub (simplified):
+
+```json
+{
+  "abi": {
+    "methods": [
+      { "name": "start", "offset": 12, "parameters": [], "returntype": "Void", "safe": false }
+    ]
+  }
+}
+```
+
+```
+000c LDSFLD0
+000d JMPIF_L +0c    ; skip init helper if already run
+0012 CALL_L  +1234  ; runtime init helper
+0017 LDSFLD(startSlot)
+0018 JMPIF_L +05    ; skip start body if already executed
+001d CALL_L  +5678  ; start body (import or defined)
+0022 PUSH1
+0023 STSFLD(startSlot)
+0024 RET
+```
+
+Only the stub offset (here `0x0c`) is written to the manifest; the start body retains its own offset for internal calls.
+
 ### 2.1 Enforcing the supported Wasm surface
 
 The workspace ships a `.cargo/config.toml` entry for `wasm32-unknown-unknown` that sets
@@ -33,7 +61,9 @@ The workspace ships a `.cargo/config.toml` entry for `wasm32-unknown-unknown` th
 
 Any attempt to compile a contract that uses SIMD, atomics, reference types beyond `funcref`, tail calls, or multi-value returns fails during `cargo build` before the translator is invoked. `scripts/build_contract.sh` inherits those defaults and adds `-C opt-level=z` / `-C strip=symbols`; the environment variable `NEO_WASM_RUSTFLAGS` can override the entire flag string when required (for example, to re-enable bulk-memory experiments).
 
-The C helper (`scripts/build_c_contract.sh`) applies the same restriction via `-mattr=-simd128,-atomics,-reference-types,-multivalue,-tail-call` so Clang emits an error instead of producing unsupported bytecode. Projects that compile Wasm outside these scripts should mirror the same `target-feature`/`-mattr` masks to keep incompatible instructions from slipping into the pipeline.
+Note: the default script opts for a stable-safe feature mask (`-C target-feature=-simd128`) to avoid rustc warnings about unstable feature flags. If you need stricter masking (e.g., disabling atomics/reference-types/multivalue/tail-call) set `NEO_WASM_RUSTFLAGS` explicitly; rustc may emit warnings for those unstable feature names on stable toolchains.
+
+The C helper (`scripts/build_c_contract.sh`) mirrors the restriction via `-mattr=-simd128` by default so Clang emits an error instead of producing SIMD bytecode. Projects that compile Wasm outside these scripts should mirror the same mask; if you need to disable additional features, extend `DEFAULT_CFLAGS` or pass extra `-mattr` flags after the first `--`.
 
 ## 3. Translator architecture (`crates/wasm-neovm`)
 
@@ -98,6 +128,10 @@ Maintain a small interpreter over the Wasm operand stack. For every operator, em
 
 Structured control flow (`block`, `loop`, `if`, `br`, `br_if`, `br_table`) already uses a label/fix-up mechanism that patches `JMP*_L` immediates once their targets are known, maintaining Wasm stack-height invariants for void and single-value blocks. Unsigned operators are implemented by masking operands to the appropriate bit-width before invoking `DIV`, `MOD`, or `SHR`, ensuring that NeoVM semantics line up with Wasm's zero-extension rules. Memory instructions dispatch to runtime helpers that guard against out-of-bounds access and synchronise the backing buffer with the current page count.
 
+Block and `if`/`loop` result types are limited to a single integer; the translator validates stack layouts at branch targets and block ends so mismatched arities surface as translation errors rather than silent miscompilation.
+
+`if` expressions with a result must include an `else` arm. `loop` labels expect the stack height at loop entry when branching back to the header (continue), while exiting a loop honours the declared result arity.
+
 Passive data segments are materialised into static slots alongside their drop flags; `memory.init` copies slices into the linear-memory buffer via helper-managed `MEMCPY` calls, while `data.drop` marks a segment as unusable for subsequent inits. Active segments are applied during the first memory initialisation, ensuring that traditional `(data (i32.const ...))` declarations populate the backing buffer before user code executes. Global initialisers run alongside the memory bootstrap so `global.get`/`global.set` operate on pre-populated slots.
 
 ### 3.3 Locals and stack slots
@@ -115,6 +149,7 @@ Many contracts invoke runtime services through `extern` Wasm imports (e.g., `env
 - Imports from the `neo` module reuse the friendlier DevPack names (`neo::storage_get`, `neo::notify`, …), which are resolved through the generated lookup table before lowering to the same `SYSCALL` sequence. This keeps existing Rust contracts working while adopting the new pipeline.
 - Imports from the `opcode` module map directly to NeoVM opcodes, with literal parameters folded into the immediate operand. Helper imports `opcode::RAW` and `opcode::RAW4` append arbitrary bytes so variable-length sequences (or unrecognised instructions) can still be emitted.
 - Unsupported import modules surface as explicit diagnostics so missing bridges are easy to spot.
+- Imports from the `env` module are confined to memory shims (`memcpy`, `memmove`, `memset`, and builtin spellings). Each shim expects three `i32` parameters `(dest, src/value, len)` and, when the Wasm signature includes a single `i32` result, returns the destination pointer. Calls are lowered to bounded runtime helpers that honour the NeoVM linear-memory model.
 
 ### 3.5 Error handling
 

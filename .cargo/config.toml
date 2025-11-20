@@ -1,0 +1,7 @@
+[target.wasm32-unknown-unknown]
+# Keep unsupported Wasm features disabled at the codegen level so `cargo build`
+# fails immediately when a contract attempts to use them.
+rustflags = [
+    "-C", "panic=abort",
+    "-C", "target-feature=-simd128,-atomics,-reference-types,-multivalue,-tail-call",
+]

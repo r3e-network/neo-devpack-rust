@@ -157,7 +157,7 @@ Figure~\ref{fig:pipeline} illustrates the stages and optional inputs at a glance
 \subsection{Start Section}
 \begin{itemize}[nosep]
     \item At most one start function is permitted. It must not take parameters nor return values, regardless of whether it refers to an import or a defined function.
-    \item The start function executes exactly once immediately before the first exported function (or runtime helper) requires access to memory, globals, or tables.
+    \item The start function executes exactly once immediately before the first exported function (or runtime helper) requires access to memory, globals, or tables. Exported start functions are wrapped in an init stub that checks the runtime initialisation flag, runs memory/table/global setup, and then dispatches to the start body. The stub offset is recorded in the manifest for any exported \texttt{start} symbol.
 \end{itemize}
 
 \subsection{Custom Sections}
@@ -250,7 +250,7 @@ Wasm operator(s) & NeoVM emission & Notes \\
 \endfoot
 \bottomrule
 \endlastfoot
-\texttt{block}, \texttt{loop}, \texttt{if}, \texttt{else}, \texttt{end} & \texttt{JMP\_L}/\texttt{JMPIF\_L} fixups & Control frames track stack height and expected results. Branch targets patch deferred \texttt{JMP\_L} or \texttt{JMPIF\_L} immediates.
+\texttt{block}, \texttt{loop}, \texttt{if}, \texttt{else}, \texttt{end} & \texttt{JMP\_L}/\texttt{JMPIF\_L} fixups & Control frames track stack height and expected results (single \texttt{i32}/\texttt{i64} at most). Result-bearing \texttt{if} blocks require an \texttt{else}. Branching to loop headers expects the loop-entry stack height (continue), while breaking out honours the declared result arity; \texttt{br 1} from inside a loop with a result must leave exactly that many values on the stack.
 \tabularnewline
 \texttt{br}, \texttt{br\_if} & \texttt{JMP\_L}/\texttt{JMPIF\_L} & \texttt{br} emits an unconditional jump to the recorded label. \texttt{br\_if} branches when the condition is non-zero.
 \tabularnewline

@@ -18,6 +18,7 @@ use super::FunctionImport;
 pub(crate) struct RuntimeHelpers {
     memory_init_offset: Option<usize>,
     memory_init_calls: Vec<usize>,
+    memory_init_suppressed: bool,
     memory_config: MemoryConfig,
     memory_defined: bool,
     memory_helpers: BTreeMap<MemoryHelperKind, HelperRecord>,
@@ -30,6 +31,7 @@ pub(crate) struct RuntimeHelpers {
     globals: Vec<GlobalDescriptor>,
     tables: Vec<TableDescriptor>,
     start_slot: Option<usize>,
+    start_call_positions: Vec<usize>,
 }
 
 impl Default for RuntimeHelpers {
@@ -37,6 +39,7 @@ impl Default for RuntimeHelpers {
         RuntimeHelpers {
             memory_init_offset: None,
             memory_init_calls: Vec::new(),
+            memory_init_suppressed: false,
             memory_config: MemoryConfig::default(),
             memory_defined: false,
             memory_helpers: BTreeMap::new(),
@@ -49,6 +52,7 @@ impl Default for RuntimeHelpers {
             globals: Vec::new(),
             tables: Vec::new(),
             start_slot: None,
+            start_call_positions: Vec::new(),
         }
     }
 }
@@ -136,12 +140,21 @@ impl RuntimeHelpers {
         self.table_helpers.entry(kind).or_default()
     }
     pub(crate) fn emit_memory_init_call(&mut self, script: &mut Vec<u8>) -> Result<()> {
+        if self.memory_init_suppressed {
+            return Ok(());
+        }
         emit_load_static(script, INIT_FLAG_SLOT)?;
         let skip_call = emit_jump_placeholder(script, "JMPIF_L")?;
         let call_pos = emit_call_placeholder(script)?;
         patch_jump(script, skip_call, script.len())?;
         self.memory_init_calls.push(call_pos);
         Ok(())
+    }
+
+    pub(crate) fn set_memory_init_suppressed(&mut self, suppressed: bool) -> bool {
+        let previous = self.memory_init_suppressed;
+        self.memory_init_suppressed = suppressed;
+        previous
     }
 
     pub(crate) fn finalize(
@@ -308,7 +321,7 @@ impl RuntimeHelpers {
                 Some(existing) => existing,
                 None => {
                     let helper_offset = script.len();
-                    emit_runtime_init_helper(
+                    let start_call = emit_runtime_init_helper(
                         script,
                         static_slot_count,
                         &self.memory_config,
@@ -321,6 +334,9 @@ impl RuntimeHelpers {
                         imports,
                         types,
                     )?;
+                    if let Some(pos) = start_call {
+                        self.start_call_positions.push(pos);
+                    }
                     self.memory_init_offset = Some(helper_offset);
                     helper_offset
                 }
@@ -434,6 +450,13 @@ impl RuntimeHelpers {
             }
         }
 
+        Ok(())
+    }
+
+    pub(crate) fn patch_start_calls(&self, script: &mut Vec<u8>, target: usize) -> Result<()> {
+        for &pos in &self.start_call_positions {
+            patch_call(script, pos, target)?;
+        }
         Ok(())
     }
 
@@ -699,10 +722,6 @@ impl RuntimeHelpers {
 
     pub(crate) fn memory_init_offset(&self) -> Option<usize> {
         self.memory_init_offset
-    }
-
-    pub(crate) fn has_memory_init_calls(&self) -> bool {
-        !self.memory_init_calls.is_empty()
     }
 
     pub(crate) fn register_active_element(
@@ -1123,7 +1142,7 @@ fn emit_runtime_init_helper(
     start: Option<&StartHelper<'_>>,
     imports: &[FunctionImport],
     types: &[FuncType],
-) -> Result<()> {
+) -> Result<Option<usize>> {
     let try_pos = emit_try_placeholder(script)?;
     if static_slot_count > u8::MAX as usize {
         bail!("too many static slots required for runtime initialisation");
@@ -1236,13 +1255,17 @@ fn emit_runtime_init_helper(
         emit_store_static(script, element.drop_slot)?;
     }
 
+    let mut start_call_pos: Option<usize> = None;
     if let Some(start_helper) = start {
+        let _ = emit_push_int(script, 1);
+        emit_store_static(script, INIT_FLAG_SLOT)?;
         emit_load_static(script, start_helper.slot)?;
         let skip_start = emit_jump_placeholder(script, "JMPIF_L")?;
 
         match &start_helper.descriptor.kind {
             StartKind::Defined { offset } => {
                 let call_pos = emit_call_placeholder(script)?;
+                start_call_pos = Some(call_pos);
                 patch_call(script, call_pos, *offset)?;
             }
             StartKind::Import => {
@@ -1285,7 +1308,7 @@ fn emit_runtime_init_helper(
 
     script.push(RET);
 
-    Ok(())
+    Ok(start_call_pos)
 }
 
 pub(crate) fn ensure_memory_access(runtime: &RuntimeHelpers, mem_index: u32) -> Result<()> {
@@ -2840,17 +2863,17 @@ pub(crate) fn infer_contract_tokens(script: &[u8]) -> Vec<MethodToken> {
                         method.clone(),
                         call_flags.clone(),
                         args.clone(),
-                        ) {
-                            if contract_hash.len() == HASH160_LENGTH {
-                                if let Ok(method_name) = String::from_utf8(method_bytes.clone()) {
-                                    if method_name.as_bytes().len() > MAX_TOKEN_METHOD_LEN {
-                                        continue;
-                                    }
-                                    if flags >= 0 && flags <= u8::MAX as i128 {
-                                        let has_return_value = {
-                                            if pc < script.len() {
-                                                Some(script[pc]) != drop_op
-                                            } else {
+                    ) {
+                        if contract_hash.len() == HASH160_LENGTH {
+                            if let Ok(method_name) = String::from_utf8(method_bytes.clone()) {
+                                if method_name.as_bytes().len() > MAX_TOKEN_METHOD_LEN {
+                                    continue;
+                                }
+                                if flags >= 0 && flags <= u8::MAX as i128 {
+                                    let has_return_value = {
+                                        if pc < script.len() {
+                                            Some(script[pc]) != drop_op
+                                        } else {
                                             true
                                         }
                                     };
