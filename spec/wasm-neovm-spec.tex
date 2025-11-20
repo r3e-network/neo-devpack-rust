@@ -75,6 +75,7 @@ NEF Writer & Script, manifest metadata & \texttt{*.nef}, \texttt{*.manifest.json
     \item \texttt{--name}: Contract name (defaults to \texttt{Contract}).
     \item \texttt{--manifest-overlay}: Path to an external overlay merged with embedded overlays.
     \item \texttt{--source-url}: Overrides the source URL used in NEF metadata.
+    \item \texttt{--compare-manifest}: Optional reference manifest; translation fails (after printing a diff) when the generated manifest diverges from this file.
 \end{itemize}
 
 \section{Wasm Module Acceptance Rules}
@@ -140,7 +141,7 @@ Numeric features & Integer arithmetic, comparisons, conversions, bit counts, and
 
 \section{Instruction Lowering}
 \subsection{Supported Operators}
-Each operator lowers to NeoVM opcodes while preserving Wasm stack discipline. Representative mappings are shown in Table~\ref{tab:ops}.
+Each operator lowers to NeoVM opcodes while preserving Wasm stack discipline. Table~\ref{tab:ops} enumerates the supported Wasm instructions together with their NeoVM encoding. Unless stated otherwise, both \texttt{i32} and \texttt{i64} variants are supported and share the same emission logic.
 
 \begin{table}[h]
 \centering
@@ -148,27 +149,51 @@ Each operator lowers to NeoVM opcodes while preserving Wasm stack discipline. Re
 \toprule
 Wasm Operator & NeoVM Emission & Notes \\
 \midrule
-\texttt{i32.const}/\texttt{i64.const} & Minimal \texttt{PUSHINT*} & Literal tracking retained \\
-\texttt{local.get/set/tee} & \texttt{LDARG*}/\texttt{STARG*}, \texttt{LDLOC*}/\texttt{STLOC*} & Params vs locals \\
-\texttt{add, sub, mul} & \texttt{ADD}/\texttt{SUB}/\texttt{MUL} & 32/64-bit share ops \\
+\texttt{i32.const}/\texttt{i64.const} & Smallest \texttt{PUSHINT*} opcode & Literal tracking retained \\
+\texttt{local.get/set/tee} & \texttt{LDARG*}/\texttt{STARG*}, \texttt{LDLOC*}/\texttt{STLOC*} & Params use \texttt{LDARGn}, locals use \texttt{LDLOCn} \\
+\texttt{global.get/set} & \texttt{LDSFLD*}/\texttt{STSFLD*} & Globals live in static slots \\
+\texttt{add, sub, mul} & \texttt{ADD}/\texttt{SUB}/\texttt{MUL} & Shared between 32/64-bit \\
 \texttt{and, or, xor} & \texttt{AND}/\texttt{OR}/\texttt{XOR} & Bitwise ops \\
-\texttt{shl, shr\_s, shr\_u} & \texttt{SHL}/\texttt{SHR} with masking & Mask to bit-width \\
-\texttt{rotl, rotr} & \texttt{ROT*} sequences & Masked shift counts \\
-\texttt{eq, ne, lt, gt, le, ge} & \texttt{EQUAL}/\texttt{NUMERIC} compares & Signed/unsigned masking for unsigned ops \\
-\texttt{div\_s, div\_u, rem\_s, rem\_u} & \texttt{DIV}/\texttt{MOD} with masking & Division by zero traps \\
-\texttt{select} & \texttt{JMPIFNOT\_L}/\texttt{DROP}/\texttt{NIP} & Typed/untypeed single-result \\
-\texttt{block, loop, if, br, br\_if, br\_table} & \texttt{JMP\_L}/\texttt{JMPIF\_L} patched & Stack height verified \\
-\texttt{call, call\_indirect} & \texttt{CALL\_L} + helper stubs & Indirect uses table helpers \\
-\texttt{memory.load/store, size, grow} & Helper calls via \texttt{RuntimeHelpers} & Bounds-checked \\
-\texttt{memory.fill, memory.copy, memory.init, data.drop} & Helper calls & Passive/active segment support \\
-\texttt{table.get/set/size/grow/fill/copy, table.init, elem.drop} & Table helpers & Bounds-checked, funcref only \\
-\texttt{ref.null, ref.func, ref.is\_null, ref.eq} & Integer sentinels (\texttt{-1} for null) & Funcref only \\
-\texttt{unreachable} & \texttt{ABORT} & Terminates execution \\
+\texttt{shl, shr\_s, shr\_u} & \texttt{SHL}/\texttt{SHR} + masks & Shift counts masked to width, logical shifts zero-extend \\
+\texttt{rotl, rotr} & \texttt{ROT} sequences & Implemented via stack shuffles and mask \\
+\texttt{eq, ne, lt, gt, le, ge} & \texttt{EQUAL}/\texttt{NOTEQUAL}/\texttt{NUMERIC} compares & Unsigned compares mask both operands \\
+\texttt{eqz} & Compare against \texttt{PUSH0} & Result is 0/1 \\
+\texttt{div\_s, div\_u, rem\_s, rem\_u} & \texttt{DIV}/\texttt{MOD} + masks & Division by zero traps, unsigned variants zero-extend \\
+\texttt{clz, ctz, popcnt} & Helper calls via \texttt{RuntimeHelpers} & Literal folding when both operands are constants \\
+\texttt{i32.wrap\_i64}, \texttt{i64.extend\_i32\_{s,u}} & Masking + sign-extension helpers & \texttt{emit\_sign\_extend}/\texttt{emit\_zero\_extend} \\
+\texttt{i32.extend8/16\_s}, \texttt{i64.extend8/16/32\_s} & Dedicated sign-extension helpers & Matches Wasm semantics \\
+\texttt{select}/typed \texttt{select} & \texttt{JMPIFNOT\_L}/\texttt{DROP}/\texttt{NIP} & At most one result value \\
+\texttt{block, loop, if, br, br\_if} & \texttt{JMP\_L}/\texttt{JMPIF\_L} + fix-ups & Preserves stack height guarantees \\
+\texttt{br\_table} & Cascading \texttt{JMPIF\_L} with default handler & Selector duplicated, fall-through traps \\
+\texttt{call} & \texttt{CALL\_L} + fix-ups & Arguments evaluated left-to-right \\
+\texttt{call\_indirect} & Runtime table helper + bounds checks & Null funcref traps \\
+\texttt{memory.load/store} & Helper stubs from \texttt{RuntimeHelpers} & Bounds-checked, little-endian \\
+\texttt{memory.size}/\texttt{memory.grow} & Helper stubs & Grow returns previous page count or \texttt{-1} \\
+\texttt{memory.fill}, \texttt{memory.copy}, \texttt{memory.init}, \texttt{data.drop} & Bulk helper stubs & Active segments applied on first init, passive segments tracked via drop slots \\
+\texttt{table.get/set/size/grow/fill/copy}, \texttt{table.init}, \texttt{elem.drop} & Table helper stubs & Tables backed by NeoVM arrays, funcref-only \\
+\texttt{ref.null}, \texttt{ref.func}, \texttt{ref.is\_null}, \texttt{ref.eq}, \texttt{ref.as\_non\_null} & Integer sentinels (\texttt{-1} for null) + runtime assertions & Funcref handles only \\
+\texttt{drop} & \texttt{DROP} (elided for literals) & Compile-time literals may be removed \\
+\texttt{return}/implicit fallthrough & \texttt{RET} & Each function concludes with explicit return \\
+\texttt{unreachable} & \texttt{ABORT} & Triggers NeoVM fault \\
 \bottomrule
 \end{tabular}
 \caption{Representative Wasm to NeoVM operator mappings}
 \label{tab:ops}
 \end{table}
+
+\subsection{Control Flow and Imports}
+\begin{itemize}[nosep]
+    \item Control frames (function, block, loop, if) track stack height and expected result arity. Branch targets patch the saved frame offsets with relative \texttt{JMP} immediates.
+    \item Indirect calls (\texttt{call\_indirect}) first route through a table helper that validates the table index, traps on null funcrefs, and finally dispatches via \texttt{CALL\_L}.
+    \item Imports from the reserved modules \texttt{syscall} and \texttt{neo} lower to the NeoVM \texttt{SYSCALL} opcode with the hashed descriptor bytes. The \texttt{opcode} module exposes raw opcodes (plus \texttt{RAW}/\texttt{RAW4} helpers), and the \texttt{env} module supports \texttt{memcpy}/\texttt{memmove}/\texttt{memset} when compiled with \texttt{-nostdlib}.
+\end{itemize}
+
+\subsection{Numeric Operations}
+\begin{itemize}[nosep]
+    \item Arithmetic, logic, and comparison instructions operate on full-width NeoVM integers. Unsigned variants mask both operands using \texttt{emit\_zero\_extend} before performing the signed comparison or division.
+    \item Bit-counting operators (\texttt{clz}/\texttt{ctz}/\texttt{popcnt}) fold constant-only inputs at translation time; dynamic operands dispatch to compact helper routines emitted once per module.
+    \item Conversion instructions (\texttt{i32.wrap\_i64}, \texttt{i64.extend\_i32\_{s,u}}, and the sign-extension family) map to reusable helper sequences that mask and/or shift the stack value as required.
+\end{itemize}
 
 \subsection{Unsupported Features}
 \begin{itemize}[nosep]
@@ -181,17 +206,18 @@ Wasm Operator & NeoVM Emission & Notes \\
 \section{Runtime Helpers}
 \subsection{Memory Helpers}
 \begin{itemize}[nosep]
-    \item \textbf{Init}: allocates linear memory buffer and caches length in static slots.
-    \item \textbf{Load/Store}: perform bounds checks, mask/store with endianness fixed to LE.
-    \item \textbf{Grow}: appends pages, returns previous size or \texttt{-1} on failure.
-    \item \textbf{Fill/Copy/Init/Drop}: honour passive/active data segments and drop flags.
+    \item \textbf{Linear memory representation}: the sole Wasm memory is materialised as a NeoVM \texttt{BUFFER} stored in a static slot. Slot 0 holds the buffer, slot 1 the current page count, slot 2 the allocated capacity, and slot 3 the pending initialisation flag.
+    \item \textbf{Init}: lazily allocates the buffer on the first memory access, applies active data segments exactly once, and caches the resulting pointer/page metadata.
+    \item \textbf{Load/Store}: obtain the buffer from slot~0, bounds-check offset + width against the current length, then perform little-endian loads/stores using \texttt{SUBSTR}, \texttt{SETITEM}, and \texttt{PACK}.
+    \item \textbf{Grow}: allocates a new buffer when requested pages exceed the current capacity, copies the existing bytes via \texttt{MEMCPY}, updates page counters, and returns the previous page count or \texttt{-1} if the new size would overflow 32-bit space.
+    \item \textbf{Fill/Copy/Init/Drop}: honour passive and active data segments by copying the segment bytes into temporary static slots, using \texttt{MEMCPY} for \texttt{memory.copy}/\texttt{memory.init}, and flipping drop-slot booleans when \texttt{data.drop} is invoked.
 \end{itemize}
 
 \subsection{Table Helpers}
 \begin{itemize}[nosep]
-    \item Represent funcref values as signed integers; \texttt{-1} denotes null.
-    \item \textbf{Get/Set/Size/Grow/Fill/Copy}: bounds-checked; grow respects optional maximum.
-    \item \textbf{InitFromPassive}/\textbf{ElemDrop}: copy from cached passive segments and mark them dropped.
+    \item Tables are represented as NeoVM arrays stored in static slots; funcref indices are encoded as signed integers with \texttt{-1} denoting null.
+    \item \textbf{Get/Set/Size/Grow/Fill/Copy}: all operations enforce bounds checking. \texttt{table.grow} respects the declared maximum; new entries are initialised to null.
+    \item \textbf{InitFromPassive}/\textbf{ElemDrop}: passive element segments are cached in static slots (value + drop flag). \texttt{table.init} copies them into the target table slice and \texttt{elem.drop} flips the drop flag.
 \end{itemize}
 
 \section{Manifest Generation}
