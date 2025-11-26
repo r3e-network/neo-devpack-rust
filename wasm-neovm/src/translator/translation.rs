@@ -3320,7 +3320,7 @@ fn emit_syscall_call(import: &FunctionImport, script: &mut Vec<u8>) -> Result<&'
 fn emit_neo_syscall(import: &FunctionImport, script: &mut Vec<u8>) -> Result<&'static str> {
     let syscall_name = neo_syscalls::lookup_neo_syscall(&import.name)
         .ok_or_else(|| anyhow!("unknown Neo syscall import '{}'", import.name))?;
-    let syscall = syscalls::lookup(syscall_name)
+    let syscall = syscalls::lookup_extended(syscall_name)
         .ok_or_else(|| anyhow!("syscall '{}' not found", syscall_name))?;
     let opcode =
         opcodes::lookup("SYSCALL").ok_or_else(|| anyhow!("SYSCALL opcode metadata missing"))?;

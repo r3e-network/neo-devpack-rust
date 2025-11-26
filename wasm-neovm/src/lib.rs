@@ -1,3 +1,4 @@
+pub mod adapters;
 pub mod manifest;
 pub mod metadata;
 pub mod nef;
@@ -7,6 +8,7 @@ pub mod opcodes;
 pub mod syscalls;
 pub mod translator;
 
+pub use adapters::SourceChain;
 pub use manifest::RenderedManifest;
 pub use metadata::{extract_nef_metadata, NefMetadata};
 pub use nef::{write_nef, write_nef_with_metadata, MethodToken};

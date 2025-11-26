@@ -77,7 +77,12 @@ DEFAULT_CFLAGS=(
   -fvisibility=hidden
   -fno-exceptions
   -fno-rtti
-  -mattr=-simd128,-atomics,-reference-types,-multivalue,-tail-call
+  # Disable WASM features not supported by NeoVM
+  -mno-simd128
+  -mno-atomics
+  -mno-reference-types
+  -mno-multivalue
+  -mno-tail-call
 )
 DEFAULT_LDFLAGS=(
   -Wl,--no-entry

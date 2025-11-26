@@ -23,10 +23,15 @@ pub static NEO_SYSCALL_MAP: Lazy<HashMap<&'static str, &'static str>> = Lazy::ne
 
     // Runtime syscalls
     map.insert("check_witness", "System.Runtime.CheckWitness");
+    map.insert("runtime_check_witness", "System.Runtime.CheckWitness");
     map.insert("log", "System.Runtime.Log");
+    map.insert("runtime_log", "System.Runtime.Log");
     map.insert("notify", "System.Runtime.Notify");
+    map.insert("runtime_notify", "System.Runtime.Notify");
     map.insert("get_time", "System.Runtime.GetTime");
+    map.insert("runtime_get_time", "System.Runtime.GetTime");
     map.insert("get_trigger", "System.Runtime.GetTrigger");
+    map.insert("runtime_get_trigger", "System.Runtime.GetTrigger");
     map.insert("get_platform", "System.Runtime.Platform");
     map.insert("get_script_container", "System.Runtime.GetScriptContainer");
     map.insert(
@@ -55,6 +60,9 @@ pub static NEO_SYSCALL_MAP: Lazy<HashMap<&'static str, &'static str>> = Lazy::ne
     map.insert("verify_signature", "System.Crypto.CheckSig");
     map.insert("check_sig", "System.Crypto.CheckSig");
     map.insert("check_multisig", "System.Crypto.CheckMultisig");
+    map.insert("crypto_sha256", "Neo.Crypto.SHA256");
+    map.insert("crypto_hash160", "Neo.Crypto.Hash160");
+    map.insert("crypto_hash256", "Neo.Crypto.Hash256");
     // Hashing helpers are not exposed as Neo syscalls. Callers should lower
     // to opcodes (e.g. `opcode::HASH160`) or native contract calls instead.
 

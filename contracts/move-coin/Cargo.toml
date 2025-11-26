@@ -1,0 +1,15 @@
+[package]
+name = "move-coin"
+version = "0.1.0"
+edition = "2021"
+description = "Example Move-style coin contract compiled for NeoVM"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+
+[profile.release]
+lto = true
+opt-level = "z"
+panic = "abort"

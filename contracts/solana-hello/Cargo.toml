@@ -1,0 +1,16 @@
+[package]
+name = "solana-hello"
+version = "0.1.0"
+edition = "2021"
+description = "Example Solana-style contract compiled for NeoVM"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+neo-solana-compat = { path = "../../solana-compat" }
+
+[profile.release]
+lto = true
+opt-level = "z"
+panic = "abort"

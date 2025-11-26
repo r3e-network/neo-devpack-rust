@@ -7,7 +7,7 @@ use serde_json::{Map, Value};
 
 use wasm_neovm::{
     extract_nef_metadata, translate_with_config, write_nef_with_metadata, ManifestOverlay,
-    TranslationConfig,
+    SourceChain, TranslationConfig,
 };
 
 #[derive(Parser, Debug)]
@@ -44,6 +44,10 @@ struct Cli {
     /// Path to an existing manifest to compare against (translation fails when they differ)
     #[arg(long = "compare-manifest")]
     compare_manifest: Option<PathBuf>,
+
+    /// Source blockchain for cross-chain compilation (neo, solana, move)
+    #[arg(long = "source-chain", default_value = "neo")]
+    source_chain: String,
 }
 
 fn derive_output_path(input: &Path, extension: &str) -> PathBuf {
@@ -59,6 +63,19 @@ fn derive_output_path(input: &Path, extension: &str) -> PathBuf {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+
+    // Parse source chain
+    let source_chain = SourceChain::from_str(&cli.source_chain).unwrap_or_else(|| {
+        eprintln!(
+            "Warning: unknown source chain '{}', defaulting to 'neo'",
+            cli.source_chain
+        );
+        SourceChain::Neo
+    });
+
+    if source_chain != SourceChain::Neo {
+        println!("Cross-chain compilation: {:?} -> NeoVM", source_chain);
+    }
 
     let module = fs::read(&cli.input)
         .with_context(|| format!("failed to read input module {}", cli.input.display()))?;

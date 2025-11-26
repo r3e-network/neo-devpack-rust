@@ -1,0 +1,33 @@
+{
+  "name": "MoveCoin",
+  "groups": [],
+  "features": {
+    "storage": true
+  },
+  "supportedstandards": ["NEP-17"],
+  "abi": {
+    "methods": [],
+    "events": [
+      {
+        "name": "Transfer",
+        "parameters": [
+          { "name": "from", "type": "Hash160" },
+          { "name": "to", "type": "Hash160" },
+          { "name": "amount", "type": "Integer" }
+        ]
+      }
+    ]
+  },
+  "permissions": [
+    {
+      "contract": "*",
+      "methods": "*"
+    }
+  ],
+  "trusts": [],
+  "extra": {
+    "Author": "Neo LLVM Team",
+    "Description": "Move-style Coin example demonstrating resource semantics on NeoVM",
+    "SourceChain": "Move"
+  }
+}
