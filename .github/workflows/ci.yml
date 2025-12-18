@@ -178,21 +178,21 @@ jobs:
         run: cargo tarpaulin --manifest-path rust-devpack/Cargo.toml --out xml --output-dir ./coverage-rust-devpack
 
       - name: Upload coverage to Codecov - wasm-neovm
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           files: ./coverage-wasm-neovm/cobertura.xml
           flags: wasm-neovm
           token: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Upload coverage to Codecov - move-neovm
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           files: ./coverage-move-neovm/cobertura.xml
           flags: move-neovm
           token: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Upload coverage to Codecov - rust-devpack
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           files: ./coverage-rust-devpack/cobertura.xml
           flags: rust-devpack
