@@ -26,7 +26,7 @@ regex = "1.11"
 tempfile = "3.10"
 walkdir = "2.5"
 wat = "1.0"
-wasm-encoder = "0.239"
+wasm-encoder = "0.240"
 criterion = "0.5"
 
 [build-dependencies]
