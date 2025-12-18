@@ -1,0 +1,97 @@
+version: 2
+updates:
+  # wasm-neovm dependencies
+  - package-ecosystem: "cargo"
+    directory: "/wasm-neovm"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "neo-project/neo-llvm"
+    labels:
+      - "dependencies"
+      - "wasm-neovm"
+    commit-message:
+      prefix: "deps(wasm-neovm)"
+
+  # move-neovm dependencies
+  - package-ecosystem: "cargo"
+    directory: "/move-neovm"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "neo-project/neo-llvm"
+    labels:
+      - "dependencies"
+      - "move-neovm"
+    commit-message:
+      prefix: "deps(move-neovm)"
+
+  # rust-devpack dependencies
+  - package-ecosystem: "cargo"
+    directory: "/rust-devpack"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "neo-project/neo-llvm"
+    labels:
+      - "dependencies"
+      - "rust-devpack"
+    commit-message:
+      prefix: "deps(rust-devpack)"
+
+  # integration-tests dependencies
+  - package-ecosystem: "cargo"
+    directory: "/integration-tests"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "neo-project/neo-llvm"
+    labels:
+      - "dependencies"
+      - "integration-tests"
+    commit-message:
+      prefix: "deps(integration-tests)"
+
+  # solana-compat dependencies
+  - package-ecosystem: "cargo"
+    directory: "/solana-compat"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "neo-project/neo-llvm"
+    labels:
+      - "dependencies"
+      - "solana-compat"
+    commit-message:
+      prefix: "deps(solana-compat)"
+
+  # GitHub Actions dependencies
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "neo-project/neo-llvm"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "deps(ci)"

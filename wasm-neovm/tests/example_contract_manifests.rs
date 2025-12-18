@@ -134,7 +134,7 @@ fn nep11_manifest_contains_expected_metadata() -> Result<()> {
         .any(|m| m["name"].as_str() == Some("tokens_of")));
 
     let tokens_of = method_by_name(&manifest, "tokens_of").unwrap();
-    assert_eq!(tokens_of["safe"].as_bool().unwrap(), true);
+    assert!(tokens_of["safe"].as_bool().unwrap());
 
     let tmp = NamedTempFile::new()?;
     write_nef_with_metadata(

@@ -1,0 +1,122 @@
+use super::super::super::*;
+
+pub(in crate::translator::runtime) fn emit_memory_load_helper(
+    script: &mut Vec<u8>,
+    bytes: u32,
+) -> Result<()> {
+    let bytes_i128 = bytes as i128;
+
+    script.push(lookup_opcode("DUP")?.byte);
+    script.push(lookup_opcode("PUSH0")?.byte);
+    script.push(lookup_opcode("LT")?.byte);
+    let trap_negative = emit_jump_placeholder(script, "JMPIF_L")?;
+
+    script.push(lookup_opcode("DUP")?.byte);
+    let _ = emit_push_int(script, bytes_i128);
+    script.push(lookup_opcode("ADD")?.byte);
+    script.push(lookup_opcode("LDSFLD1")?.byte);
+    script.push(lookup_opcode("GT")?.byte);
+    let trap_oob = emit_jump_placeholder(script, "JMPIF_L")?;
+
+    script.push(lookup_opcode("LDSFLD0")?.byte);
+    script.push(lookup_opcode("SWAP")?.byte);
+    let _ = emit_push_int(script, bytes_i128);
+    script.push(lookup_opcode("SUBSTR")?.byte);
+    script.push(CONVERT);
+    script.push(STACKITEMTYPE_INTEGER);
+    script.push(RET);
+
+    let trap_label = script.len();
+    script.push(lookup_opcode("ABORT")?.byte);
+
+    patch_jump(script, trap_negative, trap_label)?;
+    patch_jump(script, trap_oob, trap_label)?;
+
+    Ok(())
+}
+
+pub(in crate::translator::runtime) fn emit_memory_store_helper(
+    script: &mut Vec<u8>,
+    bytes: u32,
+) -> Result<()> {
+    let bytes_i128 = bytes as i128;
+
+    script.push(lookup_opcode("SWAP")?.byte);
+
+    script.push(lookup_opcode("DUP")?.byte);
+    script.push(lookup_opcode("PUSH0")?.byte);
+    script.push(lookup_opcode("LT")?.byte);
+    let trap_negative = emit_jump_placeholder(script, "JMPIF_L")?;
+
+    script.push(lookup_opcode("DUP")?.byte);
+    let _ = emit_push_int(script, bytes_i128);
+    script.push(lookup_opcode("ADD")?.byte);
+    script.push(lookup_opcode("LDSFLD1")?.byte);
+    script.push(lookup_opcode("GT")?.byte);
+    let trap_oob = emit_jump_placeholder(script, "JMPIF_L")?;
+
+    script.push(lookup_opcode("SWAP")?.byte);
+    let mask = (1i128 << (bytes * 8)) - 1;
+    let _ = emit_push_int(script, mask);
+    script.push(lookup_opcode("AND")?.byte);
+    script.push(lookup_opcode("SWAP")?.byte);
+
+    for i in 0..bytes {
+        script.push(lookup_opcode("OVER")?.byte);
+        let shift = (i * 8) as i128;
+        let _ = emit_push_int(script, shift);
+        script.push(lookup_opcode("SHR")?.byte);
+        let _ = emit_push_int(script, 0xFF);
+        script.push(lookup_opcode("AND")?.byte);
+        script.push(lookup_opcode("OVER")?.byte);
+        let _ = emit_push_int(script, i as i128);
+        script.push(lookup_opcode("ADD")?.byte);
+        script.push(lookup_opcode("SWAP")?.byte);
+        script.push(lookup_opcode("LDSFLD0")?.byte);
+        script.push(lookup_opcode("ROT")?.byte);
+        script.push(lookup_opcode("SETITEM")?.byte);
+    }
+
+    script.push(lookup_opcode("DROP")?.byte);
+    script.push(lookup_opcode("DROP")?.byte);
+    script.push(RET);
+
+    let trap_label = script.len();
+    script.push(lookup_opcode("ABORT")?.byte);
+    patch_jump(script, trap_negative, trap_label)?;
+    patch_jump(script, trap_oob, trap_label)?;
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn assert_no_conditional_jump_drop_pair(script: &[u8], jump: u8, drop: u8) {
+        assert!(
+            !script.windows(2).any(|window| window == [jump, drop]),
+            "unexpected conditional jump followed by DROP (jump opcode 0x{jump:02x})"
+        );
+    }
+
+    #[test]
+    fn memory_load_helper_does_not_drop_after_jump() {
+        let mut script = Vec::new();
+        emit_memory_load_helper(&mut script, 4).expect("emit helper");
+
+        let jmpif_l = lookup_opcode("JMPIF_L").unwrap().byte;
+        let drop = lookup_opcode("DROP").unwrap().byte;
+        assert_no_conditional_jump_drop_pair(&script, jmpif_l, drop);
+    }
+
+    #[test]
+    fn memory_store_helper_does_not_drop_after_jump() {
+        let mut script = Vec::new();
+        emit_memory_store_helper(&mut script, 4).expect("emit helper");
+
+        let jmpif_l = lookup_opcode("JMPIF_L").unwrap().byte;
+        let drop = lookup_opcode("DROP").unwrap().byte;
+        assert_no_conditional_jump_drop_pair(&script, jmpif_l, drop);
+    }
+}

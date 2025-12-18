@@ -107,28 +107,34 @@ pub fn sol_sha256(data: &[u8], output: &mut [u8; 32]) {
 
 /// Keccak256 hash (mapped to available Neo hash)
 pub fn sol_keccak256(data: &[u8], output: &mut [u8; 32]) {
-    // Neo doesn't have native Keccak256, use SHA256 as fallback
-    // Real implementation would need a WASM Keccak library
-    sol_sha256(data, output);
+    use tiny_keccak::{Hasher, Keccak};
+
+    let mut hasher = Keccak::v256();
+    hasher.update(data);
+    hasher.finalize(output);
 }
 
 /// Verify Ed25519 signature
 ///
 /// Note: Neo uses different signature schemes (secp256r1, secp256k1)
 /// This is a compatibility stub that uses CheckWitness
-pub fn sol_verify_signature(
-    _signature: &[u8; 64],
-    pubkey: &Pubkey,
-    _message: &[u8],
-) -> bool {
-    // Map to CheckWitness using the pubkey as a Neo script hash
+pub fn sol_verify_signature(signature: &[u8; 64], pubkey: &Pubkey, message: &[u8]) -> bool {
     #[cfg(target_arch = "wasm32")]
     unsafe {
-        neo_check_witness(pubkey.as_ref().as_ptr() as i32) != 0
+        // Derive script hash from the pubkey to check witness against the account identity.
+        let mut hash160 = [0u8; 20];
+        neo_hash160(
+            pubkey.as_ref().as_ptr() as i32,
+            pubkey.as_ref().len() as i32,
+            hash160.as_mut_ptr() as i32,
+        );
+        let _ = signature;
+        let _ = message;
+        neo_check_witness(hash160.as_ptr() as i32) != 0
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let _ = pubkey;
+        let _ = (signature, pubkey, message);
         false
     }
 }
@@ -136,11 +142,7 @@ pub fn sol_verify_signature(
 /// Invoke another program (CPI)
 ///
 /// Maps to: System.Contract.Call
-pub fn sol_invoke(
-    program_id: &Pubkey,
-    method: &str,
-    args: &[u8],
-) -> Result<(), u64> {
+pub fn sol_invoke(program_id: &Pubkey, method: &str, args: &[u8]) -> Result<(), u64> {
     #[cfg(target_arch = "wasm32")]
     {
         let result = unsafe {
@@ -173,14 +175,13 @@ pub fn sol_invoke(
 pub fn storage_read(key: &[u8], buffer: &mut [u8]) -> Option<usize> {
     #[cfg(target_arch = "wasm32")]
     {
-        let result = unsafe {
-            neo_storage_get(key.as_ptr() as i32, key.len() as i32)
-        };
+        let result = unsafe { neo_storage_get(key.as_ptr() as i32, key.len() as i32) };
+        let _ = buffer;
+        // Without a concrete storage bridge we cannot safely populate the buffer yet.
         if result < 0 {
             None
         } else {
-            // Result contains length or pointer depending on implementation
-            Some(result as usize)
+            None
         }
     }
     #[cfg(not(target_arch = "wasm32"))]

@@ -1,9 +1,19 @@
-//! End-to-end Move to NEF translation tests
+//! End-to-end Move to WASM translation tests (experimental)
 
 use move_neovm::{
-    bytecode::{BytecodeVersion, FunctionDef, MoveModule, MoveOpcode, StructDef, TypeTag},
+    bytecode::{
+        AbilitySet, BytecodeVersion, FunctionDef, MoveModule, MoveOpcode, StructDef, TypeTag,
+    },
     translate_to_wasm,
 };
+use wasmparser::Validator;
+
+fn assert_valid_wasm(bytes: &[u8]) {
+    assert!(
+        Validator::new().validate_all(bytes).is_ok(),
+        "generated wasm did not validate"
+    );
+}
 
 /// Test translating a simple Move module to WASM
 #[test]
@@ -11,6 +21,14 @@ fn test_move_to_wasm_simple_add() {
     let module = MoveModule {
         version: BytecodeVersion(6),
         name: "SimpleAdd".to_string(),
+        identifiers_offset: 0,
+        identifiers_count: 0,
+        struct_defs_offset: 0,
+        struct_defs_count: 0,
+        _function_handles_offset: 0,
+        _function_handles_count: 0,
+        function_defs_offset: 0,
+        function_defs_count: 0,
         structs: vec![],
         functions: vec![FunctionDef {
             name: "add".to_string(),
@@ -18,6 +36,7 @@ fn test_move_to_wasm_simple_add() {
             is_entry: false,
             parameters: vec![TypeTag::U64, TypeTag::U64],
             returns: vec![TypeTag::U64],
+            locals: vec![],
             code: vec![
                 MoveOpcode::CopyLoc(0),
                 MoveOpcode::CopyLoc(1),
@@ -28,13 +47,7 @@ fn test_move_to_wasm_simple_add() {
     };
 
     let wasm = translate_to_wasm(&module).expect("Translation should succeed");
-
-    // Verify WASM magic
-    assert_eq!(&wasm[0..4], b"\0asm", "Should have WASM magic");
-    // Verify version
-    assert_eq!(&wasm[4..8], &[0x01, 0x00, 0x00, 0x00], "Should be WASM version 1");
-    // Should have content beyond header
-    assert!(wasm.len() > 20, "Should have sections beyond header");
+    assert_valid_wasm(&wasm);
 }
 
 /// Test translating a module with multiple functions
@@ -43,6 +56,14 @@ fn test_move_to_wasm_multiple_functions() {
     let module = MoveModule {
         version: BytecodeVersion(6),
         name: "Math".to_string(),
+        identifiers_offset: 0,
+        identifiers_count: 0,
+        struct_defs_offset: 0,
+        struct_defs_count: 0,
+        _function_handles_offset: 0,
+        _function_handles_count: 0,
+        function_defs_offset: 0,
+        function_defs_count: 0,
         structs: vec![],
         functions: vec![
             FunctionDef {
@@ -51,6 +72,7 @@ fn test_move_to_wasm_multiple_functions() {
                 is_entry: false,
                 parameters: vec![TypeTag::U64, TypeTag::U64],
                 returns: vec![TypeTag::U64],
+                locals: vec![],
                 code: vec![
                     MoveOpcode::CopyLoc(0),
                     MoveOpcode::CopyLoc(1),
@@ -64,6 +86,7 @@ fn test_move_to_wasm_multiple_functions() {
                 is_entry: false,
                 parameters: vec![TypeTag::U64, TypeTag::U64],
                 returns: vec![TypeTag::U64],
+                locals: vec![],
                 code: vec![
                     MoveOpcode::CopyLoc(0),
                     MoveOpcode::CopyLoc(1),
@@ -71,27 +94,11 @@ fn test_move_to_wasm_multiple_functions() {
                     MoveOpcode::Ret,
                 ],
             },
-            FunctionDef {
-                name: "mul".to_string(),
-                is_public: true,
-                is_entry: false,
-                parameters: vec![TypeTag::U64, TypeTag::U64],
-                returns: vec![TypeTag::U64],
-                code: vec![
-                    MoveOpcode::CopyLoc(0),
-                    MoveOpcode::CopyLoc(1),
-                    MoveOpcode::Mul,
-                    MoveOpcode::Ret,
-                ],
-            },
         ],
     };
 
     let wasm = translate_to_wasm(&module).expect("Translation should succeed");
-
-    // Verify basic structure
-    assert_eq!(&wasm[0..4], b"\0asm");
-    assert!(wasm.len() > 50, "Should have substantial content for 3 functions");
+    assert_valid_wasm(&wasm);
 }
 
 /// Test translating a module with entry function
@@ -100,6 +107,14 @@ fn test_move_to_wasm_entry_function() {
     let module = MoveModule {
         version: BytecodeVersion(6),
         name: "EntryModule".to_string(),
+        identifiers_offset: 0,
+        identifiers_count: 0,
+        struct_defs_offset: 0,
+        struct_defs_count: 0,
+        _function_handles_offset: 0,
+        _function_handles_count: 0,
+        function_defs_offset: 0,
+        function_defs_count: 0,
         structs: vec![],
         functions: vec![FunctionDef {
             name: "main".to_string(),
@@ -107,16 +122,13 @@ fn test_move_to_wasm_entry_function() {
             is_entry: true,
             parameters: vec![],
             returns: vec![],
-            code: vec![
-                MoveOpcode::LdU64(42),
-                MoveOpcode::Pop,
-                MoveOpcode::Ret,
-            ],
+            locals: vec![],
+            code: vec![MoveOpcode::LdU64(42), MoveOpcode::Pop, MoveOpcode::Ret],
         }],
     };
 
     let wasm = translate_to_wasm(&module).expect("Translation should succeed");
-    assert_eq!(&wasm[0..4], b"\0asm");
+    assert_valid_wasm(&wasm);
 }
 
 /// Test translating comparison operations
@@ -125,6 +137,14 @@ fn test_move_to_wasm_comparisons() {
     let module = MoveModule {
         version: BytecodeVersion(6),
         name: "Compare".to_string(),
+        identifiers_offset: 0,
+        identifiers_count: 0,
+        struct_defs_offset: 0,
+        struct_defs_count: 0,
+        _function_handles_offset: 0,
+        _function_handles_count: 0,
+        function_defs_offset: 0,
+        function_defs_count: 0,
         structs: vec![],
         functions: vec![FunctionDef {
             name: "less_than".to_string(),
@@ -132,6 +152,7 @@ fn test_move_to_wasm_comparisons() {
             is_entry: false,
             parameters: vec![TypeTag::U64, TypeTag::U64],
             returns: vec![TypeTag::Bool],
+            locals: vec![],
             code: vec![
                 MoveOpcode::CopyLoc(0),
                 MoveOpcode::CopyLoc(1),
@@ -142,15 +163,23 @@ fn test_move_to_wasm_comparisons() {
     };
 
     let wasm = translate_to_wasm(&module).expect("Translation should succeed");
-    assert_eq!(&wasm[0..4], b"\0asm");
+    assert_valid_wasm(&wasm);
 }
 
-/// Test translating control flow
+/// Branch offsets should be honoured via the dispatch loop
 #[test]
 fn test_move_to_wasm_control_flow() {
     let module = MoveModule {
         version: BytecodeVersion(6),
         name: "Control".to_string(),
+        identifiers_offset: 0,
+        identifiers_count: 0,
+        struct_defs_offset: 0,
+        struct_defs_count: 0,
+        _function_handles_offset: 0,
+        _function_handles_count: 0,
+        function_defs_offset: 0,
+        function_defs_count: 0,
         structs: vec![],
         functions: vec![FunctionDef {
             name: "abs".to_string(),
@@ -158,30 +187,48 @@ fn test_move_to_wasm_control_flow() {
             is_entry: false,
             parameters: vec![TypeTag::U64],
             returns: vec![TypeTag::U64],
+            locals: vec![TypeTag::U64],
             code: vec![
                 MoveOpcode::CopyLoc(0),
                 MoveOpcode::LdU64(0),
                 MoveOpcode::Lt,
-                MoveOpcode::BrFalse(2),
+                MoveOpcode::BrFalse(6),
                 MoveOpcode::CopyLoc(0),
+                MoveOpcode::Ret,
+                MoveOpcode::CopyLoc(0),
+                MoveOpcode::LdU64(0),
+                MoveOpcode::Sub,
                 MoveOpcode::Ret,
             ],
         }],
     };
 
-    let wasm = translate_to_wasm(&module).expect("Translation should succeed");
-    assert_eq!(&wasm[0..4], b"\0asm");
+    let wasm = translate_to_wasm(&module).expect("branches should lower");
+    assert_valid_wasm(&wasm);
 }
 
-/// Test translating with resource struct
+/// Test translating with resource struct (no resource ops)
 #[test]
 fn test_move_to_wasm_with_resource() {
     let module = MoveModule {
         version: BytecodeVersion(6),
         name: "Coin".to_string(),
+        identifiers_offset: 0,
+        identifiers_count: 0,
+        struct_defs_offset: 0,
+        struct_defs_count: 0,
+        _function_handles_offset: 0,
+        _function_handles_count: 0,
+        function_defs_offset: 0,
+        function_defs_count: 0,
         structs: vec![StructDef {
             name: "Coin".to_string(),
-            is_resource: true,
+            abilities: AbilitySet {
+                key: true,
+                store: true,
+                copy: false,
+                drop: false,
+            },
             fields: vec![],
         }],
         functions: vec![FunctionDef {
@@ -192,12 +239,57 @@ fn test_move_to_wasm_with_resource() {
                 "Coin".to_string(),
             )))],
             returns: vec![TypeTag::U64],
+            locals: vec![],
             code: vec![MoveOpcode::LdU64(100), MoveOpcode::Ret],
         }],
     };
 
     let wasm = translate_to_wasm(&module).expect("Translation should succeed");
-    assert_eq!(&wasm[0..4], b"\0asm");
+    assert_valid_wasm(&wasm);
+}
+
+/// Resource operations should be lowered to storage syscalls
+#[test]
+fn test_move_resource_ops_lowered() {
+    let module = MoveModule {
+        version: BytecodeVersion(6),
+        name: "ResourceOps".to_string(),
+        identifiers_offset: 0,
+        identifiers_count: 0,
+        struct_defs_offset: 0,
+        struct_defs_count: 0,
+        _function_handles_offset: 0,
+        _function_handles_count: 0,
+        function_defs_offset: 0,
+        function_defs_count: 0,
+        structs: vec![StructDef {
+            name: "Coin".to_string(),
+            abilities: AbilitySet {
+                key: true,
+                store: true,
+                copy: true,
+                drop: true,
+            },
+            fields: vec![],
+        }],
+        functions: vec![FunctionDef {
+            name: "publish".to_string(),
+            is_public: true,
+            is_entry: true,
+            parameters: vec![TypeTag::Address, TypeTag::U64],
+            returns: vec![],
+            locals: vec![TypeTag::Address, TypeTag::U64],
+            code: vec![
+                MoveOpcode::CopyLoc(0),
+                MoveOpcode::CopyLoc(1),
+                MoveOpcode::MoveTo(0),
+                MoveOpcode::Ret,
+            ],
+        }],
+    };
+
+    let wasm = translate_to_wasm(&module).expect("resource ops should lower");
+    assert_valid_wasm(&wasm);
 }
 
 /// Test empty module translation
@@ -206,12 +298,60 @@ fn test_move_to_wasm_empty_module() {
     let module = MoveModule {
         version: BytecodeVersion(6),
         name: "Empty".to_string(),
+        identifiers_offset: 0,
+        identifiers_count: 0,
+        struct_defs_offset: 0,
+        struct_defs_count: 0,
+        _function_handles_offset: 0,
+        _function_handles_count: 0,
+        function_defs_offset: 0,
+        function_defs_count: 0,
         structs: vec![],
         functions: vec![],
     };
 
-    let wasm = translate_to_wasm(&module).expect("Empty module should translate");
-    assert_eq!(&wasm[0..4], b"\0asm");
+    let wasm = translate_to_wasm(&module).expect("Translation should succeed");
+    assert_valid_wasm(&wasm);
+}
+
+/// Copying a non-copyable resource should error
+#[test]
+fn test_copy_of_resource_errors() {
+    let module = MoveModule {
+        version: BytecodeVersion(6),
+        name: "Copy".to_string(),
+        identifiers_offset: 0,
+        identifiers_count: 0,
+        struct_defs_offset: 0,
+        struct_defs_count: 0,
+        _function_handles_offset: 0,
+        _function_handles_count: 0,
+        function_defs_offset: 0,
+        function_defs_count: 0,
+        structs: vec![StructDef {
+            name: "Coin".to_string(),
+            abilities: AbilitySet {
+                key: true,
+                store: true,
+                copy: false,
+                drop: false,
+            },
+            fields: vec![],
+        }],
+        functions: vec![FunctionDef {
+            name: "bad".to_string(),
+            is_public: true,
+            is_entry: false,
+            parameters: vec![TypeTag::Struct("Coin".to_string())],
+            returns: vec![],
+            locals: vec![],
+            code: vec![MoveOpcode::CopyLoc(0), MoveOpcode::Pop, MoveOpcode::Ret],
+        }],
+    };
+
+    let err = translate_to_wasm(&module).expect_err("copy should be rejected");
+    let msg = format!("{err:#}");
+    assert!(msg.contains("copy of resource"));
 }
 
 /// Test Move bytecode validation
@@ -220,7 +360,9 @@ fn test_move_bytecode_validation() {
     use move_neovm::validate_move_bytecode;
 
     // Valid Move magic
-    assert!(validate_move_bytecode(&[0xa1, 0x1c, 0xeb, 0x0b, 0x06, 0x00, 0x00, 0x00]));
+    assert!(validate_move_bytecode(&[
+        0xa1, 0x1c, 0xeb, 0x0b, 0x06, 0x00, 0x00, 0x00
+    ]));
 
     // Invalid - WASM magic
     assert!(!validate_move_bytecode(&[0x00, 0x61, 0x73, 0x6d]));
@@ -229,5 +371,7 @@ fn test_move_bytecode_validation() {
     assert!(!validate_move_bytecode(&[0xa1, 0x1c]));
 
     // Invalid - wrong magic
-    assert!(!validate_move_bytecode(&[0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]));
+    assert!(!validate_move_bytecode(&[
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+    ]));
 }

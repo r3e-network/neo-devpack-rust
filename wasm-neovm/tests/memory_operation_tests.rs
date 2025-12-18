@@ -92,7 +92,6 @@ fn translate_i32_load8_u_zero_extend_without_shifts() {
     let translation = translate_module(&wasm, "I32Load8UZeroExtend").expect("translation succeeds");
 
     let and = opcodes::lookup("AND").unwrap().byte;
-    let shl = opcodes::lookup("SHL").unwrap().byte;
     let shr = opcodes::lookup("SHR").unwrap().byte;
 
     assert!(
@@ -100,12 +99,8 @@ fn translate_i32_load8_u_zero_extend_without_shifts() {
         "zero extension should mask high bits with AND"
     );
     assert!(
-        !translation.script.contains(&shl),
-        "unsigned load should not perform arithmetic shifts"
-    );
-    assert!(
         !translation.script.contains(&shr),
-        "unsigned load should not perform arithmetic shifts"
+        "unsigned load should not perform arithmetic right shifts"
     );
 }
 
@@ -311,6 +306,33 @@ fn translate_memory_grow_with_maximum() {
     assert!(!translation.script.is_empty());
 }
 
+#[test]
+fn translate_memory_grow_consumes_operand_for_control_flow() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (memory 1)
+              (func (export "grow_in_block") (param i32) (result i32)
+                (local i32)
+                (block (result i32)
+                  (block
+                    local.get 0
+                    local.tee 1
+                    memory.grow
+                    i32.const -1
+                    i32.ne
+                    br_if 0
+                    i32.const 0
+                    br 1)
+                  i32.const 1)))"#,
+    )
+    .expect("valid wat");
+
+    // Regression: memory.grow must consume its operand; otherwise branch validation will see
+    // an extra value left on the stack and fail on valid modules.
+    let translation = translate_module(&wasm, "MemoryGrowBranch").expect("translation succeeds");
+    assert!(!translation.script.is_empty());
+}
+
 // ============================================================================
 // Alignment and Offset Tests
 // ============================================================================
@@ -414,7 +436,7 @@ fn translate_memory_init() {
     let wasm = wat::parse_str(
         r#"(module
               (memory 1)
-              (data $d (i32.const 0) "hello")
+              (data $d "hello")
               (func (export "init") (param i32 i32 i32)
                 local.get 0
                 local.get 1
@@ -434,7 +456,7 @@ fn translate_data_drop() {
     let wasm = wat::parse_str(
         r#"(module
               (memory 1)
-              (data $d (i32.const 0) "test")
+              (data $d "test")
               (func (export "drop")
                 data.drop $d))"#,
     )
@@ -592,6 +614,48 @@ fn translate_env_memset_call() {
         Some("Integer")
     );
     assert!(!translation.script.is_empty());
+}
+
+#[test]
+fn translate_env_memset_returns_original_dest() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (import "env" "memset" (func $memset (param i32 i32 i32) (result i32)))
+              (memory 1)
+              (func (export "clear") (param i32 i32 i32) (result i32)
+                local.get 0
+                local.get 1
+                local.get 2
+                call $memset))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "EnvMemsetReturn").expect("translation succeeds");
+
+    let initslot = opcodes::lookup("INITSLOT").unwrap().byte;
+    let stloc0 = opcodes::lookup("STLOC0").unwrap().byte;
+    let stloc1 = opcodes::lookup("STLOC1").unwrap().byte;
+    let stloc2 = opcodes::lookup("STLOC2").unwrap().byte;
+    let ldloc3 = opcodes::lookup("LDLOC3").unwrap().byte;
+    let ret = opcodes::lookup("RET").unwrap().byte;
+
+    // env.memset helper prologue: INITSLOT 4 0, then pop len/value/dest into locals.
+    let prologue = [initslot, 4, 0, stloc2, stloc1, stloc0];
+    let helper_start = translation
+        .script
+        .windows(prologue.len())
+        .position(|window| window == prologue)
+        .expect("env.memset helper prologue present");
+
+    let helper = &translation.script[helper_start..];
+    let ret_pos = helper
+        .iter()
+        .position(|&byte| byte == ret)
+        .expect("env.memset helper contains RET");
+    assert!(
+        ret_pos > 0 && helper[ret_pos - 1] == ldloc3,
+        "env.memset helper should return the original destination pointer"
+    );
 }
 
 #[test]

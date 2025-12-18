@@ -79,6 +79,12 @@ impl SimpleContract {
     }
 }
 
+impl Default for SimpleContract {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Main function for testing
 fn main() {
     println!("Simple Neo N3 Contract Example");

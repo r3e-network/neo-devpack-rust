@@ -1,0 +1,35 @@
+use neo_devpack::prelude::*;
+
+#[neo_event]
+pub struct ProposalCreated {
+    pub proposal_id: NeoInteger,
+    pub proposer: NeoByteString,
+    pub title: NeoString,
+}
+
+#[neo_event]
+pub struct VoteCast {
+    pub proposal_id: NeoInteger,
+    pub voter: NeoByteString,
+    pub support: NeoBoolean,
+    pub weight: NeoInteger,
+}
+
+#[neo_event]
+pub struct ProposalExecuted {
+    pub proposal_id: NeoInteger,
+}
+
+#[neo_event]
+pub struct StakeIncreased {
+    pub staker: NeoByteString,
+    pub amount: NeoInteger,
+    pub new_total: NeoInteger,
+}
+
+#[neo_event]
+pub struct StakeDecreased {
+    pub staker: NeoByteString,
+    pub amount: NeoInteger,
+    pub new_total: NeoInteger,
+}

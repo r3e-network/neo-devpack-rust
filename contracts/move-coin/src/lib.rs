@@ -22,6 +22,7 @@
 
 #![no_std]
 #![no_main]
+#![allow(dead_code)]
 
 extern crate alloc;
 
@@ -49,6 +50,9 @@ static ALLOCATOR: BumpAllocator = BumpAllocator;
 fn panic(_info: &PanicInfo) -> ! {
     loop {}
 }
+
+#[no_mangle]
+pub extern "C" fn _start() {}
 
 // ============================================================================
 // Neo Syscall Imports (Move-compatible naming)
@@ -92,6 +96,7 @@ type Address = [u8; 20];
 /// Resource: Coin with value
 /// In Move, this would be: struct Coin has key, store { value: u64 }
 #[repr(C)]
+#[allow(dead_code)]
 struct Coin {
     value: u64,
 }
@@ -171,6 +176,7 @@ fn set_balance(addr: &Address, value: u64) {
 
 /// Delete balance at address
 /// Move: move_from<Coin>(addr)
+#[allow(dead_code)]
 fn delete_balance(addr: &Address) {
     #[cfg(target_arch = "wasm32")]
     unsafe {

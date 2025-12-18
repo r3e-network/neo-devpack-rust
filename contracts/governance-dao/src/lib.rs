@@ -1,34 +1,20 @@
-use core::slice;
-use neo_devpack::{codec, prelude::*};
-use serde::{Deserialize, Serialize};
+use neo_devpack::prelude::*;
 
-const CONFIG_KEY: &[u8] = b"dao:config";
-const PROPOSAL_COUNTER_KEY: &[u8] = b"dao:counter";
-const PROPOSAL_PREFIX: &[u8] = b"dao:proposal:";
-const STAKE_PREFIX: &[u8] = b"dao:stake:";
-const VOTE_PREFIX: &[u8] = b"dao:vote:";
+mod config;
+mod events;
+mod proposals;
+mod storage;
+mod types;
+mod utils;
+mod voting;
 
-#[derive(Clone, Serialize, Deserialize)]
-struct DaoConfig {
-    owner: NeoByteString,
-    token: NeoByteString,
-    quorum: i64,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-struct Proposal {
-    id: i64,
-    proposer: NeoByteString,
-    target: NeoByteString,
-    method: String,
-    title: String,
-    description: String,
-    start_time: i64,
-    end_time: i64,
-    yes_votes: i64,
-    no_votes: i64,
-    executed: bool,
-}
+use config::{load_config, load_stake, store_config, store_stake};
+use events::{ProposalCreated, ProposalExecuted, StakeDecreased, StakeIncreased, VoteCast};
+use proposals::{execute_proposal, load_proposal, next_proposal_id, store_proposal};
+use storage::{serialize_value, storage_context, PROPOSAL_COUNTER_KEY};
+use types::{DaoConfig, Proposal};
+use utils::{addresses_equal, ensure_witness, read_address, read_string};
+use voting::{call_transfer, has_voted, record_vote};
 
 neo_manifest_overlay!(
     r#"{
@@ -36,40 +22,6 @@ neo_manifest_overlay!(
     "features": { "storage": true }
 }"#
 );
-
-#[neo_event]
-pub struct ProposalCreated {
-    pub proposal_id: NeoInteger,
-    pub proposer: NeoByteString,
-    pub title: NeoString,
-}
-
-#[neo_event]
-pub struct VoteCast {
-    pub proposal_id: NeoInteger,
-    pub voter: NeoByteString,
-    pub support: NeoBoolean,
-    pub weight: NeoInteger,
-}
-
-#[neo_event]
-pub struct ProposalExecuted {
-    pub proposal_id: NeoInteger,
-}
-
-#[neo_event]
-pub struct StakeIncreased {
-    pub staker: NeoByteString,
-    pub amount: NeoInteger,
-    pub new_total: NeoInteger,
-}
-
-#[neo_event]
-pub struct StakeDecreased {
-    pub staker: NeoByteString,
-    pub amount: NeoInteger,
-    pub new_total: NeoInteger,
-}
 
 #[allow(improper_ctypes_definitions)]
 #[neo_safe]
@@ -136,7 +88,7 @@ pub extern "C" fn configure(
     if store_config(&ctx, &config).is_err() {
         return 0;
     }
-    if store_to_storage(&ctx, PROPOSAL_COUNTER_KEY, &0i64).is_err() {
+    if storage::store_to_storage(&ctx, PROPOSAL_COUNTER_KEY, &0i64).is_err() {
         return 0;
     }
 
@@ -323,14 +275,7 @@ pub extern "C" fn execute(proposal_id: i64) -> i64 {
         return 0;
     }
 
-    let args = NeoArray::<NeoValue>::new();
-    if NeoContractRuntime::call(
-        &proposal.target,
-        &NeoString::from_str(&proposal.method),
-        &args,
-    )
-    .is_err()
-    {
+    if execute_proposal(&proposal.target, &proposal.method).is_err() {
         return 0;
     }
 
@@ -433,158 +378,10 @@ pub extern "C" fn onNEP17Payment(from: NeoByteString, amount: i64, data: NeoByte
     .ok();
 }
 
-fn storage_context() -> Option<NeoStorageContext> {
-    NeoStorage::get_context().ok()
-}
-
-fn load_config(ctx: &NeoStorageContext) -> Option<DaoConfig> {
-    load_from_storage(ctx, CONFIG_KEY)
-}
-
-fn store_config(ctx: &NeoStorageContext, config: &DaoConfig) -> NeoResult<()> {
-    store_to_storage(ctx, CONFIG_KEY, config)
-}
-
-fn proposal_key(id: i64) -> Vec<u8> {
-    let mut key = PROPOSAL_PREFIX.to_vec();
-    key.extend_from_slice(&id.to_le_bytes());
-    key
-}
-
-fn load_proposal(ctx: &NeoStorageContext, id: i64) -> Option<Proposal> {
-    load_from_storage(ctx, &proposal_key(id))
-}
-
-fn store_proposal(ctx: &NeoStorageContext, id: i64, proposal: &Proposal) -> NeoResult<()> {
-    store_to_storage(ctx, &proposal_key(id), proposal)
-}
-
-fn next_proposal_id(ctx: &NeoStorageContext) -> Option<i64> {
-    let current: i64 = load_from_storage(ctx, PROPOSAL_COUNTER_KEY).unwrap_or(0);
-    let next = current.checked_add(1)?;
-    store_to_storage(ctx, PROPOSAL_COUNTER_KEY, &next).ok()?;
-    Some(next)
-}
-
-fn stake_key(address: &NeoByteString) -> Vec<u8> {
-    let mut key = STAKE_PREFIX.to_vec();
-    key.extend_from_slice(address.as_slice());
-    key
-}
-
-fn load_stake(ctx: &NeoStorageContext, address: &NeoByteString) -> i64 {
-    load_from_storage(ctx, &stake_key(address)).unwrap_or(0i64)
-}
-
-fn store_stake(ctx: &NeoStorageContext, address: &NeoByteString, amount: i64) -> NeoResult<()> {
-    if amount == 0 {
-        let key = NeoByteString::from_slice(&stake_key(address));
-        NeoStorage::delete(ctx, &key)
-    } else {
-        store_to_storage(ctx, &stake_key(address), &amount)
-    }
-}
-
-fn vote_key(id: i64, address: &NeoByteString) -> Vec<u8> {
-    let mut key = VOTE_PREFIX.to_vec();
-    key.extend_from_slice(&id.to_le_bytes());
-    key.push(b':');
-    key.extend_from_slice(address.as_slice());
-    key
-}
-
-fn has_voted(ctx: &NeoStorageContext, id: i64, address: &NeoByteString) -> bool {
-    load_from_storage(ctx, &vote_key(id, address)).unwrap_or(false)
-}
-
-fn record_vote(ctx: &NeoStorageContext, id: i64, address: &NeoByteString) -> NeoResult<()> {
-    store_to_storage(ctx, &vote_key(id, address), &true)
-}
-
-fn read_address(ptr: i64, len: i64) -> Option<NeoByteString> {
-    let bytes = read_bytes(ptr, len)?;
-    if bytes.len() != 20 {
-        return None;
-    }
-    Some(NeoByteString::from_slice(&bytes))
-}
-
-fn read_string(ptr: i64, len: i64) -> Option<String> {
-    let bytes = read_bytes(ptr, len)?;
-    String::from_utf8(bytes).ok()
-}
-
-fn read_bytes(ptr: i64, len: i64) -> Option<Vec<u8>> {
-    if ptr == 0 || len <= 0 {
-        return None;
-    }
-    let len = len as usize;
-    let slice = unsafe { slice::from_raw_parts(ptr as *const u8, len) };
-    Some(slice.to_vec())
-}
-
-fn ensure_witness(account: &NeoByteString) -> bool {
-    NeoRuntime::check_witness(account)
-        .map(|flag| flag.as_bool())
-        .unwrap_or(false)
-}
-
-fn addresses_equal(left: &NeoByteString, right: &NeoByteString) -> bool {
-    left.as_slice() == right.as_slice()
-}
-
-fn call_transfer(
-    token: &NeoByteString,
-    from: &NeoByteString,
-    to: &NeoByteString,
-    amount: i64,
-) -> bool {
-    let mut args = NeoArray::new();
-    args.push(NeoValue::from(from.clone()));
-    args.push(NeoValue::from(to.clone()));
-    args.push(NeoValue::from(NeoInteger::new(amount)));
-
-    match NeoContractRuntime::call(token, &NeoString::from_str("transfer"), &args) {
-        Ok(value) => value
-            .as_boolean()
-            .map(|flag| flag.as_bool())
-            .unwrap_or(true),
-        Err(_) => false,
-    }
-}
-
-fn load_from_storage<T>(ctx: &NeoStorageContext, key: &[u8]) -> Option<T>
-where
-    T: for<'de> Deserialize<'de>,
-{
-    let key_bytes = NeoByteString::from_slice(key);
-    let data = NeoStorage::get(ctx, &key_bytes).ok()?;
-    if data.is_empty() {
-        return None;
-    }
-    codec::deserialize(data.as_slice()).ok()
-}
-
-fn store_to_storage<T>(ctx: &NeoStorageContext, key: &[u8], value: &T) -> NeoResult<()>
-where
-    T: Serialize,
-{
-    let encoded = codec::serialize(value)?;
-    let key_bytes = NeoByteString::from_slice(key);
-    let value_bytes = NeoByteString::from_slice(&encoded);
-    NeoStorage::put(ctx, &key_bytes, &value_bytes)
-}
-
-fn serialize_value<T: Serialize>(value: &T) -> NeoByteString {
-    match codec::serialize(value) {
-        Ok(bytes) => NeoByteString::from_slice(&bytes),
-        Err(_) => NeoByteString::new(Vec::new()),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use neo_devpack::codec;
     use std::sync::{Mutex, OnceLock};
 
     fn test_lock() -> &'static Mutex<()> {
@@ -597,6 +394,7 @@ mod tests {
     }
 
     fn reset_state() {
+        use storage::*;
         let ctx = storage_context().unwrap();
         NeoStorage::delete(&ctx, &NeoByteString::from_slice(CONFIG_KEY)).ok();
         NeoStorage::delete(&ctx, &NeoByteString::from_slice(PROPOSAL_COUNTER_KEY)).ok();

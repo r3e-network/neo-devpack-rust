@@ -240,12 +240,12 @@ fn translate_unreachable_trap() {
     )
     .expect("valid wat");
 
-    let err = translate_module(&wasm, "UnreachableTrap")
-        .expect_err("translator should reject unreachable immediate code");
-    let has_stack_underflow = err
-        .chain()
-        .any(|cause| cause.to_string().contains("stack underflow"));
-    assert!(has_stack_underflow, "unexpected error: {err}");
+    let translation = translate_module(&wasm, "UnreachableTrap").expect("translation succeeds");
+    let abort = opcodes::lookup("ABORT").unwrap().byte;
+    assert!(
+        translation.script.iter().filter(|&&b| b == abort).count() >= 3,
+        "expected ABORT for each unreachable"
+    );
 }
 
 #[test]

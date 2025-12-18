@@ -1,0 +1,100 @@
+use std::convert::TryInto;
+use wasm_neovm::{opcodes, translate_module};
+
+#[test]
+fn translate_emits_start_call() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (func $start (export "start")
+                i32.const 0
+                drop)
+              (func (export "main") (result i32)
+                i32.const 7)
+              (start $start))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "Starty").expect("translation succeeds");
+
+    let methods = translation
+        .manifest
+        .value
+        .get("abi")
+        .and_then(|abi| abi.get("methods"))
+        .and_then(|methods| methods.as_array())
+        .expect("manifest methods present");
+
+    let start_method = methods
+        .iter()
+        .find(|method| method.get("name").and_then(|v| v.as_str()) == Some("start"))
+        .expect("start method present");
+    let start_offset = start_method
+        .get("offset")
+        .and_then(|offset| offset.as_u64())
+        .expect("start offset present") as isize;
+
+    let call_opcode = opcodes::lookup("CALL_L")
+        .expect("CALL_L opcode available")
+        .byte;
+    let mut found_call = false;
+    let script = &translation.script;
+    let mut i = 0usize;
+    while i + 4 < script.len() {
+        if script[i] == call_opcode {
+            let delta = i32::from_le_bytes(script[i + 1..i + 5].try_into().unwrap());
+            // NeoVM CALL_L uses a signed offset from the beginning of the current instruction.
+            let target = i as isize + delta as isize;
+            if target == start_offset {
+                found_call = true;
+                break;
+            }
+            i += 5;
+        } else {
+            i += 1;
+        }
+    }
+
+    assert!(
+        found_call,
+        "expected CALL_L to start function at offset {start_offset}"
+    );
+}
+
+#[test]
+fn translate_rejects_start_with_result() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (func $start (result i32)
+                i32.const 0)
+              (func (export "main") (result i32)
+                i32.const 1)
+              (start $start))"#,
+    )
+    .expect("valid wat");
+
+    let err = translate_module(&wasm, "HasResult").expect_err("translation should fail");
+    let message = err.to_string();
+    assert!(
+        message.contains("start function must not return values"),
+        "unexpected start-function error message: {message}"
+    );
+}
+
+#[test]
+fn translate_calls_imported_start_opcode() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (import "opcode" "NOP" (func $start))
+              (func (export "main") (result i32)
+                i32.const 2)
+              (start $start))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "ImportStart").expect("translation succeeds");
+    let nop = opcodes::lookup("NOP").expect("NOP opcode available").byte;
+    assert!(
+        translation.script.contains(&nop),
+        "expected emitted script to contain imported NOP start call"
+    );
+}

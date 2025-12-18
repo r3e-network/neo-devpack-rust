@@ -81,7 +81,7 @@ fn block_results_are_preserved_and_tracked() {
     let add = opcodes::lookup("ADD").unwrap().byte;
     let ret = opcodes::lookup("RET").unwrap().byte;
     assert!(
-        translation.script.iter().any(|&b| b == add),
+        translation.script.contains(&add),
         "expected ADD after using block result"
     );
     assert_eq!(translation.script.last().copied(), Some(ret));
@@ -202,8 +202,8 @@ fn translate_complex_if_else_chain() {
     let jmpifnot = opcodes::lookup("JMPIFNOT_L").unwrap().byte;
     let jmp = opcodes::lookup("JMP_L").unwrap().byte;
 
-    assert!(translation.script.iter().any(|&b| b == jmpifnot));
-    assert!(translation.script.iter().any(|&b| b == jmp));
+    assert!(translation.script.contains(&jmpifnot));
+    assert!(translation.script.contains(&jmp));
 }
 
 #[test]
@@ -339,7 +339,7 @@ fn translate_early_return_in_blocks() {
     let wasm = wat::parse_str(
         r#"(module
               (func (export "early_return") (param i32) (result i32)
-                block $exit
+                block $exit (result i32)
                   local.get 0
                   i32.const 0
                   i32.eq
@@ -525,13 +525,28 @@ fn translate_unreachable_after_branch() {
     )
     .expect("valid wat");
 
-    let err =
-        translate_module(&wasm, "DeadCode").expect_err("unreachable stack misuse should fail");
-    let message = err.to_string();
-    let stack_issue = err
-        .chain()
-        .any(|cause| cause.to_string().contains("stack underflow"));
-    assert!(stack_issue, "unexpected unreachable-code error: {message}");
+    translate_module(&wasm, "DeadCode").expect("unreachable code after br is valid wasm");
+}
+
+#[test]
+fn br_to_function_patches_jump_targets() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (func (export "exit") (result i32)
+                i32.const 7
+                br 0
+                i32.const 1)
+            )"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "BrToFunction").expect("translation succeeds");
+    let jmp_l = opcodes::lookup("JMP_L").unwrap().byte;
+    let unpatched = translation
+        .script
+        .windows(5)
+        .any(|window| window[0] == jmp_l && window[1..] == [0xFF, 0xFF, 0xFF, 0xFF]);
+    assert!(!unpatched, "found unpatched JMP_L placeholder in script");
 }
 
 #[test]

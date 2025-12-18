@@ -454,7 +454,7 @@ fn translate_full_nef_generation_with_metadata() {
     write_nef_with_metadata(
         &translation.script,
         Some("ipfs://calculator"),
-        &[token.clone()],
+        std::slice::from_ref(&token),
         &nef_path,
     )
     .expect("NEF generation succeeds");

@@ -7,7 +7,7 @@ This document outlines the technical architecture for compiling smart contracts 
 | Chain | Status | Components |
 |-------|--------|------------|
 | Solana | ✅ **Working** | `solana-compat/`, `wasm-neovm/src/adapters/solana.rs` |
-| Move | ✅ **Functional** | `move-neovm/` (bytecode parser + WASM translator) |
+| Move | ⚠️ **Experimental** | `move-neovm/` lowers Move bytecode → WASM with control flow + storage-backed resources (ability-checked); `wasm-neovm` will auto-run Move bytecode through this step |
 
 ## Quick Start
 
@@ -151,6 +151,9 @@ solana-compat/
 | CPI | Cross-program invocation | Contract.Call | Direct mapping |
 
 ## 3. Move Language Compilation
+
+> **Status:** Move bytecode translation is experimental but now includes control flow lowering,
+> storage-backed resource operations, and ability checks. Some Move semantics remain unsupported.
 
 ### 3.1 Current Move Architecture
 

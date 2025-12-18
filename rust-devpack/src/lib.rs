@@ -109,7 +109,7 @@ mod tests {
         assert_eq!(int.as_i32(), 42);
 
         let bool_val = NeoBoolean::new(true);
-        assert_eq!(bool_val.as_bool(), true);
+        assert!(bool_val.as_bool());
 
         let string = NeoString::from_str("Hello, Neo!");
         assert_eq!(string.as_str(), "Hello, Neo!");

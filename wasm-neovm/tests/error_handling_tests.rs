@@ -82,20 +82,13 @@ fn translate_rejects_multiple_memories() {
               (memory 1))"#,
     );
 
-    // WebAssembly spec allows single memory in MVP
-    // Multi-memory is post-MVP feature
-    match wasm {
-        Err(_) => {
-            // Parser itself rejects multiple memories
-            assert!(true, "parser rejects multiple memories");
-        }
-        Ok(bytes) => {
-            let result = translate_module(&bytes, "MultiMem");
-            assert!(
-                result.is_err(),
-                "should reject modules with multiple memories"
-            );
-        }
+    // WebAssembly spec allows single memory in MVP. Multi-memory is post-MVP.
+    if let Ok(bytes) = wasm {
+        let result = translate_module(&bytes, "MultiMem");
+        assert!(
+            result.is_err(),
+            "should reject modules with multiple memories"
+        );
     }
 }
 

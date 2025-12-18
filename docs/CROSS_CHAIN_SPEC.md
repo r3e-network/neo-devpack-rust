@@ -1,12 +1,12 @@
 # Cross-Chain Compilation Specification
 
 Version: 1.0.0
-Status: Production Ready
+Status: Solana path available; Move path experimental
 Date: 2025-01-20
 
 ## Overview
 
-This specification defines the cross-chain compilation pipeline that translates smart contracts from Solana (Rust/WASM) and Move-based chains (Aptos, Sui) to Neo N3 NeoVM format (NEF + Manifest).
+This specification defines the cross-chain compilation pipeline that translates smart contracts from Solana (Rust/WASM) and Move-based chains (Aptos, Sui) to Neo N3 NeoVM format (NEF + Manifest). The Solana path is implemented; the Move path is available but remains experimental.
 
 ## Architecture
 
@@ -188,7 +188,7 @@ pub trait ChainAdapter {
 |-------|------------|--------|
 | Neo (native) | `neo`, `native` | ✅ Production |
 | Solana | `solana`, `sol` | ✅ Production |
-| Move (Aptos/Sui) | `move`, `aptos`, `sui` | ✅ Functional |
+| Move (Aptos/Sui) | `move`, `aptos`, `sui` | ⚠️ Experimental (control flow + storage-backed resources implemented with ability checks) |
 
 ## 4. CLI Usage
 
@@ -271,10 +271,10 @@ Imported syscalls are converted to NEF method tokens:
 - PDA derivation uses different algorithm
 - Ed25519 signatures require CheckWitness workaround
 
-### 6.2 Move
-- Resource linearity is runtime-checked, not compile-time enforced
-- Generic type instantiation simplified
-- Formal verification properties not preserved
+### 6.2 Move (Experimental)
+- Move bytecode translation now covers control flow and storage-backed resource
+  operations with ability checks, but richer Move semantics (e.g., full struct
+  layouts, generics) are still incomplete.
 
 ### 6.3 General
 - Gas/fee models incompatible
@@ -288,9 +288,6 @@ Imported syscalls are converted to NEF method tokens:
 ```bash
 # Solana compat tests (26 tests)
 cargo test --manifest-path solana-compat/Cargo.toml
-
-# Move translator tests (17 tests)
-cargo test --manifest-path move-neovm/Cargo.toml
 
 # Cross-chain integration tests
 cargo test --manifest-path wasm-neovm/Cargo.toml cross_chain

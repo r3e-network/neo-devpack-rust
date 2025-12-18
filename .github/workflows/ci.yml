@@ -1,0 +1,287 @@
+name: CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  test:
+    name: Test Suite
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        rust: [stable, nightly]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust }}
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-
+
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-index-
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-${{ matrix.rust }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.rust }}-cargo-build-target-
+
+      - name: Run tests - wasm-neovm
+        run: cargo test --manifest-path wasm-neovm/Cargo.toml --all-features
+
+      - name: Run tests - move-neovm
+        run: cargo test --manifest-path move-neovm/Cargo.toml --all-features
+
+      - name: Run tests - rust-devpack
+        run: cargo test --manifest-path rust-devpack/Cargo.toml --all-features
+
+      - name: Run tests - integration-tests
+        run: cargo test --manifest-path integration-tests/Cargo.toml --all-features
+
+      - name: Run tests - solana-compat
+        run: cargo test --manifest-path solana-compat/Cargo.toml --all-features
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-clippy-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Run clippy - wasm-neovm
+        run: cargo clippy --manifest-path wasm-neovm/Cargo.toml --all-targets --all-features -- -D warnings
+
+      - name: Run clippy - move-neovm
+        run: cargo clippy --manifest-path move-neovm/Cargo.toml --all-targets --all-features -- -D warnings
+
+      - name: Run clippy - rust-devpack
+        run: cargo clippy --manifest-path rust-devpack/Cargo.toml --all-targets --all-features -- -D warnings
+
+      - name: Run clippy - integration-tests
+        run: cargo clippy --manifest-path integration-tests/Cargo.toml --all-targets --all-features -- -D warnings
+
+      - name: Run clippy - solana-compat
+        run: cargo clippy --manifest-path solana-compat/Cargo.toml --all-targets --all-features -- -D warnings
+
+  fmt:
+    name: Rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Check formatting - wasm-neovm
+        run: cargo fmt --manifest-path wasm-neovm/Cargo.toml --all -- --check
+
+      - name: Check formatting - move-neovm
+        run: cargo fmt --manifest-path move-neovm/Cargo.toml --all -- --check
+
+      - name: Check formatting - rust-devpack
+        run: cargo fmt --manifest-path rust-devpack/Cargo.toml --all -- --check
+
+      - name: Check formatting - integration-tests
+        run: cargo fmt --manifest-path integration-tests/Cargo.toml --all -- --check
+
+      - name: Check formatting - solana-compat
+        run: cargo fmt --manifest-path solana-compat/Cargo.toml --all -- --check
+
+  coverage:
+    name: Code Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install cargo-tarpaulin
+        run: cargo install cargo-tarpaulin
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Generate coverage - wasm-neovm
+        run: cargo tarpaulin --manifest-path wasm-neovm/Cargo.toml --out xml --output-dir ./coverage-wasm-neovm
+
+      - name: Generate coverage - move-neovm
+        run: cargo tarpaulin --manifest-path move-neovm/Cargo.toml --out xml --output-dir ./coverage-move-neovm
+
+      - name: Generate coverage - rust-devpack
+        run: cargo tarpaulin --manifest-path rust-devpack/Cargo.toml --out xml --output-dir ./coverage-rust-devpack
+
+      - name: Upload coverage to Codecov - wasm-neovm
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage-wasm-neovm/cobertura.xml
+          flags: wasm-neovm
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload coverage to Codecov - move-neovm
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage-move-neovm/cobertura.xml
+          flags: move-neovm
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload coverage to Codecov - rust-devpack
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage-rust-devpack/cobertura.xml
+          flags: rust-devpack
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  security:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit
+
+      - name: Install cargo-deny
+        run: cargo install cargo-deny
+
+      - name: Run cargo audit
+        run: cargo audit --deny warnings
+
+      - name: Run cargo deny - wasm-neovm
+        run: cargo deny --manifest-path wasm-neovm/Cargo.toml check
+
+      - name: Run cargo deny - move-neovm
+        run: cargo deny --manifest-path move-neovm/Cargo.toml check
+
+      - name: Run cargo deny - rust-devpack
+        run: cargo deny --manifest-path rust-devpack/Cargo.toml check
+
+  benchmark:
+    name: Benchmark
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-bench-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Run benchmarks - wasm-neovm
+        run: cargo bench --manifest-path wasm-neovm/Cargo.toml --no-fail-fast -- --output-format bencher | tee output.txt
+
+      - name: Store benchmark result
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          tool: 'cargo'
+          output-file-path: output.txt
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: false
+          alert-threshold: '105%'
+          comment-on-alert: true
+          fail-on-alert: true
+          alert-comment-cc-users: '@neo-project/neo-llvm'
+
+      - name: Run benchmarks - move-neovm
+        run: cargo bench --manifest-path move-neovm/Cargo.toml --no-fail-fast

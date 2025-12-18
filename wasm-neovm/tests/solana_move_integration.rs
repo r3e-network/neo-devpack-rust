@@ -2,7 +2,7 @@
 //!
 //! Tests end-to-end compilation of cross-chain contracts.
 
-use wasm_neovm::{translate_with_config, TranslationConfig, SourceChain};
+use wasm_neovm::{translate_with_config, SourceChain, TranslationConfig};
 
 // ============================================================================
 // Solana Integration Tests
@@ -132,10 +132,14 @@ fn create_solana_token_contract() -> Vec<u8> {
 #[test]
 fn test_solana_storage_contract_compilation() {
     let wasm = create_solana_storage_contract();
-    let config = TranslationConfig::new("solana-storage");
+    let config = TranslationConfig::new("solana-storage").with_source_chain(SourceChain::Solana);
 
     let result = translate_with_config(&wasm, config);
-    assert!(result.is_ok(), "Solana storage contract should compile: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Solana storage contract should compile: {:?}",
+        result.err()
+    );
 
     let translation = result.unwrap();
 
@@ -163,7 +167,7 @@ fn test_solana_storage_contract_compilation() {
 #[test]
 fn test_solana_token_contract_compilation() {
     let wasm = create_solana_token_contract();
-    let config = TranslationConfig::new("solana-token");
+    let config = TranslationConfig::new("solana-token").with_source_chain(SourceChain::Solana);
 
     let result = translate_with_config(&wasm, config);
     assert!(result.is_ok(), "Solana token contract should compile");
@@ -201,7 +205,7 @@ fn test_solana_syscall_mapping() {
     )
     .unwrap();
 
-    let config = TranslationConfig::new("solana-syscalls");
+    let config = TranslationConfig::new("solana-syscalls").with_source_chain(SourceChain::Solana);
     let result = translate_with_config(&wasm, config);
     assert!(result.is_ok());
 
@@ -372,14 +376,11 @@ fn create_move_nft_contract() -> Vec<u8> {
 #[test]
 fn test_move_coin_contract_compilation() {
     let wasm = create_move_coin_contract();
-    let config = TranslationConfig::new("move-coin");
+    let config = TranslationConfig::new("move-coin").with_source_chain(SourceChain::Move);
 
-    let result = translate_with_config(&wasm, config);
-    assert!(result.is_ok(), "Move coin contract should compile: {:?}", result.err());
+    let translation =
+        translate_with_config(&wasm, config).expect("Move coin contract should compile");
 
-    let translation = result.unwrap();
-
-    // Verify methods
     let methods = translation.manifest.value["abi"]["methods"]
         .as_array()
         .expect("methods");
@@ -398,12 +399,11 @@ fn test_move_coin_contract_compilation() {
 #[test]
 fn test_move_nft_contract_compilation() {
     let wasm = create_move_nft_contract();
-    let config = TranslationConfig::new("move-nft");
+    let config = TranslationConfig::new("move-nft").with_source_chain(SourceChain::Move);
 
-    let result = translate_with_config(&wasm, config);
-    assert!(result.is_ok(), "Move NFT contract should compile");
+    let translation =
+        translate_with_config(&wasm, config).expect("Move NFT contract should compile");
 
-    let translation = result.unwrap();
     let methods = translation.manifest.value["abi"]["methods"]
         .as_array()
         .unwrap();
@@ -423,7 +423,7 @@ fn test_move_nft_contract_compilation() {
 fn test_move_resource_semantics_mapping() {
     // Test that Move resource operations map to storage
     let wasm = create_move_coin_contract();
-    let config = TranslationConfig::new("move-resource-test");
+    let config = TranslationConfig::new("move-resource-test").with_source_chain(SourceChain::Move);
 
     let translation = translate_with_config(&wasm, config).unwrap();
 
@@ -446,8 +446,9 @@ fn test_equivalent_contracts_compile_similarly() {
     let solana_wasm = create_solana_storage_contract();
     let move_wasm = create_move_coin_contract();
 
-    let solana_config = TranslationConfig::new("solana-test");
-    let move_config = TranslationConfig::new("move-test");
+    let solana_config =
+        TranslationConfig::new("solana-test").with_source_chain(SourceChain::Solana);
+    let move_config = TranslationConfig::new("move-test").with_source_chain(SourceChain::Move);
 
     let solana_result = translate_with_config(&solana_wasm, solana_config).unwrap();
     let move_result = translate_with_config(&move_wasm, move_config).unwrap();
@@ -494,7 +495,7 @@ fn test_storage_operations_compile() {
     )
     .unwrap();
 
-    let config = TranslationConfig::new("storage-test");
+    let config = TranslationConfig::new("storage-test").with_source_chain(SourceChain::Solana);
     let result = translate_with_config(&wasm, config);
     assert!(result.is_ok());
 

@@ -18,6 +18,7 @@ fn parse_neovm_syscalls() -> anyhow::Result<Vec<SyscallEntry>> {
     let neo_dir = repo_root.join("neo/src/Neo/SmartContract");
 
     let mut names: BTreeSet<String> = BTreeSet::new();
+    let regex = Regex::new(r#"Register\("([^"]+)""#)?;
     for entry in WalkDir::new(&neo_dir) {
         let entry = entry?;
         if entry.file_type().is_file()
@@ -28,7 +29,6 @@ fn parse_neovm_syscalls() -> anyhow::Result<Vec<SyscallEntry>> {
                 .unwrap_or(false)
         {
             let contents = fs::read_to_string(entry.path())?;
-            let regex = Regex::new(r#"Register\("([^"]+)""#)?;
             for caps in regex.captures_iter(&contents) {
                 names.insert(caps[1].to_string());
             }

@@ -42,8 +42,8 @@ pub use pubkey::Pubkey;
 /// Re-export commonly used items
 pub mod prelude {
     pub use crate::account_info::AccountInfo;
-    pub use crate::entrypoint::ProgramResult;
     pub use crate::entrypoint;
+    pub use crate::entrypoint::ProgramResult;
     pub use crate::program::invoke;
     pub use crate::program_error::ProgramError;
     pub use crate::pubkey::Pubkey;

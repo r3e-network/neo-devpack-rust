@@ -377,14 +377,22 @@ fn test_neo_error() {
 #[test]
 fn test_neo_result() {
     // Test Ok result
-    let ok_result: NeoResult<NeoInteger> = Ok(NeoInteger::new(42));
+    fn ok_integer() -> NeoResult<NeoInteger> {
+        Ok(NeoInteger::new(42))
+    }
+
+    let ok_result = ok_integer();
     assert!(ok_result.is_ok());
     assert_eq!(ok_result.unwrap().as_i32(), 42);
 
     // Test Err result
-    let err_result: NeoResult<NeoInteger> = Err(NeoError::InvalidArgument);
+    fn err_integer() -> NeoResult<NeoInteger> {
+        Err(NeoError::InvalidArgument)
+    }
+
+    let err_result = err_integer();
     assert!(err_result.is_err());
-    assert!(err_result.unwrap_err() == NeoError::InvalidArgument);
+    assert_eq!(err_result.unwrap_err(), NeoError::InvalidArgument);
 }
 
 #[test]

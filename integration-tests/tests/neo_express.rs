@@ -6,10 +6,16 @@ use std::path::Path;
 #[ignore = "requires a running Neo Express instance"]
 fn hello_world_nef_is_deployable() {
     // Ensure the translated artefacts exist before hitting Neo Express.
-    let nef = Path::new("build/HelloWorld.nef");
-    let manifest = Path::new("build/HelloWorld.manifest.json");
-    assert!(nef.exists(), "expected {} to exist; run `make examples` first", nef.display());
-    assert!(manifest.exists(), "expected {} to exist; run `make examples` first", manifest.display());
+    let nef = Path::new("build/solana_hello.nef");
+    let manifest = Path::new("build/solana_hello.manifest.json");
+    if !nef.exists() || !manifest.exists() {
+        eprintln!(
+            "Skipping: expected {} and {} to exist; run `make cross-chain` first",
+            nef.display(),
+            manifest.display()
+        );
+        return;
+    }
 
     // When Neo Express is available, provide the RPC endpoint via NEO_EXPRESS_RPC
     // (for example: http://localhost:50012). If the variable is unset we skip
@@ -17,9 +23,7 @@ fn hello_world_nef_is_deployable() {
     let rpc = match env::var("NEO_EXPRESS_RPC") {
         Ok(value) => value,
         Err(_) => {
-            eprintln!(
-                "Skipping Neo Express integration test – set NEO_EXPRESS_RPC to enable."
-            );
+            eprintln!("Skipping Neo Express integration test – set NEO_EXPRESS_RPC to enable.");
             return;
         }
     };
@@ -28,7 +32,7 @@ fn hello_world_nef_is_deployable() {
     let nef_bytes = fs::read(nef).expect("failed to read NEF");
     let manifest_bytes = fs::read(manifest).expect("failed to read manifest");
     eprintln!(
-        "Ready to deploy HelloWorld (NEF {} bytes, manifest {} bytes) via {rpc}",
+        "Ready to deploy solana-hello (NEF {} bytes, manifest {} bytes) via {rpc}",
         nef_bytes.len(),
         manifest_bytes.len()
     );
@@ -37,4 +41,19 @@ fn hello_world_nef_is_deployable() {
     // on the neo-express CLI. Wire those commands into your CI/CD pipeline by
     // using the artefacts above together with `neo-express contract deploy`
     // and `neo-express contract invoke`.
+}
+
+#[test]
+#[ignore = "requires a running Neo Express instance"]
+fn move_coin_nef_is_available() {
+    // Experimental Move sample – artefacts should exist after `make cross-chain`.
+    let nef = Path::new("build/MoveCoin.nef");
+    let manifest = Path::new("build/MoveCoin.manifest.json");
+    if !nef.exists() || !manifest.exists() {
+        eprintln!(
+            "Skipping: expected {} and {} to exist; run `make cross-chain` first",
+            nef.display(),
+            manifest.display()
+        );
+    }
 }

@@ -1,0 +1,42 @@
+use std::string::String;
+
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
+/// Neo N3 String type
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct NeoString {
+    data: String,
+}
+
+impl NeoString {
+    pub fn new(data: String) -> Self {
+        Self { data }
+    }
+
+    pub fn from_str(s: &str) -> Self {
+        Self {
+            data: s.to_string(),
+        }
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.data
+    }
+
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
+}
+
+impl Default for NeoString {
+    fn default() -> Self {
+        Self::from_str("")
+    }
+}
+

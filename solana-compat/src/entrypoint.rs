@@ -10,11 +10,8 @@ use crate::pubkey::Pubkey;
 pub type ProgramResult = Result<(), ProgramError>;
 
 /// Type of the user-defined entrypoint function
-pub type ProcessInstruction = fn(
-    program_id: &Pubkey,
-    accounts: &[AccountInfo],
-    instruction_data: &[u8],
-) -> ProgramResult;
+pub type ProcessInstruction =
+    fn(program_id: &Pubkey, accounts: &[AccountInfo], instruction_data: &[u8]) -> ProgramResult;
 
 /// Declare the program entrypoint
 ///
@@ -101,11 +98,7 @@ pub unsafe fn __neo_process_instruction(
     // For now, pass empty accounts and remaining data as instruction_data
     // Full implementation would parse account infos from the data
     let accounts: &[AccountInfo] = &[];
-    let instruction_data = if data.len() > 36 {
-        &data[36..]
-    } else {
-        &[]
-    };
+    let instruction_data = if data.len() > 36 { &data[36..] } else { &[] };
 
     // Suppress unused variable warning
     let _ = num_accounts;

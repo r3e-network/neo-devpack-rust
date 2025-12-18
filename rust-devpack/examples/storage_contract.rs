@@ -266,6 +266,12 @@ pub fn deploy_contract() -> NeoResult<()> {
     Ok(())
 }
 
+impl Default for StorageContract {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

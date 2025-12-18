@@ -8,7 +8,8 @@ instance.
 
 1. Build the sample contracts and translate them to NEF + manifest:
    ```bash
-   make examples
+   make examples          # Neo-native samples
+   make cross-chain       # Solana + experimental Move samples
    ```
 2. Start Neo Express (or point to an existing instance) and note its RPC endpoint
    (for example `http://localhost:50012`).
@@ -51,7 +52,7 @@ without additional witness configuration:
 
 | Contract | Safe Validation Call |
 | --- | --- |
-| Hello World | `neo-express contract invoke --rpc $NEO_EXPRESS_RPC <hash> hello` |
+| Hello World (neo) | `neo-express contract invoke --rpc $NEO_EXPRESS_RPC <hash> hello` |
 | NEP-17 Token | `neo-express contract invoke --rpc $NEO_EXPRESS_RPC <hash> totalSupply` |
 | Constant-product AMM | `neo-express contract invoke --rpc $NEO_EXPRESS_RPC <hash> getReserves` |
 | NEP-11 NFT | `neo-express contract invoke --rpc $NEO_EXPRESS_RPC <hash> totalSupply` |
@@ -61,6 +62,8 @@ without additional witness configuration:
 | Governance DAO | `neo-express contract invoke --rpc $NEO_EXPRESS_RPC <hash> getConfig` |
 | Oracle Consumer | `neo-express contract invoke --rpc $NEO_EXPRESS_RPC <hash> getConfig` |
 | NFT Marketplace | `neo-express contract invoke --rpc $NEO_EXPRESS_RPC <hash> getListing --integer 1` |
+| Solana Hello (cross-chain) | `neo-express contract invoke --rpc $NEO_EXPRESS_RPC <hash> hello` |
+| Move Coin (cross-chain, experimental) | `neo-express contract invoke --rpc $NEO_EXPRESS_RPC <hash> balance --binary <address>` |
 
 For view calls that expect parameters (for example `balanceOf(owner)` or
 `contributionOf(address)`), supply the argument in the same form you would pass

@@ -67,6 +67,32 @@ MANIFEST_OUT="$BUILD_DIR/${BASENAME}.manifest.json"
 CLANG_BIN="${CLANG:-clang}"
 TARGET="${WASM_TARGET:-wasm32-unknown-unknown}"
 
+clang_major_version() {
+  "$CLANG_BIN" --version 2>/dev/null | sed -n 's/.*version \\([0-9][0-9]*\\)\\..*/\\1/p' | head -n 1
+}
+
+have_wasm_linker() {
+  local major
+  major="$(clang_major_version || true)"
+  if [[ -n "$major" ]] && command -v "wasm-ld-$major" >/dev/null 2>&1; then
+    return 0
+  fi
+  command -v wasm-ld >/dev/null 2>&1
+}
+
+if ! have_wasm_linker; then
+  cat >&2 <<'EOF'
+error: missing WebAssembly linker (wasm-ld)
+
+The C contract pipeline relies on LLVM's WebAssembly linker. On Ubuntu/Debian install:
+  sudo apt-get install lld
+
+If you're on a different platform, install the LLVM lld toolchain and ensure `wasm-ld`
+or `wasm-ld-<major>` is present in PATH.
+EOF
+  exit 1
+fi
+
 # Reasonable defaults for freestanding Wasm output. Users can extend/override
 # via CLANG_FLAGS if they need additional features.
 DEFAULT_CFLAGS=(

@@ -1,7 +1,8 @@
 //! Move Bytecode to NeoVM Translator
 //!
-//! This crate provides experimental support for translating Move bytecode
-//! to NeoVM-compatible WASM or directly to NeoVM opcodes.
+//! This crate provides a minimal Move bytecode → WASM translator to feed the
+//! wasm-neovm pipeline. The lowering is experimental and does not cover the
+//! full Move semantics yet.
 //!
 //! # Pipeline
 //!
@@ -33,15 +34,15 @@
 //! These require runtime emulation or compile-time transformation.
 
 pub mod bytecode;
-pub mod translator;
 pub mod runtime;
+pub mod translator;
 
 pub use bytecode::{
     parse_move_bytecode, validate_move_bytecode, BytecodeVersion, FieldDef, FunctionDef,
     MoveModule, MoveOpcode, StructDef, TypeTag,
 };
-pub use translator::{translate_to_wasm, LocalMapping, TranslationContext, OPCODE_MAP};
 pub use runtime::{global_storage_key, signer_to_checkwitness, ResourceError, ResourceTracker};
+pub use translator::translate_to_wasm;
 
 use anyhow::Result;
 
@@ -91,7 +92,7 @@ pub fn translate_move_to_wasm(bytecode: &[u8], module_name: &str) -> Result<Move
         resources: module
             .structs
             .iter()
-            .filter(|s| s.is_resource)
+            .filter(|s| s.abilities.is_resource())
             .map(|s| s.name.clone())
             .collect(),
     };
@@ -111,7 +112,9 @@ mod tests {
     #[test]
     fn test_is_move_bytecode() {
         // Valid Move magic
-        assert!(is_move_bytecode(&[0xa1, 0x1c, 0xeb, 0x0b, 0x00, 0x00, 0x00, 0x00]));
+        assert!(is_move_bytecode(&[
+            0xa1, 0x1c, 0xeb, 0x0b, 0x00, 0x00, 0x00, 0x00
+        ]));
 
         // Invalid - WASM magic
         assert!(!is_move_bytecode(&[0x00, 0x61, 0x73, 0x6d]));

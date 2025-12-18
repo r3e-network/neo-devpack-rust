@@ -1,0 +1,265 @@
+# Security Policy
+
+## Supported Versions
+
+The following versions of Neo-LLVM are currently supported with security updates:
+
+| Version | Supported          | Status      |
+| ------- | ------------------ | ----------- |
+| 0.4.x   | :white_check_mark: | Current     |
+| 0.3.x   | :white_check_mark: | Maintenance |
+| < 0.3   | :x:                | Unsupported |
+
+**Note**: We recommend always using the latest stable release for the best security posture.
+
+## Security Considerations
+
+### Smart Contract Security
+
+Neo-LLVM is a compilation toolchain that translates WebAssembly to NeoVM bytecode. Security considerations include:
+
+1. **Bytecode Translation**: The translator must correctly preserve the semantics of WebAssembly instructions to prevent unexpected behavior in deployed contracts.
+
+2. **Memory Safety**: WebAssembly's linear memory model is mapped to NeoVM's stack-based execution. Bounds checking and memory access validation are critical.
+
+3. **Syscall Mapping**: Incorrect mapping of WebAssembly imports to NeoVM syscalls could lead to privilege escalation or unauthorized operations.
+
+4. **Resource Limits**: The translator enforces limits on stack depth, memory size, and execution complexity to prevent denial-of-service attacks.
+
+5. **Cross-Chain Compatibility**: The Solana and Move compatibility layers must correctly translate foreign contract semantics to prevent security vulnerabilities.
+
+### Known Security Boundaries
+
+- **Floating-Point Operations**: Currently unsupported; attempting to translate floating-point instructions will result in an error.
+- **Multi-Memory Modules**: Only single-memory WebAssembly modules are supported.
+- **Reference Types**: Limited support for `funcref`; other reference types are unsupported.
+- **SIMD Instructions**: Not yet implemented; will produce translation errors.
+
+## Reporting a Vulnerability
+
+We take security vulnerabilities seriously. If you discover a security issue in Neo-LLVM, please report it responsibly.
+
+### Where to Report
+
+**DO NOT** open a public GitHub issue for security vulnerabilities.
+
+Instead, please report security issues through one of these channels:
+
+1. **Email**: Send details to [security@neo.org](mailto:security@neo.org)
+2. **Neo Vulnerability Bounty Program**: Submit through [https://neo.org/dev/bounty](https://neo.org/dev/bounty)
+3. **Private Disclosure**: Contact maintainers directly via Discord (request private channel)
+
+### What to Include
+
+Please include the following information in your report:
+
+- **Description**: Clear description of the vulnerability
+- **Impact**: Potential security impact and attack scenarios
+- **Affected versions**: Which versions are affected
+- **Reproduction steps**: Detailed steps to reproduce the issue
+- **Proof of concept**: Code or WebAssembly module demonstrating the vulnerability
+- **Suggested fix**: If you have ideas for how to fix the issue (optional)
+- **Disclosure timeline**: Your preferred timeline for public disclosure
+
+### Example Report Template
+
+```
+Subject: [SECURITY] Vulnerability in wasm-neovm translator
+
+Description:
+The WebAssembly to NeoVM translator incorrectly handles [specific instruction],
+allowing [specific attack scenario].
+
+Impact:
+An attacker could [describe attack] by [describe method], potentially leading to
+[describe consequences].
+
+Affected Versions:
+- wasm-neovm 0.4.0
+- wasm-neovm 0.3.x
+
+Reproduction Steps:
+1. Create a WebAssembly module with [specific pattern]
+2. Translate using wasm-neovm
+3. Deploy the resulting NEF to Neo testnet
+4. Invoke [specific method]
+5. Observe [unexpected behavior]
+
+Proof of Concept:
+[Attach WebAssembly module or code]
+
+Suggested Fix:
+[Your suggestions, if any]
+
+Disclosure Timeline:
+I request 90 days before public disclosure.
+```
+
+## Response Timeline
+
+We are committed to responding to security reports promptly:
+
+1. **Initial Response**: Within **48 hours** of receiving your report
+2. **Triage**: Within **5 business days**, we will:
+   - Confirm the vulnerability
+   - Assess severity and impact
+   - Provide an estimated timeline for a fix
+3. **Fix Development**: Depending on severity:
+   - **Critical**: Patch within **7 days**
+   - **High**: Patch within **14 days**
+   - **Medium**: Patch within **30 days**
+   - **Low**: Patch in next regular release
+4. **Disclosure**: After the fix is released:
+   - We will coordinate with you on public disclosure
+   - Credit will be given to the reporter (unless you prefer anonymity)
+   - Security advisory will be published
+
+## Severity Classification
+
+We use the following severity levels based on impact:
+
+### Critical
+
+- Remote code execution in the translator
+- Arbitrary bytecode injection in generated NEF files
+- Bypass of NeoVM security restrictions
+- Privilege escalation in deployed contracts
+
+### High
+
+- Incorrect translation leading to contract vulnerabilities
+- Memory corruption in generated bytecode
+- Denial of service in the translator
+- Information disclosure of sensitive data
+
+### Medium
+
+- Logic errors in non-critical translation paths
+- Resource exhaustion requiring specific conditions
+- Incorrect manifest generation
+- Cross-chain compatibility issues with security implications
+
+### Low
+
+- Minor translation inconsistencies
+- Documentation errors with security implications
+- Non-exploitable edge cases
+
+## Security Best Practices
+
+### For Contract Developers
+
+1. **Audit Generated Bytecode**: Review the generated NEF files before deployment
+2. **Test Thoroughly**: Use Neo Express or testnet for comprehensive testing
+3. **Validate Inputs**: Always validate user inputs in your contracts
+4. **Use Safe Methods**: Mark methods as safe only when appropriate
+5. **Limit Permissions**: Use minimal permissions in manifest files
+6. **Review Dependencies**: Audit all dependencies in your Rust contracts
+7. **Follow Neo Guidelines**: Adhere to [Neo smart contract best practices](https://docs.neo.org/docs/n3/develop/write/basics)
+
+### For Translator Users
+
+1. **Use Latest Version**: Always use the latest stable release
+2. **Verify Checksums**: Verify release checksums before use
+3. **Sandbox Testing**: Test translations in isolated environments first
+4. **Monitor Advisories**: Subscribe to security advisories
+5. **Report Issues**: Report any suspicious behavior immediately
+
+### For Contributors
+
+1. **Security Review**: Consider security implications of all changes
+2. **Input Validation**: Validate all external inputs (WebAssembly modules, configuration)
+3. **Error Handling**: Use proper error handling; avoid panics in production code
+4. **Dependency Audits**: Run `cargo audit` before submitting PRs
+5. **Test Security**: Include security-focused test cases
+6. **Documentation**: Document security considerations in code comments
+
+## Security Tooling
+
+We use the following tools to maintain security:
+
+- **cargo-audit**: Checks for known vulnerabilities in dependencies
+- **cargo-deny**: Enforces dependency policies and license compliance
+- **cargo-tarpaulin**: Measures test coverage to ensure critical paths are tested
+- **clippy**: Catches common security anti-patterns
+- **GitHub Security Advisories**: Monitors for dependency vulnerabilities
+
+### Running Security Checks
+
+```bash
+# Install security tools
+cargo install cargo-audit cargo-deny
+
+# Check for known vulnerabilities
+cargo audit
+
+# Check dependency policies
+cargo deny check
+
+# Run all security checks (as in CI)
+make security-check
+```
+
+## Security Advisories
+
+Security advisories are published at:
+
+- [GitHub Security Advisories](https://github.com/neo-project/neo-llvm/security/advisories)
+- [Neo Security Page](https://neo.org/security)
+
+Subscribe to notifications to stay informed about security updates.
+
+## Responsible Disclosure
+
+We follow responsible disclosure practices:
+
+1. **Private Reporting**: Vulnerabilities are reported privately
+2. **Coordinated Disclosure**: We coordinate disclosure timing with reporters
+3. **Credit**: We credit reporters in advisories (unless anonymity is requested)
+4. **Transparency**: After fixes are released, we publish detailed advisories
+
+## Bug Bounty Program
+
+Neo operates a vulnerability bounty program. Security researchers who report valid vulnerabilities may be eligible for rewards.
+
+Details: [https://neo.org/dev/bounty](https://neo.org/dev/bounty)
+
+### Scope
+
+The following are in scope for the bounty program:
+
+- **wasm-neovm translator**: Core translation logic
+- **rust-devpack**: Runtime libraries and macros
+- **solana-compat**: Solana compatibility layer
+- **move-neovm**: Move bytecode translator
+- **Generated bytecode**: Security issues in generated NEF files
+
+### Out of Scope
+
+The following are out of scope:
+
+- Denial of service requiring excessive resources
+- Issues in third-party dependencies (report to upstream)
+- Issues in example contracts (unless demonstrating translator bugs)
+- Social engineering attacks
+- Physical attacks
+
+## Contact
+
+For security-related questions or concerns:
+
+- **Email**: [security@neo.org](mailto:security@neo.org)
+- **Bounty Program**: [https://neo.org/dev/bounty](https://neo.org/dev/bounty)
+- **Discord**: [https://discord.io/neo](https://discord.io/neo) (request private channel for sensitive issues)
+
+## Acknowledgments
+
+We thank the following security researchers for responsibly disclosing vulnerabilities:
+
+- _No vulnerabilities have been reported yet_
+
+---
+
+**Last Updated**: 2025-12-18
+
+Thank you for helping keep Neo-LLVM and the Neo ecosystem secure!

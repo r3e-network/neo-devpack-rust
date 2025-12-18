@@ -17,14 +17,17 @@ pipeline stays maintainable as new features land.
 
 ## Current Snapshot
 
-- `wasm-neovm/src/translator/translation.rs` (~3.3k LOC) and
-  `translator/runtime.rs` (~3.1k LOC) each implement multiple responsibilities:
-  parsing, validation, helper synthesis, and manifest merging. They lack
-  explicit boundaries, so new functionality often duplicates existing logic.
-- Manifest overlays are processed both in `src/main.rs` and within the
-  translator, leading to redundant merging/validation code paths.
-- Runtime helper emission (memory, tables, data segments) repeats similar loops
-  that could be standardised via traits or declarative macros.
+- The original monolithic `wasm-neovm/src/translator/translation.rs` and
+  `wasm-neovm/src/translator/runtime.rs` have been decomposed into focused
+  submodules under `wasm-neovm/src/translator/translation/` and
+  `wasm-neovm/src/translator/runtime/` (driver, per-op lowering, runtime helper
+  families, and final NEF/manifest assembly).
+- Manifest overlay merging/validation now lives under `wasm-neovm/src/manifest/`
+  via `ManifestBuilder`; the CLI loads overlay JSON and forwards it via
+  `TranslationConfig` instead of re-implementing merge logic.
+- Runtime helper emission is grouped by domain (memory, tables, globals,
+  records), but some helper builders still share similar patterns that could be
+  standardised via traits/macros.
 - The contract examples/scripts embed their own manifest overlays, but no
   shared schema exists to validate them outside of the translator runtime.
 

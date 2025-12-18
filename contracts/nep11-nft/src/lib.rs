@@ -1,4 +1,4 @@
-use neo_devpack::{prelude::*, utils::bytes_to_json};
+use neo_devpack::prelude::*;
 
 const TOTAL_SUPPLY_KEY: &[u8] = b"__total_nft_supply";
 const OWNER_PREFIX: &[u8] = b"owner:";
@@ -58,10 +58,6 @@ fn read_i64(bytes: &NeoByteString) -> i64 {
     let data = bytes.as_slice();
     if data.is_empty() {
         return 0;
-    }
-
-    if let Some(value) = bytes_to_json::<i64>(bytes) {
-        return value;
     }
 
     let mut buf = [0u8; 8];

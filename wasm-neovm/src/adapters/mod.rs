@@ -5,13 +5,16 @@
 
 pub mod solana;
 
+use std::str::FromStr;
+
 use crate::neo_syscalls;
 use crate::syscalls;
 
 /// Source chain identifier
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SourceChain {
     /// Native Neo/WASM contract
+    #[default]
     Neo,
     /// Solana program compiled to WASM
     Solana,
@@ -19,21 +22,24 @@ pub enum SourceChain {
     Move,
 }
 
-impl Default for SourceChain {
-    fn default() -> Self {
-        Self::Neo
+impl FromStr for SourceChain {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "neo" | "native" => Ok(Self::Neo),
+            "solana" | "sol" => Ok(Self::Solana),
+            "move" | "aptos" | "sui" => Ok(Self::Move),
+            _ => Err(()),
+        }
     }
 }
 
 impl SourceChain {
     /// Parse from string
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Option<Self> {
-        match s.to_lowercase().as_str() {
-            "neo" | "native" => Some(Self::Neo),
-            "solana" | "sol" => Some(Self::Solana),
-            "move" | "aptos" | "sui" => Some(Self::Move),
-            _ => None,
-        }
+        s.parse().ok()
     }
 }
 

@@ -91,8 +91,7 @@ fn test_solana_hello_compilation() {
     let wasm = create_solana_hello_wasm();
     let config = TranslationConfig::new("solana-hello");
 
-    let translation = translate_with_config(&wasm, config)
-        .expect("translation should succeed");
+    let translation = translate_with_config(&wasm, config).expect("translation should succeed");
 
     // Verify NEF was generated
     assert!(!translation.script.is_empty(), "script should not be empty");
@@ -108,7 +107,10 @@ fn test_solana_hello_compilation() {
         .collect();
 
     assert!(method_names.contains(&"hello"), "should have hello method");
-    assert!(method_names.contains(&"get_value"), "should have get_value method");
+    assert!(
+        method_names.contains(&"get_value"),
+        "should have get_value method"
+    );
 }
 
 #[test]
@@ -116,8 +118,7 @@ fn test_storage_contract_compilation() {
     let wasm = create_storage_wasm();
     let config = TranslationConfig::new("storage-test");
 
-    let translation = translate_with_config(&wasm, config)
-        .expect("translation should succeed");
+    let translation = translate_with_config(&wasm, config).expect("translation should succeed");
 
     // Verify storage feature is enabled
     let features = &translation.manifest.value["features"];
@@ -140,8 +141,7 @@ fn test_crypto_contract_compilation() {
     let wasm = create_crypto_wasm();
     let config = TranslationConfig::new("crypto-test");
 
-    let translation = translate_with_config(&wasm, config)
-        .expect("translation should succeed");
+    let translation = translate_with_config(&wasm, config).expect("translation should succeed");
 
     // Verify methods exist
     let methods = translation.manifest.value["abi"]["methods"]
@@ -154,7 +154,10 @@ fn test_crypto_contract_compilation() {
         .collect();
 
     assert!(method_names.contains(&"hash"), "should have hash method");
-    assert!(method_names.contains(&"verify"), "should have verify method");
+    assert!(
+        method_names.contains(&"verify"),
+        "should have verify method"
+    );
 }
 
 #[test]
@@ -174,8 +177,7 @@ fn test_manifest_method_tokens_generated() {
     let wasm = create_solana_hello_wasm();
     let config = TranslationConfig::new("token-test");
 
-    let translation = translate_with_config(&wasm, config)
-        .expect("translation should succeed");
+    let translation = translate_with_config(&wasm, config).expect("translation should succeed");
 
     // Check nefMethodTokens in extra
     let extra = &translation.manifest.value["extra"];
@@ -185,9 +187,9 @@ fn test_manifest_method_tokens_generated() {
     let tokens = tokens.unwrap();
 
     // Should have at least one token for System.Runtime.Log
-    let has_log_token = tokens.iter().any(|t| {
-        t["method"].as_str() == Some("System.Runtime.Log")
-    });
+    let has_log_token = tokens
+        .iter()
+        .any(|t| t["method"].as_str() == Some("System.Runtime.Log"));
 
     assert!(has_log_token, "should have System.Runtime.Log token");
 }
@@ -209,8 +211,7 @@ fn test_multiple_exports_preserved() {
     .expect("failed to parse WAT");
 
     let config = TranslationConfig::new("multi-export");
-    let translation = translate_with_config(&wasm, config)
-        .expect("translation should succeed");
+    let translation = translate_with_config(&wasm, config).expect("translation should succeed");
 
     let methods = translation.manifest.value["abi"]["methods"]
         .as_array()
@@ -233,8 +234,7 @@ fn test_return_type_detection() {
     .expect("failed to parse WAT");
 
     let config = TranslationConfig::new("return-types");
-    let translation = translate_with_config(&wasm, config)
-        .expect("translation should succeed");
+    let translation = translate_with_config(&wasm, config).expect("translation should succeed");
 
     let methods = translation.manifest.value["abi"]["methods"]
         .as_array()
@@ -250,4 +250,153 @@ fn test_return_type_detection() {
             _ => panic!("unexpected method: {}", name),
         }
     }
+}
+
+#[test]
+fn test_solana_adapter_maps_syscalls() {
+    let wasm = wat::parse_str(
+        r#"
+        (module
+            (import "solana" "sol_log" (func $log (param i32 i32)))
+            (memory (export "memory") 1)
+            (data (i32.const 0) "hi")
+            (func (export "entry")
+                i32.const 0
+                i32.const 2
+                call $log
+            )
+        )
+        "#,
+    )
+    .expect("failed to parse WAT");
+
+    let config = TranslationConfig::new("sol-log").with_source_chain(SourceChain::Solana);
+    let translation = translate_with_config(&wasm, config)
+        .expect("translation should succeed via Solana adapter");
+
+    let tokens = translation.manifest.value["extra"]["nefMethodTokens"]
+        .as_array()
+        .expect("nefMethodTokens should be present");
+
+    let has_log = tokens
+        .iter()
+        .any(|t| t["method"].as_str() == Some("System.Runtime.Log"));
+    assert!(
+        has_log,
+        "System.Runtime.Log token should be emitted for sol_log import"
+    );
+}
+
+#[test]
+fn test_move_source_chain_supported_for_basic_wasm() {
+    let wasm = wat::parse_str(
+        r#"
+        (module
+            (import "move_stdlib" "hash_sha256" (func $hash (param i32 i32 i32)))
+            (memory (export "memory") 1)
+            (data (i32.const 0) "data")
+            (func (export "noop")
+                i32.const 0
+                i32.const 4
+                i32.const 32
+                call $hash
+            )
+        )
+        "#,
+    )
+    .expect("failed to parse WAT");
+
+    let config = TranslationConfig::new("move-basic").with_source_chain(SourceChain::Move);
+    let translation =
+        translate_with_config(&wasm, config).expect("Move source chain should be translated");
+
+    assert!(!translation.script.is_empty(), "script should not be empty");
+}
+
+#[test]
+fn test_move_resource_import_enables_storage_feature() {
+    let wasm = wat::parse_str(
+        r#"
+        (module
+            (import "move_resource" "move_to" (func $move_to (param i32 i32)))
+            (memory (export "memory") 1)
+            (data (i32.const 0) "\01\02\03\04\05\06\07\08\09\0a\0b\0c\0d\0e\0f\10\11\12\13\14\15\16\17\18\19\1a\1b\1c\1d\1e\1f\20")
+            (func (export "publish")
+                i32.const 0   ;; key ptr
+                i32.const 32  ;; key len
+                call $move_to
+            )
+        )
+        "#,
+    )
+    .expect("failed to parse WAT");
+
+    let config = TranslationConfig::new("move-resource").with_source_chain(SourceChain::Move);
+    let translation =
+        translate_with_config(&wasm, config).expect("Move resource imports should translate");
+
+    assert_eq!(
+        translation.manifest.value["features"]["storage"].as_bool(),
+        Some(true),
+        "storage feature should be enabled for move_resource imports"
+    );
+}
+
+/// Move bytecode (.mv) inputs should be auto-translated via move-neovm
+#[test]
+fn test_move_bytecode_input_translates() {
+    // magic + version + table_count=0 + code: LdU8 7, Ret
+    let mv: Vec<u8> = vec![
+        0xa1, 0x1c, 0xeb, 0x0b, // magic
+        0x06, 0x00, 0x00, 0x00, // version
+        0x00, // table count
+        0x06, 0x07, // LdU8 7
+        0x02, // Ret
+    ];
+
+    let wasm = move_neovm::translate_move_to_wasm(&mv, "mv-bytecode")
+        .expect("move-neovm should lower bytecode")
+        .wasm;
+
+    let config = TranslationConfig::new("mv-bytecode").with_source_chain(SourceChain::Move);
+    let translation =
+        translate_with_config(&wasm, config).expect("Move bytecode input should translate");
+    assert!(
+        !translation.script.is_empty(),
+        "translation script should be produced"
+    );
+}
+
+#[test]
+fn test_move_stdlib_hash_maps_to_neo_crypto() {
+    let wasm = wat::parse_str(
+        r#"
+        (module
+            (import "move_stdlib" "hash_sha256" (func $hash (param i32 i32 i32)))
+            (memory (export "memory") 1)
+            (data (i32.const 0) "data")
+            (func (export "hash")
+                i32.const 0      ;; data ptr
+                i32.const 4      ;; data len
+                i32.const 64     ;; out ptr
+                call $hash
+            )
+        )
+        "#,
+    )
+    .expect("failed to parse WAT");
+
+    let config = TranslationConfig::new("move-hash").with_source_chain(SourceChain::Move);
+    let translation =
+        translate_with_config(&wasm, config).expect("Move stdlib hash should translate");
+
+    // Ensure manifest has the exported method
+    let methods = translation.manifest.value["abi"]["methods"]
+        .as_array()
+        .expect("methods array");
+    let names: Vec<&str> = methods
+        .iter()
+        .map(|m| m["name"].as_str().unwrap())
+        .collect();
+    assert!(names.contains(&"hash"), "hash method should be exported");
 }

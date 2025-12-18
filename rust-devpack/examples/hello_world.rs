@@ -61,6 +61,12 @@ impl HelloWorld {
     }
 }
 
+impl Default for HelloWorld {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Contract deployment entry point
 pub fn deploy() -> NeoResult<()> {
     let _contract = HelloWorld::new();

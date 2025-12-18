@@ -1,3 +1,4 @@
+use crate::adapters::SourceChain;
 use crate::manifest::{ManifestMethod, RenderedManifest};
 use crate::nef::MethodToken;
 use serde_json::Value;
@@ -25,6 +26,7 @@ pub struct ManifestData {
 pub struct TranslationConfig<'a> {
     pub contract_name: &'a str,
     pub extra_manifest_overlay: Option<ManifestOverlay>,
+    pub source_chain: SourceChain,
 }
 
 impl<'a> TranslationConfig<'a> {
@@ -32,11 +34,17 @@ impl<'a> TranslationConfig<'a> {
         Self {
             contract_name,
             extra_manifest_overlay: None,
+            source_chain: SourceChain::Neo,
         }
     }
 
     pub fn with_manifest_overlay(mut self, overlay: ManifestOverlay) -> Self {
         self.extra_manifest_overlay = Some(overlay);
+        self
+    }
+
+    pub fn with_source_chain(mut self, source_chain: SourceChain) -> Self {
+        self.source_chain = source_chain;
         self
     }
 }

@@ -27,6 +27,51 @@ fn translate_memory_bounds_checks() {
 }
 
 #[test]
+fn translate_memory_store_masks_address_to_u32() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (memory 1)
+              (func (export "store")
+                i32.const -1
+                i32.const 42
+                i32.store8)
+            )"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "MemAddrMask").expect("translation succeeds");
+
+    let methods = translation.manifest.value["abi"]["methods"]
+        .as_array()
+        .expect("methods array");
+    let store_method = methods
+        .iter()
+        .find(|method| method["name"].as_str() == Some("store"))
+        .expect("store method present");
+    let offset = store_method["offset"].as_u64().expect("offset is u64") as usize;
+
+    let ret = opcodes::lookup("RET").unwrap().byte;
+    let body_end = translation.script[offset..]
+        .iter()
+        .position(|&byte| byte == ret)
+        .expect("store body contains RET")
+        + offset;
+    let body = &translation.script[offset..=body_end];
+
+    let push1 = opcodes::lookup("PUSH1").unwrap().byte;
+    let pushint8 = opcodes::lookup("PUSHINT8").unwrap().byte;
+    let shl = opcodes::lookup("SHL").unwrap().byte;
+    let sub = opcodes::lookup("SUB").unwrap().byte;
+    let and = opcodes::lookup("AND").unwrap().byte;
+
+    let pattern = [push1, pushint8, 32, shl, push1, sub, and];
+    assert!(
+        body.windows(pattern.len()).any(|window| window == pattern),
+        "expected u32 mask sequence in store body"
+    );
+}
+
+#[test]
 fn translate_memory_alignment() {
     let wasm = wat::parse_str(
         r#"(module
@@ -211,6 +256,35 @@ fn translate_memory_copy_overlap_safe() {
 }
 
 #[test]
+fn translate_active_data_segment_negative_offset_fails_with_bounds_error() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (memory 1)
+              (data (i32.const -1) "A")
+              (func (export "noop"))
+            )"#,
+    )
+    .expect("valid wat");
+
+    let err = translate_module(&wasm, "ActiveDataNegOffset")
+        .expect_err("active data segment offset should be interpreted as u32 and trap on bounds");
+    let reports_bounds = err.chain().any(|cause| {
+        cause
+            .to_string()
+            .contains("active data segment exceeds initial memory size")
+    });
+    assert!(reports_bounds, "unexpected error: {err}");
+
+    let reports_negative = err
+        .chain()
+        .any(|cause| cause.to_string().contains("must be non-negative"));
+    assert!(
+        !reports_negative,
+        "unexpected negative-offset rejection: {err}"
+    );
+}
+
+#[test]
 fn translate_memory_grow_shrink() {
     let wasm = wat::parse_str(
         r#"(module
@@ -237,6 +311,43 @@ fn translate_memory_grow_shrink() {
     assert!(
         translation.script.contains(&ldsfld2),
         "memory.size should load from static field"
+    );
+}
+
+#[test]
+fn translate_memory_grow_enforces_maximum_without_operand_swap() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (memory 1 10)
+              (func (export "grow") (param i32) (result i32)
+                local.get 0
+                memory.grow))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "MemGrowMax").expect("translation succeeds");
+
+    let ldsfld3 = opcodes::lookup("LDSFLD3").unwrap().byte;
+    let dup = opcodes::lookup("DUP").unwrap().byte;
+    let pushm1 = opcodes::lookup("PUSHM1").unwrap().byte;
+    let equal = opcodes::lookup("EQUAL").unwrap().byte;
+    let jmpif_l = opcodes::lookup("JMPIF_L").unwrap().byte;
+    let gt = opcodes::lookup("GT").unwrap().byte;
+
+    // The memory.grow helper checks max pages by loading LDSFLD3, testing for -1 (unlimited),
+    // then comparing new_pages > max with GT (no SWAP between max and new_pages).
+    let pattern_found = translation.script.windows(10).any(|window| {
+        window[0] == ldsfld3
+            && window[1] == dup
+            && window[2] == pushm1
+            && window[3] == equal
+            && window[4] == jmpif_l
+            && window[9] == gt
+    });
+
+    assert!(
+        pattern_found,
+        "expected memory.grow helper to compare new_pages > max directly after max-unlimited check"
     );
 }
 

@@ -37,8 +37,14 @@ ORACLE_MANIFEST   := $(OUTDIR)/OracleConsumer.manifest.json
 MARKET_WASM       := contracts/nft-marketplace/target/$(WASM_TARGET)/release/nft_marketplace.wasm
 MARKET_NEF        := $(OUTDIR)/NFTMarketplace.nef
 MARKET_MANIFEST   := $(OUTDIR)/NFTMarketplace.manifest.json
+SOLANA_HELLO_WASM := contracts/solana-hello/target/$(WASM_TARGET)/release/solana_hello.wasm
+SOLANA_HELLO_NEF  := $(OUTDIR)/solana_hello.nef
+SOLANA_HELLO_MANIFEST := $(OUTDIR)/solana_hello.manifest.json
+MOVE_COIN_WASM    := contracts/move-coin/target/$(WASM_TARGET)/release/move_coin.wasm
+MOVE_COIN_NEF     := $(OUTDIR)/MoveCoin.nef
+MOVE_COIN_MANIFEST := $(OUTDIR)/MoveCoin.manifest.json
 
-.PHONY: help examples hello-world nep17-token constant-product nep11-nft multisig-wallet escrow crowdfunding governance-dao oracle-consumer nft-marketplace c-hello fmt lint test integration-tests spec clean
+.PHONY: help examples cross-chain hello-world nep17-token constant-product nep11-nft multisig-wallet escrow crowdfunding governance-dao oracle-consumer nft-marketplace solana-hello move-coin c-hello fmt lint test test-cross-chain integration-tests spec clean
 
 help:
 	@echo "Usage: make <target>"
@@ -55,17 +61,24 @@ help:
 	@echo "  governance-dao  Generate GovernanceDAO.nef and manifest"
 	@echo "  oracle-consumer Generate OracleConsumer.nef and manifest"
 	@echo "  nft-marketplace Generate NFTMarketplace.nef and manifest"
+	@echo "  cross-chain     Build Solana/Move examples (solana-hello, move-coin)"
+	@echo "  solana-hello    Generate solana_hello.nef and manifest (cross-chain sample)"
+	@echo "  move-coin       Generate MoveCoin.nef and manifest (cross-chain sample)"
 	@echo "  c-hello        Build the sample C contract and translate it"
+	@echo "  c-hello-optional Build the C sample when wasm-ld is present"
 	@echo
 	@echo "Maintenance targets:"
 	@echo "  fmt             Run cargo fmt across the workspace"
 	@echo "  lint            Run cargo clippy across the workspace"
 	@echo "  test            Execute cargo test for translator + devpack"
+	@echo "  test-cross-chain Run wasm-neovm cross-chain test suites"
 	@echo "  integration-tests  Run optional Neo Express integration harness"
 	@echo "  spec            Build the LaTeX specification in spec/"
 	@echo "  clean           Remove generated build artefacts"
 
-examples: hello-world nep17-token constant-product nep11-nft multisig-wallet escrow crowdfunding governance-dao oracle-consumer nft-marketplace c-hello
+examples: hello-world nep17-token constant-product nep11-nft multisig-wallet escrow crowdfunding governance-dao oracle-consumer nft-marketplace c-hello-optional cross-chain
+
+cross-chain: solana-hello move-coin
 
 hello-world: $(HELLO_NEF) $(HELLO_MANIFEST)
 	@echo "✔ hello-world artifacts are in $(OUTDIR)/"
@@ -167,6 +180,28 @@ $(MARKET_NEF) $(MARKET_MANIFEST): $(MARKET_WASM) | $(OUTDIR)
 	  --manifest $(MARKET_MANIFEST) \
 	  --name NeoNFTMarketplace
 
+solana-hello: $(SOLANA_HELLO_NEF) $(SOLANA_HELLO_MANIFEST)
+	@echo "✔ solana-hello artifacts are in $(OUTDIR)/"
+
+move-coin: $(MOVE_COIN_NEF) $(MOVE_COIN_MANIFEST)
+	@echo "✔ move-coin artifacts are in $(OUTDIR)/"
+
+$(SOLANA_HELLO_NEF) $(SOLANA_HELLO_MANIFEST): $(SOLANA_HELLO_WASM) | $(OUTDIR)
+	$(TRANSLATOR) \
+	  --input $(SOLANA_HELLO_WASM) \
+	  --nef $(SOLANA_HELLO_NEF) \
+	  --manifest $(SOLANA_HELLO_MANIFEST) \
+	  --name solana-hello \
+	  --source-chain solana
+
+$(MOVE_COIN_NEF) $(MOVE_COIN_MANIFEST): $(MOVE_COIN_WASM) | $(OUTDIR)
+	$(TRANSLATOR) \
+	  --input $(MOVE_COIN_WASM) \
+	  --nef $(MOVE_COIN_NEF) \
+	  --manifest $(MOVE_COIN_MANIFEST) \
+	  --name MoveCoin \
+	  --source-chain move
+
 $(HELLO_WASM):
 	cargo build --manifest-path contracts/hello-world/Cargo.toml --release --target $(WASM_TARGET) --quiet
 
@@ -197,21 +232,54 @@ $(ORACLE_WASM):
 $(MARKET_WASM):
 	cargo build --manifest-path contracts/nft-marketplace/Cargo.toml --release --target $(WASM_TARGET) --quiet
 
+$(SOLANA_HELLO_WASM):
+	RUSTFLAGS="-C opt-level=z -C strip=symbols -C panic=abort -C target-feature=-simd128,-reference-types,-multivalue,-tail-call,-atomics" \
+	  cargo build --manifest-path contracts/solana-hello/Cargo.toml --release --target $(WASM_TARGET) --quiet
+
+$(MOVE_COIN_WASM):
+	RUSTFLAGS="-C opt-level=z -C strip=symbols -C panic=abort -C target-feature=-simd128,-reference-types,-multivalue,-tail-call,-atomics" \
+	  cargo build --manifest-path contracts/move-coin/Cargo.toml --release --target $(WASM_TARGET) --quiet
+
 c-hello:
 	scripts/build_c_contract.sh contracts/c-hello
+
+c-hello-optional:
+	@CLANG_BIN="$${CLANG:-clang}"; \
+	  major=""; \
+	  if command -v "$$CLANG_BIN" >/dev/null 2>&1; then \
+	    major="$$( "$$CLANG_BIN" --version 2>/dev/null | sed -n 's/.*version \\([0-9][0-9]*\\)\\..*/\\1/p' | head -n 1 )"; \
+	  fi; \
+	  if command -v wasm-ld >/dev/null 2>&1; then \
+	    $(MAKE) c-hello; \
+	  elif [ -n "$$major" ] && command -v "wasm-ld-$$major" >/dev/null 2>&1; then \
+	    $(MAKE) c-hello; \
+	  else \
+	    echo "skipping c-hello: missing wasm-ld (install lld to enable)"; \
+	  fi
 
 $(OUTDIR):
 	@mkdir -p $(OUTDIR)
 
 fmt:
-	cargo fmt --all
+	cargo fmt --manifest-path wasm-neovm/Cargo.toml
+	cargo fmt --manifest-path move-neovm/Cargo.toml
+	cargo fmt --manifest-path solana-compat/Cargo.toml
+	cargo fmt --manifest-path rust-devpack/Cargo.toml
+	cargo fmt --manifest-path integration-tests/Cargo.toml
 
 lint:
-	cargo clippy --workspace --all-targets --all-features
+	cargo clippy --manifest-path wasm-neovm/Cargo.toml --all-targets --all-features
+	cargo clippy --manifest-path move-neovm/Cargo.toml --all-targets --all-features
+	cargo clippy --manifest-path solana-compat/Cargo.toml --all-targets --all-features
+	cargo clippy --manifest-path rust-devpack/Cargo.toml --all-targets --all-features
+	cargo clippy --manifest-path integration-tests/Cargo.toml --all-targets --all-features
 
 test:
 	cargo test --manifest-path wasm-neovm/Cargo.toml
 	cargo test --manifest-path rust-devpack/Cargo.toml
+
+test-cross-chain:
+	cargo test --manifest-path wasm-neovm/Cargo.toml --test cross_chain_tests --test solana_move_integration
 
 integration-tests:
 	@echo "Running integration tests (requires NEO_EXPRESS_RPC)..."
@@ -225,6 +293,6 @@ clean:
 	rm -rf contracts/hello-world/target contracts/nep17-token/target contracts/constant-product/target \
 	       contracts/nep11-nft/target contracts/multisig-wallet/target contracts/escrow/target \
 	       contracts/crowdfunding/target contracts/governance-dao/target contracts/oracle-consumer/target \
-	       contracts/nft-marketplace/target
+	       contracts/nft-marketplace/target contracts/solana-hello/target contracts/move-coin/target
 	rm -rf wasm-neovm/target rust-devpack/target
 	$(MAKE) -C spec clean

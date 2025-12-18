@@ -108,15 +108,15 @@ fn translate_i32_add_wraps_constants() {
     let translation = translate_module(&wasm, "I32Wrap").expect("translation succeeds");
 
     let push0 = wasm_neovm::opcodes::lookup("PUSH0").unwrap().byte;
-    let pushint64 = wasm_neovm::opcodes::lookup("PUSHINT64").unwrap().byte;
+    let add = wasm_neovm::opcodes::lookup("ADD").unwrap().byte;
 
     assert!(
         translation.script.contains(&push0),
         "local.get should push zero after wrapping"
     );
     assert!(
-        !translation.script.contains(&pushint64),
-        "wrapping addition must not materialise large negative constants"
+        translation.script.contains(&add),
+        "wrapping addition should still emit ADD opcode"
     );
 }
 

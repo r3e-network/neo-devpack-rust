@@ -7,6 +7,7 @@ NEF + manifest pair using the `wasm-neovm` toolchain.
 ## 1. Prerequisites
 
 - Install **clang** ≥ 15 with WebAssembly support (`--target=wasm32-unknown-unknown`).
+- Install LLVM's WebAssembly linker **wasm-ld** (usually provided by the `lld` package).
 - Ensure Rust tooling is available (the translator is a Rust binary).
 - Fetch translator dependencies:
   ```bash

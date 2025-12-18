@@ -62,7 +62,7 @@ pub fn write_nef_with_metadata<P: AsRef<Path>>(
 ) -> Result<()> {
     ensure!(!script.is_empty(), "script payload is empty");
     ensure!(
-        COMPILER.as_bytes().len() <= 64,
+        COMPILER.len() <= 64,
         "compiler identifier longer than 64 bytes"
     );
 
@@ -107,7 +107,7 @@ fn write_method_tokens(buffer: &mut Vec<u8>, method_tokens: &[MethodToken]) -> R
     write_var_uint(buffer, method_tokens.len() as u64);
     for token in method_tokens {
         ensure!(
-            token.method.as_bytes().len() <= MAX_METHOD_NAME_LENGTH,
+            token.method.len() <= MAX_METHOD_NAME_LENGTH,
             "method token name '{}' exceeds {} bytes",
             token.method,
             MAX_METHOD_NAME_LENGTH

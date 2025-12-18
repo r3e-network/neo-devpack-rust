@@ -1,42 +1,20 @@
-use core::slice;
 use neo_devpack::prelude::*;
 
-const CONFIG_THRESHOLD_KEY: &[u8] = b"cfg:threshold";
-const CONFIG_OWNER_COUNT_KEY: &[u8] = b"cfg:owners";
-const CONFIG_OWNER_PREFIX: &[u8] = b"cfg:owner:";
-const PROPOSAL_COUNTER_KEY: &[u8] = b"proposal:counter";
-const PROPOSAL_PREFIX: &[u8] = b"proposal:";
-const PROPOSER_SUFFIX: &[u8] = b":proposer";
-const TARGET_SUFFIX: &[u8] = b":target";
-const METHOD_SUFFIX: &[u8] = b":method";
-const ARG_SUFFIX: &[u8] = b":args";
-const APPROVAL_COUNT_SUFFIX: &[u8] = b":approvals";
-const APPROVAL_PREFIX: &[u8] = b":approval:";
-const EXECUTED_SUFFIX: &[u8] = b":executed";
+mod config;
+mod events;
+mod execution;
+mod proposals;
+mod storage;
+mod types;
+mod utils;
 
-#[derive(Clone, PartialEq, Eq)]
-struct WalletConfig {
-    owners: Vec<NeoByteString>,
-    threshold: i64,
-}
-
-#[derive(Clone)]
-struct Proposal {
-    proposer: NeoByteString,
-    target: NeoByteString,
-    method: String,
-    arguments: Vec<CallArgument>,
-    approvals: Vec<NeoByteString>,
-    executed: bool,
-}
-
-#[derive(Clone)]
-enum CallArgument {
-    Integer(i64),
-    Boolean(bool),
-    ByteString(Vec<u8>),
-    String(String),
-}
+use config::{encode_config_json, is_owner, load_config, read_owners, store_config};
+use events::{ProposalCreated, ProposalExecuted};
+use execution::execute_proposal;
+use proposals::{decode_arguments, load_proposal, next_proposal_id, remove_proposal_entries, store_proposal};
+use storage::storage_context;
+use types::{CallArgument, Proposal, WalletConfig};
+use utils::{addresses_equal, ensure_witness, read_address, read_string};
 
 neo_manifest_overlay!(
     r#"{
@@ -44,19 +22,6 @@ neo_manifest_overlay!(
     "features": { "storage": true }
 }"#
 );
-
-#[neo_event]
-pub struct ProposalCreated {
-    pub proposal_id: NeoInteger,
-    pub proposer: NeoByteString,
-    pub target: NeoByteString,
-    pub method: NeoString,
-}
-
-#[neo_event]
-pub struct ProposalExecuted {
-    pub proposal_id: NeoInteger,
-}
 
 #[allow(improper_ctypes_definitions)]
 #[neo_safe]
@@ -204,17 +169,7 @@ pub extern "C" fn execute(signer_ptr: i64, signer_len: i64, proposal_id: i64) ->
     if (proposal.approvals.len() as i64) < config.threshold {
         return 0;
     }
-    let args = match build_argument_array(&proposal.arguments) {
-        Some(array) => array,
-        None => return 0,
-    };
-    if NeoContractRuntime::call(
-        &proposal.target,
-        &NeoString::from_str(&proposal.method),
-        &args,
-    )
-    .is_err()
-    {
+    if execute_proposal(&proposal.target, &proposal.method, &proposal.arguments).is_err() {
         return 0;
     }
     proposal.executed = true;
@@ -230,446 +185,11 @@ pub extern "C" fn execute(signer_ptr: i64, signer_len: i64, proposal_id: i64) ->
     1
 }
 
-fn storage_context() -> Option<NeoStorageContext> {
-    NeoStorage::get_context().ok()
-}
-
-fn load_config(ctx: &NeoStorageContext) -> Option<WalletConfig> {
-    let threshold = read_i64(ctx, CONFIG_THRESHOLD_KEY)?;
-    let owner_count = read_u16(ctx, CONFIG_OWNER_COUNT_KEY)? as usize;
-    let mut owners = Vec::with_capacity(owner_count);
-    for index in 0..owner_count {
-        let key = config_owner_key(index as u16);
-        let bytes = read_storage_bytes(ctx, &key)?;
-        if bytes.len() != 20 {
-            return None;
-        }
-        owners.push(NeoByteString::from_slice(&bytes));
-    }
-    Some(WalletConfig { owners, threshold })
-}
-
-fn store_config(ctx: &NeoStorageContext, cfg: &WalletConfig) -> NeoResult<()> {
-    write_i64(ctx, CONFIG_THRESHOLD_KEY, cfg.threshold)?;
-    write_u16(ctx, CONFIG_OWNER_COUNT_KEY, cfg.owners.len() as u16)?;
-    for (index, owner) in cfg.owners.iter().enumerate() {
-        let key = config_owner_key(index as u16);
-        write_bytes(ctx, &key, owner.as_slice())?;
-    }
-    Ok(())
-}
-
-fn is_owner(cfg: &WalletConfig, owner: &NeoByteString) -> bool {
-    cfg.owners
-        .iter()
-        .any(|existing| addresses_equal(existing, owner))
-}
-
-fn next_proposal_id(ctx: &NeoStorageContext) -> Option<i64> {
-    let current = read_i64(ctx, PROPOSAL_COUNTER_KEY).unwrap_or(0);
-    let next = current.checked_add(1)?;
-    write_i64(ctx, PROPOSAL_COUNTER_KEY, next).ok()?;
-    Some(next)
-}
-
-fn load_proposal(ctx: &NeoStorageContext, id: i64) -> Option<Proposal> {
-    let proposer = read_proposal_address(ctx, id, PROPOSER_SUFFIX)?;
-    let target = read_proposal_address(ctx, id, TARGET_SUFFIX)?;
-    let method = read_proposal_string(ctx, id, METHOD_SUFFIX)?;
-    let arguments = read_proposal_arguments(ctx, id)?;
-    let approvals = read_proposal_approvals(ctx, id)?;
-    let executed = read_proposal_bool(ctx, id, EXECUTED_SUFFIX)?;
-    Some(Proposal {
-        proposer,
-        target,
-        method,
-        arguments,
-        approvals,
-        executed,
-    })
-}
-
-fn store_proposal(ctx: &NeoStorageContext, id: i64, proposal: &Proposal) -> NeoResult<()> {
-    write_bytes(
-        ctx,
-        &proposal_field_key(id, PROPOSER_SUFFIX),
-        proposal.proposer.as_slice(),
-    )?;
-    write_bytes(
-        ctx,
-        &proposal_field_key(id, TARGET_SUFFIX),
-        proposal.target.as_slice(),
-    )?;
-    write_string(
-        ctx,
-        &proposal_field_key(id, METHOD_SUFFIX),
-        &proposal.method,
-    )?;
-    write_bytes(
-        ctx,
-        &proposal_field_key(id, ARG_SUFFIX),
-        &encode_arguments(&proposal.arguments),
-    )?;
-    write_u16(
-        ctx,
-        &proposal_field_key(id, APPROVAL_COUNT_SUFFIX),
-        proposal.approvals.len() as u16,
-    )?;
-    for (idx, approval) in proposal.approvals.iter().enumerate() {
-        write_bytes(
-            ctx,
-            &proposal_approval_key(id, idx as u16),
-            approval.as_slice(),
-        )?;
-    }
-    write_bool(
-        ctx,
-        &proposal_field_key(id, EXECUTED_SUFFIX),
-        proposal.executed,
-    )?;
-    Ok(())
-}
-
-fn remove_proposal_entries(ctx: &NeoStorageContext, id: i64) -> NeoResult<()> {
-    let _ = NeoStorage::delete(
-        ctx,
-        &NeoByteString::from_slice(&proposal_field_key(id, PROPOSER_SUFFIX)),
-    );
-    let _ = NeoStorage::delete(
-        ctx,
-        &NeoByteString::from_slice(&proposal_field_key(id, TARGET_SUFFIX)),
-    );
-    let _ = NeoStorage::delete(
-        ctx,
-        &NeoByteString::from_slice(&proposal_field_key(id, METHOD_SUFFIX)),
-    );
-    let _ = NeoStorage::delete(
-        ctx,
-        &NeoByteString::from_slice(&proposal_field_key(id, ARG_SUFFIX)),
-    );
-    let count = read_u16(ctx, &proposal_field_key(id, APPROVAL_COUNT_SUFFIX)).unwrap_or(0);
-    let _ = NeoStorage::delete(
-        ctx,
-        &NeoByteString::from_slice(&proposal_field_key(id, APPROVAL_COUNT_SUFFIX)),
-    );
-    for idx in 0..count {
-        let _ = NeoStorage::delete(
-            ctx,
-            &NeoByteString::from_slice(&proposal_approval_key(id, idx)),
-        );
-    }
-    let _ = NeoStorage::delete(
-        ctx,
-        &NeoByteString::from_slice(&proposal_field_key(id, EXECUTED_SUFFIX)),
-    );
-    Ok(())
-}
-
-fn read_proposal_address(ctx: &NeoStorageContext, id: i64, suffix: &[u8]) -> Option<NeoByteString> {
-    let bytes = read_storage_bytes(ctx, &proposal_field_key(id, suffix))?;
-    if bytes.len() != 20 {
-        return None;
-    }
-    Some(NeoByteString::from_slice(&bytes))
-}
-
-fn read_proposal_string(ctx: &NeoStorageContext, id: i64, suffix: &[u8]) -> Option<String> {
-    read_storage_string(ctx, &proposal_field_key(id, suffix))
-}
-
-fn read_proposal_bool(ctx: &NeoStorageContext, id: i64, suffix: &[u8]) -> Option<bool> {
-    read_bool(ctx, &proposal_field_key(id, suffix))
-}
-
-fn read_proposal_arguments(ctx: &NeoStorageContext, id: i64) -> Option<Vec<CallArgument>> {
-    let bytes = read_storage_bytes(ctx, &proposal_field_key(id, ARG_SUFFIX)).unwrap_or_default();
-    decode_arguments_from_bytes(&bytes)
-}
-
-fn read_proposal_approvals(ctx: &NeoStorageContext, id: i64) -> Option<Vec<NeoByteString>> {
-    let count = read_u16(ctx, &proposal_field_key(id, APPROVAL_COUNT_SUFFIX)).unwrap_or(0);
-    let mut approvals = Vec::with_capacity(count as usize);
-    for idx in 0..count {
-        let bytes = read_storage_bytes(ctx, &proposal_approval_key(id, idx))?;
-        if bytes.len() != 20 {
-            return None;
-        }
-        approvals.push(NeoByteString::from_slice(&bytes));
-    }
-    Some(approvals)
-}
-
-fn read_owners(ptr: i64, count: i64) -> Option<Vec<NeoByteString>> {
-    if ptr == 0 || count <= 0 {
-        return None;
-    }
-    let count = count as usize;
-    let total = count.checked_mul(20)?;
-    let bytes = unsafe { slice::from_raw_parts(ptr as *const u8, total) };
-    let mut owners = Vec::with_capacity(count);
-    for chunk in bytes.chunks_exact(20) {
-        owners.push(NeoByteString::from_slice(chunk));
-    }
-    Some(owners)
-}
-
-const ARG_INTEGER: u8 = 0;
-const ARG_BOOL: u8 = 1;
-const ARG_BYTES: u8 = 2;
-const ARG_STRING: u8 = 3;
-
-fn decode_arguments(ptr: i64, len: i64) -> Option<Vec<CallArgument>> {
-    if len <= 0 {
-        return Some(Vec::new());
-    }
-    let bytes = read_bytes(ptr, len)?;
-    decode_arguments_from_bytes(&bytes)
-}
-
-fn decode_arguments_from_bytes(bytes: &[u8]) -> Option<Vec<CallArgument>> {
-    if bytes.is_empty() {
-        return Some(Vec::new());
-    }
-    let mut cursor = 0usize;
-    let count = bytes[cursor] as usize;
-    cursor += 1;
-    let mut parsed = Vec::with_capacity(count);
-    for _ in 0..count {
-        if cursor >= bytes.len() {
-            return None;
-        }
-        let kind = bytes[cursor];
-        cursor += 1;
-        if cursor + 2 > bytes.len() {
-            return None;
-        }
-        let length = u16::from_le_bytes([bytes[cursor], bytes[cursor + 1]]) as usize;
-        cursor += 2;
-        if cursor + length > bytes.len() {
-            return None;
-        }
-        let segment = &bytes[cursor..cursor + length];
-        cursor += length;
-        let arg = match kind {
-            ARG_INTEGER => {
-                if length != 8 {
-                    return None;
-                }
-                let mut buf = [0u8; 8];
-                buf.copy_from_slice(segment);
-                CallArgument::Integer(i64::from_le_bytes(buf))
-            }
-            ARG_BOOL => {
-                if length != 1 {
-                    return None;
-                }
-                CallArgument::Boolean(segment[0] != 0)
-            }
-            ARG_BYTES => CallArgument::ByteString(segment.to_vec()),
-            ARG_STRING => match core::str::from_utf8(segment) {
-                Ok(value) => CallArgument::String(value.to_string()),
-                Err(_) => return None,
-            },
-            _ => return None,
-        };
-        parsed.push(arg);
-    }
-    Some(parsed)
-}
-
-fn encode_arguments(arguments: &[CallArgument]) -> Vec<u8> {
-    let mut buffer = Vec::new();
-    buffer.push(arguments.len() as u8);
-    for argument in arguments {
-        match argument {
-            CallArgument::Integer(value) => {
-                buffer.push(ARG_INTEGER);
-                buffer.extend_from_slice(&(8u16).to_le_bytes());
-                buffer.extend_from_slice(&value.to_le_bytes());
-            }
-            CallArgument::Boolean(value) => {
-                buffer.push(ARG_BOOL);
-                buffer.extend_from_slice(&(1u16).to_le_bytes());
-                buffer.push(*value as u8);
-            }
-            CallArgument::ByteString(bytes) => {
-                buffer.push(ARG_BYTES);
-                buffer.extend_from_slice(&(bytes.len() as u16).to_le_bytes());
-                buffer.extend_from_slice(bytes);
-            }
-            CallArgument::String(value) => {
-                buffer.push(ARG_STRING);
-                buffer.extend_from_slice(&(value.len() as u16).to_le_bytes());
-                buffer.extend_from_slice(value.as_bytes());
-            }
-        }
-    }
-    buffer
-}
-
-fn build_argument_array(arguments: &[CallArgument]) -> Option<NeoArray<NeoValue>> {
-    let mut values = Vec::with_capacity(arguments.len());
-    for argument in arguments {
-        let value = match argument {
-            CallArgument::Integer(v) => NeoValue::from(NeoInteger::new(*v)),
-            CallArgument::Boolean(v) => NeoValue::from(NeoBoolean::new(*v)),
-            CallArgument::String(v) => NeoValue::from(NeoString::from_str(v)),
-            CallArgument::ByteString(bytes) => NeoValue::from(NeoByteString::from_slice(bytes)),
-        };
-        values.push(value);
-    }
-    Some(NeoArray::from_vec(values))
-}
-
-fn read_address(ptr: i64, len: i64) -> Option<NeoByteString> {
-    let bytes = read_bytes(ptr, len)?;
-    if bytes.len() != 20 {
-        return None;
-    }
-    Some(NeoByteString::from_slice(&bytes))
-}
-
-fn read_string(ptr: i64, len: i64) -> Option<String> {
-    let bytes = read_bytes(ptr, len)?;
-    String::from_utf8(bytes).ok()
-}
-
-fn read_bytes(ptr: i64, len: i64) -> Option<Vec<u8>> {
-    if ptr == 0 || len <= 0 {
-        return None;
-    }
-    let slice = unsafe { slice::from_raw_parts(ptr as *const u8, len as usize) };
-    Some(slice.to_vec())
-}
-
-fn ensure_witness(account: &NeoByteString) -> bool {
-    NeoRuntime::check_witness(account)
-        .map(|flag| flag.as_bool())
-        .unwrap_or(false)
-}
-
-fn addresses_equal(left: &NeoByteString, right: &NeoByteString) -> bool {
-    left.as_slice() == right.as_slice()
-}
-
-fn write_bytes(ctx: &NeoStorageContext, key: &[u8], bytes: &[u8]) -> NeoResult<()> {
-    let key_bytes = NeoByteString::from_slice(key);
-    let value = NeoByteString::from_slice(bytes);
-    NeoStorage::put(ctx, &key_bytes, &value)
-}
-
-fn read_storage_bytes(ctx: &NeoStorageContext, key: &[u8]) -> Option<Vec<u8>> {
-    let key_bytes = NeoByteString::from_slice(key);
-    let bytes = NeoStorage::get(ctx, &key_bytes).ok()?;
-    if bytes.is_empty() {
-        return None;
-    }
-    Some(bytes.as_slice().to_vec())
-}
-
-fn write_i64(ctx: &NeoStorageContext, key: &[u8], value: i64) -> NeoResult<()> {
-    write_bytes(ctx, key, &value.to_le_bytes())
-}
-
-fn read_i64(ctx: &NeoStorageContext, key: &[u8]) -> Option<i64> {
-    let bytes = read_storage_bytes(ctx, key)?;
-    if bytes.len() != 8 {
-        return None;
-    }
-    let mut buf = [0u8; 8];
-    buf.copy_from_slice(&bytes);
-    Some(i64::from_le_bytes(buf))
-}
-
-fn write_u16(ctx: &NeoStorageContext, key: &[u8], value: u16) -> NeoResult<()> {
-    write_bytes(ctx, key, &value.to_le_bytes())
-}
-
-fn read_u16(ctx: &NeoStorageContext, key: &[u8]) -> Option<u16> {
-    let bytes = read_storage_bytes(ctx, key)?;
-    if bytes.len() != 2 {
-        return None;
-    }
-    Some(u16::from_le_bytes([bytes[0], bytes[1]]))
-}
-
-fn write_bool(ctx: &NeoStorageContext, key: &[u8], value: bool) -> NeoResult<()> {
-    write_bytes(ctx, key, &[value as u8])
-}
-
-fn read_bool(ctx: &NeoStorageContext, key: &[u8]) -> Option<bool> {
-    let bytes = read_storage_bytes(ctx, key)?;
-    if bytes.len() != 1 {
-        return None;
-    }
-    Some(bytes[0] != 0)
-}
-
-fn write_string(ctx: &NeoStorageContext, key: &[u8], value: &str) -> NeoResult<()> {
-    let mut buffer = Vec::with_capacity(2 + value.len());
-    buffer.extend_from_slice(&(value.len() as u16).to_le_bytes());
-    buffer.extend_from_slice(value.as_bytes());
-    write_bytes(ctx, key, &buffer)
-}
-
-fn read_storage_string(ctx: &NeoStorageContext, key: &[u8]) -> Option<String> {
-    let bytes = read_storage_bytes(ctx, key)?;
-    if bytes.len() < 2 {
-        return None;
-    }
-    let len = u16::from_le_bytes([bytes[0], bytes[1]]) as usize;
-    if bytes.len() - 2 != len {
-        return None;
-    }
-    String::from_utf8(bytes[2..].to_vec()).ok()
-}
-
-fn config_owner_key(index: u16) -> Vec<u8> {
-    let mut key = CONFIG_OWNER_PREFIX.to_vec();
-    key.extend_from_slice(&index.to_le_bytes());
-    key
-}
-
-fn proposal_field_key(id: i64, suffix: &[u8]) -> Vec<u8> {
-    let mut key = PROPOSAL_PREFIX.to_vec();
-    key.extend_from_slice(&id.to_le_bytes());
-    key.extend_from_slice(suffix);
-    key
-}
-
-fn proposal_approval_key(id: i64, index: u16) -> Vec<u8> {
-    let mut key = PROPOSAL_PREFIX.to_vec();
-    key.extend_from_slice(&id.to_le_bytes());
-    key.extend_from_slice(APPROVAL_PREFIX);
-    key.extend_from_slice(&index.to_le_bytes());
-    key
-}
-
-fn encode_config_json(cfg: &WalletConfig) -> NeoByteString {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    let mut out = String::with_capacity(32 + cfg.owners.len() * 42);
-    out.push_str("{\"threshold\":");
-    out.push_str(&cfg.threshold.to_string());
-    out.push_str(",\"owners\":[");
-    for (idx, owner) in cfg.owners.iter().enumerate() {
-        if idx > 0 {
-            out.push(',');
-        }
-        out.push_str("\"0x");
-        for byte in owner.as_slice() {
-            out.push(HEX[(byte >> 4) as usize] as char);
-            out.push(HEX[(byte & 0x0F) as usize] as char);
-        }
-        out.push('\"');
-    }
-    out.push_str("]}");
-    NeoByteString::from_slice(out.as_bytes())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::sync::{Mutex, OnceLock};
+    use types::encode_arguments;
 
     fn test_lock() -> &'static Mutex<()> {
         static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -681,6 +201,7 @@ mod tests {
     }
 
     fn reset_state() {
+        use storage::*;
         let ctx = storage_context().unwrap();
         let _ = NeoStorage::delete(&ctx, &NeoByteString::from_slice(CONFIG_THRESHOLD_KEY));
         let _ = NeoStorage::delete(&ctx, &NeoByteString::from_slice(CONFIG_OWNER_COUNT_KEY));

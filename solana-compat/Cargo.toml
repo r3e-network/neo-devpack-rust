@@ -11,6 +11,7 @@ default = []
 no-entrypoint = []
 
 [dependencies]
+tiny-keccak = { version = "2", default-features = false, features = ["keccak"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 # No external deps for wasm - we provide everything

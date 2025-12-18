@@ -14,6 +14,4 @@ neo_supported_standards!(["NEP-17"]);
 neo_trusts!(["*"]);
 
 #[test]
-fn overlay_macro_compiles() {
-    assert!(true);
-}
+fn overlay_macro_compiles() {}

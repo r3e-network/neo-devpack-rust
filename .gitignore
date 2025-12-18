@@ -29,3 +29,7 @@ neo/
 # Temporary files
 *.tmp
 *.temp
+
+# Local agent/tool artefacts
+.claude-flow/
+.hive-mind/

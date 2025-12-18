@@ -125,27 +125,27 @@ Figure~\ref{fig:pipeline} illustrates the stages and optional inputs at a glance
 \subsection{Memories}
 \begin{itemize}[nosep]
     \item Exactly one 32-bit, non-shared memory is supported. \texttt{memory64}, multiple memories, and shared memories are rejected.
-    \item All memory indices must be zero for instructions and data segments. Offsets must be non-negative and fit into 32-bit space.
+    \item All memory indices must be zero for instructions and data segments. Addresses and offsets are treated as unsigned 32-bit values (masked modulo $2^{32}$) before bounds checks are applied.
     \item Passive data segments require a defined memory section. Active segments targeting a non-zero memory index are rejected.
 \end{itemize}
 
 \subsection{Data Segments}
 \begin{itemize}[nosep]
-    \item Active segments must specify an \texttt{i32.const} or \texttt{i64.const} offset expression and fit within the declared initial memory size.
-    \item Passive segments are cached in static slots together with a drop flag. \texttt{data.drop} may only execute once per segment, matching Wasm semantics.
+    \item Active segments must specify a constant offset expression (\texttt{i32.const} or \texttt{i64.const}). The resulting value is interpreted as an unsigned 32-bit address and must fit within the declared initial memory size.
+    \item Passive segments are cached in static slots together with a drop flag. \texttt{data.drop} is idempotent: it marks the segment as empty so subsequent \texttt{memory.init} calls observe a length of zero.
 \end{itemize}
 
 \subsection{Tables}
 \begin{itemize}[nosep]
     \item Tables must store \texttt{funcref} elements. \texttt{table64}, shared tables, and tables with other element types are rejected.
-    \item Only declared tables (index~0) are supported. Table imports are rejected. Declared maximum limits are honoured by \texttt{table.grow}.
+    \item One or more declared tables are supported (indices start at~0). Table imports are rejected. Declared maximum limits are honoured by \texttt{table.grow}.
 \end{itemize}
 
 \subsection{Element Segments}
 \begin{itemize}[nosep]
-    \item Active segments specify a table index (default 0) and a constant offset expression. Passive segments are cached similarly to data segments. Declared-only segments are rejected.
+    \item Active segments specify a table index (default 0) and a constant offset expression. Offsets are interpreted as unsigned 32-bit indices before bounds checks. Passive segments are cached similarly to data segments. Declared-only segments are rejected.
     \item Segment payloads may be function indices or expressions made of \texttt{ref.null funcref} / \texttt{ref.func}. Other heap types and instructions are rejected.
-    \item \texttt{elem.drop} may only be executed once per passive element segment.
+    \item \texttt{elem.drop} is idempotent: it marks the passive element segment as empty so subsequent \texttt{table.init} calls observe a length of zero.
 \end{itemize}
 
 \subsection{Globals}
@@ -346,9 +346,9 @@ Stores: \texttt{i32.store}, \texttt{i64.store}, \texttt{i32.store8}, \texttt{i32
 \tabularnewline
 \texttt{memory.grow} & Helper routine & Masks the delta to 32 bits, enforces the declared maximum (or returns \texttt{-1}), allocates a new buffer when necessary, copies existing bytes, and returns the previous page count.
 \tabularnewline
-\texttt{memory.fill}, \texttt{memory.copy}, \texttt{memory.init} & Helper routines & Validate offsets/lengths, operate on the buffer in-place (with overlap-safe copies), and reference passive data slots for \texttt{memory.init}. Out-of-bounds or negative arguments trap via \texttt{ABORT}.
+\texttt{memory.fill}, \texttt{memory.copy}, \texttt{memory.init} & Helper routines & Validate offsets/lengths (masked to 32 bits), operate on the buffer in-place (with overlap-safe copies), and reference passive data slots for \texttt{memory.init}. Out-of-bounds arguments trap via \texttt{ABORT}.
 \tabularnewline
-\texttt{data.drop} & Helper routine & Each passive segment has a drop flag. Dropping more than once triggers \texttt{ABORT}.
+\texttt{data.drop} & Helper routine & Each passive segment has a drop flag. Dropping is idempotent and makes subsequent \texttt{memory.init} operations observe an empty segment.
 \tabularnewline
 Imported \texttt{env::memcpy}, \texttt{env::memmove}, \texttt{env::memset} & Helper stubs & Resolved imports call the same runtime helpers as \texttt{memory.copy} and \texttt{memory.fill}, keeping \texttt{-nostdlib} builds self-contained.
 \tabularnewline
@@ -378,7 +378,7 @@ Wasm operator(s) & NeoVM emission & Notes \\
 \tabularnewline
 \texttt{table.fill}, \texttt{table.copy} & Helper routines & Validate lengths and ranges, copy entries via temporary arrays, and abort on overlap violations or missing tables.
 \tabularnewline
-\texttt{table.init}, \texttt{elem.drop} & Helper routines with passive caches & Passive element segments are cached (value array + drop flag). \texttt{table.init} copies values into the target slice; \texttt{elem.drop} flips the drop flag and aborts when invoked twice.
+\texttt{table.init}, \texttt{elem.drop} & Helper routines with passive caches & Passive element segments are cached (value array + drop flag). \texttt{table.init} copies values into the target slice, treating dropped segments as empty; \texttt{elem.drop} flips the drop flag and is idempotent.
 \tabularnewline
 \texttt{ref.null}, \texttt{ref.is\_null} & Push \texttt{-1}/compare to \texttt{-1} & Only \texttt{funcref} heap types are accepted. Null references push the sentinel value.
 \tabularnewline
@@ -395,7 +395,7 @@ The translator rejects:
 \begin{itemize}[nosep]
     \item Floating-point instructions, SIMD, atomics, threads, and reference types other than \texttt{funcref}.
     \item Multi-value returns, multi-value typed \texttt{select}, \texttt{memory64}, multiple memories, shared memories/tables, and table imports.
-    \item Declared-only element segments, \texttt{call\_indirect} signatures with unsupported types, and repeated \texttt{data.drop}/\texttt{elem.drop} invocations.
+    \item Declared-only element segments, exception tags (\texttt{exception-handling}), and \texttt{call\_indirect} signatures with unsupported types.
 \end{itemize}
 
 \section{Runtime Helpers}
@@ -435,10 +435,10 @@ Every instruction that may touch runtime state begins with \texttt{emit\_memory\
 \end{figure}
 
 \subsection{Memory Helpers}
-Load/store helpers take an address, ensure it is non-negative, check that \texttt{address + width} does not exceed the current length, and operate on the buffer using \texttt{SUBSTR}, \texttt{CONVERT}, and \texttt{SETITEM}. \texttt{memory.grow} masks the delta, enforces the maximum, and copies the old buffer into the new allocation via \texttt{MEMCPY}. \texttt{memory.fill}, \texttt{memory.copy}, and \texttt{memory.init} allocate local slots, validate lengths, and call the corresponding NeoVM primitives. Passive data segments keep their bytes plus a drop flag; \texttt{memory.init} requires the segment to be present and \texttt{data.drop} flips the flag (aborting when invoked twice). Imported \texttt{env::memcpy}, \texttt{env::memmove}, and \texttt{env::memset} invoke the same helpers, ensuring \texttt{-nostdlib -fno-builtin} contracts remain pure Wasm.
+Load/store helpers take an address, normalise it to unsigned 32-bit semantics, check that \texttt{address + width} does not exceed the current length, and operate on the buffer using \texttt{SUBSTR}, \texttt{CONVERT}, and \texttt{SETITEM}. \texttt{memory.grow} masks the delta, enforces the maximum, and copies the old buffer into the new allocation via \texttt{MEMCPY}. \texttt{memory.fill}, \texttt{memory.copy}, and \texttt{memory.init} allocate local slots, normalise their operands to 32 bits, validate bounds, and call the corresponding NeoVM primitives. Passive data segments keep their bytes plus a drop flag; \texttt{data.drop} is idempotent and causes subsequent \texttt{memory.init} calls to observe an empty segment. Imported \texttt{env::memcpy}, \texttt{env::memmove}, and \texttt{env::memset} invoke the same helpers, ensuring \texttt{-nostdlib -fno-builtin} contracts remain pure Wasm.
 
 \subsection{Table Helpers}
-Each Wasm table becomes a NeoVM array stored in a static slot. Entries encode function indices as signed integers with \texttt{-1} representing null. Helpers exist for \texttt{table.get}, \texttt{table.set}, \texttt{table.size}, \texttt{table.grow} (respecting maxima), \texttt{table.fill}, \texttt{table.copy}, \texttt{table.init}, and \texttt{elem.drop}. Passive element segments store two slots (value array + drop flag); \texttt{table.init} copies values into the destination slice after verifying both the table bounds and the segment drop flag. \texttt{elem.drop} writes \texttt{1} into the flag and aborts if repeated.
+Each Wasm table becomes a NeoVM array stored in a static slot. Entries encode function indices as signed integers with \texttt{-1} representing null. Helpers exist for \texttt{table.get}, \texttt{table.set}, \texttt{table.size}, \texttt{table.grow} (respecting maxima), \texttt{table.fill}, \texttt{table.copy}, \texttt{table.init}, and \texttt{elem.drop}. Passive element segments store two slots (value array + drop flag); \texttt{table.init} treats dropped segments as empty while still enforcing bounds. \texttt{elem.drop} writes \texttt{1} into the flag and is idempotent.
 
 \subsection{Start Execution Guard}
 If a start section is present, the runtime helper stores an additional guard slot. Every translated function (except the start function itself) emits \texttt{emit\_memory\_init\_call} at entry so the start function runs before contract code touches any global state. Imported start functions call the respective import bridge; defined start functions reuse their translated offset. When the start function is the only exported entry, the translator appends a stub that first runs the init helper and then dispatches to the start body, updating the exported offset accordingly. Init failures propagate (the helper traps instead of swallowing errors), and the guard still ensures the start code executes exactly once.
@@ -479,7 +479,7 @@ Translation aborts with descriptive diagnostics on:
 \begin{itemize}[nosep]
     \item Unsupported Wasm features (floating point, multi-memory, reference types other than \texttt{funcref}, declared element segments, etc.).
     \item ABI mismatches introduced by overlays or \texttt{--compare-manifest} differences.
-    \item Out-of-bounds memory/table accesses discovered while synthesising runtime helpers, or repeated \texttt{data.drop}/\texttt{elem.drop} invocations.
+    \item Out-of-bounds memory/table accesses discovered while synthesising runtime helpers.
     \item Invalid custom-section payloads (non-JSON \texttt{neo.manifest}/\texttt{neo.methodtokens}), env imports with the wrong signature, or start sections referencing non-functions.
 \end{itemize}
 

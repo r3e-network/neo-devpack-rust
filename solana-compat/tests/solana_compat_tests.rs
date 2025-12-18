@@ -3,7 +3,7 @@
 //! Tests cover all major components of the neo-solana-compat crate.
 
 use neo_solana_compat::{
-    account_info::{AccountInfo, next_account_info},
+    account_info::{next_account_info, AccountInfo},
     program::{AccountMeta, Instruction},
     program_error::ProgramError,
     pubkey::{Pubkey, SYSTEM_PROGRAM_ID, TOKEN_PROGRAM_ID},
@@ -36,14 +36,14 @@ fn test_pubkey_from_slice() {
 #[test]
 fn test_pubkey_to_neo_uint160() {
     let mut bytes = [0u8; 32];
-    for i in 0..20 {
-        bytes[i] = i as u8;
+    for (idx, byte) in bytes.iter_mut().enumerate().take(20) {
+        *byte = idx as u8;
     }
     let pk = Pubkey::new(bytes);
     let uint160 = pk.to_neo_uint160();
 
-    for i in 0..20 {
-        assert_eq!(uint160[i], i as u8);
+    for (idx, byte) in uint160.iter().enumerate() {
+        assert_eq!(*byte, idx as u8);
     }
 }
 
@@ -90,7 +90,7 @@ fn test_pubkey_equality() {
 #[test]
 fn test_pubkey_clone() {
     let pk1 = Pubkey::new([42u8; 32]);
-    let pk2 = pk1.clone();
+    let pk2 = pk1;
     assert_eq!(pk1, pk2);
 }
 
@@ -121,7 +121,10 @@ fn test_program_error_to_u64() {
 fn test_program_error_from_u64() {
     assert_eq!(ProgramError::from(1), ProgramError::InvalidArgument);
     assert_eq!(ProgramError::from(2), ProgramError::InvalidInstructionData);
-    assert_eq!(ProgramError::from(7), ProgramError::MissingRequiredSignature);
+    assert_eq!(
+        ProgramError::from(7),
+        ProgramError::MissingRequiredSignature
+    );
     assert_eq!(ProgramError::from(12345), ProgramError::Custom(12345));
 }
 
@@ -154,8 +157,8 @@ fn test_account_info_creation() {
 
     let account = AccountInfo::new(
         &key,
-        true,  // is_signer
-        true,  // is_writable
+        true, // is_signer
+        true, // is_writable
         &mut lamports,
         &mut data,
         &owner,
@@ -179,7 +182,14 @@ fn test_account_info_borrow_data() {
     let mut data = vec![1, 2, 3, 4, 5];
 
     let account = AccountInfo::new(
-        &key, false, false, &mut lamports, &mut data, &owner, false, 0,
+        &key,
+        false,
+        false,
+        &mut lamports,
+        &mut data,
+        &owner,
+        false,
+        0,
     );
 
     // Immutable borrow
@@ -196,7 +206,14 @@ fn test_account_info_borrow_mut_data() {
     let mut data = vec![0u8; 10];
 
     let account = AccountInfo::new(
-        &key, false, true, &mut lamports, &mut data, &owner, false, 0,
+        &key,
+        false,
+        true,
+        &mut lamports,
+        &mut data,
+        &owner,
+        false,
+        0,
     );
 
     // Mutable borrow
@@ -219,13 +236,27 @@ fn test_account_info_data_is_empty() {
     let mut non_empty_data = vec![1u8];
 
     let empty_account = AccountInfo::new(
-        &key, false, false, &mut lamports, &mut empty_data, &owner, false, 0,
+        &key,
+        false,
+        false,
+        &mut lamports,
+        &mut empty_data,
+        &owner,
+        false,
+        0,
     );
     assert!(empty_account.data_is_empty());
 
     let mut lamports2 = 0u64;
     let non_empty_account = AccountInfo::new(
-        &key, false, false, &mut lamports2, &mut non_empty_data, &owner, false, 0,
+        &key,
+        false,
+        false,
+        &mut lamports2,
+        &mut non_empty_data,
+        &owner,
+        false,
+        0,
     );
     assert!(!non_empty_account.data_is_empty());
 }
@@ -241,10 +272,24 @@ fn test_next_account_info() {
     let mut data2 = vec![0u8; 10];
 
     let account1 = AccountInfo::new(
-        &key1, false, false, &mut lamports1, &mut data1, &owner, false, 0,
+        &key1,
+        false,
+        false,
+        &mut lamports1,
+        &mut data1,
+        &owner,
+        false,
+        0,
     );
     let account2 = AccountInfo::new(
-        &key2, false, false, &mut lamports2, &mut data2, &owner, false, 0,
+        &key2,
+        false,
+        false,
+        &mut lamports2,
+        &mut data2,
+        &owner,
+        false,
+        0,
     );
 
     let accounts = [account1, account2];
@@ -359,9 +404,7 @@ fn test_account_info_debug() {
     let mut lamports = 100u64;
     let mut data = vec![0u8; 50];
 
-    let account = AccountInfo::new(
-        &key, true, true, &mut lamports, &mut data, &owner, false, 0,
-    );
+    let account = AccountInfo::new(&key, true, true, &mut lamports, &mut data, &owner, false, 0);
 
     let debug_str = format!("{:?}", account);
     assert!(debug_str.contains("AccountInfo"));

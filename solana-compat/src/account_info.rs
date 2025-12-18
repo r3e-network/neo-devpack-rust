@@ -33,6 +33,7 @@ pub struct AccountInfo<'a> {
 
 impl<'a> AccountInfo<'a> {
     /// Create a new AccountInfo
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         key: &'a Pubkey,
         is_signer: bool,
@@ -66,12 +67,12 @@ impl<'a> AccountInfo<'a> {
     }
 
     /// Try to borrow the account data
-    pub fn try_borrow_data(&self) -> Result<Ref<&'a mut [u8]>, BorrowError> {
+    pub fn try_borrow_data(&self) -> Result<Ref<'_, &'a mut [u8]>, BorrowError> {
         self.data.try_borrow().map_err(|_| BorrowError)
     }
 
     /// Try to borrow the account data mutably
-    pub fn try_borrow_mut_data(&self) -> Result<RefMut<&'a mut [u8]>, BorrowError> {
+    pub fn try_borrow_mut_data(&self) -> Result<RefMut<'_, &'a mut [u8]>, BorrowError> {
         self.data.try_borrow_mut().map_err(|_| BorrowError)
     }
 

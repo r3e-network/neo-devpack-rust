@@ -1,5 +1,11 @@
 # Neo Wasm → NeoVM Pipeline
 
+[![CI](https://github.com/neo-project/neo-llvm/workflows/CI/badge.svg)](https://github.com/neo-project/neo-llvm/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/neo-project/neo-llvm/branch/master/graph/badge.svg)](https://codecov.io/gh/neo-project/neo-llvm)
+[![Security Audit](https://github.com/neo-project/neo-llvm/workflows/Security%20Audit/badge.svg)](https://github.com/neo-project/neo-llvm/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Rust Version](https://img.shields.io/badge/rust-1.70%2B-blue.svg)](https://www.rust-lang.org)
+
 This repository hosts the Rust tooling required to compile Neo N3 smart contracts to WebAssembly and convert the resulting modules into NeoVM NEF artefacts. The legacy in-tree LLVM NeoVM backend has been retired in favour of a simpler, Wasm-first workflow.
 
 The workflow is:
@@ -8,7 +14,7 @@ The workflow is:
 Rust contract (neo-devpack) ──cargo build --target wasm32-unknown-unknown──▶ Wasm module ──wasm-neovm──▶ NEF + manifest
 ```
 
-## Cross-Chain Compilation (Production Ready)
+## Cross-Chain Compilation (Solana ready; Move experimental)
 
 The toolchain supports cross-chain smart contract compilation from Solana and Move ecosystems:
 
@@ -35,22 +41,27 @@ cargo run --manifest-path wasm-neovm/Cargo.toml -- \
 
 **Solana API Compatibility:**
 
-| Solana API | Neo-Solana-Compat | Notes |
-|------------|-------------------|-------|
-| `Pubkey` | ✅ Supported | 32-byte key, converts to UInt160 |
-| `AccountInfo` | ✅ Supported | Maps to storage operations |
-| `ProgramError` | ✅ Supported | Full enum support |
-| `entrypoint!` | ✅ Supported | WASM export generation |
-| `invoke()` | ✅ Supported | Maps to System.Contract.Call |
+| Solana API     | Neo-Solana-Compat | Notes                            |
+| -------------- | ----------------- | -------------------------------- |
+| `Pubkey`       | ✅ Supported      | 32-byte key, converts to UInt160 |
+| `AccountInfo`  | ✅ Supported      | Maps to storage operations       |
+| `ProgramError` | ✅ Supported      | Full enum support                |
+| `entrypoint!`  | ✅ Supported      | WASM export generation           |
+| `invoke()`     | ✅ Supported      | Maps to System.Contract.Call     |
 
 **Syscall Mapping:**
+
 - `sol_log` → `System.Runtime.Log`
 - `sol_sha256` → `Neo.Crypto.SHA256`
 - `sol_get_clock_sysvar` → `System.Runtime.GetTime`
 - `sol_invoke` → `System.Contract.Call`
 - Account read/write → `System.Storage.Get/Put`
 
-### Move Contracts
+### Move Contracts (Experimental)
+
+> Note: Move bytecode → WASM lowering is now implemented with control flow,
+> storage-backed resource operations, and ability checks. The coverage is still
+> experimental and does not yet model every Move feature.
 
 Compile Move-style contracts (Aptos/Sui patterns) to NeoVM:
 
@@ -68,35 +79,21 @@ cargo run --manifest-path wasm-neovm/Cargo.toml -- \
   --manifest-overlay contracts/move-coin/manifest.overlay.json
 ```
 
+You can also supply raw Move bytecode (`.mv`) to `wasm-neovm` with `--source-chain move`; it will first run `move-neovm` to produce WASM and then complete the NeoVM translation.
+
 **Move Resource Semantics:**
 
 Move's linear resource types are mapped to Neo storage:
+
 - `move_to<T>()` → `System.Storage.Put`
 - `move_from<T>()` → `System.Storage.Delete`
 - `borrow_global<T>()` → `System.Storage.Get`
 - `exists<T>()` → Storage existence check
 
-**Example Move-style Contract:**
-
-```rust
-// contracts/move-coin/src/lib.rs
-use neo_move_compat::prelude::*;
-
-#[neo_export]
-pub fn mint(to: &[u8], amount: u64) -> i32 {
-    if !verify_signer(to) { return 0; }
-    let balance = get_balance(to);
-    set_balance(to, balance + amount);
-    1
-}
-
-#[neo_export]
-pub fn transfer(from: &[u8], to: &[u8], amount: u64) -> i32 {
-    if !verify_signer(from) { return 0; }
-    // Transfer logic with resource semantics
-    1
-}
-```
+See `contracts/move-coin/src/lib.rs` for a minimal Move-inspired coin example that uses
+storage-backed balances and witness checks. The Move path is still experimental: not every
+bytecode feature is modelled yet, but control flow and basic resource semantics are translated
+end-to-end.
 
 ### Running Cross-Chain Tests
 
@@ -104,7 +101,7 @@ pub fn transfer(from: &[u8], to: &[u8], amount: u64) -> i32 {
 # Solana compatibility tests (26 tests)
 cargo test --manifest-path solana-compat/Cargo.toml
 
-# Move translator tests (17 tests)
+# Move translator tests (experimental)
 cargo test --manifest-path move-neovm/Cargo.toml
 
 # Cross-chain integration tests (9 tests)
@@ -135,16 +132,19 @@ See [`docs/CROSS_CHAIN_SPEC.md`](docs/CROSS_CHAIN_SPEC.md) for the full technica
    rustup target add wasm32-unknown-unknown
    ```
 2. Build your contract (for example `contracts/hello-world` or the C sample in `contracts/c-hello`):
+
    ```bash
    scripts/build_contract.sh contracts/hello-world
    # or
    scripts/build_c_contract.sh contracts/c-hello
    ```
+
    The Rust helper compiles the crate for `wasm32-unknown-unknown` (release mode) and then runs the translator to produce `hello_world.nef` and `hello_world.manifest.json` next to the `.wasm` artefact.  
    The C helper wraps `clang --target wasm32-unknown-unknown` (with `-nostdlib`/`-fno-builtin` to avoid `env::` imports) and writes the Wasm/NEF/manifest trio into `contracts/c-hello/build/`.
    Append additional translator flags after the optional contract name if needed. Safe methods are typically declared inside the contract (via `#[neo_safe]`) so no CLI flags are required for that metadata.
 
 3. Alternatively, run the translator manually:
+
    ```bash
    cargo build --manifest-path contracts/hello-world/Cargo.toml \
      --release --target wasm32-unknown-unknown
@@ -158,22 +158,43 @@ See [`docs/CROSS_CHAIN_SPEC.md`](docs/CROSS_CHAIN_SPEC.md) for the full technica
      --compare-manifest contracts/hello-world/expected.manifest.json
    ```
 
-  Supply `--manifest-overlay <file>` to merge additional JSON metadata when needed (for example, create `contracts/hello-world/manifest.overlay.json`). Overlay entries must reference exports that actually exist in the Wasm module—the translator now errors if an overlay adds or removes ABI methods. Use the `#[neo_safe]` attribute (or manifest overlays) inside your contract to declare safe methods.
+Supply `--manifest-overlay <file>` to merge additional JSON metadata when needed (for example, create `contracts/hello-world/manifest.overlay.json`). Overlay entries must reference exports that actually exist in the Wasm module—the translator now errors if an overlay adds or removes ABI methods. Use the `#[neo_safe]` attribute (or manifest overlays) inside your contract to declare safe methods.
 
-  Use `--compare-manifest <file>` to assert that the generated manifest matches a checked-in reference; any difference aborts the translation after printing a unified diff.
+Use `--compare-manifest <file>` to assert that the generated manifest matches a checked-in reference; any difference aborts the translation after printing a unified diff.
 
-4. To compile *all* bundled examples (Wasm build + NEF/manifest generation) run the Makefile target:
+4. To compile _all_ bundled examples (Wasm build + NEF/manifest generation) run the Makefile target:
+
    ```bash
    make examples
    ```
+
    Outputs are written to `build/`. Use `make clean` to remove generated artefacts.
 
-5. Individual contracts can be built with their dedicated targets, for example:
+5. For the cross-chain samples (Solana + experimental Move), run:
+
+   ```bash
+   make cross-chain
+   ```
+
+   This produces `build/solana_hello.nef/.manifest.json` and `build/MoveCoin.nef/.manifest.json` using the appropriate `--source-chain` flag. Move support remains experimental, but control flow and storage-backed resource operations (with ability checks) are now lowered end-to-end.
+
+   You can also drive individual builds via `scripts/build_contract.sh <path> [name] [translator-flags...]`.
+   To pin a source chain without repeating flags, set `SOURCE_CHAIN=solana` (or `move`) in the environment;
+   the script will pass `--source-chain` automatically when not already provided.
+
+6. To run just the cross-chain translator tests:
+
+   ```bash
+   make test-cross-chain
+   ```
+
+7. Individual contracts can be built with their dedicated targets, for example:
+
    ```bash
    make nep11-nft
    ```
 
-6. To deploy a generated contract to a running Neo Express instance you can use the
+8. To deploy a generated contract to a running Neo Express instance you can use the
    helper script:
    ```bash
    export NEO_EXPRESS_RPC=http://localhost:50012
@@ -229,6 +250,7 @@ The accompanying Rust contract can declare the imports with `#[link(wasm_import_
 ### Feature Checklist
 
 **Implemented**
+
 - [x] Wasm → NeoVM translation pipeline (`wasm-neovm`) with manifest/NEF generation
 - [x] Safe method detection via in-contract attributes/overlays (no CLI flags required)
 - [x] Manifest overlay merge + permission deduplication
@@ -243,6 +265,7 @@ The accompanying Rust contract can declare the imports with `#[link(wasm_import_
 - [x] **Cross-chain specification document** (`docs/CROSS_CHAIN_SPEC.md`)
 
 **Planned / In Progress**
+
 - [ ] Extend Wasm coverage (floating-point operations, SIMD, multi-memory)
 - [ ] Enhanced Neo Express integration tests with automated deploy/invoke smoke checks
 - [ ] Additional dApp templates (router/aggregator, oracle publisher, governance extensions)
@@ -269,7 +292,7 @@ The accompanying Rust contract can declare the imports with `#[link(wasm_import_
 - `drop` elimination (removing dead literals) and `unreachable` lowering to the NeoVM `ABORT` opcode.
 - Import bridges for every NeoVM opcode (`opcode::<NAME>`) and syscall (`syscall::<Descriptor>`), including helpers for emitting raw immediates (`opcode::RAW`/`RAW4`).
 
--Unsupported instructions (floating-point, reference types beyond funcref, and multi-memory) surface descriptive errors. [`docs/wasm-pipeline.md`](docs/wasm-pipeline.md) tracks the roadmap toward full coverage.
+Unsupported instructions (floating-point, reference types beyond funcref, and multi-memory) surface descriptive errors. [`docs/wasm-pipeline.md`](docs/wasm-pipeline.md) tracks the roadmap toward full coverage.
 
 ## Development
 
@@ -295,26 +318,81 @@ The accompanying Rust contract can declare the imports with `#[link(wasm_import_
 
 ```
 .
-├── docs/                 # Updated documentation for the Wasm pipeline
-│   └── CROSS_CHAIN_SPEC.md  # Cross-chain compilation specification
-├── rust-devpack/         # Rust SDK for Neo contracts
+├── .github/
+│   └── workflows/        # CI/CD configuration (tests, clippy, security audit)
+├── docs/                 # Technical documentation
+│   ├── CROSS_CHAIN_SPEC.md           # Cross-chain compilation specification
+│   ├── wasm-pipeline.md              # WebAssembly translation pipeline
+│   ├── nef-format-specification.md   # NEF container format
+│   ├── rust-smart-contract-quickstart.md  # Contract development guide
+│   └── neoexpress-integration.md     # Neo Express deployment guide
+├── wasm-neovm/           # Core WebAssembly to NeoVM translator
+│   ├── src/              # Translation engine, NEF builder, manifest generator
+│   ├── tests/            # Integration tests including cross-chain tests
+│   └── benches/          # Performance benchmarks
+├── rust-devpack/         # Rust SDK for Neo smart contracts
+│   ├── neo-runtime/      # Runtime stubs and syscall bindings
+│   ├── neo-syscalls/     # Low-level syscall definitions
+│   ├── neo-types/        # Neo type system (NeoInteger, NeoByteString, etc.)
+│   ├── neo-macros/       # Procedural macros (#[neo_event], #[neo_safe])
+│   └── examples/         # Example contract patterns
 ├── solana-compat/        # Solana compatibility layer (neo-solana-compat)
-├── move-neovm/           # Move bytecode translator
-├── contracts/            # Example contracts
+│   ├── src/              # Pubkey, AccountInfo, ProgramError implementations
+│   └── tests/            # Solana API compatibility tests (26 tests)
+├── move-neovm/           # Move bytecode to WebAssembly translator (experimental)
+│   ├── src/              # Move bytecode parser and WASM lowering
+│   └── tests/            # Move translation tests
+├── contracts/            # Production-ready example contracts
 │   ├── hello-world/      # Basic Neo contract
-│   ├── nep17-token/      # NEP-17 fungible token
-│   ├── move-coin/        # Move-style coin (resource semantics)
-│   └── ...               # Other examples
-├── scripts/              # Helper scripts (build + translate)
-└── wasm-neovm/           # Wasm → NeoVM translator crate
-    └── tests/
-        └── solana_move_integration.rs  # Cross-chain integration tests
+│   ├── nep17-token/      # NEP-17 fungible token standard
+│   ├── nep11-nft/        # NEP-11 non-fungible token standard
+│   ├── solana-hello/     # Cross-chain Solana program example
+│   ├── move-coin/        # Move-style coin with resource semantics
+│   ├── multisig/         # Multi-signature wallet
+│   ├── escrow/           # Escrow contract
+│   ├── dao/              # Decentralized autonomous organization
+│   ├── oracle/           # Oracle integration example
+│   └── ...               # Additional templates
+├── integration-tests/    # End-to-end integration tests
+│   └── tests/            # Neo Express deployment and invocation tests
+├── scripts/              # Build and deployment helper scripts
+│   ├── build_contract.sh      # Rust contract build + translate
+│   ├── build_c_contract.sh    # C contract build + translate
+│   └── neoexpress_deploy.sh   # Neo Express deployment helper
+├── spec/                 # Formal specifications (LaTeX)
+│   └── wasm-neovm-spec.tex    # Normative translation specification
+├── CONTRIBUTING.md       # Contribution guidelines
+├── SECURITY.md           # Security policy and vulnerability reporting
+├── CODE_OF_CONDUCT.md    # Community code of conduct
+├── CHANGELOG.md          # Version history and release notes
+└── Makefile              # Build automation (examples, tests, cross-chain)
 ```
 
-## Next Steps
+## Contributing
+
+We welcome contributions from the community! Please read our [Contributing Guidelines](CONTRIBUTING.md) to get started.
+
+### Quick Contribution Checklist
+
+- Read [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and workflow
+- Follow the [Code of Conduct](CODE_OF_CONDUCT.md)
+- Check [open issues](https://github.com/neo-project/neo-llvm/issues) for tasks
+- Review [SECURITY.md](SECURITY.md) for security reporting procedures
+- Join our [Discord](https://discord.io/neo) for discussions
+
+### Development Roadmap
 
 - Broaden instruction coverage with floating-point/SIMD lowering once the current integer semantics are fully settled.
 - Surface additional devpack metadata (events, permissions, supported standards) directly into manifest generation so JSON overlays remain optional.
 - Tighten end-to-end validation by replaying generated NEFs in the NeoVM reference runner / neo-cli as part of CI.
 
-Contributions towards these milestones are welcome.
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Support
+
+- **Documentation**: [docs/](docs/)
+- **Issues**: [GitHub Issues](https://github.com/neo-project/neo-llvm/issues)
+- **Discord**: [https://discord.io/neo](https://discord.io/neo)
+- **Neo Developer Portal**: [https://neo.org/dev](https://neo.org/dev)

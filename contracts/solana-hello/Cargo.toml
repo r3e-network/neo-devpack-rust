@@ -10,6 +10,11 @@ crate-type = ["cdylib"]
 [dependencies]
 neo-solana-compat = { path = "../../solana-compat" }
 
+[features]
+# Matches Solana's conventional feature used by `entrypoint!` macros to opt out
+# of exporting the on-chain entrypoint in unit tests and host tooling.
+no-entrypoint = []
+
 [profile.release]
 lto = true
 opt-level = "z"

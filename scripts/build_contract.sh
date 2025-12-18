@@ -21,10 +21,13 @@ fi
 TRANSLATOR_ARGS=("$@")
 
 has_overlay_flag=false
+has_source_chain_flag=false
 for arg in "${TRANSLATOR_ARGS[@]}"; do
   if [[ "$arg" == --manifest-overlay || "$arg" == --manifest-overlay=* ]]; then
     has_overlay_flag=true
-    break
+  fi
+  if [[ "$arg" == --source-chain || "$arg" == --source-chain=* ]]; then
+    has_source_chain_flag=true
   fi
 done
 
@@ -35,6 +38,11 @@ if [[ "$has_overlay_flag" == false ]]; then
   fi
 fi
 
+# Optionally force a source chain (for cross-chain samples) via SOURCE_CHAIN env var
+if [[ -n "${SOURCE_CHAIN:-}" && "$has_source_chain_flag" == false ]]; then
+  TRANSLATOR_ARGS+=("--source-chain" "$SOURCE_CHAIN")
+fi
+
 if [[ ! -f "$CONTRACT_DIR/Cargo.toml" ]]; then
   echo "error: $CONTRACT_DIR does not contain a Cargo.toml" >&2
   exit 1
@@ -42,7 +50,7 @@ fi
 
 echo "==> Building Wasm contract ($CONTRACT_NAME)"
 # Default mask disables unsupported Wasm features; override via NEO_WASM_RUSTFLAGS if needed.
-DEFAULT_RUSTFLAGS="-C opt-level=z -C strip=symbols -C panic=abort -C target-feature=-simd128,-atomics,-reference-types,-multivalue,-tail-call"
+DEFAULT_RUSTFLAGS="-C opt-level=z -C strip=symbols -C panic=abort -C target-feature=-simd128,-reference-types,-multivalue,-tail-call,-atomics"
 RUSTFLAGS_TO_USE="${NEO_WASM_RUSTFLAGS:-$DEFAULT_RUSTFLAGS}"
 echo "    RUSTFLAGS=$RUSTFLAGS_TO_USE"
 RUSTFLAGS="$RUSTFLAGS_TO_USE" cargo build --manifest-path "$CONTRACT_DIR/Cargo.toml" \
