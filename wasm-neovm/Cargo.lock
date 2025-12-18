@@ -989,7 +989,7 @@ dependencies = [
  "thiserror",
  "walkdir",
  "wasm-encoder 0.239.0",
- "wasmparser 0.239.0",
+ "wasmparser 0.240.0",
  "wat",
 ]
 
@@ -1000,10 +1000,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8c9d90bb93e764f6beabf1d02028c70a2156a6583e63ac4218dd07ef733368b0"
 dependencies = [
  "bitflags",
- "hashbrown 0.15.5",
  "indexmap",
  "semver",
- "serde",
 ]
 
 [[package]]
@@ -1013,8 +1011,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b722dcf61e0ea47440b53ff83ccb5df8efec57a69d150e4f24882e4eba7e24a4"
 dependencies = [
  "bitflags",
+ "hashbrown 0.15.5",
  "indexmap",
  "semver",
+ "serde",
 ]
 
 [[package]]
