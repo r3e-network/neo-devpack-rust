@@ -24,7 +24,7 @@ neo-runtime = { path = "neo-runtime", version = "0.1.0" }
 neo-macros = { path = "neo-macros", version = "0.1.0" }
 
 [dev-dependencies]
-criterion = "0.5"
+criterion = "0.8"
 
 [features]
 default = ["std"]
