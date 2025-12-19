@@ -19,7 +19,7 @@ wasm-encoder = "0.239"
 
 [dev-dependencies]
 wasmparser = "0.239"
-criterion = "0.5"
+criterion = "0.8"
 
 [[bench]]
 name = "bytecode_translation"
