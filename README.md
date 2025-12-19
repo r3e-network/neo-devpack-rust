@@ -1,8 +1,7 @@
 # Neo Wasm → NeoVM Pipeline
 
-[![CI](https://github.com/neo-project/neo-llvm/workflows/CI/badge.svg)](https://github.com/neo-project/neo-llvm/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/neo-project/neo-llvm/branch/master/graph/badge.svg)](https://codecov.io/gh/neo-project/neo-llvm)
-[![Security Audit](https://github.com/neo-project/neo-llvm/workflows/Security%20Audit/badge.svg)](https://github.com/neo-project/neo-llvm/actions)
+[![CI](https://github.com/r3e-network/neo-llvm/workflows/CI/badge.svg)](https://github.com/r3e-network/neo-llvm/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/r3e-network/neo-llvm/branch/master/graph/badge.svg)](https://codecov.io/gh/r3e-network/neo-llvm)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Rust Version](https://img.shields.io/badge/rust-1.70%2B-blue.svg)](https://www.rust-lang.org)
 
@@ -348,10 +347,10 @@ Unsupported instructions (floating-point, reference types beyond funcref, and mu
 │   ├── nep11-nft/        # NEP-11 non-fungible token standard
 │   ├── solana-hello/     # Cross-chain Solana program example
 │   ├── move-coin/        # Move-style coin with resource semantics
-│   ├── multisig/         # Multi-signature wallet
+│   ├── multisig-wallet/  # Multi-signature wallet
 │   ├── escrow/           # Escrow contract
-│   ├── dao/              # Decentralized autonomous organization
-│   ├── oracle/           # Oracle integration example
+│   ├── governance-dao/   # Decentralized autonomous organization
+│   ├── oracle-consumer/  # Oracle integration example
 │   └── ...               # Additional templates
 ├── integration-tests/    # End-to-end integration tests
 │   └── tests/            # Neo Express deployment and invocation tests
@@ -376,7 +375,7 @@ We welcome contributions from the community! Please read our [Contributing Guide
 
 - Read [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and workflow
 - Follow the [Code of Conduct](CODE_OF_CONDUCT.md)
-- Check [open issues](https://github.com/neo-project/neo-llvm/issues) for tasks
+- Check [open issues](https://github.com/r3e-network/neo-llvm/issues) for tasks
 - Review [SECURITY.md](SECURITY.md) for security reporting procedures
 - Join our [Discord](https://discord.io/neo) for discussions
 
@@ -393,6 +392,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## Support
 
 - **Documentation**: [docs/](docs/)
-- **Issues**: [GitHub Issues](https://github.com/neo-project/neo-llvm/issues)
+- **Issues**: [GitHub Issues](https://github.com/r3e-network/neo-llvm/issues)
 - **Discord**: [https://discord.io/neo](https://discord.io/neo)
 - **Neo Developer Portal**: [https://neo.org/dev](https://neo.org/dev)

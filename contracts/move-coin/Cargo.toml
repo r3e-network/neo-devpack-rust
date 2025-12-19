@@ -3,6 +3,9 @@ name = "move-coin"
 version = "0.1.0"
 edition = "2021"
 description = "Example Move-style coin contract compiled for NeoVM"
+license = "MIT"
+repository = "https://github.com/r3e-network/neo-llvm"
+homepage = "https://github.com/r3e-network/neo-llvm"
 
 [lib]
 crate-type = ["cdylib"]

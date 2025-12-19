@@ -392,8 +392,8 @@ MIT License - see LICENSE file for details.
 ## 🆘 Support
 
 - Documentation: [docs.rs/neo-devpack](https://docs.rs/neo-devpack)
-- Issues: [GitHub Issues](https://github.com/neo-project/neo-devpack/issues)
-- Discussions: [GitHub Discussions](https://github.com/neo-project/neo-devpack/discussions)
+- Issues: [GitHub Issues](https://github.com/r3e-network/neo-llvm/issues)
+- Discussions: [GitHub Discussions](https://github.com/r3e-network/neo-llvm/discussions)
 
 ## 🎉 Acknowledgments
 

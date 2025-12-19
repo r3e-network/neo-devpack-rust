@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2021"
 description = "Solana program compatibility layer for Neo VM"
 license = "MIT"
+repository = "https://github.com/r3e-network/neo-llvm"
+homepage = "https://github.com/r3e-network/neo-llvm"
 authors = ["Neo LLVM Team"]
 
 [features]

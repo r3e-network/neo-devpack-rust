@@ -1,5 +1,5 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
-use wasm_neovm::{translate_module, TranslationConfig};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use wasm_neovm::{translate_module, translate_with_config, SourceChain, TranslationConfig};
 
 /// Simple WASM module with basic arithmetic
 const SIMPLE_WASM: &[u8] = &[
@@ -32,8 +32,7 @@ const CONTROL_FLOW_WASM: &[u8] = &[
 fn bench_simple_translation(c: &mut Criterion) {
     c.bench_function("translate_simple_wasm", |b| {
         b.iter(|| {
-            let config = TranslationConfig::default();
-            translate_module(black_box(SIMPLE_WASM), black_box(&config))
+            translate_module(black_box(SIMPLE_WASM), black_box("bench-simple"))
         })
     });
 }
@@ -41,8 +40,7 @@ fn bench_simple_translation(c: &mut Criterion) {
 fn bench_control_flow_translation(c: &mut Criterion) {
     c.bench_function("translate_control_flow_wasm", |b| {
         b.iter(|| {
-            let config = TranslationConfig::default();
-            translate_module(black_box(CONTROL_FLOW_WASM), black_box(&config))
+            translate_module(black_box(CONTROL_FLOW_WASM), black_box("bench-control-flow"))
         })
     });
 }
@@ -50,15 +48,14 @@ fn bench_control_flow_translation(c: &mut Criterion) {
 fn bench_translation_with_different_configs(c: &mut Criterion) {
     let mut group = c.benchmark_group("translation_configs");
 
-    for optimize in [false, true] {
+    for source_chain in [SourceChain::Neo, SourceChain::Solana] {
         group.bench_with_input(
-            BenchmarkId::new("optimize", optimize),
-            &optimize,
-            |b, &opt| {
+            BenchmarkId::new("source-chain", format!("{source_chain:?}")),
+            &source_chain,
+            |b, &chain| {
                 b.iter(|| {
-                    let mut config = TranslationConfig::default();
-                    // Note: Adjust based on actual TranslationConfig fields
-                    translate_module(black_box(SIMPLE_WASM), black_box(&config))
+                    let config = TranslationConfig::new("bench-config").with_source_chain(chain);
+                    translate_with_config(black_box(SIMPLE_WASM), black_box(config))
                 })
             },
         );
@@ -76,9 +73,8 @@ fn bench_repeated_translation(c: &mut Criterion) {
             &count,
             |b, &count| {
                 b.iter(|| {
-                    let config = TranslationConfig::default();
                     for _ in 0..count {
-                        let _ = translate_module(black_box(SIMPLE_WASM), black_box(&config));
+                        let _ = translate_module(black_box(SIMPLE_WASM), black_box("bench-repeat"));
                     }
                 })
             },

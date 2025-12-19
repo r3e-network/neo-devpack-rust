@@ -24,7 +24,7 @@ This project adheres to the Contributor Covenant Code of Conduct. By participati
 Before you begin contributing, please:
 
 1. Read the [README.md](README.md) to understand the project's goals and architecture
-2. Review existing [issues](https://github.com/neo-project/neo-llvm/issues) and [pull requests](https://github.com/neo-project/neo-llvm/pulls)
+2. Review existing [issues](https://github.com/r3e-network/neo-llvm/issues) and [pull requests](https://github.com/r3e-network/neo-llvm/pulls)
 3. Check the [documentation](docs/) for technical specifications
 4. Join our community discussions on [Discord](https://discord.io/neo)
 
@@ -42,7 +42,7 @@ Before you begin contributing, please:
 1. **Clone the repository**:
 
    ```bash
-   git clone https://github.com/neo-project/neo-llvm.git
+   git clone https://github.com/r3e-network/neo-llvm.git
    cd neo-llvm
    ```
 
@@ -499,7 +499,7 @@ Use the feature request template and include:
 For questions and support:
 
 - Check existing [documentation](docs/)
-- Search [existing issues](https://github.com/neo-project/neo-llvm/issues)
+- Search [existing issues](https://github.com/r3e-network/neo-llvm/issues)
 - Ask on [Discord](https://discord.io/neo)
 
 ## Additional Resources
@@ -518,7 +518,7 @@ By contributing to Neo-LLVM, you agree that your contributions will be licensed 
 
 If you have questions about contributing, please:
 
-- Open a [discussion](https://github.com/neo-project/neo-llvm/discussions)
+- Open a [discussion](https://github.com/r3e-network/neo-llvm/discussions)
 - Ask on [Discord](https://discord.io/neo)
 - Email the maintainers
 

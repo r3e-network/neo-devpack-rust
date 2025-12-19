@@ -2,6 +2,9 @@
 name = "integration-tests"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+repository = "https://github.com/r3e-network/neo-llvm"
+homepage = "https://github.com/r3e-network/neo-llvm"
 
 [dev-dependencies]
 serde = { version = "1.0", features = ["derive"] }

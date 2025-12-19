@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2021"
 authors = ["Neo N3 DevPack Team"]
 description = "Neo N3 Macros for Smart Contract Development"
+license = "MIT"
+repository = "https://github.com/r3e-network/neo-llvm"
+homepage = "https://github.com/r3e-network/neo-llvm"
 
 [lib]
 proc-macro = true
@@ -12,9 +15,9 @@ proc-macro = true
 proc-macro2 = "1.0"
 quote = "1.0"
 syn = { version = "2.0", features = ["full"] }
-neo-types = { path = "../neo-types" }
-neo-syscalls = { path = "../neo-syscalls" }
-neo-runtime = { path = "../neo-runtime" }
+neo-types = { path = "../neo-types", version = "0.1.0" }
+neo-syscalls = { path = "../neo-syscalls", version = "0.1.0" }
+neo-runtime = { path = "../neo-runtime", version = "0.1.0" }
 serde_json = "1.0"
 
 [features]

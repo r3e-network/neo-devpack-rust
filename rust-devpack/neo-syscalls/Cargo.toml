@@ -4,9 +4,12 @@ version = "0.1.0"
 edition = "2021"
 authors = ["Neo N3 DevPack Team"]
 description = "Neo N3 System Calls for Smart Contract Development"
+license = "MIT"
+repository = "https://github.com/r3e-network/neo-llvm"
+homepage = "https://github.com/r3e-network/neo-llvm"
 
 [dependencies]
-neo-types = { path = "../neo-types" }
+neo-types = { path = "../neo-types", version = "0.1.0" }
 thiserror = "1.0"
 anyhow = "1.0"
 once_cell = "1.19"

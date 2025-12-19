@@ -226,17 +226,29 @@ jobs:
       - name: Install cargo-deny
         run: cargo install cargo-deny
 
-      - name: Run cargo audit
-        run: cargo audit --deny warnings
+      - name: Run cargo audit - wasm-neovm
+        run: cargo audit --file wasm-neovm/Cargo.lock --deny warnings
+
+      - name: Run cargo audit - move-neovm
+        run: cargo audit --file move-neovm/Cargo.lock --deny warnings
+
+      - name: Run cargo audit - rust-devpack
+        run: cargo audit --file rust-devpack/Cargo.lock --deny warnings
+
+      - name: Run cargo audit - solana-compat
+        run: cargo audit --file solana-compat/Cargo.lock --deny warnings
+
+      - name: Run cargo audit - integration-tests
+        run: cargo audit --file integration-tests/Cargo.lock --deny warnings
 
       - name: Run cargo deny - wasm-neovm
-        run: cargo deny --manifest-path wasm-neovm/Cargo.toml check
+        run: cargo deny --manifest-path wasm-neovm/Cargo.toml check -W unmaintained -W notice
 
       - name: Run cargo deny - move-neovm
-        run: cargo deny --manifest-path move-neovm/Cargo.toml check
+        run: cargo deny --manifest-path move-neovm/Cargo.toml check -W unmaintained -W notice
 
       - name: Run cargo deny - rust-devpack
-        run: cargo deny --manifest-path rust-devpack/Cargo.toml check
+        run: cargo deny --manifest-path rust-devpack/Cargo.toml check -W unmaintained -W notice
 
   benchmark:
     name: Benchmark
@@ -281,7 +293,7 @@ jobs:
           alert-threshold: '105%'
           comment-on-alert: true
           fail-on-alert: true
-          alert-comment-cc-users: '@neo-project/neo-llvm'
+          alert-comment-cc-users: '@r3e-network'
 
       - name: Run benchmarks - move-neovm
         run: cargo bench --manifest-path move-neovm/Cargo.toml --no-fail-fast

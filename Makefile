@@ -44,7 +44,7 @@ MOVE_COIN_WASM    := contracts/move-coin/target/$(WASM_TARGET)/release/move_coin
 MOVE_COIN_NEF     := $(OUTDIR)/MoveCoin.nef
 MOVE_COIN_MANIFEST := $(OUTDIR)/MoveCoin.manifest.json
 
-.PHONY: help examples cross-chain hello-world nep17-token constant-product nep11-nft multisig-wallet escrow crowdfunding governance-dao oracle-consumer nft-marketplace solana-hello move-coin c-hello fmt lint test test-cross-chain integration-tests spec clean
+.PHONY: help examples cross-chain hello-world nep17-token constant-product nep11-nft multisig-wallet escrow crowdfunding governance-dao oracle-consumer nft-marketplace solana-hello move-coin c-hello fmt lint test test-cross-chain integration-tests security-check spec clean
 
 help:
 	@echo "Usage: make <target>"
@@ -73,6 +73,7 @@ help:
 	@echo "  test            Execute cargo test for translator + devpack"
 	@echo "  test-cross-chain Run wasm-neovm cross-chain test suites"
 	@echo "  integration-tests  Run optional Neo Express integration harness"
+	@echo "  security-check Run cargo-audit/cargo-deny checks (requires cargo-audit/cargo-deny)"
 	@echo "  spec            Build the LaTeX specification in spec/"
 	@echo "  clean           Remove generated build artefacts"
 
@@ -284,6 +285,16 @@ test-cross-chain:
 integration-tests:
 	@echo "Running integration tests (requires NEO_EXPRESS_RPC)..."
 	cargo test --manifest-path integration-tests/Cargo.toml -- --ignored
+
+security-check:
+	cargo audit --file wasm-neovm/Cargo.lock --deny warnings
+	cargo audit --file move-neovm/Cargo.lock --deny warnings
+	cargo audit --file rust-devpack/Cargo.lock --deny warnings
+	cargo audit --file solana-compat/Cargo.lock --deny warnings
+	cargo audit --file integration-tests/Cargo.lock --deny warnings
+	cargo deny --manifest-path wasm-neovm/Cargo.toml check -W unmaintained -W notice
+	cargo deny --manifest-path move-neovm/Cargo.toml check -W unmaintained -W notice
+	cargo deny --manifest-path rust-devpack/Cargo.toml check -W unmaintained -W notice
 
 spec:
 	$(MAKE) -C spec

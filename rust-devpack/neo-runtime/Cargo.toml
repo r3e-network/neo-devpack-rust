@@ -4,10 +4,13 @@ version = "0.1.0"
 edition = "2021"
 authors = ["Neo N3 DevPack Team"]
 description = "Neo N3 Runtime for Smart Contract Development"
+license = "MIT"
+repository = "https://github.com/r3e-network/neo-llvm"
+homepage = "https://github.com/r3e-network/neo-llvm"
 
 [dependencies]
-neo-types = { path = "../neo-types" }
-neo-syscalls = { path = "../neo-syscalls" }
+neo-types = { path = "../neo-types", version = "0.1.0" }
+neo-syscalls = { path = "../neo-syscalls", version = "0.1.0" }
 thiserror = "1.0"
 anyhow = "1.0"
 serde_json = "1.0"

@@ -1,5 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
-use move_neovm::{parse_move_bytecode, translate_to_wasm, MoveModule};
+use move_neovm::{parse_move_bytecode, translate_to_wasm};
 
 /// Minimal Move bytecode module for benchmarking
 /// This represents a simple Move module with basic operations
