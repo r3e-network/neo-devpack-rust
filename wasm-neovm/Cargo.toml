@@ -29,7 +29,7 @@ tempfile = "3.10"
 walkdir = "2.5"
 wat = "1.0"
 wasm-encoder = "0.239"
-criterion = "0.5"
+criterion = "0.8"
 
 [build-dependencies]
 anyhow = "1.0"
