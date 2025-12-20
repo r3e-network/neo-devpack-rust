@@ -5,9 +5,7 @@
 
 use crate::bytecode::MoveModule;
 use anyhow::Result;
-use wasm_encoder::{
-    Module, ValType,
-};
+use wasm_encoder::{Module, ValType};
 
 mod exports;
 mod functions;
@@ -55,12 +53,16 @@ pub fn translate_to_wasm(module: &MoveModule) -> Result<Vec<u8>> {
     let (types, func_type_indices, _next_type_index) = types::build_types(module, needs_storage)?;
 
     // Build import section
-    let (imports, import_layout, imported_functions) =
-        imports::build_imports(needs_storage)?;
+    let (imports, import_layout, imported_functions) = imports::build_imports(needs_storage)?;
 
     // Build function and code sections
-    let (functions, code) =
-        functions::build_functions(module, &func_type_indices, imported_functions, &import_layout, needs_storage)?;
+    let (functions, code) = functions::build_functions(
+        module,
+        &func_type_indices,
+        imported_functions,
+        &import_layout,
+        needs_storage,
+    )?;
 
     // Build export section and memory
     let (exports, memory) = exports::build_exports(module, imported_functions, needs_storage)?;

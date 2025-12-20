@@ -1,5 +1,6 @@
+use regex::Regex;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct OpcodeEntry {
@@ -9,12 +10,9 @@ struct OpcodeEntry {
     operand_size_prefix: u8,
 }
 
-fn parse_neovm_opcodes() -> Result<Vec<OpcodeEntry>, Box<dyn std::error::Error>> {
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let repo_root = manifest_dir
-        .parent()
-        .expect("wasm-neovm crate should live one level below repo root");
-    let opcodes_path = repo_root.join("neo/src/Neo.VM/OpCode.cs");
+fn parse_neovm_opcodes(
+    opcodes_path: &Path,
+) -> Result<Vec<OpcodeEntry>, Box<dyn std::error::Error>> {
     let contents = fs::read_to_string(&opcodes_path)?;
 
     let mut entries = Vec::new();
@@ -87,9 +85,51 @@ fn parse_neovm_opcodes() -> Result<Vec<OpcodeEntry>, Box<dyn std::error::Error>>
     Ok(entries)
 }
 
+fn parse_generated_opcodes(
+    snapshot_path: &Path,
+) -> Result<Vec<OpcodeEntry>, Box<dyn std::error::Error>> {
+    let contents = fs::read_to_string(snapshot_path)?;
+    let entry_re = Regex::new(
+        r#"OpcodeInfo\s*\{\s*name:\s*"(?P<name>[^"]+)",\s*byte:\s*0x(?P<byte>[0-9A-Fa-f]{2}),\s*operand_size:\s*(?P<size>\d+),\s*operand_size_prefix:\s*(?P<prefix>\d+)\s*\}"#,
+    )?;
+
+    let mut entries = Vec::new();
+    for caps in entry_re.captures_iter(&contents) {
+        let name = caps.name("name").unwrap().as_str().to_string();
+        let byte = u8::from_str_radix(caps.name("byte").unwrap().as_str(), 16)?;
+        let operand_size = caps.name("size").unwrap().as_str().parse::<u8>()?;
+        let operand_size_prefix = caps.name("prefix").unwrap().as_str().parse::<u8>()?;
+        entries.push(OpcodeEntry {
+            name,
+            byte,
+            operand_size,
+            operand_size_prefix,
+        });
+    }
+
+    if entries.is_empty() {
+        return Err(format!("no opcode entries found in {}", snapshot_path.display()).into());
+    }
+
+    Ok(entries)
+}
+
+fn parse_reference_opcodes() -> Result<Vec<OpcodeEntry>, Box<dyn std::error::Error>> {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let repo_root = manifest_dir
+        .parent()
+        .expect("wasm-neovm crate should live one level below repo root");
+    let opcodes_path = repo_root.join("neo/src/Neo.VM/OpCode.cs");
+    if opcodes_path.exists() {
+        parse_neovm_opcodes(&opcodes_path)
+    } else {
+        parse_generated_opcodes(&manifest_dir.join("src/generated/opcodes.rs"))
+    }
+}
+
 #[test]
 fn neo_opcodes_match_reference() -> Result<(), Box<dyn std::error::Error>> {
-    let mut expected = parse_neovm_opcodes()?;
+    let mut expected = parse_reference_opcodes()?;
     expected.sort_by_key(|entry| entry.byte);
 
     let mut actual: Vec<OpcodeEntry> = wasm_neovm::opcodes::all()

@@ -25,9 +25,7 @@ pub const SCRATCH_VALUE_SIZE: i32 = 8;
 /// - ImportSection: The complete import section
 /// - ImportLayout: Mapping of import names to function indices
 /// - u32: Number of imported functions
-pub fn build_imports(
-    needs_storage: bool,
-) -> Result<(ImportSection, ImportLayout, u32)> {
+pub fn build_imports(needs_storage: bool) -> Result<(ImportSection, ImportLayout, u32)> {
     let mut imports = ImportSection::new();
     let mut import_layout = ImportLayout::default();
     let mut imported_functions = 0u32;

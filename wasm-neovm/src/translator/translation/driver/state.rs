@@ -57,4 +57,3 @@ impl<'a> DriverState<'a> {
         self.finalize()
     }
 }
-

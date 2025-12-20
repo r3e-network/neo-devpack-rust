@@ -16,23 +16,47 @@ fn main() -> Result<()> {
         .context("unable to locate repository root")?
         .to_path_buf();
     let neo_dir = repo_root.join("neo");
+    let fallback_dir = manifest_dir.join("src/generated");
+    let opcode_path = neo_dir.join("src/Neo.VM/OpCode.cs");
+    let syscall_root = neo_dir.join("src/Neo/SmartContract");
 
-    generate_opcodes(&neo_dir)?;
-    generate_syscalls(&neo_dir)?;
+    if opcode_path.exists() && syscall_root.exists() {
+        generate_opcodes(&neo_dir)?;
+        generate_syscalls(&neo_dir)?;
 
-    println!(
-        "cargo:rerun-if-changed={}",
-        neo_dir.join("src/Neo.VM/OpCode.cs").display()
-    );
-    for entry in WalkDir::new(neo_dir.join("src/Neo/SmartContract"))
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map(|ext| ext == "cs").unwrap_or(false))
-    {
-        println!("cargo:rerun-if-changed={}", entry.path().display());
+        println!("cargo:rerun-if-changed={}", opcode_path.display());
+        for entry in WalkDir::new(&syscall_root)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().map(|ext| ext == "cs").unwrap_or(false))
+        {
+            println!("cargo:rerun-if-changed={}", entry.path().display());
+        }
+    } else {
+        emit_fallback(&fallback_dir, "opcodes.rs")?;
+        emit_fallback(&fallback_dir, "syscalls.rs")?;
+        println!("cargo:warning=neo checkout not found; using bundled opcode/syscall snapshot");
+        println!(
+            "cargo:rerun-if-changed={}",
+            fallback_dir.join("opcodes.rs").display()
+        );
+        println!(
+            "cargo:rerun-if-changed={}",
+            fallback_dir.join("syscalls.rs").display()
+        );
     }
     println!("cargo:rerun-if-changed=build.rs");
 
+    Ok(())
+}
+
+fn emit_fallback(fallback_dir: &Path, filename: &str) -> Result<()> {
+    let fallback_path = fallback_dir.join(filename);
+    let contents = fs::read_to_string(&fallback_path)
+        .with_context(|| format!("failed to read {}", fallback_path.display()))?;
+    let out_path = PathBuf::from(env::var("OUT_DIR")?).join(filename);
+    fs::write(&out_path, contents)
+        .with_context(|| format!("failed to write {}", out_path.display()))?;
     Ok(())
 }
 

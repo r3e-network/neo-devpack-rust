@@ -44,7 +44,8 @@ pub(super) fn try_handle(
         }
         Operator::If { blockty: ty, .. } => {
             let result_count = block_result_count(*ty, types)?;
-            let _cond = super::pop_value_maybe_unreachable(value_stack, "if condition", *is_unreachable)?;
+            let _cond =
+                super::pop_value_maybe_unreachable(value_stack, "if condition", *is_unreachable)?;
             // Condition already materialised on stack
             let jump_pos = emit_jump_placeholder(script, "JMPIFNOT_L")?;
             control_stack.push(ControlFrame {
@@ -172,8 +173,11 @@ pub(super) fn try_handle(
             Ok(true)
         }
         Operator::BrIf { relative_depth } => {
-            let _cond =
-                super::pop_value_maybe_unreachable(value_stack, "br_if condition", *is_unreachable)?;
+            let _cond = super::pop_value_maybe_unreachable(
+                value_stack,
+                "br_if condition",
+                *is_unreachable,
+            )?;
             handle_branch(
                 script,
                 value_stack,

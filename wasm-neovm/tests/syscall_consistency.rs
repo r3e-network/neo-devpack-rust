@@ -1,7 +1,8 @@
+use anyhow::ensure;
 use regex::Regex;
 use std::collections::BTreeSet;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -10,13 +11,7 @@ struct SyscallEntry {
     hash: u32,
 }
 
-fn parse_neovm_syscalls() -> anyhow::Result<Vec<SyscallEntry>> {
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let repo_root = manifest_dir
-        .parent()
-        .expect("wasm-neovm crate expected one directory below repo root");
-    let neo_dir = repo_root.join("neo/src/Neo/SmartContract");
-
+fn parse_neovm_syscalls(neo_dir: &Path) -> anyhow::Result<Vec<SyscallEntry>> {
     let mut names: BTreeSet<String> = BTreeSet::new();
     let regex = Regex::new(r#"Register\("([^"]+)""#)?;
     for entry in WalkDir::new(&neo_dir) {
@@ -45,9 +40,43 @@ fn parse_neovm_syscalls() -> anyhow::Result<Vec<SyscallEntry>> {
     Ok(entries)
 }
 
+fn parse_generated_syscalls(snapshot_path: &Path) -> anyhow::Result<Vec<SyscallEntry>> {
+    let contents = fs::read_to_string(snapshot_path)?;
+    let entry_re = Regex::new(
+        r#"SyscallInfo\s*\{\s*name:\s*"(?P<name>[^"]+)",\s*hash:\s*0x(?P<hash>[0-9A-Fa-f]{8})\s*\}"#,
+    )?;
+    let mut entries = Vec::new();
+    for caps in entry_re.captures_iter(&contents) {
+        let name = caps.name("name").unwrap().as_str().to_string();
+        let hash = u32::from_str_radix(caps.name("hash").unwrap().as_str(), 16)?;
+        entries.push(SyscallEntry { name, hash });
+    }
+
+    ensure!(
+        !entries.is_empty(),
+        "no syscall entries found in {}",
+        snapshot_path.display()
+    );
+
+    Ok(entries)
+}
+
+fn parse_reference_syscalls() -> anyhow::Result<Vec<SyscallEntry>> {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let repo_root = manifest_dir
+        .parent()
+        .expect("wasm-neovm crate expected one directory below repo root");
+    let neo_dir = repo_root.join("neo/src/Neo/SmartContract");
+    if neo_dir.exists() {
+        parse_neovm_syscalls(&neo_dir)
+    } else {
+        parse_generated_syscalls(&manifest_dir.join("src/generated/syscalls.rs"))
+    }
+}
+
 #[test]
 fn neo_syscalls_match_reference() -> anyhow::Result<()> {
-    let mut expected = parse_neovm_syscalls()?;
+    let mut expected = parse_reference_syscalls()?;
     expected.sort();
 
     let mut actual: Vec<SyscallEntry> = wasm_neovm::syscalls::all()

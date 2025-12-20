@@ -13,8 +13,12 @@ use anyhow::{anyhow, bail, Result};
 use std::collections::HashMap;
 use wasm_encoder::{BlockType, Function, Instruction};
 
-use super::super::resources::{ensure_has_key, struct_for_index, struct_hash, write_resource_key, write_resource_value};
-use super::imports::{SCRATCH_KEY_OFFSET, SCRATCH_KEY_SIZE, SCRATCH_VALUE_OFFSET, SCRATCH_VALUE_SIZE};
+use super::super::resources::{
+    ensure_has_key, struct_for_index, struct_hash, write_resource_key, write_resource_value,
+};
+use super::imports::{
+    SCRATCH_KEY_OFFSET, SCRATCH_KEY_SIZE, SCRATCH_VALUE_OFFSET, SCRATCH_VALUE_SIZE,
+};
 use super::{ImportLayout, ValueKind};
 
 /// Emit the body for a single Move opcode
@@ -338,7 +342,12 @@ pub fn restore_stack(
 ///
 /// This function saves values from the WASM stack into local variables,
 /// performing type conversions as needed.
-pub fn store_stack(func: &mut Function, state: &[ValueKind], slots: &[u32], slot_types: &[ValueKind]) {
+pub fn store_stack(
+    func: &mut Function,
+    state: &[ValueKind],
+    slots: &[u32],
+    slot_types: &[ValueKind],
+) {
     for (idx, kind) in state.iter().enumerate().rev() {
         let slot = slots[idx];
         match slot_types.get(idx).copied().unwrap_or(ValueKind::I64) {

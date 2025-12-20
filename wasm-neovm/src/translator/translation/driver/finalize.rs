@@ -106,7 +106,10 @@ impl<'a> DriverState<'a> {
         missing.sort_unstable();
 
         if !missing.is_empty() {
-            bail!("did not translate exported functions: {}", missing.join(", "));
+            bail!(
+                "did not translate exported functions: {}",
+                missing.join(", ")
+            );
         }
 
         if self.methods.is_empty() {
@@ -215,4 +218,3 @@ impl<'a> DriverState<'a> {
         })
     }
 }
-

@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use move_neovm::{parse_move_bytecode, translate_to_wasm};
 
 /// Minimal Move bytecode module for benchmarking
@@ -53,15 +53,11 @@ fn bench_module_sizes(c: &mut Criterion) {
         // Pad with dummy data to simulate larger modules
         bytecode.extend(vec![0u8; size]);
 
-        group.bench_with_input(
-            BenchmarkId::from_parameter(size),
-            &bytecode,
-            |b, bc| {
-                b.iter(|| {
-                    let _ = parse_move_bytecode(black_box(bc));
-                })
-            },
-        );
+        group.bench_with_input(BenchmarkId::from_parameter(size), &bytecode, |b, bc| {
+            b.iter(|| {
+                let _ = parse_move_bytecode(black_box(bc));
+            })
+        });
     }
 
     group.finish();

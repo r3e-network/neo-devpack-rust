@@ -11,7 +11,9 @@ use anyhow::{bail, Context, Result};
 use std::collections::HashMap;
 use wasm_encoder::{BlockType, CodeSection, Function, FunctionSection, Instruction, ValType};
 
-use super::super::analysis::{analyze_stack, derive_slot_types, effective_locals, stack_effect, val_type_from_tag};
+use super::super::analysis::{
+    analyze_stack, derive_slot_types, effective_locals, stack_effect, val_type_from_tag,
+};
 use super::super::resources::build_struct_lookup;
 use super::instructions::emit_case_body;
 use super::ImportLayout;
