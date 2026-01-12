@@ -18,7 +18,7 @@ leb128 = "0.2"  # For ULEB128 decoding used in Move bytecode
 wasm-encoder = "0.239"
 
 [dev-dependencies]
-wasmparser = "0.239"
+wasmparser = "0.244"
 criterion = "0.5"
 
 [[bench]]
