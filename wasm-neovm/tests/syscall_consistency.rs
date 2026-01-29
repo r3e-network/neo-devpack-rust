@@ -14,7 +14,7 @@ struct SyscallEntry {
 fn parse_neovm_syscalls(neo_dir: &Path) -> anyhow::Result<Vec<SyscallEntry>> {
     let mut names: BTreeSet<String> = BTreeSet::new();
     let regex = Regex::new(r#"Register\("([^"]+)""#)?;
-    for entry in WalkDir::new(&neo_dir) {
+    for entry in WalkDir::new(neo_dir) {
         let entry = entry?;
         if entry.file_type().is_file()
             && entry

@@ -20,4 +20,3 @@ pub use crypto::NeoCrypto;
 pub use json::NeoJSON;
 pub use runtime::NeoRuntime;
 pub use storage::NeoStorage;
-

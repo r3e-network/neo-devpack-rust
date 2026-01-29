@@ -62,4 +62,3 @@ pub struct NeoContractPermission {
     pub contract: String,
     pub methods: Vec<String>,
 }
-

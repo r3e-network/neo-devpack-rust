@@ -74,6 +74,11 @@ help:
 	@echo "  test-cross-chain Run wasm-neovm cross-chain test suites"
 	@echo "  integration-tests  Run optional Neo Express integration harness"
 	@echo "  security-check Run cargo-audit/cargo-deny checks (requires cargo-audit/cargo-deny)"
+	@echo "  unused-deps     Check for unused dependencies (requires cargo-machete)"
+	@echo "  outdated        Check for outdated dependencies (requires cargo-outdated)"
+	@echo "  version-check   Verify version consistency across workspace"
+	@echo "  doc             Generate API documentation"
+	@echo "  quality-check   Run all quality checks (fmt, lint, test, security, version)"
 	@echo "  spec            Build the LaTeX specification in spec/"
 	@echo "  clean           Remove generated build artefacts"
 
@@ -295,6 +300,30 @@ security-check:
 	cargo deny --manifest-path wasm-neovm/Cargo.toml check -W unmaintained -W notice
 	cargo deny --manifest-path move-neovm/Cargo.toml check -W unmaintained -W notice
 	cargo deny --manifest-path rust-devpack/Cargo.toml check -W unmaintained -W notice
+
+# Check for unused dependencies (requires cargo-machete)
+unused-deps:
+	@echo "Checking for unused dependencies (install with: cargo install cargo-machete)..."
+	cargo machete --with-metadata
+
+# Check for outdated dependencies (requires cargo-outdated)
+outdated:
+	@echo "Checking for outdated dependencies (install with: cargo install cargo-outdated)..."
+	cargo outdated --workspace --root-deps-only
+
+# Check version consistency
+version-check:
+	@echo "Checking version consistency..."
+	@scripts/check_versions.sh
+
+# Generate documentation
+doc:
+	cargo doc --manifest-path wasm-neovm/Cargo.toml --no-deps --document-private-items
+	cargo doc --manifest-path rust-devpack/Cargo.toml --no-deps
+
+# Run all quality checks
+quality-check: fmt lint test security-check version-check
+	@echo "✅ All quality checks passed!"
 
 spec:
 	$(MAKE) -C spec

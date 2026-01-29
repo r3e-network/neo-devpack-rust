@@ -95,12 +95,7 @@ pub(crate) fn neo_storage(input: DeriveInput) -> TokenStream2 {
 
 pub(crate) fn neo_entry(input: ItemFn) -> TokenStream2 {
     let entry_name = input.sig.ident.to_string();
-    let kind = match entry_name.as_str() {
-        "deploy" => "deploy",
-        "update" => "update",
-        "destroy" => "destroy",
-        other => other,
-    };
+    let kind = entry_name.as_str();
 
     let metadata = serde_json::json!({
         "entry": {
@@ -240,8 +235,7 @@ pub(crate) fn neo_manifest_overlay(literal: &LitStr) -> TokenStream2 {
     let value = literal.value();
 
     if let Err(err) = serde_json::from_str::<serde_json::Value>(&value) {
-        return syn::Error::new(literal.span(), format!("invalid JSON: {err}"))
-            .to_compile_error();
+        return syn::Error::new(literal.span(), format!("invalid JSON: {err}")).to_compile_error();
     }
 
     codegen::manifest_overlay_tokens(&value)
@@ -389,4 +383,3 @@ pub(crate) fn neo_error(input: DeriveInput) -> TokenStream2 {
         }
     }
 }
-

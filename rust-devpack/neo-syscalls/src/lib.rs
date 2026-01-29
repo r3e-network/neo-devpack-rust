@@ -36,7 +36,7 @@ impl NeoVMSyscallRegistry {
     }
 
     pub fn get_instance() -> Self {
-        Self::new(&SYSCALLS)
+        Self::new(SYSCALLS)
     }
 
     pub fn iter(&self) -> Iter<'static, NeoVMSyscallInfo> {
@@ -62,6 +62,12 @@ pub struct NeoVMSyscallInfo {
 /// Neo N3 System Call Lowering
 pub struct NeoVMSyscallLowering;
 
+impl Default for NeoVMSyscallLowering {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl NeoVMSyscallLowering {
     pub fn new() -> Self {
         Self
@@ -83,21 +89,24 @@ impl NeoVMSyscallLowering {
 }
 
 /// Neo N3 System Call Registry Instance
-pub static SYSCALL_REGISTRY: NeoVMSyscallRegistry = NeoVMSyscallRegistry::new(&SYSCALLS);
+pub static SYSCALL_REGISTRY: NeoVMSyscallRegistry = NeoVMSyscallRegistry::new(SYSCALLS);
 
 const DEFAULT_CONTRACT_HASH: [u8; 20] = [0u8; 20];
+
+type ContractStore = Arc<RwLock<HashMap<Vec<u8>, Vec<u8>>>>;
 
 #[derive(Clone)]
 struct ContextHandle {
     read_only: bool,
     contract: [u8; 20],
-    store: Arc<RwLock<HashMap<Vec<u8>, Vec<u8>>>>,
+    store: ContractStore,
 }
 
+#[allow(clippy::type_complexity)]
 struct StorageState {
     next_context: AtomicU32,
     contexts: RwLock<HashMap<u32, ContextHandle>>,
-    contract_stores: RwLock<HashMap<[u8; 20], Arc<RwLock<HashMap<Vec<u8>, Vec<u8>>>>>>,
+    contract_stores: RwLock<HashMap<[u8; 20], ContractStore>>,
 }
 
 impl StorageState {
@@ -158,7 +167,7 @@ impl StorageState {
             .ok_or(NeoError::InvalidState)
     }
 
-    fn get_or_create_store(&self, contract: [u8; 20]) -> Arc<RwLock<HashMap<Vec<u8>, Vec<u8>>>> {
+    fn get_or_create_store(&self, contract: [u8; 20]) -> ContractStore {
         let mut stores = self
             .contract_stores
             .write()
@@ -381,4 +390,3 @@ impl NeoVMSyscall {
         Ok(NeoIterator::new(matches))
     }
 }
-

@@ -71,44 +71,44 @@ impl NeoJSON {
     }
 
     fn json_to_value(json: &JsonValue) -> NeoResult<NeoValue> {
-        let obj = json.as_object().ok_or_else(|| NeoError::InvalidType)?;
+        let obj = json.as_object().ok_or(NeoError::InvalidType)?;
         let kind = obj
             .get("type")
             .and_then(JsonValue::as_str)
-            .ok_or_else(|| NeoError::InvalidType)?;
+            .ok_or(NeoError::InvalidType)?;
 
         match kind {
             "Integer" => {
                 let value_str = obj
                     .get("value")
                     .and_then(JsonValue::as_str)
-                    .ok_or_else(|| NeoError::InvalidType)?;
-                let bigint = BigInt::parse_bytes(value_str.as_bytes(), 10)
-                    .ok_or_else(|| NeoError::InvalidType)?;
+                    .ok_or(NeoError::InvalidType)?;
+                let bigint =
+                    BigInt::parse_bytes(value_str.as_bytes(), 10).ok_or(NeoError::InvalidType)?;
                 Ok(NeoValue::from(NeoInteger::new(bigint)))
             }
             "Boolean" => {
                 let value = obj
                     .get("value")
                     .and_then(JsonValue::as_bool)
-                    .ok_or_else(|| NeoError::InvalidType)?;
+                    .ok_or(NeoError::InvalidType)?;
                 Ok(NeoValue::from(NeoBoolean::new(value)))
             }
             "String" => {
                 let value = obj
                     .get("value")
                     .and_then(JsonValue::as_str)
-                    .ok_or_else(|| NeoError::InvalidType)?;
+                    .ok_or(NeoError::InvalidType)?;
                 Ok(NeoValue::from(NeoString::from_str(value)))
             }
             "ByteString" => {
                 let array = obj
                     .get("value")
                     .and_then(JsonValue::as_array)
-                    .ok_or_else(|| NeoError::InvalidType)?;
+                    .ok_or(NeoError::InvalidType)?;
                 let mut bytes = Vec::with_capacity(array.len());
                 for item in array {
-                    let byte = item.as_u64().ok_or_else(|| NeoError::InvalidType)?;
+                    let byte = item.as_u64().ok_or(NeoError::InvalidType)?;
                     bytes.push(byte as u8);
                 }
                 Ok(NeoValue::from(NeoByteString::new(bytes)))
@@ -117,7 +117,7 @@ impl NeoJSON {
                 let array = obj
                     .get("value")
                     .and_then(JsonValue::as_array)
-                    .ok_or_else(|| NeoError::InvalidType)?;
+                    .ok_or(NeoError::InvalidType)?;
                 let mut values = NeoArray::new();
                 for item in array {
                     values.push(Self::json_to_value(item)?);
@@ -128,14 +128,12 @@ impl NeoJSON {
                 let entries = obj
                     .get("value")
                     .and_then(JsonValue::as_array)
-                    .ok_or_else(|| NeoError::InvalidType)?;
+                    .ok_or(NeoError::InvalidType)?;
                 let mut map = NeoMap::new();
                 for entry in entries {
-                    let entry_obj = entry.as_object().ok_or_else(|| NeoError::InvalidType)?;
-                    let key_json = entry_obj.get("key").ok_or_else(|| NeoError::InvalidType)?;
-                    let value_json = entry_obj
-                        .get("value")
-                        .ok_or_else(|| NeoError::InvalidType)?;
+                    let entry_obj = entry.as_object().ok_or(NeoError::InvalidType)?;
+                    let key_json = entry_obj.get("key").ok_or(NeoError::InvalidType)?;
+                    let value_json = entry_obj.get("value").ok_or(NeoError::InvalidType)?;
                     let key = Self::json_to_value(key_json)?;
                     let value = Self::json_to_value(value_json)?;
                     map.insert(key, value);
@@ -146,17 +144,15 @@ impl NeoJSON {
                 let fields = obj
                     .get("value")
                     .and_then(JsonValue::as_array)
-                    .ok_or_else(|| NeoError::InvalidType)?;
+                    .ok_or(NeoError::InvalidType)?;
                 let mut result = NeoStruct::new();
                 for field in fields {
-                    let field_obj = field.as_object().ok_or_else(|| NeoError::InvalidType)?;
+                    let field_obj = field.as_object().ok_or(NeoError::InvalidType)?;
                     let name = field_obj
                         .get("name")
                         .and_then(JsonValue::as_str)
-                        .ok_or_else(|| NeoError::InvalidType)?;
-                    let value_json = field_obj
-                        .get("value")
-                        .ok_or_else(|| NeoError::InvalidType)?;
+                        .ok_or(NeoError::InvalidType)?;
+                    let value_json = field_obj.get("value").ok_or(NeoError::InvalidType)?;
                     let value = Self::json_to_value(value_json)?;
                     result = result.with_field(name, value);
                 }
@@ -167,4 +163,3 @@ impl NeoJSON {
         }
     }
 }
-

@@ -7,7 +7,7 @@ pub struct NeoRuntimeContext;
 
 impl NeoRuntimeContext {
     pub fn new() -> Self {
-        Self::default()
+        Self
     }
 
     pub fn trigger(&self) -> NeoResult<NeoInteger> {
@@ -34,4 +34,3 @@ impl NeoRuntimeContext {
         NeoVMSyscall::get_executing_script_hash()
     }
 }
-

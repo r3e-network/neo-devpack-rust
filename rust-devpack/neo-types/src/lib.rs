@@ -30,4 +30,3 @@ pub use storage::NeoStorageContext;
 pub use string::NeoString;
 pub use traits::{NeoContract, NeoContractEntry, NeoContractMethodTrait};
 pub use value::{NeoStruct, NeoValue};
-

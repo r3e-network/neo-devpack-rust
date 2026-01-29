@@ -62,11 +62,9 @@ dependencies = [
 name = "neo-macros"
 version = "0.1.0"
 dependencies = [
- "neo-runtime",
- "neo-syscalls",
- "neo-types",
  "proc-macro2",
  "quote",
+ "serde",
  "serde_json",
  "syn",
 ]
@@ -75,22 +73,19 @@ dependencies = [
 name = "neo-runtime"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "neo-syscalls",
  "neo-types",
  "num-bigint",
+ "serde",
  "serde_json",
- "thiserror",
 ]
 
 [[package]]
 name = "neo-syscalls"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "neo-types",
  "once_cell",
- "thiserror",
 ]
 
 [[package]]

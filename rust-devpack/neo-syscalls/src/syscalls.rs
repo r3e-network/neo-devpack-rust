@@ -299,4 +299,3 @@ pub const SYSCALLS: &[NeoVMSyscallInfo] = &[
         description: "",
     },
 ];
-

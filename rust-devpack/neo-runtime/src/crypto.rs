@@ -61,4 +61,3 @@ impl NeoCrypto {
         Ok(NeoByteString::new(recovered))
     }
 }
-

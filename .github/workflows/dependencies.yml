@@ -1,0 +1,101 @@
+name: Dependency Management
+
+on:
+  schedule:
+    # Run every Sunday at 00:00 UTC
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Check for outdated dependencies
+  outdated:
+    name: Check Outdated Dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-outdated
+        run: cargo install cargo-outdated
+
+      - name: Check outdated dependencies - wasm-neovm
+        run: cargo outdated --manifest-path wasm-neovm/Cargo.toml --root-deps-only
+        continue-on-error: true
+
+      - name: Check outdated dependencies - rust-devpack
+        run: cargo outdated --manifest-path rust-devpack/Cargo.toml --root-deps-only
+        continue-on-error: true
+
+      - name: Check outdated dependencies - solana-compat
+        run: cargo outdated --manifest-path solana-compat/Cargo.toml --root-deps-only
+        continue-on-error: true
+
+      - name: Check outdated dependencies - move-neovm
+        run: cargo outdated --manifest-path move-neovm/Cargo.toml --root-deps-only
+        continue-on-error: true
+
+  # Check for unused dependencies
+  unused:
+    name: Find Unused Dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-machete
+        run: cargo install cargo-machete
+
+      - name: Find unused dependencies
+        run: cargo machete
+        continue-on-error: true
+
+  # Check for duplicate dependencies
+  duplicates:
+    name: Check Duplicate Dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-tree
+        run: rustup component add cargo
+
+      - name: Check duplicates - wasm-neovm
+        run: cargo tree --manifest-path wasm-neovm/Cargo.toml --duplicates
+        continue-on-error: true
+
+  # Generate SBOM
+  sbom:
+    name: Generate SBOM
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-cyclonedx
+        run: cargo install cargo-cyclonedx
+
+      - name: Generate SBOM - wasm-neovm
+        run: |
+          cd wasm-neovm && cargo cyclonedx
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: wasm-neovm/Cargo.toml.bom.xml

@@ -75,4 +75,3 @@ impl NeoRuntime {
         NeoStorage::get_context()
     }
 }
-

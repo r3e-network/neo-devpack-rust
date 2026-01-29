@@ -1,0 +1,84 @@
+[workspace]
+members = [
+    "wasm-neovm",
+    "move-neovm",
+    "solana-compat",
+    "integration-tests",
+    "rust-devpack",
+    "rust-devpack/neo-types",
+    "rust-devpack/neo-syscalls",
+    "rust-devpack/neo-runtime",
+    "rust-devpack/neo-macros",
+]
+
+exclude = [
+    "contracts",
+    "neo",
+    "spec",
+    "docs",
+    "scripts",
+]
+
+resolver = "2"
+
+[workspace.package]
+version = "0.4.0"
+edition = "2021"
+authors = ["Neo LLVM Team <team@r3e.network>"]
+license = "MIT"
+repository = "https://github.com/r3e-network/neo-llvm"
+homepage = "https://github.com/r3e-network/neo-llvm"
+rust-version = "1.70"
+
+[workspace.dependencies]
+# Core dependencies
+anyhow = "1.0"
+thiserror = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+once_cell = "1.19"
+bytes = "1.6"
+hex = "0.4"
+sha2 = "0.10"
+
+# WASM dependencies
+wasmparser = "0.239"
+wasm-encoder = "0.239"
+
+# CLI dependencies
+clap = { version = "4.5", features = ["derive"] }
+
+# Neo N3 dependencies
+neo-types = { path = "rust-devpack/neo-types", version = "0.1.0" }
+neo-syscalls = { path = "rust-devpack/neo-syscalls", version = "0.1.0" }
+neo-runtime = { path = "rust-devpack/neo-runtime", version = "0.1.0" }
+neo-macros = { path = "rust-devpack/neo-macros", version = "0.1.0" }
+neo-devpack = { path = "rust-devpack", version = "0.1.0" }
+
+# Internal dependencies
+wasm-neovm = { path = "wasm-neovm", version = "0.4.0" }
+move-neovm = { path = "move-neovm", version = "0.1.0" }
+neo-solana-compat = { path = "solana-compat", version = "0.1.0" }
+
+# Dev dependencies
+assert_cmd = "2.0"
+regex = "1.11"
+tempfile = "3.10"
+walkdir = "2.5"
+wat = "1.0"
+criterion = "0.5"
+diff = "0.1"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+
+[profile.dev]
+opt-level = 0
+debug = true
+
+[profile.test]
+opt-level = 0
+debug = true

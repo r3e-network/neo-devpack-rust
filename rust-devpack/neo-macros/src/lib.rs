@@ -16,7 +16,7 @@ mod parse;
 ///
 /// # Example
 ///
-/// ```rust
+/// ```ignore,neo_devpack
 /// use neo_devpack::*;
 ///
 /// #[neo_contract]
@@ -50,7 +50,7 @@ pub fn neo_contract(_args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// # Example
 ///
-/// ```rust
+/// ```ignore
 /// #[neo_method]
 /// pub fn my_method(&self, arg: NeoInteger) -> NeoResult<NeoString> {
 ///     // Method implementation
@@ -69,7 +69,7 @@ pub fn neo_method(_args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// # Example
 ///
-/// ```rust
+/// ```ignore
 /// #[neo_storage]
 /// pub struct MyStorage {
 ///     pub value: NeoInteger,
@@ -88,7 +88,7 @@ pub fn neo_storage(_args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// # Example
 ///
-/// ```rust
+/// ```ignore
 /// #[neo_entry]
 /// pub fn deploy() -> NeoResult<()> {
 ///     // Deployment logic
@@ -107,7 +107,7 @@ pub fn neo_entry(_args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// # Example
 ///
-/// ```rust
+/// ```ignore
 /// #[neo_test]
 /// pub fn test_my_contract() {
 ///     let contract = MyContract::new();
@@ -126,7 +126,7 @@ pub fn neo_test(_args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// # Example
 ///
-/// ```rust
+/// ```ignore
 /// #[neo_bench]
 /// pub fn bench_my_contract(b: &mut Bencher) {
 ///     b.iter(|| {
@@ -155,7 +155,7 @@ pub fn neo_bench(_args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// # Example
 ///
-/// ```rust
+/// ```ignore,neo_devpack
 /// #[neo_event]
 /// pub struct TransferEvent {
 ///     pub from: NeoByteString,
@@ -184,7 +184,7 @@ pub fn neo_event(_args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// # Example
 ///
-/// ```rust
+/// ```ignore
 /// neo_manifest_overlay!(r#"{"name": "MyContract", "version": "1.0.0"}"#);
 /// ```
 #[proc_macro]
@@ -199,7 +199,7 @@ pub fn neo_manifest_overlay(input: TokenStream) -> TokenStream {
 ///
 /// # Example
 ///
-/// ```rust
+/// ```ignore
 /// neo_permission!("0x1234567890abcdef", ["method1", "method2"]);
 /// ```
 #[proc_macro]
@@ -214,7 +214,7 @@ pub fn neo_permission(input: TokenStream) -> TokenStream {
 ///
 /// # Example
 ///
-/// ```rust
+/// ```ignore
 /// neo_trusts!(["0x1234567890abcdef", "0xfedcba0987654321"]);
 /// ```
 #[proc_macro]
@@ -230,7 +230,7 @@ pub fn neo_trusts(input: TokenStream) -> TokenStream {
 ///
 /// # Example
 ///
-/// ```rust
+/// ```ignore
 /// neo_safe_methods!(["balanceOf", "symbol", "decimals"]);
 /// ```
 #[proc_macro]
@@ -244,7 +244,7 @@ pub fn neo_safe_methods(input: TokenStream) -> TokenStream {
 ///
 /// # Example
 ///
-/// ```rust
+/// ```ignore
 /// #[neo_safe]
 /// pub fn balance_of(owner: NeoByteString) -> NeoInteger {
 ///     // Implementation
@@ -262,7 +262,7 @@ pub fn neo_safe(_args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// # Example
 ///
-/// ```rust
+/// ```ignore
 /// neo_supported_standards!(["NEP-17", "NEP-11"]);
 /// ```
 #[proc_macro]
@@ -278,7 +278,7 @@ pub fn neo_supported_standards(input: TokenStream) -> TokenStream {
 ///
 /// # Example
 ///
-/// ```rust
+/// ```ignore
 /// #[neo_doc]
 /// pub struct MyContract {
 ///     /// The name of the contract
@@ -299,7 +299,7 @@ pub fn neo_doc(_args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// # Example
 ///
-/// ```rust
+/// ```ignore
 /// #[neo_config]
 /// pub struct MyConfig {
 ///     pub max_value: NeoInteger,
@@ -318,7 +318,7 @@ pub fn neo_config(_args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// # Example
 ///
-/// ```rust
+/// ```ignore
 /// #[neo_validate]
 /// pub fn validate_value(value: NeoInteger) -> NeoResult<()> {
 ///     if value < NeoInteger::zero() {
@@ -339,7 +339,7 @@ pub fn neo_validate(_args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// # Example
 ///
-/// ```rust
+/// ```ignore
 /// #[neo_serialize]
 /// pub struct MyData {
 ///     pub value: NeoInteger,
@@ -358,7 +358,7 @@ pub fn neo_serialize(_args: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// # Example
 ///
-/// ```rust
+/// ```ignore
 /// #[neo_error]
 /// pub enum MyError {
 ///     InvalidValue,

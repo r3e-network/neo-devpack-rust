@@ -8,6 +8,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Note: This changelog tracks the `wasm-neovm` crate and repo-level tooling. Other crates in
 this repository follow independent versioning (currently 0.1.x).
 
+## [Unreleased]
+
+### Added
+- Enhanced CI/CD with dependency auditing workflows
+- Automated cargo-machete checks for unused dependencies
+- Version consistency validation across workspace
+- Improved code quality gates
+
+### Changed
+- Updated CHANGELOG format to follow Keep a Changelog standards
+- Enhanced documentation with additional badges and links
+
+### Fixed
+- Minor clippy warning in neo-runtime (unit struct construction)
+- Code formatting consistency in json.rs
+
 ## [0.4.0] - 2025-01-20
 
 ### Added

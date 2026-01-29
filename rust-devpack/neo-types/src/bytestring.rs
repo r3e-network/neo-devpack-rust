@@ -47,4 +47,3 @@ impl Default for NeoByteString {
         Self::new(vec![])
     }
 }
-

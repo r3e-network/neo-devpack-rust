@@ -40,4 +40,3 @@ impl NeoStorage {
         NeoVMSyscall::storage_find(context, prefix)
     }
 }
-

@@ -48,4 +48,3 @@ impl NeoError {
 
 /// Neo N3 Result type
 pub type NeoResult<T> = Result<T, NeoError>;
-

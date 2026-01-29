@@ -23,4 +23,3 @@ pub trait NeoContractMethodTrait {
     fn return_type() -> &'static str;
     fn execute(args: &[NeoValue]) -> NeoResult<NeoValue>;
 }
-

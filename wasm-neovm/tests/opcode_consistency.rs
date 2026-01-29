@@ -13,7 +13,7 @@ struct OpcodeEntry {
 fn parse_neovm_opcodes(
     opcodes_path: &Path,
 ) -> Result<Vec<OpcodeEntry>, Box<dyn std::error::Error>> {
-    let contents = fs::read_to_string(&opcodes_path)?;
+    let contents = fs::read_to_string(opcodes_path)?;
 
     let mut entries = Vec::new();
     let mut current_size: u8 = 0;

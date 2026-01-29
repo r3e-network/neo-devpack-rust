@@ -297,3 +297,95 @@ jobs:
 
       - name: Run benchmarks - move-neovm
         run: cargo bench --manifest-path move-neovm/Cargo.toml --no-fail-fast
+
+  # New: Check for unused dependencies
+  unused-deps:
+    name: Check Unused Dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-machete
+        run: cargo install cargo-machete
+
+      - name: Check unused dependencies
+        run: cargo machete --with-metadata
+        continue-on-error: true
+
+  # New: Documentation check
+  doc:
+    name: Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Check documentation - wasm-neovm
+        run: cargo doc --manifest-path wasm-neovm/Cargo.toml --no-deps --document-private-items
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+
+      - name: Check documentation - rust-devpack
+        run: cargo doc --manifest-path rust-devpack/Cargo.toml --no-deps
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+
+  # New: Build verification for all targets
+  build:
+    name: Build Verification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build wasm-neovm
+        run: cargo build --manifest-path wasm-neovm/Cargo.toml --release
+
+      - name: Build rust-devpack
+        run: cargo build --manifest-path rust-devpack/Cargo.toml --release
+
+      - name: Build solana-compat
+        run: cargo build --manifest-path solana-compat/Cargo.toml --release
+
+      - name: Build move-neovm
+        run: cargo build --manifest-path move-neovm/Cargo.toml --release
+
+      - name: Build example contracts
+        run: |
+          cargo build --manifest-path contracts/hello-world/Cargo.toml --release --target wasm32-unknown-unknown
+          cargo build --manifest-path contracts/nep17-token/Cargo.toml --release --target wasm32-unknown-unknown
+          cargo build --manifest-path contracts/nep11-nft/Cargo.toml --release --target wasm32-unknown-unknown
+
+  # New: Version consistency check
+  version-check:
+    name: Version Consistency
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check version consistency
+        run: |
+          chmod +x scripts/check_versions.sh
+          ./scripts/check_versions.sh

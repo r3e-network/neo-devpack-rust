@@ -66,14 +66,14 @@ impl<'a> Add<&'a NeoInteger> for NeoInteger {
     }
 }
 
-impl<'a> Add<NeoInteger> for &'a NeoInteger {
+impl Add<NeoInteger> for &NeoInteger {
     type Output = NeoInteger;
     fn add(self, rhs: NeoInteger) -> Self::Output {
         NeoInteger::new(self.0.clone() + rhs.0)
     }
 }
 
-impl<'a, 'b> Add<&'b NeoInteger> for &'a NeoInteger {
+impl<'b> Add<&'b NeoInteger> for &NeoInteger {
     type Output = NeoInteger;
     fn add(self, rhs: &'b NeoInteger) -> Self::Output {
         NeoInteger::new(self.0.clone() + rhs.0.clone())
@@ -87,21 +87,21 @@ impl Sub for NeoInteger {
     }
 }
 
-impl<'a> Sub<&'a NeoInteger> for NeoInteger {
+impl Sub<&NeoInteger> for NeoInteger {
     type Output = Self;
-    fn sub(self, rhs: &'a NeoInteger) -> Self::Output {
+    fn sub(self, rhs: &NeoInteger) -> Self::Output {
         Self(self.0 - rhs.0.clone())
     }
 }
 
-impl<'a> Sub<NeoInteger> for &'a NeoInteger {
+impl Sub<NeoInteger> for &NeoInteger {
     type Output = NeoInteger;
     fn sub(self, rhs: NeoInteger) -> Self::Output {
         NeoInteger::new(self.0.clone() - rhs.0)
     }
 }
 
-impl<'a, 'b> Sub<&'b NeoInteger> for &'a NeoInteger {
+impl<'b> Sub<&'b NeoInteger> for &NeoInteger {
     type Output = NeoInteger;
     fn sub(self, rhs: &'b NeoInteger) -> Self::Output {
         NeoInteger::new(self.0.clone() - rhs.0.clone())
@@ -115,21 +115,21 @@ impl Mul for NeoInteger {
     }
 }
 
-impl<'a> Mul<&'a NeoInteger> for NeoInteger {
+impl Mul<&NeoInteger> for NeoInteger {
     type Output = Self;
-    fn mul(self, rhs: &'a NeoInteger) -> Self::Output {
+    fn mul(self, rhs: &NeoInteger) -> Self::Output {
         Self(self.0 * rhs.0.clone())
     }
 }
 
-impl<'a> Mul<NeoInteger> for &'a NeoInteger {
+impl Mul<NeoInteger> for &NeoInteger {
     type Output = NeoInteger;
     fn mul(self, rhs: NeoInteger) -> Self::Output {
         NeoInteger::new(self.0.clone() * rhs.0)
     }
 }
 
-impl<'a, 'b> Mul<&'b NeoInteger> for &'a NeoInteger {
+impl<'b> Mul<&'b NeoInteger> for &NeoInteger {
     type Output = NeoInteger;
     fn mul(self, rhs: &'b NeoInteger) -> Self::Output {
         NeoInteger::new(self.0.clone() * rhs.0.clone())
@@ -143,21 +143,21 @@ impl Div for NeoInteger {
     }
 }
 
-impl<'a> Div<&'a NeoInteger> for NeoInteger {
+impl Div<&NeoInteger> for NeoInteger {
     type Output = Self;
-    fn div(self, rhs: &'a NeoInteger) -> Self::Output {
+    fn div(self, rhs: &NeoInteger) -> Self::Output {
         Self(self.0 / rhs.0.clone())
     }
 }
 
-impl<'a> Div<NeoInteger> for &'a NeoInteger {
+impl Div<NeoInteger> for &NeoInteger {
     type Output = NeoInteger;
     fn div(self, rhs: NeoInteger) -> Self::Output {
         NeoInteger::new(self.0.clone() / rhs.0)
     }
 }
 
-impl<'a, 'b> Div<&'b NeoInteger> for &'a NeoInteger {
+impl<'b> Div<&'b NeoInteger> for &NeoInteger {
     type Output = NeoInteger;
     fn div(self, rhs: &'b NeoInteger) -> Self::Output {
         NeoInteger::new(self.0.clone() / rhs.0.clone())
@@ -171,21 +171,21 @@ impl Rem for NeoInteger {
     }
 }
 
-impl<'a> Rem<&'a NeoInteger> for NeoInteger {
+impl Rem<&NeoInteger> for NeoInteger {
     type Output = Self;
-    fn rem(self, rhs: &'a NeoInteger) -> Self::Output {
+    fn rem(self, rhs: &NeoInteger) -> Self::Output {
         Self(self.0 % rhs.0.clone())
     }
 }
 
-impl<'a> Rem<NeoInteger> for &'a NeoInteger {
+impl Rem<NeoInteger> for &NeoInteger {
     type Output = NeoInteger;
     fn rem(self, rhs: NeoInteger) -> Self::Output {
         NeoInteger::new(self.0.clone() % rhs.0)
     }
 }
 
-impl<'a, 'b> Rem<&'b NeoInteger> for &'a NeoInteger {
+impl<'b> Rem<&'b NeoInteger> for &NeoInteger {
     type Output = NeoInteger;
     fn rem(self, rhs: &'b NeoInteger) -> Self::Output {
         NeoInteger::new(self.0.clone() % rhs.0.clone())
@@ -199,21 +199,21 @@ impl BitAnd for NeoInteger {
     }
 }
 
-impl<'a> BitAnd<&'a NeoInteger> for NeoInteger {
+impl BitAnd<&NeoInteger> for NeoInteger {
     type Output = Self;
-    fn bitand(self, rhs: &'a NeoInteger) -> Self::Output {
+    fn bitand(self, rhs: &NeoInteger) -> Self::Output {
         Self(self.0 & rhs.0.clone())
     }
 }
 
-impl<'a> BitAnd<NeoInteger> for &'a NeoInteger {
+impl BitAnd<NeoInteger> for &NeoInteger {
     type Output = NeoInteger;
     fn bitand(self, rhs: NeoInteger) -> Self::Output {
         NeoInteger::new(self.0.clone() & rhs.0)
     }
 }
 
-impl<'a, 'b> BitAnd<&'b NeoInteger> for &'a NeoInteger {
+impl<'b> BitAnd<&'b NeoInteger> for &NeoInteger {
     type Output = NeoInteger;
     fn bitand(self, rhs: &'b NeoInteger) -> Self::Output {
         NeoInteger::new(self.0.clone() & rhs.0.clone())
@@ -227,21 +227,21 @@ impl BitOr for NeoInteger {
     }
 }
 
-impl<'a> BitOr<&'a NeoInteger> for NeoInteger {
+impl BitOr<&NeoInteger> for NeoInteger {
     type Output = Self;
-    fn bitor(self, rhs: &'a NeoInteger) -> Self::Output {
+    fn bitor(self, rhs: &NeoInteger) -> Self::Output {
         Self(self.0 | rhs.0.clone())
     }
 }
 
-impl<'a> BitOr<NeoInteger> for &'a NeoInteger {
+impl BitOr<NeoInteger> for &NeoInteger {
     type Output = NeoInteger;
     fn bitor(self, rhs: NeoInteger) -> Self::Output {
         NeoInteger::new(self.0.clone() | rhs.0)
     }
 }
 
-impl<'a, 'b> BitOr<&'b NeoInteger> for &'a NeoInteger {
+impl<'b> BitOr<&'b NeoInteger> for &NeoInteger {
     type Output = NeoInteger;
     fn bitor(self, rhs: &'b NeoInteger) -> Self::Output {
         NeoInteger::new(self.0.clone() | rhs.0.clone())
@@ -255,21 +255,21 @@ impl BitXor for NeoInteger {
     }
 }
 
-impl<'a> BitXor<&'a NeoInteger> for NeoInteger {
+impl BitXor<&NeoInteger> for NeoInteger {
     type Output = Self;
-    fn bitxor(self, rhs: &'a NeoInteger) -> Self::Output {
+    fn bitxor(self, rhs: &NeoInteger) -> Self::Output {
         Self(self.0 ^ rhs.0.clone())
     }
 }
 
-impl<'a> BitXor<NeoInteger> for &'a NeoInteger {
+impl BitXor<NeoInteger> for &NeoInteger {
     type Output = NeoInteger;
     fn bitxor(self, rhs: NeoInteger) -> Self::Output {
         NeoInteger::new(self.0.clone() ^ rhs.0)
     }
 }
 
-impl<'a, 'b> BitXor<&'b NeoInteger> for &'a NeoInteger {
+impl<'b> BitXor<&'b NeoInteger> for &NeoInteger {
     type Output = NeoInteger;
     fn bitxor(self, rhs: &'b NeoInteger) -> Self::Output {
         NeoInteger::new(self.0.clone() ^ rhs.0.clone())
@@ -290,7 +290,7 @@ impl Shl<u32> for NeoInteger {
     }
 }
 
-impl<'a> Shl<u32> for &'a NeoInteger {
+impl Shl<u32> for &NeoInteger {
     type Output = NeoInteger;
     fn shl(self, rhs: u32) -> Self::Output {
         NeoInteger::new(self.0.clone() << rhs)
@@ -304,7 +304,7 @@ impl Shr<u32> for NeoInteger {
     }
 }
 
-impl<'a> Shr<u32> for &'a NeoInteger {
+impl Shr<u32> for &NeoInteger {
     type Output = NeoInteger;
     fn shr(self, rhs: u32) -> Self::Output {
         NeoInteger::new(self.0.clone() >> rhs)
@@ -346,4 +346,3 @@ impl Default for NeoInteger {
         NeoInteger::zero()
     }
 }
-

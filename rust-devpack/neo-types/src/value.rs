@@ -55,6 +55,10 @@ impl NeoStruct {
         self.fields.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.fields.is_empty()
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = (&str, &NeoValue)> {
         self.fields
             .iter()
@@ -178,4 +182,3 @@ impl From<NeoStruct> for NeoValue {
         NeoValue::Struct(value)
     }
 }
-

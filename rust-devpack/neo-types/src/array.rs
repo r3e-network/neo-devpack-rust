@@ -69,4 +69,3 @@ impl<T> From<Vec<T>> for NeoArray<T> {
         Self { data }
     }
 }
-

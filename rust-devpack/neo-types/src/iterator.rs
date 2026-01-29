@@ -12,6 +12,7 @@ impl<T> NeoIterator<T> {
         Self { data, index: 0 }
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> Option<T> {
         if self.index < self.data.len() {
             let item = self.data.remove(self.index);
@@ -25,4 +26,3 @@ impl<T> NeoIterator<T> {
         self.index < self.data.len()
     }
 }
-
