@@ -10,7 +10,7 @@ this repository follow independent versioning (currently 0.1.x).
 
 ## [Unreleased]
 
-## [0.4.1] - 2025-01-29
+## [0.4.1] - 2026-01-29
 
 ### Added
 - Enhanced CI/CD with dependency auditing workflows
@@ -30,6 +30,10 @@ this repository follow independent versioning (currently 0.1.x).
 - Code formatting consistency across all crates
 - Fixed rustdoc warnings in `move-neovm` (unclosed HTML tag)
 - Fixed rustdoc warnings in `wasm-neovm` (private intra-doc links)
+- Fixed compilation errors in `wasm-neovm` translation layer
+- Fixed borrow checker issues in control flow translation
+- Fixed API compatibility with wasmparser 0.239
+- Fixed test utility trait bounds for Debug compatibility
 
 ## [0.4.0] - 2025-01-20
 

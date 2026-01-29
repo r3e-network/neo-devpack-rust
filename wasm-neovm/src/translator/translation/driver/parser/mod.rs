@@ -9,6 +9,9 @@ mod start;
 
 impl<'a> DriverState<'a> {
     pub(super) fn parse_payloads(&mut self, bytes: &[u8]) -> Result<()> {
+        #[cfg(feature = "profile")]
+        let start = std::time::Instant::now();
+
         let parser = Parser::new(0);
 
         for payload in parser.parse_all(bytes) {
@@ -38,6 +41,9 @@ impl<'a> DriverState<'a> {
                 _ => {}
             }
         }
+
+        #[cfg(feature = "profile")]
+        crate::translator::profiling::PROFILE.record_parse(start.elapsed().as_nanos() as u64);
 
         Ok(())
     }

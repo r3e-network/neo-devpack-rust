@@ -10,7 +10,8 @@ pub(crate) struct MemoryConfig {
     pub(super) maximum_pages: Option<u32>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+// Derive Hash for use with HashMap (Round 63 optimization)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) enum MemoryHelperKind {
     Load(u32),
     Store(u32),
@@ -22,7 +23,7 @@ pub(crate) enum MemoryHelperKind {
     EnvMemset,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) enum BitHelperKind {
     Clz(u32),
     Ctz(u32),
@@ -39,7 +40,7 @@ impl BitHelperKind {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) enum TableHelperKind {
     Get(usize),
     Set(usize),

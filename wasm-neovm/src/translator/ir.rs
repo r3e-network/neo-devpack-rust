@@ -11,10 +11,20 @@ pub struct FunctionImport {
 
 /// Tracks Wasm function signatures and their type indices to decouple parsing
 /// from translation logic.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct ModuleTypes {
     signatures: Vec<FuncType>,
     defined_function_types: Vec<u32>,
+}
+
+impl Default for ModuleTypes {
+    fn default() -> Self {
+        // Pre-allocate with typical capacities (Round 62 optimization)
+        Self {
+            signatures: Vec::with_capacity(64),
+            defined_function_types: Vec::with_capacity(64),
+        }
+    }
 }
 
 impl ModuleTypes {

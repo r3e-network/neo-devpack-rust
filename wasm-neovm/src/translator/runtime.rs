@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 
 use anyhow::{anyhow, bail, Context, Result};
 use wasmparser::{ConstExpr, FuncType, Operator, ValType};
@@ -63,9 +63,10 @@ pub(crate) struct RuntimeHelpers {
     memory_init_suppressed: bool,
     memory_config: MemoryConfig,
     memory_defined: bool,
-    memory_helpers: BTreeMap<MemoryHelperKind, HelperRecord>,
-    bit_helpers: BTreeMap<BitHelperKind, HelperRecord>,
-    table_helpers: BTreeMap<TableHelperKind, HelperRecord>,
+    // HashMap with pre-allocated capacity for O(1) lookups (Round 63 optimization)
+    memory_helpers: HashMap<MemoryHelperKind, HelperRecord>,
+    bit_helpers: HashMap<BitHelperKind, HelperRecord>,
+    table_helpers: HashMap<TableHelperKind, HelperRecord>,
     data_segments: Vec<DataSegmentInfo>,
     element_segments: Vec<ElementSegmentInfo>,
     next_data_index: usize,
@@ -74,6 +75,35 @@ pub(crate) struct RuntimeHelpers {
     tables: Vec<TableDescriptor>,
     start_slot: Option<usize>,
     start_call_positions: Vec<usize>,
+}
+
+impl RuntimeHelpers {
+    /// Create with pre-allocated capacities based on expected usage (Round 62, 63 optimizations)
+    pub(crate) fn with_capacity(
+        expected_data_segments: usize,
+        expected_element_segments: usize,
+        expected_globals: usize,
+    ) -> Self {
+        Self {
+            memory_init_offset: None,
+            memory_init_calls: Vec::with_capacity(4),
+            memory_init_suppressed: false,
+            memory_config: MemoryConfig::default(),
+            memory_defined: false,
+            // Pre-sized HashMaps to avoid rehashing (Round 63 optimization)
+            memory_helpers: HashMap::with_capacity(16),
+            bit_helpers: HashMap::with_capacity(8),
+            table_helpers: HashMap::with_capacity(8),
+            data_segments: Vec::with_capacity(expected_data_segments),
+            element_segments: Vec::with_capacity(expected_element_segments),
+            next_data_index: 0,
+            next_element_index: 0,
+            globals: Vec::with_capacity(expected_globals),
+            tables: Vec::with_capacity(4),
+            start_slot: None,
+            start_call_positions: Vec::with_capacity(2),
+        }
+    }
 }
 
 pub(crate) struct StartDescriptor {

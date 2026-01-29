@@ -69,3 +69,29 @@ impl<T> From<Vec<T>> for NeoArray<T> {
         Self { data }
     }
 }
+
+impl<T> FromIterator<T> for NeoArray<T> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        Self {
+            data: Vec::from_iter(iter),
+        }
+    }
+}
+
+impl<T> Extend<T> for NeoArray<T> {
+    fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
+        self.data.extend(iter);
+    }
+}
+
+impl<T: PartialEq> PartialEq<Vec<T>> for NeoArray<T> {
+    fn eq(&self, other: &Vec<T>) -> bool {
+        self.data == *other
+    }
+}
+
+impl<T: PartialEq> PartialEq<NeoArray<T>> for Vec<T> {
+    fn eq(&self, other: &NeoArray<T>) -> bool {
+        *self == other.data
+    }
+}

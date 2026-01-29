@@ -1,3 +1,6 @@
+// Copyright (c) 2025 R3E Network
+// Licensed under the MIT License
+
 //! Neo N3 Macros
 //!
 //! This crate provides procedural macros for Neo N3 smart contract development.

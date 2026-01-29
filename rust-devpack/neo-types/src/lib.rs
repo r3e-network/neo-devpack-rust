@@ -1,3 +1,6 @@
+// Copyright (c) 2025 R3E Network
+// Licensed under the MIT License
+
 //! Neo N3 Core Types
 //!
 //! This crate provides the core types and data structures for Neo N3 smart contract development.

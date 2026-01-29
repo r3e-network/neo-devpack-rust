@@ -1,3 +1,6 @@
+// Copyright (c) 2025 R3E Network
+// Licensed under the MIT License
+
 //! Neo N3 Runtime facade
 //!
 //! This crate provides a lightweight façade over the Neo runtime surface so

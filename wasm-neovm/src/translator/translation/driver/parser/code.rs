@@ -1,4 +1,4 @@
-use super::super::super::function::translate_function;
+use super::super::super::function::{translate_function, TranslationContext};
 use super::super::*;
 
 impl<'a> DriverState<'a> {
@@ -67,22 +67,24 @@ impl<'a> DriverState<'a> {
 
         let suppress_init = self.start_function == Some(func_index as u32);
         let was_suppressed = self.runtime.set_memory_init_suppressed(suppress_init);
-        let translation_result = translate_function(
+
+        let mut ctx = TranslationContext {
             func_type,
-            &body,
-            &mut self.script,
-            self.frontend.imports(),
-            self.frontend.module_types().signatures(),
-            self.frontend.module_types().defined_type_indices(),
-            &mut self.runtime,
-            &self.tables,
+            body: &body,
+            script: &mut self.script,
+            imports: self.frontend.imports(),
+            types: self.frontend.module_types().signatures(),
+            func_type_indices: self.frontend.module_types().defined_type_indices(),
+            runtime: &mut self.runtime,
+            tables: &self.tables,
             functions,
-            func_index,
-            self.start_function,
+            function_index: func_index,
+            start_function: self.start_function,
             function_name,
-            &mut self.feature_tracker,
-            self.adapter.as_ref(),
-        );
+            features: &mut self.feature_tracker,
+            adapter: self.adapter.as_ref(),
+        };
+        let translation_result = translate_function(&mut ctx);
         self.runtime.set_memory_init_suppressed(was_suppressed);
         let return_kind = translation_result
             .with_context(|| format!("failed to translate function '{}'", function_name))?;

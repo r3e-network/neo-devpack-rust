@@ -26,34 +26,40 @@ pub(crate) fn handle_import_call(
         )
     })?;
 
-    let module = import.module.to_ascii_lowercase();
+    // Zero-copy case-insensitive module matching (Round 69 optimization)
+    // Avoids to_ascii_lowercase() allocation by using eq_ignore_ascii_case
     if let Some(descriptor) = adapter.resolve_syscall(&import.module, &import.name) {
         let emitted = super::syscall::emit_descriptor_syscall(descriptor, script)?;
         features.register_syscall(emitted);
         return Ok(());
     }
 
-    match module.as_str() {
-        "opcode" => super::opcode::emit_opcode_call(import, func_type, params, script),
-        "syscall" => {
+    // Fast path using case-insensitive comparison without allocation (Round 69)
+    let module = &import.module;
+    match () {
+        _ if module.eq_ignore_ascii_case("opcode") => {
+            super::opcode::emit_opcode_call(import, func_type, params, script)
+        }
+        _ if module.eq_ignore_ascii_case("syscall") => {
             let descriptor = super::syscall::emit_syscall_call(import, script)?;
             features.register_syscall(descriptor);
             Ok(())
         }
-        "neo" => {
+        _ if module.eq_ignore_ascii_case("neo") => {
             let descriptor = super::syscall::emit_neo_syscall(import, script)?;
             features.register_syscall(descriptor);
             Ok(())
         }
-        other => {
+        _ => {
             if adapter.recognizes_module(&import.module) {
                 bail!(
-                    "import module '{}' is recognized for {:?} but '{other}' could not be mapped",
+                    "import module '{}' is recognized for {:?} but '{}' could not be mapped",
                     import.module,
-                    adapter.source_chain()
+                    adapter.source_chain(),
+                    module
                 );
             }
-            bail!("unsupported import module '{}::{}'", other, import.name)
+            bail!("unsupported import module '{}::{}'", module, import.name)
         }
     }
 }

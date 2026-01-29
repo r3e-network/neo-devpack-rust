@@ -1,3 +1,6 @@
+// Copyright (c) 2025 R3E Network
+// Licensed under the MIT License
+
 //! wasm-neovm: WebAssembly to NeoVM translator
 //!
 //! This crate provides functionality to translate WebAssembly modules into

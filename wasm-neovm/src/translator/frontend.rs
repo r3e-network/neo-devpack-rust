@@ -10,9 +10,10 @@ pub struct ModuleFrontend {
 
 impl ModuleFrontend {
     pub fn new() -> Self {
+        // Pre-allocate with typical capacities (Round 62 optimization)
         Self {
             module_types: ModuleTypes::default(),
-            imports: Vec::new(),
+            imports: Vec::with_capacity(32),
         }
     }
 

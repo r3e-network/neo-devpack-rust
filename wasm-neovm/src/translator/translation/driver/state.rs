@@ -28,6 +28,10 @@ pub(super) struct DriverState<'a> {
 
 impl<'a> DriverState<'a> {
     pub(super) fn new(config: TranslationConfig<'a>) -> Self {
+        // Pre-size collections based on typical contract sizes (Round 62, 63 optimizations)
+        const TYPICAL_SCRIPT_CAPACITY: usize = 4096;
+        const TYPICAL_METHODS_CAPACITY: usize = 32;
+
         Self {
             contract_name: config.contract_name,
             adapter: get_adapter(config.source_chain),
@@ -35,14 +39,17 @@ impl<'a> DriverState<'a> {
             frontend: ModuleFrontend::new(),
             exported_funcs: BTreeMap::new(),
             import_export_indices: BTreeSet::new(),
-            tables: Vec::new(),
-            script: Vec::new(),
-            runtime: RuntimeHelpers::default(),
+            tables: Vec::with_capacity(4),
+            // Pre-allocate script buffer with typical capacity (Round 62 optimization)
+            script: Vec::with_capacity(TYPICAL_SCRIPT_CAPACITY),
+            // Use pre-allocated RuntimeHelpers (Round 62, 63 optimizations)
+            runtime: RuntimeHelpers::with_capacity(8, 8, 16),
             feature_tracker: FeatureTracker::default(),
-            methods: Vec::new(),
-            overlay_safe_methods: HashSet::new(),
+            methods: Vec::with_capacity(TYPICAL_METHODS_CAPACITY),
+            // Pre-size HashSet for faster lookups (Round 63 optimization)
+            overlay_safe_methods: HashSet::with_capacity(8),
             manifest_overlay: None,
-            section_method_tokens: Vec::new(),
+            section_method_tokens: Vec::with_capacity(16),
             section_source: None,
             saw_code_section: false,
             next_defined_index: 0,

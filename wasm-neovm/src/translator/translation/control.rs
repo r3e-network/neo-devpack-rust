@@ -35,10 +35,18 @@ pub(super) struct ControlFrame {
     pub(super) if_then_end_reachable: Option<bool>,
 }
 
-pub(super) fn block_result_count(ty: BlockType, types: &[FuncType]) -> Result<usize> {
-    let results: Vec<ValType> = match ty {
-        BlockType::Empty => Vec::new(),
-        BlockType::Type(ty) => vec![ty],
+/// Returns the result types for a block type using slice-based returns (Round 65 optimization)
+fn block_result_types<'a>(
+    ty: BlockType,
+    types: &'a [FuncType],
+    single_type_buffer: &'a mut [ValType; 1],
+) -> Result<&'a [ValType]> {
+    match ty {
+        BlockType::Empty => Ok(&[]),
+        BlockType::Type(ty) => {
+            single_type_buffer[0] = ty;
+            Ok(&single_type_buffer[..])
+        }
         BlockType::FuncType(idx) => {
             let func = types
                 .get(idx as usize)
@@ -49,14 +57,20 @@ pub(super) fn block_result_count(ty: BlockType, types: &[FuncType]) -> Result<us
                     idx
                 );
             }
-            func.results().to_vec()
+            Ok(func.results())
         }
-    };
+    }
+}
+
+pub(super) fn block_result_count(ty: BlockType, types: &[FuncType]) -> Result<usize> {
+    // Stack-allocated buffer for single-type results (Round 61, 65 optimizations)
+    let mut single_type_buffer = [ValType::I32; 1];
+    let results = block_result_types(ty, types, &mut single_type_buffer)?;
 
     if results.len() > 1 {
         bail!("blocks with multi-value results are not supported");
     }
-    for ty in &results {
+    for ty in results {
         match ty {
             ValType::I32 | ValType::I64 => {}
             ValType::F32 | ValType::F64 => return numeric::unsupported_float("block result type"),

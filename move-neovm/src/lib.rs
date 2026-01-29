@@ -1,3 +1,6 @@
+// Copyright (c) 2025 R3E Network
+// Licensed under the MIT License
+
 //! Move Bytecode to NeoVM Translator
 //!
 //! This crate provides a minimal Move bytecode → WASM translator to feed the

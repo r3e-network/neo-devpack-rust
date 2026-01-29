@@ -7,6 +7,9 @@ use super::state::DriverState;
 
 impl<'a> DriverState<'a> {
     pub(super) fn finalize(mut self) -> Result<Translation> {
+        #[cfg(feature = "profile")]
+        let start = std::time::Instant::now();
+
         if !self.saw_code_section && self.import_export_indices.is_empty() {
             bail!("input module does not contain a code section");
         }
@@ -209,6 +212,9 @@ impl<'a> DriverState<'a> {
         )?;
 
         validate_script(&self.script).context("generated NeoVM script failed validation")?;
+
+        #[cfg(feature = "profile")]
+        crate::translator::profiling::PROFILE.record_finalize(start.elapsed().as_nanos() as u64);
 
         Ok(Translation {
             script: self.script,

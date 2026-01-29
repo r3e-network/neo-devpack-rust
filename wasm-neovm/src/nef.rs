@@ -10,22 +10,35 @@ const COMPILER: &str = concat!("neo-llvm wasm-neovm ", env!("CARGO_PKG_VERSION")
 const MAX_SOURCE_LENGTH: usize = 256;
 const MAX_METHOD_NAME_LENGTH: usize = 32;
 
+// NEF serialization constants
+const VAR_UINT_16BIT_PREFIX: u8 = 0xFD;
+const VAR_UINT_32BIT_PREFIX: u8 = 0xFE;
+const VAR_UINT_64BIT_PREFIX: u8 = 0xFF;
+const VAR_UINT_THRESHOLD_16BIT: u64 = 0xFD;
+const VAR_UINT_THRESHOLD_32BIT: u64 = 0xFFFF;
+const VAR_UINT_THRESHOLD_64BIT: u64 = 0xFFFF_FFFF;
+const COMPILER_FIELD_SIZE: usize = 64;
+pub(crate) const HASH160_LENGTH: usize = 20;
+const CHECKSUM_LENGTH: usize = 4;
+const METHOD_TOKEN_RESERVED_BYTES: usize = 2;
+// Note: Reserved byte value is 0, inlined in code
+
 /// Write a NEF artefact containing the provided script payload.
 pub fn write_nef<P: AsRef<Path>>(script: &[u8], output_path: P) -> Result<()> {
     write_nef_with_metadata(script, None, &[], output_path)
 }
 
 fn write_var_uint(buffer: &mut Vec<u8>, value: u64) {
-    if value < 0xFD {
+    if value < VAR_UINT_THRESHOLD_16BIT {
         buffer.push(value as u8);
-    } else if value <= 0xFFFF {
-        buffer.push(0xFD);
+    } else if value <= VAR_UINT_THRESHOLD_32BIT {
+        buffer.push(VAR_UINT_16BIT_PREFIX);
         buffer.extend_from_slice(&(value as u16).to_le_bytes());
-    } else if value <= 0xFFFF_FFFF {
-        buffer.push(0xFE);
+    } else if value <= VAR_UINT_THRESHOLD_64BIT {
+        buffer.push(VAR_UINT_32BIT_PREFIX);
         buffer.extend_from_slice(&(value as u32).to_le_bytes());
     } else {
-        buffer.push(0xFF);
+        buffer.push(VAR_UINT_64BIT_PREFIX);
         buffer.extend_from_slice(&value.to_le_bytes());
     }
 }
@@ -45,11 +58,11 @@ fn write_var_string(buffer: &mut Vec<u8>, value: &str) -> Result<()> {
     Ok(())
 }
 
-fn compute_checksum(bytes: &[u8]) -> [u8; 4] {
+fn compute_checksum(bytes: &[u8]) -> [u8; CHECKSUM_LENGTH] {
     let hash = Sha256::digest(bytes);
     let hash = Sha256::digest(hash);
-    let mut checksum = [0u8; 4];
-    checksum.copy_from_slice(&hash[..4]);
+    let mut checksum = [0u8; CHECKSUM_LENGTH];
+    checksum.copy_from_slice(&hash[..CHECKSUM_LENGTH]);
     checksum
 }
 
@@ -70,7 +83,7 @@ pub fn write_nef_with_metadata<P: AsRef<Path>>(
     buffer.extend_from_slice(&NEF_MAGIC.to_le_bytes());
 
     let compiler_bytes = COMPILER.as_bytes();
-    let mut compiler_field = [0u8; 64];
+    let mut compiler_field = [0u8; COMPILER_FIELD_SIZE];
     compiler_field[..compiler_bytes.len()].copy_from_slice(compiler_bytes);
     buffer.extend_from_slice(&compiler_field);
 
@@ -83,7 +96,7 @@ pub fn write_nef_with_metadata<P: AsRef<Path>>(
     write_var_bytes(&mut buffer, script);
 
     let checksum = compute_checksum(&buffer);
-    buffer.extend_from_slice(&checksum);
+    buffer.extend_from_slice(&checksum[..CHECKSUM_LENGTH]);
 
     let mut file = File::create(output_path)?;
     file.write_all(&buffer)?;
@@ -100,8 +113,7 @@ pub struct MethodToken {
     pub call_flags: u8,
 }
 
-/// Length of a HASH160 value in bytes
-pub const HASH160_LENGTH: usize = 20;
+// HASH160_LENGTH is defined above with other constants
 
 /// Maximum valid value for call_flags (4 bits: ReadStates=1, WriteStates=2, AllowCall=4, AllowModifyAccount=8)
 const MAX_CALL_FLAGS: u8 = 0x0F;
@@ -143,6 +155,6 @@ fn write_method_tokens(buffer: &mut Vec<u8>, method_tokens: &[MethodToken]) -> R
         buffer.push(if token.has_return_value { 1 } else { 0 });
         buffer.push(token.call_flags);
     }
-    buffer.extend_from_slice(&[0u8; 2]);
+    buffer.extend_from_slice(&[0u8; METHOD_TOKEN_RESERVED_BYTES]);
     Ok(())
 }

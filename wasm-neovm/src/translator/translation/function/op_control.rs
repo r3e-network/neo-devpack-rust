@@ -1,5 +1,37 @@
 use super::*;
 
+/// Creates a new control frame with the given kind
+/// Uses pre-allocated end_fixups capacity based on block type (Round 62 optimization)
+fn create_control_frame(
+    kind: ControlKind,
+    stack_height: usize,
+    result_count: usize,
+    start_offset: usize,
+    entry_reachable: bool,
+    if_false_fixup: Option<usize>,
+) -> ControlFrame {
+    // Pre-allocate end_fixups: If blocks typically need 1-2, loops need fewer
+    let end_fixups_capacity = match kind {
+        ControlKind::If => 2,
+        ControlKind::Block => 1,
+        ControlKind::Loop => 1,
+        ControlKind::Function => 2,
+    };
+
+    ControlFrame {
+        kind,
+        stack_height,
+        result_count,
+        start_offset,
+        end_fixups: Vec::with_capacity(end_fixups_capacity),
+        if_false_fixup,
+        has_else: false,
+        entry_reachable,
+        end_reachable_from_branch: false,
+        if_then_end_reachable: None,
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) fn try_handle(
     op: &Operator,
@@ -12,34 +44,26 @@ pub(super) fn try_handle(
     match op {
         Operator::Block { blockty: ty, .. } => {
             let result_count = block_result_count(*ty, types)?;
-            control_stack.push(ControlFrame {
-                kind: ControlKind::Block,
-                stack_height: value_stack.len(),
+            control_stack.push(create_control_frame(
+                ControlKind::Block,
+                value_stack.len(),
                 result_count,
-                start_offset: script.len(),
-                end_fixups: Vec::new(),
-                if_false_fixup: None,
-                has_else: false,
-                entry_reachable: !*is_unreachable,
-                end_reachable_from_branch: false,
-                if_then_end_reachable: None,
-            });
+                script.len(),
+                !*is_unreachable,
+                None,
+            ));
             Ok(true)
         }
         Operator::Loop { blockty: ty, .. } => {
             let result_count = block_result_count(*ty, types)?;
-            control_stack.push(ControlFrame {
-                kind: ControlKind::Loop,
-                stack_height: value_stack.len(),
+            control_stack.push(create_control_frame(
+                ControlKind::Loop,
+                value_stack.len(),
                 result_count,
-                start_offset: script.len(),
-                end_fixups: Vec::new(),
-                if_false_fixup: None,
-                has_else: false,
-                entry_reachable: !*is_unreachable,
-                end_reachable_from_branch: false,
-                if_then_end_reachable: None,
-            });
+                script.len(),
+                !*is_unreachable,
+                None,
+            ));
             Ok(true)
         }
         Operator::If { blockty: ty, .. } => {
@@ -48,30 +72,26 @@ pub(super) fn try_handle(
                 super::pop_value_maybe_unreachable(value_stack, "if condition", *is_unreachable)?;
             // Condition already materialised on stack
             let jump_pos = emit_jump_placeholder(script, "JMPIFNOT_L")?;
-            control_stack.push(ControlFrame {
-                kind: ControlKind::If,
-                stack_height: value_stack.len(),
+            control_stack.push(create_control_frame(
+                ControlKind::If,
+                value_stack.len(),
                 result_count,
-                start_offset: script.len(),
-                end_fixups: Vec::new(),
-                if_false_fixup: Some(jump_pos),
-                has_else: false,
-                entry_reachable: !*is_unreachable,
-                end_reachable_from_branch: false,
-                if_then_end_reachable: None,
-            });
+                script.len(),
+                !*is_unreachable,
+                Some(jump_pos),
+            ));
             Ok(true)
         }
         Operator::Else => {
-            let frame = control_stack
-                .last_mut()
-                .ok_or_else(|| anyhow!("ELSE without matching IF"))?;
+            let Some(frame) = control_stack.last_mut() else {
+                bail!("ELSE without matching IF");
+            };
             if !matches!(frame.kind, ControlKind::If) {
                 bail!("ELSE can only appear within an IF block");
             }
             if let Some(pos) = frame.if_false_fixup.take() {
-                let else_start = script.len();
-                patch_jump(script, pos, else_start)?;
+                let current_len = script.len();
+                patch_jump(script, pos, current_len)?;
             }
             // Jump over else body when the THEN branch executes
             let jump_end = emit_jump_placeholder(script, "JMP_L")?;
@@ -99,27 +119,25 @@ pub(super) fn try_handle(
             Ok(true)
         }
         Operator::End => {
-            let frame = control_stack
-                .pop()
-                .ok_or_else(|| anyhow!("END without matching block"))?;
+            let Some(frame) = control_stack.pop() else {
+                bail!("END without matching block");
+            };
             let end_label = script.len();
 
-            match frame.kind {
-                ControlKind::If => {
-                    if let Some(pos) = frame.if_false_fixup {
-                        patch_jump(script, pos, end_label)?;
-                    }
-                    if frame.result_count > 0 && !frame.has_else && frame.entry_reachable {
-                        bail!("if with a result type requires an else branch");
-                    }
+            // Handle any remaining fixups based on control kind
+            let needs_fixup = matches!(frame.kind, ControlKind::If | ControlKind::Function);
+            if needs_fixup {
+                if let Some(pos) = frame.if_false_fixup {
+                    patch_jump(script, pos, end_label)?;
                 }
-                ControlKind::Loop | ControlKind::Block => {}
-                ControlKind::Function => {
-                    // This is the final END of the function
-                    if let Some(pos) = frame.if_false_fixup {
-                        patch_jump(script, pos, end_label)?;
-                    }
-                }
+            }
+
+            if matches!(frame.kind, ControlKind::If)
+                && frame.result_count > 0
+                && !frame.has_else
+                && frame.entry_reachable
+            {
+                bail!("if with a result type requires an else branch");
             }
             for fixup in frame.end_fixups {
                 patch_jump(script, fixup, end_label)?;
@@ -129,8 +147,9 @@ pub(super) fn try_handle(
             let end_reachable = match frame.kind {
                 ControlKind::If => {
                     if frame.has_else {
-                        let then_end = frame.if_then_end_reachable.unwrap_or(false);
-                        then_end || fallthrough_reachable || frame.end_reachable_from_branch
+                        frame.if_then_end_reachable.unwrap_or(false)
+                            || fallthrough_reachable
+                            || frame.end_reachable_from_branch
                     } else {
                         // If without else: false-condition path reaches END if the IF was reachable.
                         fallthrough_reachable

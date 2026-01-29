@@ -44,6 +44,38 @@ impl NeoByteString {
 
 impl Default for NeoByteString {
     fn default() -> Self {
-        Self::new(vec![])
+        Self { data: Vec::new() }
+    }
+}
+
+impl From<Vec<u8>> for NeoByteString {
+    fn from(data: Vec<u8>) -> Self {
+        Self { data }
+    }
+}
+
+impl From<&[u8]> for NeoByteString {
+    fn from(slice: &[u8]) -> Self {
+        Self::from_slice(slice)
+    }
+}
+
+impl AsRef<[u8]> for NeoByteString {
+    fn as_ref(&self) -> &[u8] {
+        &self.data
+    }
+}
+
+impl Extend<u8> for NeoByteString {
+    fn extend<I: IntoIterator<Item = u8>>(&mut self, iter: I) {
+        self.data.extend(iter);
+    }
+}
+
+impl FromIterator<u8> for NeoByteString {
+    fn from_iter<I: IntoIterator<Item = u8>>(iter: I) -> Self {
+        Self {
+            data: Vec::from_iter(iter),
+        }
     }
 }

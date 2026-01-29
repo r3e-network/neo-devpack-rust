@@ -1,6 +1,7 @@
 mod calls;
 mod jumps;
 mod mask;
+mod offsets;
 mod opcode;
 mod push;
 mod statics;

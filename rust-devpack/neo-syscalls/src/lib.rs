@@ -1,3 +1,6 @@
+// Copyright (c) 2025 R3E Network
+// Licensed under the MIT License
+
 //! Neo N3 System Calls
 //!
 //! This crate provides bindings to Neo N3 system calls for smart contract development.

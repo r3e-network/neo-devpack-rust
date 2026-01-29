@@ -39,36 +39,28 @@ impl<K, V> NeoMap<K, V> {
     where
         K: PartialEq,
     {
-        for (k, v) in &self.data {
-            if k == key {
-                return Some(v);
-            }
-        }
-        None
+        self.data
+            .iter()
+            .find_map(|(k, v)| if k == key { Some(v) } else { None })
     }
 
     pub fn get_mut(&mut self, key: &K) -> Option<&mut V>
     where
         K: PartialEq,
     {
-        for (k, v) in &mut self.data {
-            if k == key {
-                return Some(v);
-            }
-        }
-        None
+        self.data
+            .iter_mut()
+            .find_map(|(k, v)| if k == key { Some(v) } else { None })
     }
 
     pub fn remove(&mut self, key: &K) -> Option<V>
     where
         K: PartialEq,
     {
-        for (i, (k, _)) in self.data.iter().enumerate() {
-            if k == key {
-                return Some(self.data.remove(i).1);
-            }
-        }
-        None
+        self.data
+            .iter()
+            .position(|(k, _)| k == key)
+            .map(|i| self.data.remove(i).1)
     }
 
     pub fn len(&self) -> usize {
@@ -81,6 +73,16 @@ impl<K, V> NeoMap<K, V> {
 
     pub fn iter(&self) -> impl Iterator<Item = (&K, &V)> {
         self.data.iter().map(|(k, v)| (k, v))
+    }
+
+    /// Returns an iterator over the keys of the map
+    pub fn keys(&self) -> impl Iterator<Item = &K> {
+        self.data.iter().map(|(k, _)| k)
+    }
+
+    /// Returns an iterator over the values of the map
+    pub fn values(&self) -> impl Iterator<Item = &V> {
+        self.data.iter().map(|(_, v)| v)
     }
 }
 

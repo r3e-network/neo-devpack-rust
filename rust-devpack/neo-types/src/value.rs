@@ -30,22 +30,22 @@ impl NeoStruct {
     }
 
     pub fn get_field(&self, name: &str) -> Option<&NeoValue> {
-        for (field_name, value) in &self.fields {
-            if field_name == name {
-                return Some(value);
-            }
-        }
-        None
+        self.fields
+            .iter()
+            .find(|(field_name, _)| field_name == name)
+            .map(|(_, value)| value)
     }
 
     pub fn set_field(&mut self, name: &str, value: NeoValue) {
-        for (field_name, field_value) in &mut self.fields {
-            if field_name == name {
-                *field_value = value;
-                return;
-            }
+        if let Some((_, field_value)) = self
+            .fields
+            .iter_mut()
+            .find(|(field_name, _)| field_name == name)
+        {
+            *field_value = value;
+        } else {
+            self.fields.push((name.to_string(), value));
         }
-        self.fields.push((name.to_string(), value));
     }
 
     pub fn insert(&mut self, name: NeoString, value: NeoValue) {

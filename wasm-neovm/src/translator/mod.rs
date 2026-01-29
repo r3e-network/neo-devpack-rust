@@ -27,6 +27,9 @@ mod runtime;
 mod translation;
 mod types;
 
+// Profiling instrumentation (Round 70)
+pub mod profiling;
+
 pub use translation::{translate_module, translate_with_config};
 pub use types::{ManifestData, ManifestOverlay, Translation, TranslationConfig};
 

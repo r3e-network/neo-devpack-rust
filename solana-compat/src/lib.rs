@@ -1,3 +1,6 @@
+// Copyright (c) 2025 R3E Network
+// Licensed under the MIT License
+
 //! Neo-Solana Compatibility Layer
 //!
 //! This crate provides a Solana-compatible API surface that compiles to WASM

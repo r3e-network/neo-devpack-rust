@@ -18,7 +18,7 @@ impl NeoString {
     #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Self {
         Self {
-            data: s.to_string(),
+            data: String::from(s),
         }
     }
 
@@ -37,6 +37,20 @@ impl NeoString {
 
 impl Default for NeoString {
     fn default() -> Self {
-        Self::from_str("")
+        Self {
+            data: String::new(),
+        }
+    }
+}
+
+impl From<&str> for NeoString {
+    fn from(s: &str) -> Self {
+        Self::from_str(s)
+    }
+}
+
+impl From<String> for NeoString {
+    fn from(data: String) -> Self {
+        Self { data }
     }
 }

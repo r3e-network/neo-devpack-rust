@@ -50,3 +50,5 @@ harness = false
 
 [features]
 default = []
+# Enable profiling instrumentation for performance analysis
+profile = []

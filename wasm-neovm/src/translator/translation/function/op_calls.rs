@@ -1,5 +1,45 @@
 use super::*;
 
+/// Helper to get function type information by index
+fn get_function_type_info<'a>(
+    function_index: u32,
+    imports: &'a [FunctionImport],
+    types: &'a [FuncType],
+    func_type_indices: &'a [u32],
+) -> Result<(Option<&'a FunctionImport>, usize, &'a FuncType)> {
+    let is_import = (function_index as usize) < imports.len();
+
+    let (type_index, import_ref) = if is_import {
+        let import = imports
+            .get(function_index as usize)
+            .ok_or_else(|| anyhow!("function index {} out of bounds", function_index))?;
+        (get_import_type_index(import)?, Some(import))
+    } else {
+        let defined_index = (function_index as usize)
+            .checked_sub(imports.len())
+            .ok_or_else(|| anyhow!("function index underflow"))?;
+        let type_index = func_type_indices
+            .get(defined_index)
+            .copied()
+            .ok_or_else(|| anyhow!("no type index recorded for function {}", function_index))?;
+        (type_index, None)
+    };
+
+    let func_type = types
+        .get(type_index as usize)
+        .ok_or_else(|| anyhow!("invalid type index {}", type_index))?;
+
+    Ok((import_ref, type_index as usize, func_type))
+}
+
+/// Push a placeholder value onto the stack
+fn push_placeholder_value(value_stack: &mut Vec<StackValue>) {
+    value_stack.push(StackValue {
+        const_value: None,
+        bytecode_start: None,
+    });
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) fn try_handle(
     op: &Operator,
@@ -24,42 +64,9 @@ pub(super) fn try_handle(
         }
         Operator::Call { function_index } => {
             let function_index = *function_index;
-            let param_count = if let Some(import) = imports.get(function_index as usize) {
-                let type_index = get_import_type_index(import)?;
-                types
-                    .get(type_index as usize)
-                    .ok_or_else(|| {
-                        anyhow!(
-                            "invalid type index {} for import {}",
-                            type_index,
-                            import.name
-                        )
-                    })?
-                    .params()
-                    .len()
-            } else {
-                let defined_index = (function_index as usize)
-                    .checked_sub(imports.len())
-                    .ok_or_else(|| anyhow!("function index underflow"))?;
-                let type_index =
-                    func_type_indices
-                        .get(defined_index)
-                        .copied()
-                        .ok_or_else(|| {
-                            anyhow!("no type index recorded for function {}", function_index)
-                        })?;
-                types
-                    .get(type_index as usize)
-                    .ok_or_else(|| {
-                        anyhow!(
-                            "invalid type index {} for function {}",
-                            type_index,
-                            function_index
-                        )
-                    })?
-                    .params()
-                    .len()
-            };
+            let (_, _, func_sig) =
+                get_function_type_info(function_index, imports, types, func_type_indices)?;
+            let param_count = func_sig.params().len();
 
             let mut params = Vec::with_capacity(param_count);
             for _ in 0..param_count {
@@ -90,10 +97,7 @@ pub(super) fn try_handle(
                     adapter,
                 )?;
                 if !func_sig.results().is_empty() {
-                    value_stack.push(StackValue {
-                        const_value: None,
-                        bytecode_start: None,
-                    });
+                    push_placeholder_value(value_stack);
                 }
             } else {
                 let defined_index = (function_index as usize) - imports.len();
@@ -128,10 +132,7 @@ pub(super) fn try_handle(
                 }
                 functions.emit_call(script, function_index as usize)?;
                 if !func_sig.results().is_empty() {
-                    value_stack.push(StackValue {
-                        const_value: None,
-                        bytecode_start: None,
-                    });
+                    push_placeholder_value(value_stack);
                 }
             }
             Ok(true)
@@ -182,7 +183,9 @@ pub(super) fn try_handle(
             let trap_null = emit_jump_placeholder(script, "JMPIF_L")?;
 
             let total_functions = imports.len() + func_type_indices.len();
-            let mut case_fixups: Vec<(usize, CallTarget)> = Vec::new();
+            // Pre-allocate case_fixups based on actual matches found (Round 62 optimization)
+            let estimated_matches = total_functions.min(32);
+            let mut case_fixups: Vec<(usize, CallTarget)> = Vec::with_capacity(estimated_matches);
             for fn_index in 0..total_functions {
                 let candidate_type_index = if fn_index < imports.len() {
                     get_import_type_index(&imports[fn_index])?
@@ -218,7 +221,8 @@ pub(super) fn try_handle(
             script.push(lookup_opcode("ABORT")?.byte);
             patch_jump(script, trap_null, trap_label)?;
 
-            let mut end_fixups: Vec<usize> = Vec::new();
+            // Pre-allocate end_fixups with same capacity as case_fixups (Round 62 optimization)
+            let mut end_fixups: Vec<usize> = Vec::with_capacity(estimated_matches);
             for (jump, target) in case_fixups {
                 let label = script.len();
                 patch_jump(script, jump, label)?;
@@ -243,10 +247,7 @@ pub(super) fn try_handle(
             }
 
             if !func_sig.results().is_empty() {
-                value_stack.push(StackValue {
-                    const_value: None,
-                    bytecode_start: None,
-                });
+                push_placeholder_value(value_stack);
             }
 
             Ok(true)

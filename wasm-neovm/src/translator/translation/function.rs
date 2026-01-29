@@ -8,24 +8,29 @@ mod op_numeric;
 mod op_refs;
 mod op_tables;
 
-#[allow(clippy::too_many_arguments)]
-pub(super) fn translate_function(
-    func_type: &FuncType,
-    body: &wasmparser::FunctionBody,
-    script: &mut Vec<u8>,
-    imports: &[FunctionImport],
-    types: &[FuncType],
-    func_type_indices: &[u32],
-    runtime: &mut RuntimeHelpers,
-    tables: &[TableInfo],
-    functions: &mut FunctionRegistry,
-    function_index: usize,
-    start_function: Option<u32>,
-    function_name: &str,
-    features: &mut FeatureTracker,
-    adapter: &dyn ChainAdapter,
-) -> Result<String> {
-    let params = func_type.params();
+/// Context for function translation to reduce parameter count
+///
+/// This struct groups together all the context needed for translating
+/// a WebAssembly function to NeoVM bytecode.
+pub struct TranslationContext<'a> {
+    pub func_type: &'a FuncType,
+    pub body: &'a wasmparser::FunctionBody<'a>,
+    pub script: &'a mut Vec<u8>,
+    pub imports: &'a [FunctionImport],
+    pub types: &'a [FuncType],
+    pub func_type_indices: &'a [u32],
+    pub runtime: &'a mut RuntimeHelpers,
+    pub tables: &'a [TableInfo],
+    pub functions: &'a mut FunctionRegistry,
+    pub function_index: usize,
+    pub start_function: Option<u32>,
+    pub function_name: &'a str,
+    pub features: &'a mut FeatureTracker,
+    pub adapter: &'a dyn ChainAdapter,
+}
+
+pub(super) fn translate_function(ctx: &mut TranslationContext<'_>) -> Result<String> {
+    let params = ctx.func_type.params();
     for ty in params {
         match ty {
             ValType::I32 | ValType::I64 => {}
@@ -34,20 +39,20 @@ pub(super) fn translate_function(
     }
     let param_count = params.len();
 
-    let returns = func_type.results();
+    let returns = ctx.func_type.results();
     if returns.len() > 1 {
         bail!("multi-value returns are not supported");
     }
 
-    if let Some(start_idx) = start_function {
-        if start_idx as usize != function_index {
-            runtime.emit_memory_init_call(script)?;
+    if let Some(start_idx) = ctx.start_function {
+        if start_idx as usize != ctx.function_index {
+            ctx.runtime.emit_memory_init_call(ctx.script)?;
         }
     }
 
     let return_kind = returns.first().map(wasm_val_type_to_manifest).transpose()?;
 
-    let locals_reader = body.get_locals_reader()?;
+    let locals_reader = ctx.body.get_locals_reader()?;
     let mut local_states: Vec<LocalState> = Vec::new();
     for i in 0..param_count {
         local_states.push(LocalState {
@@ -59,21 +64,21 @@ pub(super) fn translate_function(
     // NeoVM parameters are arbitrary-precision integers. Normalise them to the Wasm bit-width
     // so arithmetic, comparisons, and shifts observe WebAssembly's i32/i64 semantics.
     for (index, ty) in params.iter().enumerate() {
-        emit_load_arg(script, index as u32)?;
+        emit_load_arg(ctx.script, index as u32)?;
         let value = StackValue {
             const_value: None,
             bytecode_start: None,
         };
         match ty {
             ValType::I32 => {
-                let _ = emit_sign_extend(script, value, 32, 32)?;
+                let _ = emit_sign_extend(ctx.script, value, 32, 32)?;
             }
             ValType::I64 => {
-                let _ = emit_sign_extend(script, value, 64, 64)?;
+                let _ = emit_sign_extend(ctx.script, value, 64, 64)?;
             }
             _ => unreachable!("parameter types validated earlier"),
         }
-        emit_store_arg(script, index as u32)?;
+        emit_store_arg(ctx.script, index as u32)?;
     }
 
     let mut next_local_slot: u32 = 0;
@@ -91,7 +96,7 @@ pub(super) fn translate_function(
         }
     }
 
-    let op_reader = body.get_operators_reader()?;
+    let op_reader = ctx.body.get_operators_reader()?;
     let mut value_stack: Vec<StackValue> = Vec::new();
     let mut control_stack: Vec<ControlFrame> = Vec::new();
     let mut is_unreachable = false;
@@ -104,7 +109,7 @@ pub(super) fn translate_function(
         kind: ControlKind::Function,
         stack_height: 0,
         result_count: returns.len(), // Function expects return values
-        start_offset: script.len(),
+        start_offset: ctx.script.len(),
         end_fixups: Vec::new(),
         if_false_fixup: None,
         has_else: false,
@@ -115,10 +120,10 @@ pub(super) fn translate_function(
 
     // Ensure the current function offset is known to callers (already registered before entry).
     // This assertion helps catch internal misuse during development.
-    if !functions.contains_index(function_index) {
+    if !ctx.functions.contains_index(ctx.function_index) {
         bail!(
             "function index {} out of range for translation",
-            function_index
+            ctx.function_index
         );
     }
 
@@ -131,8 +136,8 @@ pub(super) fn translate_function(
         if is_unreachable {
             if op_control::try_handle(
                 &op,
-                script,
-                types,
+                ctx.script,
+                ctx.types,
                 &mut value_stack,
                 &mut control_stack,
                 &mut is_unreachable,
@@ -142,14 +147,14 @@ pub(super) fn translate_function(
             continue;
         }
 
-        if op_numeric::try_handle(&op, script, runtime, &mut value_stack)? {
+        if op_numeric::try_handle(&op, ctx.script, ctx.runtime, &mut value_stack)? {
             continue;
         }
 
         if op_control::try_handle(
             &op,
-            script,
-            types,
+            ctx.script,
+            ctx.types,
             &mut value_stack,
             &mut control_stack,
             &mut is_unreachable,
@@ -157,30 +162,36 @@ pub(super) fn translate_function(
             continue;
         }
 
-        if op_memory::try_handle(&op, script, runtime, &mut value_stack)? {
+        if op_memory::try_handle(&op, ctx.script, ctx.runtime, &mut value_stack)? {
             continue;
         }
 
-        if op_tables::try_handle(&op, script, runtime, &mut value_stack)? {
+        if op_tables::try_handle(&op, ctx.script, ctx.runtime, &mut value_stack)? {
             continue;
         }
 
-        if op_locals::try_handle(&op, script, runtime, &mut value_stack, &mut local_states)? {
+        if op_locals::try_handle(
+            &op,
+            ctx.script,
+            ctx.runtime,
+            &mut value_stack,
+            &mut local_states,
+        )? {
             continue;
         }
 
         if op_calls::try_handle(
             &op,
-            script,
-            imports,
-            types,
-            func_type_indices,
-            runtime,
-            tables,
-            functions,
+            ctx.script,
+            ctx.imports,
+            ctx.types,
+            ctx.func_type_indices,
+            ctx.runtime,
+            ctx.tables,
+            ctx.functions,
             &mut value_stack,
-            features,
-            adapter,
+            ctx.features,
+            ctx.adapter,
             &mut is_unreachable,
         )? {
             continue;
@@ -188,9 +199,9 @@ pub(super) fn translate_function(
 
         if op_refs::try_handle(
             &op,
-            script,
-            imports,
-            func_type_indices,
+            ctx.script,
+            ctx.imports,
+            ctx.func_type_indices,
             &mut value_stack,
             &mut is_unreachable,
         )? {
@@ -198,11 +209,11 @@ pub(super) fn translate_function(
         }
 
         if let Some(desc) = describe_float_op(&op) {
-            let context = format!("{} in function {}", desc, function_name);
+            let context = format!("{} in function {}", desc, ctx.function_name);
             return numeric::unsupported_float(&context);
         }
         if let Some(desc) = describe_simd_op(&op) {
-            let context = format!("{} in function {}", desc, function_name);
+            let context = format!("{} in function {}", desc, ctx.function_name);
             return numeric::unsupported_simd(&context);
         }
         bail!(format!(
@@ -213,7 +224,7 @@ pub(super) fn translate_function(
 
     // Always end with an epilogue RET so `br` to the function-level implicit block has a
     // well-defined jump target.
-    script.push(RET);
+    ctx.script.push(RET);
 
     if let Some(frame) = control_stack.last() {
         bail!(

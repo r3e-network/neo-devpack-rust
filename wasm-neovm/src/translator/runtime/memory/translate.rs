@@ -135,8 +135,14 @@ pub(crate) fn translate_memory_copy(
     dst_mem: u32,
     src_mem: u32,
 ) -> Result<()> {
-    if dst_mem != 0 || src_mem != 0 {
-        bail!("only default memory index 0 is supported for memory.copy");
+    if dst_mem != 0 {
+        bail!("destination memory {} is not supported; only memory index 0 is supported for memory.copy", dst_mem);
+    }
+    if src_mem != 0 {
+        bail!(
+            "source memory {} is not supported; only memory index 0 is supported for memory.copy",
+            src_mem
+        );
     }
     ensure_memory_access(runtime, dst_mem)?;
     runtime.emit_memory_init_call(script)?;

@@ -110,7 +110,10 @@ fn emit_rotate_dynamic(
     bits: u32,
     left: bool,
 ) -> Result<StackValue> {
-    let mut stack = vec![value, shift];
+    // Pre-allocate stack with exact capacity needed (Round 62 optimization)
+    let mut stack = Vec::with_capacity(4);
+    stack.push(value);
+    stack.push(shift);
 
     let mask_sv = emit_push_int(script, (bits - 1) as i128);
     stack.push(mask_sv);
