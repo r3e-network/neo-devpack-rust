@@ -102,15 +102,21 @@ pub fn signer_to_checkwitness() -> &'static str {
     "System.Runtime.CheckWitness"
 }
 
+/// Prefix byte for resource storage keys
+const RESOURCE_PREFIX: u8 = b'R';
+
+/// Separator byte between address and type name in storage keys
+const RESOURCE_SEPARATOR: u8 = b':';
+
 /// Map Move global storage to Neo contract storage
 ///
 /// Move: `borrow_global<T>`(address)
 /// Neo: Storage.Get(prefix + address + type_hash)
 pub fn global_storage_key(address: &[u8], type_name: &str) -> Vec<u8> {
-    let mut key = Vec::with_capacity(address.len() + type_name.len() + 1);
-    key.push(b'R'); // Resource prefix
+    let mut key = Vec::with_capacity(address.len() + type_name.len() + 2);
+    key.push(RESOURCE_PREFIX);
     key.extend_from_slice(address);
-    key.push(b':');
+    key.push(RESOURCE_SEPARATOR);
     key.extend_from_slice(type_name.as_bytes());
     key
 }

@@ -103,6 +103,9 @@ pub struct MethodToken {
 /// Length of a HASH160 value in bytes
 pub const HASH160_LENGTH: usize = 20;
 
+/// Maximum valid value for call_flags (4 bits: ReadStates=1, WriteStates=2, AllowCall=4, AllowModifyAccount=8)
+const MAX_CALL_FLAGS: u8 = 0x0F;
+
 fn write_method_tokens(buffer: &mut Vec<u8>, method_tokens: &[MethodToken]) -> Result<()> {
     write_var_uint(buffer, method_tokens.len() as u64);
     for token in method_tokens {
@@ -112,6 +115,28 @@ fn write_method_tokens(buffer: &mut Vec<u8>, method_tokens: &[MethodToken]) -> R
             token.method,
             MAX_METHOD_NAME_LENGTH
         );
+        
+        // Validate contract_hash is exactly 20 bytes (HASH160)
+        ensure!(
+            token.contract_hash.len() == HASH160_LENGTH,
+            "method token '{}' has invalid contract_hash length: expected {}, got {}",
+            token.method,
+            HASH160_LENGTH,
+            token.contract_hash.len()
+        );
+        
+        // Validate call_flags is within valid range
+        ensure!(
+            token.call_flags <= MAX_CALL_FLAGS,
+            "method token '{}' has invalid call_flags: {} (max {})",
+            token.method,
+            token.call_flags,
+            MAX_CALL_FLAGS
+        );
+        
+        // Note: parameters_count is u16, so it cannot exceed u16::MAX by definition
+        // No validation needed here
+        
         buffer.extend_from_slice(&token.contract_hash);
         write_var_string(buffer, &token.method)?;
         buffer.extend_from_slice(&token.parameters_count.to_le_bytes());

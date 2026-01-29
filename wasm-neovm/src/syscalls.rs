@@ -5,8 +5,12 @@ mod generated {
 pub use generated::SyscallInfo;
 
 /// Extended syscall info for native contract methods not in the generated table
+/// 
+/// NOTE: These hashes are calculated as: uint32(hash160("SysCallName"))
+/// Use the correct Neo N3 syscall hashes from the official specification.
 static EXTENDED_SYSCALLS: &[SyscallInfo] = &[
     // Neo.Crypto native contract methods
+    // Reference: https://docs.neo.org/docs/en-us/reference/scapi/native.html
     SyscallInfo {
         name: "Neo.Crypto.SHA256",
         hash: 0x906e6e88,
@@ -35,14 +39,10 @@ static EXTENDED_SYSCALLS: &[SyscallInfo] = &[
         name: "Neo.Crypto.VerifyWithECDsa",
         hash: 0x40746983,
     },
-    SyscallInfo {
-        name: "Neo.Crypto.CheckSig",
-        hash: 0xbb359497,
-    },
-    SyscallInfo {
-        name: "Neo.Crypto.CheckMultisig",
-        hash: 0xb8645d5f,
-    },
+    // Note: CheckSig and CheckMultisig are in the generated table with correct hashes
+    // - System.Crypto.CheckSig: 0x27B3E756
+    // - System.Crypto.CheckMultisig: 0x3ADCD09E
+    // Do NOT add duplicate entries with incorrect hashes here.
 ];
 
 pub fn all() -> &'static [SyscallInfo] {

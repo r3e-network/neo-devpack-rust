@@ -59,8 +59,23 @@ fn apply_memory_offset(script: &mut Vec<u8>, base: StackValue, offset: u64) -> R
         return emit_zero_extend(script, base, 32);
     }
 
+    // Validate offset doesn't exceed i64::MAX to prevent overflow when casting to i128
+    // and to ensure the result fits within reasonable memory addressing bounds
+    if offset > i64::MAX as u64 {
+        bail!("memory offset {} exceeds maximum supported value (i64::MAX)", offset);
+    }
+
     let offset_value = emit_push_int(script, offset as i128);
-    let added = emit_binary_op(script, "ADD", base, offset_value, |a, b| Some(a + b))?;
+    
+    // Check for potential overflow in constant folding
+    let added = emit_binary_op(script, "ADD", base, offset_value, |a, b| {
+        // Check if the addition would overflow i64 bounds
+        let result = a.checked_add(b)?;
+        if result > i64::MAX as i128 || result < i64::MIN as i128 {
+            return None; // Let runtime handle overflow
+        }
+        Some(result)
+    })?;
     let added = StackValue {
         const_value: added.const_value,
         bytecode_start: None,

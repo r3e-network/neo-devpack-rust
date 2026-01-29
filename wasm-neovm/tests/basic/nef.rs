@@ -18,7 +18,9 @@ fn write_nef_with_metadata_serializes_tokens_and_source() {
         method: "callExternal".to_string(),
         parameters_count: 3,
         has_return_value: false,
-        call_flags: 0x11,
+        // Valid call_flags: ReadStates(1) | WriteStates(2) | AllowCall(4) | AllowModifyAccount(8)
+        // Max valid value is 0x0F (15). Using 0x07 = ReadStates | WriteStates | AllowCall
+        call_flags: 0x07,
     };
 
     write_nef_with_metadata(

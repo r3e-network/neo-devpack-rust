@@ -2,8 +2,10 @@
 //!
 //! Maps Solana account model to Neo contract storage.
 
-use crate::pubkey::Pubkey;
 use core::cell::{Ref, RefCell, RefMut};
+
+use crate::program_error::ProgramError;
+use crate::pubkey::Pubkey;
 
 /// Account information for a Solana-compatible program
 ///
@@ -134,8 +136,6 @@ impl<'a> core::fmt::Debug for AccountInfo<'a> {
 /// Error type for borrow failures
 #[derive(Debug, Clone, Copy)]
 pub struct BorrowError;
-
-use crate::program_error::ProgramError;
 
 /// Helper to find an account by public key in a slice
 pub fn next_account_info<'a, 'b, I: Iterator<Item = &'a AccountInfo<'b>>>(

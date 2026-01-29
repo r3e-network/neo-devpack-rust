@@ -19,10 +19,20 @@ pub struct ManifestBuilder {
 impl ManifestBuilder {
     pub fn new(name: &str, methods: &[ManifestMethod]) -> Self {
         let manifest = build_manifest(name, methods).value;
+        let baseline_signatures = collect_method_shapes(&manifest)
+            .unwrap_or_else(|e| {
+                // In debug builds, panic with details; in release, use empty map
+                #[cfg(debug_assertions)]
+                panic!("translator-generated manifest must contain well-formed methods: {}", e);
+                #[cfg(not(debug_assertions))]
+                {
+                    eprintln!("Warning: translator-generated manifest has invalid methods: {}", e);
+                    std::collections::HashMap::new()
+                }
+            });
         ManifestBuilder {
             baseline_methods: collect_method_names(&manifest),
-            baseline_signatures: collect_method_shapes(&manifest)
-                .expect("translator-generated manifest must contain well-formed methods"),
+            baseline_signatures,
             manifest,
             overlay_label: None,
         }

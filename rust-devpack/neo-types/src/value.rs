@@ -1,6 +1,3 @@
-use std::string::String;
-use std::vec::Vec;
-
 use crate::array::NeoArray;
 use crate::boolean::NeoBoolean;
 use crate::bytestring::NeoByteString;
@@ -10,6 +7,10 @@ use crate::string::NeoString;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+
+// Standard library imports - grouped together
+use std::string::String;
+use std::vec::Vec;
 
 /// Neo N3 Struct type
 #[derive(Debug, Clone, PartialEq, Eq)]

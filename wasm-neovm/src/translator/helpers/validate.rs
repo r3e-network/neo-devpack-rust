@@ -44,9 +44,17 @@ pub(crate) fn validate_script(script: &[u8]) -> Result<()> {
 
         let operand_len = match prefix {
             1 => script[prefix_start] as usize,
-            2 => u16::from_le_bytes(script[prefix_start..prefix_end].try_into().unwrap()) as usize,
+            2 => {
+                let bytes: [u8; 2] = script[prefix_start..prefix_end]
+                    .try_into()
+                    .map_err(|_| anyhow!("internal error: cannot read 2-byte prefix at offset {}", pc))?;
+                u16::from_le_bytes(bytes) as usize
+            }
             4 => {
-                let raw = i32::from_le_bytes(script[prefix_start..prefix_end].try_into().unwrap());
+                let bytes: [u8; 4] = script[prefix_start..prefix_end]
+                    .try_into()
+                    .map_err(|_| anyhow!("internal error: cannot read 4-byte prefix at offset {}", pc))?;
+                let raw = i32::from_le_bytes(bytes);
                 if raw < 0 {
                     bail!(
                         "opcode {} at offset {} has negative operand length {}",
@@ -137,7 +145,8 @@ pub(crate) fn validate_script(script: &[u8]) -> Result<()> {
     pc = 0usize;
     while pc < script.len() {
         let op = script[pc];
-        let info = opcode_table[op as usize].expect("opcode already validated");
+        let info = opcode_table[op as usize]
+            .ok_or_else(|| anyhow!("internal error: opcode 0x{:02X} at offset {} disappeared from table", op, pc))?;
         let size = instruction_size(pc, info)?;
 
         match info.name {
@@ -148,7 +157,10 @@ pub(crate) fn validate_script(script: &[u8]) -> Result<()> {
             }
             "PUSHA" | "JMP_L" | "JMPIF_L" | "JMPIFNOT_L" | "JMPEQ_L" | "JMPNE_L" | "JMPGT_L"
             | "JMPGE_L" | "JMPLT_L" | "JMPLE_L" | "CALL_L" | "ENDTRY_L" => {
-                let offset = i32::from_le_bytes(script[pc + 1..pc + 5].try_into().unwrap());
+                let offset_bytes: [u8; 4] = script[pc + 1..pc + 5]
+                    .try_into()
+                    .map_err(|_| anyhow!("internal error: cannot read 4-byte offset at offset {}", pc))?;
+                let offset = i32::from_le_bytes(offset_bytes);
                 validate_target(info.name, pc, offset)?;
             }
             "TRY" => {
@@ -164,8 +176,14 @@ pub(crate) fn validate_script(script: &[u8]) -> Result<()> {
                 validate_target("TRY (finally)", pc, finally_offset)?;
             }
             "TRY_L" => {
-                let catch_offset = i32::from_le_bytes(script[pc + 1..pc + 5].try_into().unwrap());
-                let finally_offset = i32::from_le_bytes(script[pc + 5..pc + 9].try_into().unwrap());
+                let catch_bytes: [u8; 4] = script[pc + 1..pc + 5]
+                    .try_into()
+                    .map_err(|_| anyhow!("internal error: cannot read TRY_L catch offset at offset {}", pc))?;
+                let finally_bytes: [u8; 4] = script[pc + 5..pc + 9]
+                    .try_into()
+                    .map_err(|_| anyhow!("internal error: cannot read TRY_L finally offset at offset {}", pc))?;
+                let catch_offset = i32::from_le_bytes(catch_bytes);
+                let finally_offset = i32::from_le_bytes(finally_bytes);
                 if catch_offset == 0 && finally_offset == 0 {
                     bail!(
                         "TRY_L at offset {} must specify a catch and/or finally block",

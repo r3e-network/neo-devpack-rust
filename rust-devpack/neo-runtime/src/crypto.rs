@@ -38,7 +38,9 @@ impl NeoCrypto {
     }
 
     pub fn murmur32(data: &NeoByteString, seed: NeoInteger) -> NeoResult<NeoInteger> {
-        let hash_value = (data.len() as i32) ^ seed.as_i32() ^ 0x1234_5678;
+        // Use try_as_i32() for safe conversion, defaulting to 0 if out of range
+        let seed_i32 = seed.try_as_i32().unwrap_or(0);
+        let hash_value = (data.len() as i32) ^ seed_i32 ^ 0x1234_5678;
         Ok(NeoInteger::new(hash_value))
     }
 

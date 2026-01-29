@@ -23,7 +23,7 @@ impl Pubkey {
     }
 
     /// Create a new Pubkey initialized to all zeros
-    pub const fn default() -> Self {
+    pub const fn new_default() -> Self {
         Self([0u8; 32])
     }
 
@@ -91,7 +91,7 @@ impl Pubkey {
 
 impl Default for Pubkey {
     fn default() -> Self {
-        Self::default()
+        Self::new_default()
     }
 }
 

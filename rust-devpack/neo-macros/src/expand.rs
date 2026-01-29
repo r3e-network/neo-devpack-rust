@@ -49,6 +49,12 @@ pub(crate) fn neo_storage(input: DeriveInput) -> TokenStream2 {
         #input
 
         impl #name {
+            /// Load storage with error handling.
+            /// 
+            /// # Note on Name Collisions
+            /// If your struct already has a `load_result` method, you may encounter
+            /// compilation errors. In that case, manually implement the storage logic
+            /// or rename your existing method.
             pub fn load_result(
                 context: &::neo_devpack::NeoStorageContext,
             ) -> ::neo_devpack::NeoResult<Self>
@@ -64,6 +70,11 @@ pub(crate) fn neo_storage(input: DeriveInput) -> TokenStream2 {
                 ::neo_devpack::codec::deserialize(bytes.as_slice())
             }
 
+            /// Load storage, returning default on error.
+            /// 
+            /// # Note on Name Collisions
+            /// If your struct already has a `load` method, you may encounter
+            /// compilation errors. Use `load_result` directly or rename your method.
             pub fn load(
                 context: &::neo_devpack::NeoStorageContext,
             ) -> Self
@@ -74,6 +85,11 @@ pub(crate) fn neo_storage(input: DeriveInput) -> TokenStream2 {
                 Self::load_result(context).unwrap_or_else(|_| Self::default())
             }
 
+            /// Save to storage.
+            /// 
+            /// # Note on Name Collisions
+            /// If your struct already has a `save` method, you may encounter
+            /// compilation errors. Implement storage manually or rename your method.
             pub fn save(
                 &self,
                 context: &::neo_devpack::NeoStorageContext,
@@ -184,17 +200,21 @@ pub(crate) fn neo_event(input: DeriveInput) -> syn::Result<TokenStream2> {
     };
 
     let push_fields = fields.iter().map(|field| {
-        let ident = field.ident.as_ref().expect("named field");
-        quote! {
+        let ident = field.ident.as_ref().ok_or_else(|| {
+            syn::Error::new_spanned(field, "expected named field")
+        })?;
+        Ok(quote! {
             state.push(::neo_devpack::NeoValue::from(::core::clone::Clone::clone(&self.#ident)));
-        }
-    });
+        })
+    }).collect::<syn::Result<Vec<_>>>()?;
 
     let event_name_string = name.to_string();
     let parameters: Vec<serde_json::Value> = fields
         .iter()
         .map(|field| {
-            let field_name = field.ident.as_ref().unwrap().to_string();
+            let field_name = field.ident.as_ref()
+                .map(|i| i.to_string())
+                .unwrap_or_else(|| "unnamed".to_string());
             let manifest_type = codegen::manifest_type_from_syn(&field.ty);
             json!({
                 "name": field_name,
@@ -314,6 +334,43 @@ pub(crate) fn neo_doc(input: DeriveInput) -> TokenStream2 {
 
 pub(crate) fn neo_config(input: DeriveInput) -> TokenStream2 {
     let name = &input.ident;
+    
+    // Extract field names from the struct to avoid assuming specific field names
+    let fields = match &input.data {
+        syn::Data::Struct(struct_data) => match &struct_data.fields {
+            Fields::Named(named) => named.named.iter().collect::<Vec<_>>(),
+            _ => {
+                return syn::Error::new_spanned(
+                    &input,
+                    "#[neo_config] requires a struct with named fields",
+                ).to_compile_error();
+            }
+        },
+        _ => {
+            return syn::Error::new_spanned(
+                &input,
+                "#[neo_config] can only be applied to structs",
+            ).to_compile_error();
+        }
+    };
+    
+    // Generate field initializations based on type
+    let field_inits = fields.iter().map(|field| {
+        let ident = field.ident.as_ref().expect("named field");
+        let field_name = ident.to_string();
+        
+        // Generate appropriate default based on field name pattern
+        let init_expr = if field_name.contains("max") {
+            quote! { ::neo_devpack::NeoInteger::max_i32() }
+        } else if field_name.contains("min") {
+            quote! { ::neo_devpack::NeoInteger::min_i32() }
+        } else {
+            // For unknown fields, use Default::default()
+            quote! { ::core::default::Default::default() }
+        };
+        
+        quote! { #ident: #init_expr }
+    });
 
     quote! {
         #input
@@ -321,17 +378,20 @@ pub(crate) fn neo_config(input: DeriveInput) -> TokenStream2 {
         impl ::core::default::Default for #name {
             fn default() -> Self {
                 Self {
-                    max_value: ::neo_devpack::NeoInteger::max_i32(),
-                    min_value: ::neo_devpack::NeoInteger::min_i32(),
+                    #(#field_inits),*
                 }
             }
         }
 
         impl #name {
+            /// Load configuration with default values.
+            /// Override this method to implement custom loading logic.
             pub fn load() -> ::neo_devpack::NeoResult<Self> {
                 Ok(Self::default())
             }
 
+            /// Save configuration.
+            /// Override this method to implement custom saving logic.
             pub fn save(&self) -> ::neo_devpack::NeoResult<()> {
                 Ok(())
             }
