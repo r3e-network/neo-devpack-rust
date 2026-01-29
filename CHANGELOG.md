@@ -10,6 +10,42 @@ this repository follow independent versioning (currently 0.1.x).
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-01-29
+
+### Highlights
+- **Performance**: O(1) iterator operations, hash-based deduplication, reduced allocations
+- **Architecture**: New core/, types/, config/, api/ modules for better organization
+- **Code Quality**: Enhanced error messages, comprehensive documentation
+
+### Performance Improvements
+- **NeoIterator**: Changed from O(n) `Vec::remove(0)` to O(1) cursor-based iteration (Round 126)
+- **Method Token Deduplication**: Use hash-based comparison instead of string cloning (Round 128)
+- **Map Removal**: Use `swap_remove` for O(1) removal instead of O(n) `remove` (Round 128)
+
+### Architecture (Rounds 131-140)
+- **New `core/` module**: Unified traits (ToBytecode, Translatable, BytecodeEmitter, Named, etc.)
+- **New `types/` module**: Type-safe newtypes (ContractName, MethodIndex, LocalIndex, MemoryOffset, etc.)
+- **New `config/` module**: Centralized configuration with TranslationConfig, validation
+- **New `api/` module**: Fluent TranslationBuilder API for better usability
+- **New `logging.rs`**: Standardized logging with LogLevel, LogCategory, and macros
+
+### Code Quality (Rounds 121-130)
+- Removed dead code and unused imports
+- Enhanced error messages with actionable context
+- Added comprehensive documentation to public APIs
+- Verified all panic paths have safe alternatives
+- Improved iterator efficiency throughout codebase
+
+### Changed
+- Implemented `FromStr` trait properly for `LogLevel` (was standalone method)
+- Optimized feature flags for better compile times
+- Reorganized module structure for maintainability
+
+### Fixed
+- Fixed clippy warnings about manual clamp patterns
+- Fixed formatting issues
+- All 47 test groups passing
+
 ## [0.4.1] - 2026-01-29
 
 This release represents 120 comprehensive review and improvement rounds, resulting in significant code quality, performance, and security enhancements.
