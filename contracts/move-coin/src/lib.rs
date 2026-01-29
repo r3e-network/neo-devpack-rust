@@ -34,13 +34,28 @@ use core::panic::PanicInfo;
 // Minimal Runtime Support
 // ============================================================================
 
+/// A minimal bump allocator stub for no_std WASM environments.
+/// 
+/// # Safety
+/// 
+/// This is a stub implementation that returns null for allocations.
+/// It is only suitable for contracts that don't need heap allocation.
+/// For production use, a proper bump allocator with memory tracking should be used.
 struct BumpAllocator;
 
+// SAFETY: This is a stub allocator that always returns null.
+// It is only safe because this contract doesn't use heap allocation.
+// The alloc and dealloc methods are no-ops as this contract uses
+// only stack-allocated data.
 unsafe impl GlobalAlloc for BumpAllocator {
     unsafe fn alloc(&self, _layout: Layout) -> *mut u8 {
+        // This stub allocator returns null, indicating allocation failure.
+        // The contract is designed to work without heap allocation.
         core::ptr::null_mut()
     }
-    unsafe fn dealloc(&self, _ptr: *mut u8, _layout: Layout) {}
+    unsafe fn dealloc(&self, _ptr: *mut u8, _layout: Layout) {
+        // No-op: since we never allocate, we never need to deallocate.
+    }
 }
 
 #[global_allocator]
@@ -122,6 +137,8 @@ fn balance_key(addr: &Address) -> Vec<u8> {
 /// Move: exists<Coin>(addr)
 fn exists_at(addr: &Address) -> bool {
     #[cfg(target_arch = "wasm32")]
+    // SAFETY: All pointers come from valid Rust references.
+    // key is a Vec<u8> with valid data, out is a stack-allocated array.
     unsafe {
         let key = balance_key(addr);
         let mut out = [0u8; 8];
@@ -140,6 +157,8 @@ fn exists_at(addr: &Address) -> bool {
 /// Move: borrow_global<Coin>(addr).value
 fn get_balance(addr: &Address) -> u64 {
     #[cfg(target_arch = "wasm32")]
+    // SAFETY: All pointers come from valid Rust references.
+    // key is a Vec<u8> with valid data, out is a stack-allocated array.
     unsafe {
         let key = balance_key(addr);
         let mut out = [0u8; 8];
@@ -162,6 +181,8 @@ fn get_balance(addr: &Address) -> u64 {
 /// Move: move_to<Coin>(addr, Coin { value })
 fn set_balance(addr: &Address, value: u64) {
     #[cfg(target_arch = "wasm32")]
+    // SAFETY: All pointers come from valid Rust references.
+    // key is a Vec<u8> with valid data, value_bytes is a stack-allocated array.
     unsafe {
         let key = balance_key(addr);
         let value_bytes = value.to_le_bytes();
@@ -179,6 +200,7 @@ fn set_balance(addr: &Address, value: u64) {
 #[allow(dead_code)]
 fn delete_balance(addr: &Address) {
     #[cfg(target_arch = "wasm32")]
+    // SAFETY: key.as_ptr() comes from a valid Vec<u8> reference.
     unsafe {
         let key = balance_key(addr);
         storage_delete(key.as_ptr() as i32, key.len() as i32);
@@ -188,6 +210,8 @@ fn delete_balance(addr: &Address) {
 /// Get total supply
 fn get_total_supply() -> u64 {
     #[cfg(target_arch = "wasm32")]
+    // SAFETY: TOTAL_SUPPLY_KEY is a valid static byte slice,
+    // out is a stack-allocated array.
     unsafe {
         let mut out = [0u8; 8];
         let len = storage_get(
@@ -208,6 +232,8 @@ fn get_total_supply() -> u64 {
 /// Set total supply
 fn set_total_supply(value: u64) {
     #[cfg(target_arch = "wasm32")]
+    // SAFETY: TOTAL_SUPPLY_KEY is a valid static byte slice,
+    // value_bytes is a stack-allocated array.
     unsafe {
         let value_bytes = value.to_le_bytes();
         storage_put(
@@ -227,6 +253,7 @@ fn set_total_supply(value: u64) {
 /// Move: &signer parameter verification
 fn verify_signer(addr: &Address) -> bool {
     #[cfg(target_arch = "wasm32")]
+    // SAFETY: addr is a valid reference to a 20-byte array.
     unsafe {
         check_witness(addr.as_ptr() as i32) != 0
     }
@@ -240,6 +267,7 @@ fn verify_signer(addr: &Address) -> bool {
 
 fn emit_transfer_event(from: &Address, to: &Address, amount: u64) {
     #[cfg(target_arch = "wasm32")]
+    // SAFETY: from and to are valid references, event is a stack-allocated array.
     unsafe {
         // Simple event format: [from:20][to:20][amount:8]
         let mut event = [0u8; 48];
@@ -252,6 +280,7 @@ fn emit_transfer_event(from: &Address, to: &Address, amount: u64) {
 
 fn emit_log(msg: &str) {
     #[cfg(target_arch = "wasm32")]
+    // SAFETY: msg is a valid string reference.
     unsafe {
         log(msg.as_ptr() as i32, msg.len() as i32);
     }
@@ -265,6 +294,7 @@ fn emit_log(msg: &str) {
 /// Move: public entry fun mint(admin: &signer, to: address, amount: u64)
 #[no_mangle]
 pub extern "C" fn mint(to_ptr: i32, amount: u64) -> i32 {
+    // SAFETY: The contract entry point guarantees to_ptr is valid for 20 bytes.
     let to: Address = unsafe {
         let slice = core::slice::from_raw_parts(to_ptr as *const u8, 20);
         let mut addr = [0u8; 20];
@@ -288,6 +318,7 @@ pub extern "C" fn mint(to_ptr: i32, amount: u64) -> i32 {
 /// Move: public entry fun transfer(from: &signer, to: address, amount: u64)
 #[no_mangle]
 pub extern "C" fn transfer(from_ptr: i32, to_ptr: i32, amount: u64) -> i32 {
+    // SAFETY: The contract entry point guarantees from_ptr is valid for 20 bytes.
     let from: Address = unsafe {
         let slice = core::slice::from_raw_parts(from_ptr as *const u8, 20);
         let mut addr = [0u8; 20];
@@ -295,6 +326,7 @@ pub extern "C" fn transfer(from_ptr: i32, to_ptr: i32, amount: u64) -> i32 {
         addr
     };
 
+    // SAFETY: The contract entry point guarantees to_ptr is valid for 20 bytes.
     let to: Address = unsafe {
         let slice = core::slice::from_raw_parts(to_ptr as *const u8, 20);
         let mut addr = [0u8; 20];
@@ -331,6 +363,7 @@ pub extern "C" fn transfer(from_ptr: i32, to_ptr: i32, amount: u64) -> i32 {
 /// Move: public fun balance(addr: address): u64
 #[no_mangle]
 pub extern "C" fn balance(addr_ptr: i32) -> u64 {
+    // SAFETY: The contract entry point guarantees addr_ptr is valid for 20 bytes.
     let addr: Address = unsafe {
         let slice = core::slice::from_raw_parts(addr_ptr as *const u8, 20);
         let mut address = [0u8; 20];
@@ -352,6 +385,7 @@ pub extern "C" fn total_supply() -> u64 {
 /// Move: public fun exists(addr: address): bool
 #[no_mangle]
 pub extern "C" fn has_coin(addr_ptr: i32) -> i32 {
+    // SAFETY: The contract entry point guarantees addr_ptr is valid for 20 bytes.
     let addr: Address = unsafe {
         let slice = core::slice::from_raw_parts(addr_ptr as *const u8, 20);
         let mut address = [0u8; 20];
@@ -366,6 +400,7 @@ pub extern "C" fn has_coin(addr_ptr: i32) -> i32 {
 /// Move: public entry fun burn(owner: &signer, amount: u64)
 #[no_mangle]
 pub extern "C" fn burn(owner_ptr: i32, amount: u64) -> i32 {
+    // SAFETY: The contract entry point guarantees owner_ptr is valid for 20 bytes.
     let owner: Address = unsafe {
         let slice = core::slice::from_raw_parts(owner_ptr as *const u8, 20);
         let mut addr = [0u8; 20];

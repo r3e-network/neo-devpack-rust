@@ -36,12 +36,24 @@ pub fn is_owner(cfg: &WalletConfig, owner: &NeoByteString) -> bool {
         .any(|existing| addresses_equal(existing, owner))
 }
 
+/// Reads a list of owner addresses from a raw pointer.
+/// 
+/// # Safety
+/// 
+/// The caller must ensure that:
+/// - `ptr` is a valid, non-null pointer to memory containing `count` 20-byte addresses
+/// - The total memory size (`count * 20` bytes) is valid for reading
+/// - The memory is properly aligned and remains valid for the duration of the call
+/// 
+/// These invariants are guaranteed when called from NeoVM contract entry points.
 pub fn read_owners(ptr: i64, count: i64) -> Option<Vec<NeoByteString>> {
     if ptr == 0 || count <= 0 {
         return None;
     }
     let count = count as usize;
     let total = count.checked_mul(20)?;
+    // SAFETY: We've validated ptr is non-null and calculated total safely.
+    // The pointer validity is guaranteed by the NeoVM runtime.
     let bytes = unsafe { slice::from_raw_parts(ptr as *const u8, total) };
     let mut owners = Vec::with_capacity(count);
     for chunk in bytes.chunks_exact(20) {

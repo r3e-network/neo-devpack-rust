@@ -19,7 +19,7 @@ pub struct Instruction {
 
 impl Instruction {
     /// Create a new instruction
-    pub fn new(program_id: Pubkey, data: Vec<u8>, accounts: Vec<AccountMeta>) -> Self {
+    pub const fn new(program_id: Pubkey, data: Vec<u8>, accounts: Vec<AccountMeta>) -> Self {
         Self {
             program_id,
             accounts,
@@ -61,7 +61,7 @@ pub struct AccountMeta {
 
 impl AccountMeta {
     /// Create a new writable account meta
-    pub fn new(pubkey: Pubkey, is_signer: bool) -> Self {
+    pub const fn new(pubkey: Pubkey, is_signer: bool) -> Self {
         Self {
             pubkey,
             is_signer,
@@ -70,7 +70,7 @@ impl AccountMeta {
     }
 
     /// Create a new read-only account meta
-    pub fn new_readonly(pubkey: Pubkey, is_signer: bool) -> Self {
+    pub const fn new_readonly(pubkey: Pubkey, is_signer: bool) -> Self {
         Self {
             pubkey,
             is_signer,
@@ -117,7 +117,7 @@ pub fn invoke(
 
 /// Invoke a cross-program invocation with signer seeds
 ///
-/// In Neo, signing is handled via CheckWitness rather than PDA seeds
+/// In Neo, signing is handled via `CheckWitness` rather than PDA seeds
 pub fn invoke_signed(
     instruction: &Instruction,
     account_infos: &[AccountInfo],
@@ -129,14 +129,14 @@ pub fn invoke_signed(
 }
 
 /// Set return data for the current instruction
-pub fn set_return_data(data: &[u8]) {
+pub const fn set_return_data(data: &[u8]) {
     // In NeoVM, return values are pushed to the stack
     // This is handled automatically by the function return
     let _ = data;
 }
 
 /// Get return data from the last CPI
-pub fn get_return_data() -> Option<(Pubkey, Vec<u8>)> {
+pub const fn get_return_data() -> Option<(Pubkey, Vec<u8>)> {
     // Return data would be captured from the contract call result
     // Implementation depends on how wasm-neovm handles contract call returns
     None

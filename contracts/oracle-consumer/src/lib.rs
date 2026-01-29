@@ -248,11 +248,22 @@ fn read_string(ptr: i64, len: i64) -> Option<String> {
     String::from_utf8(bytes).ok()
 }
 
+/// Reads bytes from a raw pointer.
+/// 
+/// # Safety
+/// 
+/// The caller must ensure that:
+/// - `ptr` is a valid, non-null pointer allocated by the NeoVM runtime
+/// - `len` bytes starting at `ptr` are valid for reads
+/// 
+/// These invariants are guaranteed when called from NeoVM contract entry points.
 fn read_bytes(ptr: i64, len: i64) -> Option<Vec<u8>> {
     if ptr == 0 || len < 0 {
         return None;
     }
     let len = len as usize;
+    // SAFETY: We've validated ptr is non-null and len is positive.
+    // The pointer validity is guaranteed by the NeoVM runtime.
     let slice = unsafe { slice::from_raw_parts(ptr as *const u8, len) };
     Some(slice.to_vec())
 }

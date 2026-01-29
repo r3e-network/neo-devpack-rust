@@ -2,6 +2,8 @@ use std::env;
 use std::fs;
 use std::path::Path;
 
+use log::warn;
+
 #[test]
 #[ignore = "requires a running Neo Express instance"]
 fn hello_world_nef_is_deployable() {
@@ -9,7 +11,7 @@ fn hello_world_nef_is_deployable() {
     let nef = Path::new("build/solana_hello.nef");
     let manifest = Path::new("build/solana_hello.manifest.json");
     if !nef.exists() || !manifest.exists() {
-        eprintln!(
+        warn!(
             "Skipping: expected {} and {} to exist; run `make cross-chain` first",
             nef.display(),
             manifest.display()
@@ -23,7 +25,7 @@ fn hello_world_nef_is_deployable() {
     let rpc = match env::var("NEO_EXPRESS_RPC") {
         Ok(value) => value,
         Err(_) => {
-            eprintln!("Skipping Neo Express integration test – set NEO_EXPRESS_RPC to enable.");
+            warn!("Skipping Neo Express integration test – set NEO_EXPRESS_RPC to enable.");
             return;
         }
     };
@@ -31,7 +33,7 @@ fn hello_world_nef_is_deployable() {
     // Record the artefact hashes – callers can use these with neo-express `contract deploy`.
     let nef_bytes = fs::read(nef).expect("failed to read NEF");
     let manifest_bytes = fs::read(manifest).expect("failed to read manifest");
-    eprintln!(
+    warn!(
         "Ready to deploy solana-hello (NEF {} bytes, manifest {} bytes) via {rpc}",
         nef_bytes.len(),
         manifest_bytes.len()
@@ -50,7 +52,7 @@ fn move_coin_nef_is_available() {
     let nef = Path::new("build/MoveCoin.nef");
     let manifest = Path::new("build/MoveCoin.manifest.json");
     if !nef.exists() || !manifest.exists() {
-        eprintln!(
+        warn!(
             "Skipping: expected {} and {} to exist; run `make cross-chain` first",
             nef.display(),
             manifest.display()

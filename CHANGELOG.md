@@ -10,19 +10,26 @@ this repository follow independent versioning (currently 0.1.x).
 
 ## [Unreleased]
 
+## [0.4.1] - 2025-01-29
+
 ### Added
 - Enhanced CI/CD with dependency auditing workflows
 - Automated cargo-machete checks for unused dependencies
 - Version consistency validation across workspace
 - Improved code quality gates
+- Added comprehensive crate metadata (keywords, categories) for crates.io publishing
+- Added `include` fields to Cargo.toml for cleaner package publishing
 
 ### Changed
 - Updated CHANGELOG format to follow Keep a Changelog standards
 - Enhanced documentation with additional badges and links
+- Improved module-level documentation in `wasm-neovm` translator
 
 ### Fixed
 - Minor clippy warning in neo-runtime (unit struct construction)
-- Code formatting consistency in json.rs
+- Code formatting consistency across all crates
+- Fixed rustdoc warnings in `move-neovm` (unclosed HTML tag)
+- Fixed rustdoc warnings in `wasm-neovm` (private intra-doc links)
 
 ## [0.4.0] - 2025-01-20
 

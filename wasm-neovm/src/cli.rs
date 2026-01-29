@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use clap::Parser;
+use log::warn;
 
 use wasm_neovm::SourceChain;
 
@@ -47,8 +48,8 @@ pub(crate) struct Cli {
 impl Cli {
     pub(crate) fn parse_source_chain(&self) -> SourceChain {
         SourceChain::from_str(&self.source_chain).unwrap_or_else(|| {
-            eprintln!(
-                "Warning: unknown source chain '{}', defaulting to 'neo'",
+            warn!(
+                "Unknown source chain '{}', defaulting to 'neo'",
                 self.source_chain
             );
             SourceChain::Neo

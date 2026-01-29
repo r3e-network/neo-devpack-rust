@@ -8,6 +8,10 @@ repository.workspace = true
 homepage.workspace = true
 description = "WebAssembly to NeoVM translator"
 rust-version.workspace = true
+readme = "../README.md"
+keywords = ["neo", "neovm", "wasm", "webassembly", "blockchain", "smart-contracts"]
+categories = ["wasm", "cryptography::cryptocurrencies", "development-tools"]
+include = ["src/**/*", "Cargo.toml", "build.rs", "README.md", "../LICENSE"]
 
 [dependencies]
 anyhow = { workspace = true }
@@ -22,6 +26,8 @@ hex = { workspace = true }
 sha2 = { workspace = true }
 diff = { workspace = true }
 move-neovm = { workspace = true }
+log = "0.4"
+env_logger = { version = "0.11", default-features = false, features = ["auto-color"] }
 
 [dev-dependencies]
 assert_cmd = { workspace = true }

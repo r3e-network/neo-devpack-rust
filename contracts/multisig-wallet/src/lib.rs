@@ -13,7 +13,9 @@ use events::{ProposalCreated, ProposalExecuted};
 use execution::execute_proposal;
 use proposals::{decode_arguments, load_proposal, next_proposal_id, remove_proposal_entries, store_proposal};
 use storage::storage_context;
-use types::{CallArgument, Proposal, WalletConfig};
+use types::{Proposal, WalletConfig};
+#[cfg(test)]
+use types::CallArgument;
 use utils::{addresses_equal, ensure_witness, read_address, read_string};
 
 neo_manifest_overlay!(

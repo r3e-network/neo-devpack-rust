@@ -1,3 +1,15 @@
+//! Contract manifest generation for Neo N3
+//!
+//! This module handles the creation and manipulation of Neo N3 contract manifests,
+//! which describe the contract's ABI, permissions, and other metadata.
+//!
+//! # Key Types
+//!
+//! - [`ManifestBuilder`]: Builder pattern for constructing manifests
+//! - [`RenderedManifest`]: Final rendered manifest ready for serialization
+//! - [`ManifestMethod`]: Description of a contract method
+//! - [`ManifestParameter`]: Description of a method parameter
+
 mod build;
 mod builder;
 mod merge;

@@ -32,13 +32,14 @@ impl FeatureTracker {
         }
     }
 
-    pub(crate) fn apply(&self, manifest: &mut ManifestBuilder) {
+    pub(crate) fn apply(&self, manifest: &mut ManifestBuilder) -> Result<()> {
         if self.storage {
-            manifest.enable_feature("storage");
+            manifest.enable_feature("storage")?;
         }
         if self.payable {
-            manifest.enable_feature("payable");
+            manifest.enable_feature("payable")?;
         }
+        Ok(())
     }
 }
 

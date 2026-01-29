@@ -11,15 +11,28 @@ extern crate alloc;
 use core::alloc::{GlobalAlloc, Layout};
 use core::panic::PanicInfo;
 
-// Simple bump allocator for no_std
+/// A minimal bump allocator stub for no_std WASM environments.
+/// 
+/// # Safety
+/// 
+/// This is a stub implementation that returns null for allocations.
+/// It is only suitable for contracts that don't need heap allocation.
+/// For production use, a proper bump allocator with memory tracking should be used.
 struct BumpAllocator;
 
+// SAFETY: This is a stub allocator that always returns null.
+// It is only safe because this contract doesn't use heap allocation.
+// The alloc and dealloc methods are no-ops as this contract uses
+// only stack-allocated data.
 unsafe impl GlobalAlloc for BumpAllocator {
     unsafe fn alloc(&self, _layout: Layout) -> *mut u8 {
-        // In wasm context, memory is managed by the runtime
+        // This stub allocator returns null, indicating allocation failure.
+        // The contract is designed to work without heap allocation.
         core::ptr::null_mut()
     }
-    unsafe fn dealloc(&self, _ptr: *mut u8, _layout: Layout) {}
+    unsafe fn dealloc(&self, _ptr: *mut u8, _layout: Layout) {
+        // No-op: since we never allocate, we never need to deallocate.
+    }
 }
 
 #[global_allocator]

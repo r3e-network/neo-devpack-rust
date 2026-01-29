@@ -8,6 +8,9 @@ repository.workspace = true
 homepage.workspace = true
 description = "Move bytecode to NeoVM translator (experimental)"
 rust-version.workspace = true
+keywords = ["neo", "neovm", "move", "blockchain", "smart-contracts", "bytecode"]
+categories = ["cryptography::cryptocurrencies", "development-tools"]
+include = ["src/**/*", "Cargo.toml", "README.md", "../LICENSE"]
 
 [dependencies]
 anyhow = { workspace = true }

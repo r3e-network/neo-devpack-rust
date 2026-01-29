@@ -9,6 +9,9 @@ homepage.workspace = true
 documentation = "https://docs.rs/neo-devpack"
 description = "Neo N3 Rust Development Pack for Smart Contract Development"
 rust-version.workspace = true
+keywords = ["neo", "neovm", "blockchain", "smart-contracts", "sdk"]
+categories = ["cryptography::cryptocurrencies", "development-tools::ffi"]
+include = ["src/**/*", "Cargo.toml", "../LICENSE"]
 
 [dependencies]
 serde = { workspace = true }

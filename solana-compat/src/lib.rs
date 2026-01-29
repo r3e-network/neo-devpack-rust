@@ -1,7 +1,7 @@
 //! Neo-Solana Compatibility Layer
 //!
 //! This crate provides a Solana-compatible API surface that compiles to WASM
-//! and can be translated to NeoVM bytecode via `wasm-neovm`.
+//! and can be translated to `NeoVM` bytecode via `wasm-neovm`.
 //!
 //! # Usage
 //!
@@ -20,9 +20,9 @@
 //! The compatibility layer maps Solana concepts to Neo equivalents:
 //!
 //! - **Accounts** → Neo contract storage slots
-//! - **Program IDs** → Neo contract hashes (UInt160)
+//! - **Program IDs** → Neo contract hashes (`UInt160`)
 //! - **Syscalls** → Neo interop services
-//! - **Signatures** → CheckWitness verification
+//! - **Signatures** → `CheckWitness` verification
 
 #![no_std]
 #![allow(dead_code)]

@@ -49,7 +49,7 @@ pub enum ProgramError {
 
 impl ProgramError {
     /// Convert to u64 error code
-    pub fn to_u64(&self) -> u64 {
+    pub const fn to_u64(&self) -> u64 {
         match self {
             ProgramError::Custom(error) => *error as u64,
             ProgramError::InvalidArgument => 1,

@@ -2,6 +2,7 @@ use std::fs;
 use std::path::Path;
 
 use anyhow::{bail, Context, Result};
+use log::{debug, info};
 use serde_json::{Map, Value};
 
 pub(crate) fn compare_manifest(reference_path: &Path, generated: &Value) -> Result<()> {
@@ -14,18 +15,18 @@ pub(crate) fn compare_manifest(reference_path: &Path, generated: &Value) -> Resu
         )
     })?;
     if &reference == generated {
-        println!("Manifest matches {}", reference_path.display());
+        info!("Manifest matches {}", reference_path.display());
         return Ok(());
     }
 
     let expected = serde_json::to_string_pretty(&reference)?;
     let actual = serde_json::to_string_pretty(generated)?;
-    println!("Manifest differs from {}:", reference_path.display());
+    info!("Manifest differs from {}:", reference_path.display());
     for diff in diff::lines(&expected, &actual) {
         use diff::Result::{Both, Left, Right};
         match diff {
-            Left(line) => println!("-{}", line),
-            Right(line) => println!("+{}", line),
+            Left(line) => debug!("-{}", line),
+            Right(line) => debug!("+{}", line),
             Both(_, _) => {}
         }
     }

@@ -32,7 +32,7 @@ pub struct AccountInfo<'a> {
 }
 
 impl<'a> AccountInfo<'a> {
-    /// Create a new AccountInfo
+    /// Create a new `AccountInfo`
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         key: &'a Pubkey,
@@ -57,7 +57,7 @@ impl<'a> AccountInfo<'a> {
     }
 
     /// Get the account's public key
-    pub fn key(&self) -> &Pubkey {
+    pub const fn key(&self) -> &Pubkey {
         self.key
     }
 
@@ -87,17 +87,17 @@ impl<'a> AccountInfo<'a> {
     }
 
     /// Get the owner pubkey
-    pub fn owner(&self) -> &Pubkey {
+    pub const fn owner(&self) -> &Pubkey {
         self.owner
     }
 
     /// Check if this account is a signer
-    pub fn is_signer(&self) -> bool {
+    pub const fn is_signer(&self) -> bool {
         self.is_signer
     }
 
     /// Check if this account is writable
-    pub fn is_writable(&self) -> bool {
+    pub const fn is_writable(&self) -> bool {
         self.is_writable
     }
 
@@ -105,14 +105,14 @@ impl<'a> AccountInfo<'a> {
     ///
     /// Note: In Neo, this operation is not directly supported.
     /// Ownership is determined by the contract that created the storage.
-    pub fn assign(&self, _new_owner: &Pubkey) {
+    pub const fn assign(&self, _new_owner: &Pubkey) {
         // No-op in Neo context
     }
 
     /// Realloc the account data
     ///
     /// Note: In Neo, storage values can grow dynamically.
-    pub fn realloc(&self, _new_len: usize, _zero_init: bool) -> Result<(), ProgramError> {
+    pub const fn realloc(&self, _new_len: usize, _zero_init: bool) -> Result<(), ProgramError> {
         // In Neo, storage is dynamically sized
         // This is a no-op since we handle it at the storage layer
         Ok(())

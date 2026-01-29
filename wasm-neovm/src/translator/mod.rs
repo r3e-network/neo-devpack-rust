@@ -1,3 +1,24 @@
+//! Core WASM to NeoVM translation engine
+//!
+//! This module contains the main translation logic that converts WebAssembly
+//! bytecode into NeoVM opcodes.
+//!
+//! # Translation Process
+//!
+//! 1. **Frontend**: Parses and validates WASM module
+//! 2. **IR**: Intermediate representation with type information
+//! 3. **Translation**: Converts WASM instructions to NeoVM opcodes
+//! 4. **Runtime**: Generates helper functions for memory, tables, etc.
+//!
+//! # Example
+//!
+//! ```rust,ignore
+//! use wasm_neovm::translator::{translate_module, TranslationConfig};
+//!
+//! let config = TranslationConfig::new("MyContract");
+//! let translation = translate_with_config(&wasm_bytes, config)?;
+//! ```
+
 mod constants;
 mod frontend;
 mod helpers;

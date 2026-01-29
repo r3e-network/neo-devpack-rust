@@ -188,7 +188,7 @@ impl<'a> DriverState<'a> {
         if let Some(extra) = self.extra_manifest_overlay {
             manifest_builder.merge_overlay(&extra.value, extra.label);
         }
-        self.feature_tracker.apply(&mut manifest_builder);
+        self.feature_tracker.apply(&mut manifest_builder)?;
         manifest_builder.propagate_safe_flags();
         manifest_builder.ensure_method_parity()?;
 

@@ -17,8 +17,8 @@ pub type ProcessInstruction =
 ///
 /// This macro creates a WASM export that:
 /// 1. Deserializes input from Neo transaction data
-/// 2. Calls the user's process_instruction function
-/// 3. Returns success/failure to NeoVM
+/// 2. Calls the user's `process_instruction` function
+/// 3. Returns success/failure to `NeoVM`
 ///
 /// # Example
 ///
@@ -47,7 +47,8 @@ macro_rules! entrypoint {
             // - input_len: length of the input data
             // Returns: 0 for success, non-zero error code for failure
 
-            // Safety: this is called by the NeoVM runtime with valid pointers
+            // SAFETY: This is called by the NeoVM runtime with valid pointers.
+            // The input pointer is guaranteed to be valid for input_len bytes.
             let result = unsafe {
                 $crate::entrypoint::__neo_process_instruction(
                     input as *const u8,
@@ -67,7 +68,14 @@ macro_rules! entrypoint {
 /// Internal function to process instruction (called by entrypoint macro)
 ///
 /// # Safety
-/// The input pointer must be valid for `input_len` bytes.
+///
+/// The caller must ensure:
+/// - `input` is a valid, non-null pointer when `input_len > 0`
+/// - `input` points to at least `input_len` valid bytes
+/// - The memory remains valid and immutable for the duration of this function
+///
+/// These invariants are guaranteed when called by the NeoVM runtime through
+/// the entrypoint macro.
 #[doc(hidden)]
 pub unsafe fn __neo_process_instruction(
     input: *const u8,
@@ -78,6 +86,7 @@ pub unsafe fn __neo_process_instruction(
     let data = if input.is_null() || input_len == 0 {
         &[]
     } else {
+        // SAFETY: The caller guarantees the pointer is valid for input_len bytes.
         core::slice::from_raw_parts(input, input_len)
     };
 

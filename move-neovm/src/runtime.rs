@@ -104,7 +104,7 @@ pub fn signer_to_checkwitness() -> &'static str {
 
 /// Map Move global storage to Neo contract storage
 ///
-/// Move: borrow_global<T>(address)
+/// Move: `borrow_global<T>`(address)
 /// Neo: Storage.Get(prefix + address + type_hash)
 pub fn global_storage_key(address: &[u8], type_name: &str) -> Vec<u8> {
     let mut key = Vec::with_capacity(address.len() + type_name.len() + 1);

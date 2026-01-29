@@ -80,11 +80,11 @@ impl ManifestBuilder {
         Ok(())
     }
 
-    pub fn enable_feature(&mut self, feature: &str) {
+    pub fn enable_feature(&mut self, feature: &str) -> Result<()> {
         let manifest_obj = self
             .manifest
             .as_object_mut()
-            .expect("manifest root must be an object");
+            .ok_or_else(|| anyhow::anyhow!("manifest root must be an object"))?;
         let entry = manifest_obj
             .entry("features".to_string())
             .or_insert_with(|| Value::Object(Map::new()));
@@ -94,6 +94,7 @@ impl ManifestBuilder {
         if let Some(map) = entry.as_object_mut() {
             map.insert(feature.to_string(), Value::Bool(true));
         }
+        Ok(())
     }
 
     pub fn manifest_value(&self) -> &Value {

@@ -48,11 +48,18 @@ extern "C" {
 // Solana-Compatible Syscall Wrappers
 // ============================================================================
 
-/// Log a message (sol_log equivalent)
+/// Log a message (`sol_log` equivalent)
 ///
 /// Maps to: System.Runtime.Log
-pub fn sol_log(message: &str) {
+///
+/// # Safety
+///
+/// This function is safe because it only passes valid string references to the NeoVM runtime.
+/// The `message` reference is guaranteed to be valid for the duration of the call.
+pub const fn sol_log(message: &str) {
     #[cfg(target_arch = "wasm32")]
+    // SAFETY: We're passing a valid string slice to the NeoVM runtime.
+    // The pointer and length come from a valid Rust reference.
     unsafe {
         neo_log(message.as_ptr() as i32, message.len() as i32);
     }
@@ -78,8 +85,15 @@ pub fn sol_log_compute_units() {
 /// Get current Unix timestamp
 ///
 /// Maps to: System.Runtime.GetTime
-pub fn sol_get_clock_sysvar() -> i64 {
+///
+/// # Safety
+///
+/// This function wraps the NeoVM syscall which returns an i64 value.
+/// It is safe because the syscall does not access any caller-provided memory.
+pub const fn sol_get_clock_sysvar() -> i64 {
     #[cfg(target_arch = "wasm32")]
+    // SAFETY: The NeoVM syscall returns a simple i64 value without
+    // accessing any caller-provided memory.
     unsafe {
         neo_get_time()
     }
@@ -90,8 +104,18 @@ pub fn sol_get_clock_sysvar() -> i64 {
 /// SHA256 hash
 ///
 /// Maps to: Neo.Crypto.SHA256
+///
+/// # Safety
+///
+/// This function is safe because:
+/// - `data` is a valid byte slice reference
+/// - `output` is a valid mutable reference to a 32-byte array
+///
+/// Both references are guaranteed valid for the duration of the call.
 pub fn sol_sha256(data: &[u8], output: &mut [u8; 32]) {
     #[cfg(target_arch = "wasm32")]
+    // SAFETY: We're passing valid references to the NeoVM runtime.
+    // data.as_ptr() points to valid data, and output.as_mut_ptr() points to a 32-byte buffer.
     unsafe {
         neo_sha256(
             data.as_ptr() as i32,
@@ -117,9 +141,19 @@ pub fn sol_keccak256(data: &[u8], output: &mut [u8; 32]) {
 /// Verify Ed25519 signature
 ///
 /// Note: Neo uses different signature schemes (secp256r1, secp256k1)
-/// This is a compatibility stub that uses CheckWitness
-pub fn sol_verify_signature(signature: &[u8; 64], pubkey: &Pubkey, message: &[u8]) -> bool {
+/// This is a compatibility stub that uses `CheckWitness`
+///
+/// # Safety
+///
+/// This function is safe because:
+/// - `signature`, `pubkey`, and `message` are valid references
+/// - The stack-allocated `hash160` buffer is always valid
+///
+/// All pointers are derived from valid Rust references.
+pub const fn sol_verify_signature(signature: &[u8; 64], pubkey: &Pubkey, message: &[u8]) -> bool {
     #[cfg(target_arch = "wasm32")]
+    // SAFETY: All pointers come from valid references.
+    // hash160 is a stack-allocated array that remains valid for the duration.
     unsafe {
         // Derive script hash from the pubkey to check witness against the account identity.
         let mut hash160 = [0u8; 20];
@@ -142,9 +176,17 @@ pub fn sol_verify_signature(signature: &[u8; 64], pubkey: &Pubkey, message: &[u8
 /// Invoke another program (CPI)
 ///
 /// Maps to: System.Contract.Call
-pub fn sol_invoke(program_id: &Pubkey, method: &str, args: &[u8]) -> Result<(), u64> {
+///
+/// # Safety
+///
+/// This function is safe because:
+/// - `program_id`, `method`, and `args` are all valid references
+///
+/// All pointers are derived from valid Rust references guaranteed to outlive the call.
+pub const fn sol_invoke(program_id: &Pubkey, method: &str, args: &[u8]) -> Result<(), u64> {
     #[cfg(target_arch = "wasm32")]
     {
+        // SAFETY: All pointers come from valid references that outlive this call.
         let result = unsafe {
             neo_contract_call(
                 program_id.as_ref().as_ptr() as i32,
@@ -172,9 +214,15 @@ pub fn sol_invoke(program_id: &Pubkey, method: &str, args: &[u8]) -> Result<(), 
 // ============================================================================
 
 /// Read from storage (simulates account data read)
+///
+/// # Safety
+///
+/// This function is safe because `key` is a valid reference.
+/// The buffer is currently unused but reserved for future API compatibility.
 pub fn storage_read(key: &[u8], buffer: &mut [u8]) -> Option<usize> {
     #[cfg(target_arch = "wasm32")]
     {
+        // SAFETY: key.as_ptr() comes from a valid reference.
         let result = unsafe { neo_storage_get(key.as_ptr() as i32, key.len() as i32) };
         let _ = buffer;
         // Without a concrete storage bridge we cannot safely populate the buffer yet.
@@ -192,8 +240,13 @@ pub fn storage_read(key: &[u8], buffer: &mut [u8]) -> Option<usize> {
 }
 
 /// Write to storage (simulates account data write)
-pub fn storage_write(key: &[u8], data: &[u8]) {
+///
+/// # Safety
+///
+/// This function is safe because `key` and `data` are valid references.
+pub const fn storage_write(key: &[u8], data: &[u8]) {
     #[cfg(target_arch = "wasm32")]
+    // SAFETY: Both pointers come from valid references.
     unsafe {
         neo_storage_put(
             key.as_ptr() as i32,
@@ -209,8 +262,13 @@ pub fn storage_write(key: &[u8], data: &[u8]) {
 }
 
 /// Delete from storage
-pub fn storage_delete(key: &[u8]) {
+///
+/// # Safety
+///
+/// This function is safe because `key` is a valid reference.
+pub const fn storage_delete(key: &[u8]) {
     #[cfg(target_arch = "wasm32")]
+    // SAFETY: The pointer comes from a valid reference.
     unsafe {
         neo_storage_delete(key.as_ptr() as i32, key.len() as i32);
     }

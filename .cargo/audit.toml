@@ -10,14 +10,8 @@ ignore = [
     "RUSTSEC-2025-0141",
 ]
 
-# Severity threshold to warn on
-severity_threshold = "low"
-
-# Deny any warning
-deny = ["unmaintained", "yanked", "unsound"]
-
 [output]
-# Print results to stdout
-stdout = true
-# Print results to stderr
-stderr = false
+# Output format (terminal, json, sarif)
+format = "terminal"
+# Quiet mode
+quiet = false

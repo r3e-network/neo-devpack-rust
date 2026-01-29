@@ -1,13 +1,13 @@
 //! Pubkey type representing a 32-byte public key
 //!
-//! Maps to Neo's UInt160 (contract hash) or UInt256 as appropriate.
+//! Maps to Neo's `UInt160` (contract hash) or `UInt256` as appropriate.
 
 use core::fmt;
 
 /// A 32-byte public key (Solana-compatible)
 ///
 /// In Neo context, this maps to:
-/// - Contract addresses: first 20 bytes as UInt160
+/// - Contract addresses: first 20 bytes as `UInt160`
 /// - Full hashes: all 32 bytes as identifier
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(C)]
@@ -35,11 +35,11 @@ impl Pubkey {
     }
 
     /// Get the underlying byte array
-    pub fn to_bytes(&self) -> [u8; 32] {
+    pub const fn to_bytes(&self) -> [u8; 32] {
         self.0
     }
 
-    /// Convert to Neo UInt160 format (first 20 bytes)
+    /// Convert to Neo `UInt160` format (first 20 bytes)
     pub fn to_neo_uint160(&self) -> [u8; 20] {
         let mut result = [0u8; 20];
         result.copy_from_slice(&self.0[..20]);

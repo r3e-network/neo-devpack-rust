@@ -1,3 +1,8 @@
+//! NEF metadata extraction and manipulation
+//!
+//! This module handles metadata embedded in NEF files, including method tokens
+//! for cross-contract calls and source information.
+
 mod extract;
 mod parse;
 mod tokens;

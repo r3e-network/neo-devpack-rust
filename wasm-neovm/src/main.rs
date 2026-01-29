@@ -7,6 +7,7 @@ use std::fs;
 
 use anyhow::{Context, Result};
 use clap::Parser;
+use log::info;
 use serde_json::Value;
 
 use crate::cli::Cli;
@@ -19,13 +20,14 @@ use wasm_neovm::{
 };
 
 fn main() -> Result<()> {
+    env_logger::init();
     let cli = Cli::parse();
 
     // Parse source chain
     let source_chain = cli.parse_source_chain();
 
     if source_chain != SourceChain::Neo {
-        println!("Cross-chain compilation: {:?} -> NeoVM", source_chain);
+        info!("Cross-chain compilation: {:?} -> NeoVM", source_chain);
     }
 
     let module = fs::read(&cli.input)
@@ -87,7 +89,7 @@ fn main() -> Result<()> {
         .unwrap_or_else(|| derive_output_path(&cli.input, "manifest.json"));
     fs::write(&manifest_path, &manifest_string)?;
 
-    println!(
+    info!(
         "Generated {} and {}",
         nef_path.display(),
         manifest_path.display()
