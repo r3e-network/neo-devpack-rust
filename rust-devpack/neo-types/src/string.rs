@@ -4,7 +4,7 @@ use std::string::String;
 use serde::{Deserialize, Serialize};
 
 /// Neo N3 String type
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct NeoString {
     data: String,
@@ -32,14 +32,6 @@ impl NeoString {
 
     pub fn is_empty(&self) -> bool {
         self.data.is_empty()
-    }
-}
-
-impl Default for NeoString {
-    fn default() -> Self {
-        Self {
-            data: String::new(),
-        }
     }
 }
 

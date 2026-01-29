@@ -4,7 +4,7 @@ use std::vec::Vec;
 use serde::{Deserialize, Serialize};
 
 /// Neo N3 ByteString type
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct NeoByteString {
     data: Vec<u8>,
@@ -39,12 +39,6 @@ impl NeoByteString {
 
     pub fn extend_from_slice(&mut self, slice: &[u8]) {
         self.data.extend_from_slice(slice);
-    }
-}
-
-impl Default for NeoByteString {
-    fn default() -> Self {
-        Self { data: Vec::new() }
     }
 }
 

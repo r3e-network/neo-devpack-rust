@@ -1,4 +1,4 @@
-use std::sync::LazyLock;
+use once_cell::sync::Lazy;
 
 mod generated {
     include!(concat!(env!("OUT_DIR"), "/opcodes.rs"));
@@ -7,8 +7,8 @@ mod generated {
 pub use generated::OpcodeInfo;
 
 /// Fast O(1) opcode lookup table initialized lazily
-static OPCODE_LOOKUP: LazyLock<std::collections::HashMap<&'static str, &'static OpcodeInfo>> =
-    LazyLock::new(|| {
+static OPCODE_LOOKUP: Lazy<std::collections::HashMap<&'static str, &'static OpcodeInfo>> =
+    Lazy::new(|| {
         let mut map = std::collections::HashMap::with_capacity(generated::OPCODES.len());
         for op in generated::OPCODES {
             map.insert(op.name, op);
