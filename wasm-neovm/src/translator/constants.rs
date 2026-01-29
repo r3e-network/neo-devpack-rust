@@ -30,6 +30,10 @@ pub(crate) const UNSUPPORTED_FEATURE_DOC: &str =
 
 pub(crate) const CUSTOM_SECTION_PREFIX: &str = ".custom_section.";
 
+/// macOS (Mach-O) custom section names
+pub(crate) const MACOS_MANIFEST_SECTION: &str = "__DATA,__neo_manifest";
+pub(crate) const MACOS_METHODTOKENS_SECTION: &str = "__DATA,__neo_methodtokens";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CustomSectionKind {
     Manifest,
@@ -37,6 +41,15 @@ pub(crate) enum CustomSectionKind {
 }
 
 pub(crate) fn classify_custom_section(name: &str) -> Option<CustomSectionKind> {
+    // Handle macOS (Mach-O) section names
+    if name == MACOS_MANIFEST_SECTION {
+        return Some(CustomSectionKind::Manifest);
+    }
+    if name == MACOS_METHODTOKENS_SECTION {
+        return Some(CustomSectionKind::MethodTokens);
+    }
+
+    // Handle standard ELF/COFF custom section names
     let stripped = name.strip_prefix(CUSTOM_SECTION_PREFIX).unwrap_or(name);
     if stripped == "neo.manifest" || stripped.starts_with("neo.manifest.") {
         Some(CustomSectionKind::Manifest)

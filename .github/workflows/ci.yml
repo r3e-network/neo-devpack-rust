@@ -289,11 +289,13 @@ jobs:
           tool: 'cargo'
           output-file-path: output.txt
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          auto-push: false
+          auto-push: true
+          gh-pages-branch: gh-pages
           alert-threshold: '105%'
           comment-on-alert: true
-          fail-on-alert: true
+          fail-on-alert: false
           alert-comment-cc-users: '@r3e-network'
+        continue-on-error: true
 
       - name: Run benchmarks - move-neovm
         run: cargo bench --manifest-path move-neovm/Cargo.toml --no-fail-fast

@@ -10,7 +10,8 @@ static MANIFEST_OVERLAY_COUNTER: AtomicUsize = AtomicUsize::new(0);
 /// Generate tokens for embedding a manifest overlay as a Wasm custom section.
 ///
 /// This function creates a static byte array in the `.custom_section.neo.manifest`
-/// section, which will be extracted during contract deployment.
+/// section (or `__DATA,__neo_manifest` on macOS), which will be extracted during
+/// contract deployment.
 ///
 /// # Arguments
 ///
@@ -20,14 +21,23 @@ static MANIFEST_OVERLAY_COUNTER: AtomicUsize = AtomicUsize::new(0);
 ///
 /// TokenStream2 containing the custom section definition
 pub fn manifest_overlay_tokens(value: &str) -> TokenStream2 {
-    let bytes = value.as_bytes();
+    let bytes: Vec<u8> = value.as_bytes().to_vec();
     let len = bytes.len();
-    let byte_tokens = bytes.iter().map(|b| quote! { #b });
+    let byte_tokens: Vec<_> = bytes.iter().map(|b| quote! { #b }).collect();
     let counter = MANIFEST_OVERLAY_COUNTER.fetch_add(1, Ordering::Relaxed);
     let ident = format_ident!("__NEO_MANIFEST_OVERLAY_{}", counter);
 
+    // Use platform-specific section names:
+    // - macOS (Mach-O): __DATA,__neo_manifest (segment,section format)
+    // - Linux/Windows (ELF/COFF): .custom_section.neo.manifest
     quote! {
         const _: () = {
+            #[cfg(target_os = "macos")]
+            #[link_section = "__DATA,__neo_manifest"]
+            #[used]
+            static #ident: [u8; #len] = [#(#byte_tokens),*];
+
+            #[cfg(not(target_os = "macos"))]
             #[link_section = ".custom_section.neo.manifest"]
             #[used]
             static #ident: [u8; #len] = [#(#byte_tokens),*];
