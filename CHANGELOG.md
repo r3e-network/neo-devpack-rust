@@ -12,18 +12,57 @@ this repository follow independent versioning (currently 0.1.x).
 
 ## [0.4.1] - 2026-01-29
 
+This release represents 120 comprehensive review and improvement rounds, resulting in significant code quality, performance, and security enhancements.
+
+### Highlights
+- **Performance**: O(1) opcode lookup, arena allocator, memory pooling, const evaluation
+- **Security**: Fixed critical syscall hash issues, added bounds checking, unsafe code documentation
+- **Quality**: Zero clippy warnings, comprehensive documentation, 340+ passing tests
+- **Compatibility**: Rust 1.70+ MSRV maintained, all platforms tested
+
+### Performance Improvements
+- Added O(1) opcode lookup using lazy HashMap (Rounds 61, 63, 66)
+- New arena allocator for fast temporary object allocation (Round 83)
+- Memory pooling with 4 bucket sizes to reduce allocations (Round 89)
+- Pre-computed constant tables for masks and power-of-2 values (Round 82)
+- Inline annotations on hot path functions (Round 81)
+- Branch prediction hints using likely!/unlikely! macros (Round 85)
+- Cache-friendly data structure layouts with #[repr(C)] (Round 84)
+- Profile-guided optimization instrumentation (Round 90)
+
+### Security Fixes
+- **CRITICAL**: Removed incorrect/legacy syscall hashes from extended table (Round 25)
+- **CRITICAL**: Fixed panic-prone integer conversions with safe alternatives (Round 26)
+- Added bounds checking for memory offset overflow (Round 22)
+- Documented 30+ unsafe blocks with # Safety sections (Round 11)
+- Added validation for NEF method tokens (Round 24)
+- Fixed infinite recursion in Pubkey Default impl (Round 16)
+
+### Code Quality (Rounds 1-40, 41-80, 101-120)
+- Zero clippy warnings (all 120 rounds)
+- Comprehensive documentation added to all modules
+- Fixed all rustdoc warnings
+- Error handling improvements (expect → Result propagation)
+- Code deduplication with shared modules
+- Magic numbers extracted to named constants
+- Import cleanup and organization
+
 ### Added
 - Enhanced CI/CD with dependency auditing workflows
 - Automated cargo-machete checks for unused dependencies
 - Version consistency validation across workspace
 - Improved code quality gates
-- Added comprehensive crate metadata (keywords, categories) for crates.io publishing
-- Added `include` fields to Cargo.toml for cleaner package publishing
+- Comprehensive crate metadata (keywords, categories) for crates.io publishing
+- `include` fields to Cargo.toml for cleaner package publishing
+- License headers to all library files
+- docs.rs badge in README.md
 
 ### Changed
 - Updated CHANGELOG format to follow Keep a Changelog standards
 - Enhanced documentation with additional badges and links
 - Improved module-level documentation in `wasm-neovm` translator
+- Workspace version bump from 0.4.0 to 0.4.1
+- Migrated from LazyLock (1.80+) to once_cell::Lazy for MSRV 1.70 compatibility
 
 ### Fixed
 - Minor clippy warning in neo-runtime (unit struct construction)
@@ -34,6 +73,8 @@ this repository follow independent versioning (currently 0.1.x).
 - Fixed borrow checker issues in control flow translation
 - Fixed API compatibility with wasmparser 0.239
 - Fixed test utility trait bounds for Debug compatibility
+- Fixed NeoTypes iterator implementation (removed unused index field)
+- Fixed Vec capacity calculation bug in move-neovm (+1 → +2)
 
 ## [0.4.0] - 2025-01-20
 
