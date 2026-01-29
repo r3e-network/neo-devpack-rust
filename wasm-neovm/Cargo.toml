@@ -9,7 +9,7 @@ homepage.workspace = true
 description = "WebAssembly to NeoVM translator"
 rust-version.workspace = true
 readme = "../README.md"
-keywords = ["neo", "neovm", "wasm", "webassembly", "blockchain", "smart-contracts"]
+keywords = ["neo", "neovm", "wasm", "blockchain", "smart-contracts"]
 categories = ["wasm", "cryptography::cryptocurrencies", "development-tools"]
 include = ["src/**/*", "Cargo.toml", "build.rs", "README.md", "../LICENSE"]
 
