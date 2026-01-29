@@ -1,7 +1,7 @@
 use super::super::super::function::{translate_function, TranslationContext};
 use super::super::*;
 
-impl<'a> DriverState<'a> {
+impl DriverState {
     pub(super) fn handle_code_section_start(&mut self) -> Result<()> {
         self.saw_code_section = true;
         self.next_defined_index = 0;

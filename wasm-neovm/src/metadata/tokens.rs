@@ -39,15 +39,26 @@ pub fn method_tokens_to_json(tokens: &[MethodToken]) -> Value {
     Value::Array(entries)
 }
 
+/// Deduplicates method tokens while preserving order.
+///
+/// This function removes duplicate method tokens based on their contract hash,
+/// method name, parameters count, return value flag, and call flags.
 pub fn dedup_method_tokens(tokens: &mut Vec<MethodToken>) {
-    let mut seen = HashSet::new();
+    let mut seen = HashSet::with_capacity(tokens.len());
     tokens.retain(|token| {
-        seen.insert((
+        // Use the method string's hash instead of the string itself to avoid clones
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        token.method.hash(&mut hasher);
+        let method_hash = hasher.finish();
+
+        let key = (
             token.contract_hash,
-            token.method.clone(),
+            method_hash,
             token.parameters_count,
             token.has_return_value,
             token.call_flags,
-        ))
+        );
+        seen.insert(key)
     });
 }

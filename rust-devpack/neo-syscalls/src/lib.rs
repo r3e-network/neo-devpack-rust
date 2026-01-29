@@ -254,18 +254,29 @@ impl NeoVMSyscall {
 
     /// Check if the specified account is a witness
     pub fn check_witness(account: &NeoByteString) -> NeoResult<NeoBoolean> {
+        // Note: Clone required here as NeoValue takes ownership
         let args = [NeoValue::from(account.clone())];
         Self::call_boolean("System.Runtime.CheckWitness", &args)
     }
 
-    /// Send notification
+    /// Send notification to the runtime.
+    ///
+    /// # Arguments
+    /// * `event` - The event name
+    /// * `state` - The event state as an array of values
+    ///
+    /// # Note
+    /// This function clones the event and state arguments as NeoValue requires owned data.
     pub fn notify(event: &NeoString, state: &NeoArray<NeoValue>) -> NeoResult<()> {
         let args = [NeoValue::from(event.clone()), NeoValue::from(state.clone())];
         neovm_syscall(syscall_hash("System.Runtime.Notify"), &args)?;
         Ok(())
     }
 
-    /// Log message
+    /// Log message to the runtime.
+    ///
+    /// # Note
+    /// This function clones the message as NeoValue requires owned data.
     pub fn log(message: &NeoString) -> NeoResult<()> {
         let args = [NeoValue::from(message.clone())];
         neovm_syscall(syscall_hash("System.Runtime.Log"), &args)?;
@@ -313,11 +324,12 @@ impl NeoVMSyscall {
         Self::call_bytes("System.Runtime.GetExecutingScriptHash")
     }
 
+    /// Get notifications for the specified script hash, or all notifications if None.
     pub fn get_notifications(script_hash: Option<&NeoByteString>) -> NeoResult<NeoArray<NeoValue>> {
         let args: Vec<NeoValue> = script_hash
             .map(|hash| vec![NeoValue::from(hash.clone())])
             .unwrap_or_default();
-        Self::call_array("System.Runtime.GetNotifications", args.as_slice())
+        Self::call_array("System.Runtime.GetNotifications", &args)
     }
 
     pub fn get_script_container() -> NeoResult<NeoArray<NeoValue>> {

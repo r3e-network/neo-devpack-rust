@@ -5,7 +5,7 @@ use start::{append_start_stub, resolve_start_descriptor};
 
 use super::state::DriverState;
 
-impl<'a> DriverState<'a> {
+impl DriverState {
     pub(super) fn finalize(mut self) -> Result<Translation> {
         #[cfg(feature = "profile")]
         let start = std::time::Instant::now();
@@ -183,7 +183,7 @@ impl<'a> DriverState<'a> {
             }
         }
 
-        let mut manifest_builder = ManifestBuilder::new(self.contract_name, &self.methods);
+        let mut manifest_builder = ManifestBuilder::new(&self.contract_name, &self.methods);
         if let Some(overlay) = self.manifest_overlay {
             manifest_builder
                 .merge_overlay(&overlay, Some("embedded neo.manifest sections".to_string()));
@@ -221,6 +221,7 @@ impl<'a> DriverState<'a> {
             manifest: manifest_builder.into_rendered(),
             method_tokens: metadata.method_tokens.clone(),
             source_url: metadata.source.clone(),
+            contract_name: crate::types::ContractName::new(self.contract_name),
         })
     }
 }

@@ -1,6 +1,6 @@
 use super::super::*;
 
-impl<'a> DriverState<'a> {
+impl DriverState {
     pub(super) fn handle_element_section(
         &mut self,
         reader: wasmparser::ElementSectionReader<'_>,

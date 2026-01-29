@@ -26,8 +26,9 @@ hex = { workspace = true }
 sha2 = { workspace = true }
 diff = { workspace = true }
 move-neovm = { workspace = true }
-log = "0.4"
-env_logger = { version = "0.11", default-features = false, features = ["auto-color"] }
+log = { version = "0.4", features = ["std", "serde"], optional = true }
+env_logger = { version = "0.11", default-features = false, features = ["auto-color"], optional = true }
+rustc_version_runtime = "0.3"
 
 [dev-dependencies]
 assert_cmd = { workspace = true }
@@ -49,8 +50,20 @@ name = "translation"
 harness = false
 
 [features]
-default = []
+default = ["std", "logging"]
+# Standard library support
+std = []
+# Enable logging support
+logging = ["log", "env_logger"]
+# Enable all optional features
+full = ["logging", "profiling", "pgo", "validation"]
 # Enable profiling instrumentation for performance analysis (Round 70)
-profile = []
+profiling = []
 # Enable Profile-Guided Optimization instrumentation (Round 90)
-pgo = []
+pgo = ["profiling"]
+# Enable extra validation checks
+validation = []
+# Enable experimental features
+experimental = []
+# Alias for profiling (backward compatibility)
+profile = ["profiling"]

@@ -1,7 +1,6 @@
-use crate::adapters::SourceChain;
 use crate::manifest::{ManifestMethod, RenderedManifest};
 use crate::nef::MethodToken;
-use serde_json::Value;
+use crate::types::ContractName;
 
 /// Optimized stack value representation (Round 84 - Cache Locality)
 ///
@@ -41,12 +40,53 @@ impl StackValue {
     }
 }
 
+/// The result of translating a WASM module to NeoVM
 #[derive(Debug)]
 pub struct Translation {
+    /// The generated NeoVM bytecode script
     pub script: Vec<u8>,
+    /// Method tokens for cross-contract calls
     pub method_tokens: Vec<MethodToken>,
+    /// The generated contract manifest
     pub manifest: RenderedManifest,
+    /// Source URL for the contract (if provided)
     pub source_url: Option<String>,
+    /// Contract name
+    pub contract_name: ContractName,
+}
+
+impl Translation {
+    /// Create a new translation result
+    pub fn new(
+        script: Vec<u8>,
+        method_tokens: Vec<MethodToken>,
+        manifest: RenderedManifest,
+        contract_name: ContractName,
+    ) -> Self {
+        Self {
+            script,
+            method_tokens,
+            manifest,
+            source_url: None,
+            contract_name,
+        }
+    }
+
+    /// Set the source URL
+    pub fn with_source_url(mut self, url: impl Into<String>) -> Self {
+        self.source_url = Some(url.into());
+        self
+    }
+
+    /// Get the script size in bytes
+    pub fn script_size(&self) -> usize {
+        self.script.len()
+    }
+
+    /// Get the total method token count
+    pub fn token_count(&self) -> usize {
+        self.method_tokens.len()
+    }
 }
 
 #[derive(Debug)]
@@ -54,35 +94,5 @@ pub struct ManifestData {
     pub methods: Vec<ManifestMethod>,
 }
 
-#[derive(Debug)]
-pub struct TranslationConfig<'a> {
-    pub contract_name: &'a str,
-    pub extra_manifest_overlay: Option<ManifestOverlay>,
-    pub source_chain: SourceChain,
-}
-
-impl<'a> TranslationConfig<'a> {
-    pub fn new(contract_name: &'a str) -> Self {
-        Self {
-            contract_name,
-            extra_manifest_overlay: None,
-            source_chain: SourceChain::Neo,
-        }
-    }
-
-    pub fn with_manifest_overlay(mut self, overlay: ManifestOverlay) -> Self {
-        self.extra_manifest_overlay = Some(overlay);
-        self
-    }
-
-    pub fn with_source_chain(mut self, source_chain: SourceChain) -> Self {
-        self.source_chain = source_chain;
-        self
-    }
-}
-
-#[derive(Debug)]
-pub struct ManifestOverlay {
-    pub value: Value,
-    pub label: Option<String>,
-}
+// Re-export the centralized config for backward compatibility
+pub use crate::config::options::{ManifestOverlay, TranslationConfig};

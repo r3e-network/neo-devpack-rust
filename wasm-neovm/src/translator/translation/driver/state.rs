@@ -1,10 +1,10 @@
 use super::*;
-use crate::ManifestOverlay;
+use crate::config::ManifestOverlay;
 
 use exports::ExportedFunction;
 
-pub(super) struct DriverState<'a> {
-    pub(super) contract_name: &'a str,
+pub(super) struct DriverState {
+    pub(super) contract_name: String,
     pub(super) adapter: Box<dyn ChainAdapter>,
     pub(super) extra_manifest_overlay: Option<ManifestOverlay>,
     pub(super) frontend: ModuleFrontend,
@@ -26,14 +26,14 @@ pub(super) struct DriverState<'a> {
     pub(super) start_defined_offset: Option<usize>,
 }
 
-impl<'a> DriverState<'a> {
-    pub(super) fn new(config: TranslationConfig<'a>) -> Self {
+impl DriverState {
+    pub(super) fn new(config: TranslationConfig) -> Self {
         // Pre-size collections based on typical contract sizes (Round 62, 63 optimizations)
         const TYPICAL_SCRIPT_CAPACITY: usize = 4096;
         const TYPICAL_METHODS_CAPACITY: usize = 32;
 
         Self {
-            contract_name: config.contract_name,
+            contract_name: config.contract_name.into_inner(),
             adapter: get_adapter(config.source_chain),
             extra_manifest_overlay: config.extra_manifest_overlay,
             frontend: ModuleFrontend::new(),

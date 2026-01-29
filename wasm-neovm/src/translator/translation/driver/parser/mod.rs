@@ -7,7 +7,7 @@ mod elements;
 mod sections;
 mod start;
 
-impl<'a> DriverState<'a> {
+impl DriverState {
     pub(super) fn parse_payloads(&mut self, bytes: &[u8]) -> Result<()> {
         #[cfg(feature = "profile")]
         let start = std::time::Instant::now();

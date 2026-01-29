@@ -1,5 +1,4 @@
 use neo_types::*;
-use std::vec::Vec;
 
 /// Deterministic crypto helpers for tests and examples.
 pub struct NeoCrypto;

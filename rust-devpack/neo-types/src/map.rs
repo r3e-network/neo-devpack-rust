@@ -35,24 +35,33 @@ impl<K, V> NeoMap<K, V> {
         None
     }
 
+    /// Gets a reference to the value associated with the given key.
+    ///
+    /// # Performance
+    /// This operation is O(n) as it performs a linear search.
+    /// Consider using a HashMap for O(1) lookups if performance is critical.
     pub fn get(&self, key: &K) -> Option<&V>
     where
         K: PartialEq,
     {
-        self.data
-            .iter()
-            .find_map(|(k, v)| if k == key { Some(v) } else { None })
+        self.data.iter().find(|(k, _)| k == key).map(|(_, v)| v)
     }
 
+    /// Gets a mutable reference to the value associated with the given key.
+    ///
+    /// # Performance
+    /// This operation is O(n) as it performs a linear search.
     pub fn get_mut(&mut self, key: &K) -> Option<&mut V>
     where
         K: PartialEq,
     {
-        self.data
-            .iter_mut()
-            .find_map(|(k, v)| if k == key { Some(v) } else { None })
+        self.data.iter_mut().find(|(k, _)| k == key).map(|(_, v)| v)
     }
 
+    /// Removes the key-value pair associated with the given key.
+    ///
+    /// # Performance
+    /// This operation is O(n) due to the element removal.
     pub fn remove(&mut self, key: &K) -> Option<V>
     where
         K: PartialEq,
@@ -60,7 +69,7 @@ impl<K, V> NeoMap<K, V> {
         self.data
             .iter()
             .position(|(k, _)| k == key)
-            .map(|i| self.data.remove(i).1)
+            .map(|i| self.data.swap_remove(i).1)
     }
 
     pub fn len(&self) -> usize {

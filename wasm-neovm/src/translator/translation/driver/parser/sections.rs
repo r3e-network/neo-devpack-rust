@@ -1,7 +1,7 @@
 use super::super::exports::ExportAlias;
 use super::super::*;
 
-impl<'a> DriverState<'a> {
+impl DriverState {
     pub(super) fn handle_type_section(
         &mut self,
         reader: wasmparser::TypeSectionReader<'_>,

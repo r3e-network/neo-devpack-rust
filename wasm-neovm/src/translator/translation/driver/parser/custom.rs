@@ -1,7 +1,7 @@
 use super::super::overlay::collect_safe_methods;
 use super::super::*;
 
-impl<'a> DriverState<'a> {
+impl DriverState {
     pub(super) fn handle_custom_section(
         &mut self,
         section: wasmparser::CustomSectionReader<'_>,

@@ -35,7 +35,7 @@ fn main() -> Result<()> {
 
     let module = maybe_translate_move_bytecode(module, source_chain)?;
 
-    let mut config = TranslationConfig::new(&cli.name);
+    let mut config = TranslationConfig::new(cli.name.clone());
     config = config.with_source_chain(source_chain);
     if let Some(path) = &cli.manifest_overlay {
         let overlay_bytes = fs::read_to_string(path)
