@@ -5,7 +5,7 @@ mod generated {
 pub use generated::SyscallInfo;
 
 /// Extended syscall info for native contract methods not in the generated table
-/// 
+///
 /// NOTE: These hashes are calculated as: uint32(hash160("SysCallName"))
 /// Use the correct Neo N3 syscall hashes from the official specification.
 static EXTENDED_SYSCALLS: &[SyscallInfo] = &[

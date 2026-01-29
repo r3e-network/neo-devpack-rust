@@ -115,7 +115,7 @@ fn write_method_tokens(buffer: &mut Vec<u8>, method_tokens: &[MethodToken]) -> R
             token.method,
             MAX_METHOD_NAME_LENGTH
         );
-        
+
         // Validate contract_hash is exactly 20 bytes (HASH160)
         ensure!(
             token.contract_hash.len() == HASH160_LENGTH,
@@ -124,7 +124,7 @@ fn write_method_tokens(buffer: &mut Vec<u8>, method_tokens: &[MethodToken]) -> R
             HASH160_LENGTH,
             token.contract_hash.len()
         );
-        
+
         // Validate call_flags is within valid range
         ensure!(
             token.call_flags <= MAX_CALL_FLAGS,
@@ -133,10 +133,10 @@ fn write_method_tokens(buffer: &mut Vec<u8>, method_tokens: &[MethodToken]) -> R
             token.call_flags,
             MAX_CALL_FLAGS
         );
-        
+
         // Note: parameters_count is u16, so it cannot exceed u16::MAX by definition
         // No validation needed here
-        
+
         buffer.extend_from_slice(&token.contract_hash);
         write_var_string(buffer, &token.method)?;
         buffer.extend_from_slice(&token.parameters_count.to_le_bytes());

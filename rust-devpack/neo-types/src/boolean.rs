@@ -22,7 +22,6 @@ impl NeoBoolean {
     }
 }
 
-
 impl BitAnd for NeoBoolean {
     type Output = Self;
     fn bitand(self, rhs: Self) -> Self::Output {

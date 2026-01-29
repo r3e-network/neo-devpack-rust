@@ -72,19 +72,25 @@ impl NeoInteger {
     }
 
     /// Convert to i32.
-    /// 
+    ///
     /// # Panics
     /// Panics if the value is outside the i32 range. Use `try_as_i32()` for a safe alternative.
-    #[deprecated(since = "0.4.1", note = "Use try_as_i32() or as_i32_saturating() instead to avoid panics")]
+    #[deprecated(
+        since = "0.4.1",
+        note = "Use try_as_i32() or as_i32_saturating() instead to avoid panics"
+    )]
     pub fn as_i32(&self) -> i32 {
         self.0.to_i32().expect("NeoInteger value exceeds i32 range")
     }
 
     /// Convert to u32.
-    /// 
+    ///
     /// # Panics
     /// Panics if the value is outside the u32 range. Use `try_as_u32()` for a safe alternative.
-    #[deprecated(since = "0.4.1", note = "Use try_as_u32() or as_u32_saturating() instead to avoid panics")]
+    #[deprecated(
+        since = "0.4.1",
+        note = "Use try_as_u32() or as_u32_saturating() instead to avoid panics"
+    )]
     pub fn as_u32(&self) -> u32 {
         self.0.to_u32().expect("NeoInteger value exceeds u32 range")
     }
@@ -97,7 +103,6 @@ impl NeoInteger {
         self.0.to_u32()
     }
 }
-
 
 impl Not for NeoInteger {
     type Output = Self;

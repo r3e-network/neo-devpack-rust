@@ -24,13 +24,19 @@ impl<'a> Default for ManifestConfig<'a> {
 }
 
 pub fn build_manifest(contract_name: &str, methods: &[ManifestMethod]) -> RenderedManifest {
-    build_manifest_with_config(ManifestConfig {
-        contract_name,
-        ..Default::default()
-    }, methods)
+    build_manifest_with_config(
+        ManifestConfig {
+            contract_name,
+            ..Default::default()
+        },
+        methods,
+    )
 }
 
-pub fn build_manifest_with_config(config: ManifestConfig, methods: &[ManifestMethod]) -> RenderedManifest {
+pub fn build_manifest_with_config(
+    config: ManifestConfig,
+    methods: &[ManifestMethod],
+) -> RenderedManifest {
     let extra = if let Some(email) = config.email {
         json!({
             "author": config.author,
@@ -45,7 +51,7 @@ pub fn build_manifest_with_config(config: ManifestConfig, methods: &[ManifestMet
             "version": config.version,
         })
     };
-    
+
     let manifest = json!({
         "name": config.contract_name,
         "groups": [],
