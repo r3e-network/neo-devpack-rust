@@ -1,5 +1,6 @@
 use super::*;
 
+/// Comparison operations (Round 82 - Const evaluation optimization)
 #[derive(Clone, Copy)]
 pub(in super::super) enum CompareOp {
     Lt,
@@ -9,6 +10,8 @@ pub(in super::super) enum CompareOp {
 }
 
 impl CompareOp {
+    /// Get the opcode name for this comparison (Round 81 - inline)
+    #[inline(always)]
     fn opcode_name(self) -> &'static str {
         match self {
             CompareOp::Lt => "LT",
@@ -18,26 +21,33 @@ impl CompareOp {
         }
     }
 
+    /// Evaluate signed comparison with compile-time constant folding (Round 82)
+    #[inline]
     fn evaluate_signed(self, lhs: i128, rhs: i128, bits: u32) -> bool {
+        // Simple cast-based sign extension (more reliable than bit manipulation)
         match bits {
             32 => {
-                let lhs = lhs as i32;
-                let rhs = rhs as i32;
+                let lhs = (lhs as i32) as i128;
+                let rhs = (rhs as i32) as i128;
                 self.evaluate_order(lhs, rhs)
             }
             64 => {
-                let lhs = lhs as i64;
-                let rhs = rhs as i64;
+                let lhs = (lhs as i64) as i128;
+                let rhs = (rhs as i64) as i128;
                 self.evaluate_order(lhs, rhs)
             }
             other => unreachable!("unsupported signed comparison width {}", other),
         }
     }
 
+    /// Evaluate unsigned comparison (Round 81 - inline)
+    #[inline(always)]
     fn evaluate_unsigned(self, lhs: u128, rhs: u128) -> bool {
         self.evaluate_order(lhs, rhs)
     }
 
+    /// Generic order evaluation (Round 81 - inline hot path)
+    #[inline(always)]
     fn evaluate_order<T: PartialOrd>(self, lhs: T, rhs: T) -> bool {
         match self {
             CompareOp::Lt => lhs < rhs,

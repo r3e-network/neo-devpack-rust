@@ -60,14 +60,25 @@ fn translate_memory_store_masks_address_to_u32() {
 
     let push1 = opcodes::lookup("PUSH1").unwrap().byte;
     let pushint8 = opcodes::lookup("PUSHINT8").unwrap().byte;
+    let pushint64 = opcodes::lookup("PUSHINT64").unwrap().byte;
     let shl = opcodes::lookup("SHL").unwrap().byte;
     let sub = opcodes::lookup("SUB").unwrap().byte;
     let and = opcodes::lookup("AND").unwrap().byte;
 
-    let pattern = [push1, pushint8, 32, shl, push1, sub, and];
+    // Pattern 1: Runtime computation (1 << 32) - 1
+    let pattern_runtime = [push1, pushint8, 32, shl, push1, sub, and];
+    // Pattern 2: Pre-computed constant 0xFFFFFFFF (optimization)
+    let pattern_const = [
+        pushint64, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, and,
+    ];
+
     assert!(
-        body.windows(pattern.len()).any(|window| window == pattern),
-        "expected u32 mask sequence in store body"
+        body.windows(pattern_runtime.len())
+            .any(|window| window == pattern_runtime)
+            || body
+                .windows(pattern_const.len())
+                .any(|window| window == pattern_const),
+        "expected u32 mask sequence (runtime or const-optimized) in store body"
     );
 }
 

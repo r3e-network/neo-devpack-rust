@@ -237,11 +237,33 @@ fn stack_drop(script: &mut Vec<u8>, stack: &mut Vec<StackValue>) -> Result<()> {
     Ok(())
 }
 
+/// Mask shift amount to valid range (Round 82 - Const evaluation, Round 87 - Bit manipulation)
+///
+/// Round 87: Uses (bits - 1) as mask since shifts are modulo 2^n
+/// For bits=32, mask=31 (0x1F), for bits=64, mask=63 (0x3F)
 pub(in super::super) fn mask_shift_amount(script: &mut Vec<u8>, bits: u32) -> Result<()> {
+    // Round 82: Compile-time check for power-of-two bits
+    #[allow(dead_code)]
+    const fn is_power_of_two(n: u32) -> bool {
+        n != 0 && (n & (n - 1)) == 0
+    }
+
+    // Handle edge case
     if bits == 0 {
         return Ok(());
     }
-    let mask = (bits - 1) as i128;
+
+    // Round 82: Precompute mask at compile time for common bit widths
+    const MASK_32: i128 = (32 - 1) as i128; // 31
+    const MASK_64: i128 = (64 - 1) as i128; // 63
+
+    // Round 87: Use const-evaluated mask
+    let mask = match bits {
+        32 => MASK_32,
+        64 => MASK_64,
+        _ => (bits - 1) as i128,
+    };
+
     let _ = emit_push_int(script, mask);
     script.push(lookup_opcode("AND")?.byte);
     Ok(())

@@ -50,5 +50,7 @@ harness = false
 
 [features]
 default = []
-# Enable profiling instrumentation for performance analysis
+# Enable profiling instrumentation for performance analysis (Round 70)
 profile = []
+# Enable Profile-Guided Optimization instrumentation (Round 90)
+pgo = []

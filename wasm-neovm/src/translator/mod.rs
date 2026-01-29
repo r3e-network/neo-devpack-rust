@@ -27,7 +27,10 @@ mod runtime;
 mod translation;
 mod types;
 
-// Profiling instrumentation (Round 70)
+// Arena allocator for temporary objects (Round 83)
+pub mod arena;
+
+// Profiling instrumentation (Round 70, 90)
 pub mod profiling;
 
 pub use translation::{translate_module, translate_with_config};

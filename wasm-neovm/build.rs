@@ -1,3 +1,8 @@
+//! Build script for wasm-neovm
+//!
+//! This build script generates opcode and syscall tables from the Neo source code.
+//! If the Neo source is not available, it falls back to bundled snapshots.
+
 use std::collections::BTreeSet;
 use std::env;
 use std::fs;
@@ -9,6 +14,12 @@ use regex::Regex;
 use sha2::{Digest, Sha256};
 use walkdir::WalkDir;
 
+/// Main entry point for the build script.
+///
+/// This function:
+/// 1. Locates the Neo source directory (if available)
+/// 2. Generates opcode and syscall tables
+/// 3. Sets up file watch triggers for incremental builds
 fn main() -> Result<()> {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?);
     let repo_root = manifest_dir
@@ -50,6 +61,9 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+/// Emits a fallback file from the bundled snapshots.
+///
+/// This is used when the Neo source code checkout is not available.
 fn emit_fallback(fallback_dir: &Path, filename: &str) -> Result<()> {
     let fallback_path = fallback_dir.join(filename);
     let contents = fs::read_to_string(&fallback_path)
@@ -60,6 +74,14 @@ fn emit_fallback(fallback_dir: &Path, filename: &str) -> Result<()> {
     Ok(())
 }
 
+/// Generates the opcode table from Neo source code.
+///
+/// Parses OpCode.cs from the Neo VM source and extracts:
+/// - Opcode names
+/// - Byte values
+/// - Operand sizes and prefixes
+///
+/// The generated table is written to $OUT_DIR/opcodes.rs
 fn generate_opcodes(neo_dir: &Path) -> Result<()> {
     let opcode_path = neo_dir.join("src/Neo.VM/OpCode.cs");
     let contents = fs::read_to_string(&opcode_path)
@@ -148,6 +170,12 @@ fn generate_opcodes(neo_dir: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Generates the syscall table from Neo source code.
+///
+/// Walks through Neo/SmartContract directory and extracts all syscall names
+/// from Register() calls. Computes SHA256 hashes for each syscall.
+///
+/// The generated table is written to $OUT_DIR/syscalls.rs
 fn generate_syscalls(neo_dir: &Path) -> Result<()> {
     let mut names = BTreeSet::new();
     let register_re = Regex::new(r#"Register\(\"([^\"]+)\""#)?;

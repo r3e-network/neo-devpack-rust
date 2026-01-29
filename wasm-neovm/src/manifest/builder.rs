@@ -1,3 +1,12 @@
+//! Manifest builder for Neo N3 contract manifests
+//!
+//! This module provides a builder pattern for constructing and modifying
+//! Neo N3 contract manifests. It handles:
+//! - Initial manifest generation from exported methods
+//! - Overlay merging for additional metadata
+//! - Safe flag propagation for view methods
+//! - Method parity checking between baseline and final manifests
+
 use anyhow::{bail, Result};
 use serde_json::{Map, Value};
 use std::collections::{HashMap, HashSet};
@@ -8,6 +17,10 @@ use super::{
     propagate_safe_flags, ManifestMethod,
 };
 
+/// Builder for Neo N3 contract manifests.
+///
+/// The builder maintains the baseline manifest (generated from Wasm exports)
+/// and applies overlays while ensuring ABI consistency.
 #[derive(Debug)]
 pub struct ManifestBuilder {
     manifest: Value,
@@ -17,6 +30,11 @@ pub struct ManifestBuilder {
 }
 
 impl ManifestBuilder {
+    /// Creates a new manifest builder from the contract name and exported methods.
+    ///
+    /// # Arguments
+    /// * `name` - The contract name
+    /// * `methods` - Slice of manifest methods exported from the Wasm module
     pub fn new(name: &str, methods: &[ManifestMethod]) -> Self {
         let manifest = build_manifest(name, methods).value;
         let baseline_signatures = collect_method_shapes(&manifest).unwrap_or_else(|e| {

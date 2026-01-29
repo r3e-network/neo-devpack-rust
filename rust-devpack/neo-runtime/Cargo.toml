@@ -8,6 +8,9 @@ repository.workspace = true
 homepage.workspace = true
 description = "Neo N3 Runtime Stubs"
 rust-version.workspace = true
+keywords = ["neo", "neovm", "blockchain", "smart-contracts", "runtime"]
+categories = ["cryptography::cryptocurrencies", "no-std"]
+include = ["src/**/*", "Cargo.toml", "README.md", "../../LICENSE"]
 
 [dependencies]
 neo-types = { workspace = true }

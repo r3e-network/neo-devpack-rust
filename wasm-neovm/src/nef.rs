@@ -1,3 +1,14 @@
+//! NEF (Neo Executable Format) file generation
+//!
+//! This module handles the creation of NEF files, which are the standard format
+//! for Neo N3 smart contract executables. NEF files contain:
+//! - Magic number identifying the format version
+//! - Compiler information
+//! - Optional source URL
+//! - Method tokens for external contract calls
+//! - The compiled NeoVM script
+//! - SHA256 double-hash checksum
+
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
@@ -5,7 +16,8 @@ use std::path::Path;
 use anyhow::{ensure, Result};
 use sha2::{Digest, Sha256};
 
-const NEF_MAGIC: u32 = 0x3346_454E; // "NEF3"
+/// NEF3 magic number (little-endian: "NEF3")
+const NEF_MAGIC: u32 = 0x3346_454E;
 const COMPILER: &str = concat!("neo-llvm wasm-neovm ", env!("CARGO_PKG_VERSION"));
 const MAX_SOURCE_LENGTH: usize = 256;
 const MAX_METHOD_NAME_LENGTH: usize = 32;

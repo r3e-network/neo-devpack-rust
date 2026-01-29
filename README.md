@@ -7,6 +7,7 @@
 [![Neo N3](https://img.shields.io/badge/Neo%20N3-3.9.1-green.svg)](https://neo.org/)
 [![Documentation](https://img.shields.io/badge/docs-latest-blue.svg)](https://github.com/r3e-network/neo-llvm/tree/master/docs)
 [![Crates.io](https://img.shields.io/crates/v/wasm-neovm.svg)](https://crates.io/crates/wasm-neovm)
+[![Docs.rs](https://docs.rs/wasm-neovm/badge.svg)](https://docs.rs/wasm-neovm)
 
 This repository hosts the Rust tooling required to compile Neo N3 smart contracts to WebAssembly and convert the resulting modules into NeoVM NEF artefacts. The legacy in-tree LLVM NeoVM backend has been retired in favour of a simpler, Wasm-first workflow.
 

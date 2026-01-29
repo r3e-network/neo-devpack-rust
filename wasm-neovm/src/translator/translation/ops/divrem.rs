@@ -1,5 +1,25 @@
 use super::*;
 
+/// Branch prediction macros (Round 85)
+#[allow(unused_macros)]
+macro_rules! likely {
+    ($e:expr) => {
+        $e
+    };
+}
+#[allow(unused_macros)]
+macro_rules! unlikely {
+    ($e:expr) => {
+        $e
+    };
+}
+
+/// Round 82: Const-evaluated INT_MIN values for common bit widths
+const INT_MIN_32: i128 = i32::MIN as i128;
+const INT_MIN_64: i128 = i64::MIN as i128;
+
+/// Emit abort if divisor is zero (Round 81 - inline)
+#[inline]
 pub(in super::super) fn emit_abort_on_zero_divisor(script: &mut Vec<u8>) -> Result<()> {
     // Stack before: [..., dividend, divisor]
     // Trap if divisor == 0.
@@ -13,14 +33,18 @@ pub(in super::super) fn emit_abort_on_zero_divisor(script: &mut Vec<u8>) -> Resu
     Ok(())
 }
 
+/// Emit abort on signed division overflow (Round 82 - const eval, Round 81 - inline)
+///
+/// WebAssembly traps on signed division overflow: INT_MIN / -1.
+#[inline]
 pub(in super::super) fn emit_abort_on_signed_div_overflow(
     script: &mut Vec<u8>,
     bits: u32,
 ) -> Result<()> {
-    // WebAssembly traps on signed division overflow: INT_MIN / -1.
+    // Round 82: Pre-computed MIN values
     let min = match bits {
-        32 => i32::MIN as i128,
-        64 => i64::MIN as i128,
+        32 => INT_MIN_32,
+        64 => INT_MIN_64,
         other => bail!("unsupported signed division width {}", other),
     };
 
@@ -41,11 +65,43 @@ pub(in super::super) fn emit_abort_on_signed_div_overflow(
     Ok(())
 }
 
+/// Unsigned division operations (Round 82 - const eval)
+#[derive(Clone, Copy)]
 pub(in super::super) enum UnsignedOp {
     Div,
     Rem,
 }
 
+impl UnsignedOp {
+    /// Get opcode name (Round 81 - inline)
+    #[inline(always)]
+    fn opcode_name(self) -> &'static str {
+        match self {
+            UnsignedOp::Div => "DIV",
+            UnsignedOp::Rem => "MOD",
+        }
+    }
+
+    /// Round 82: Const-evaluate unsigned operation
+    #[inline]
+    fn eval_const(self, dividend: u128, divisor: u128) -> Option<i128> {
+        if divisor == 0 {
+            return None;
+        }
+        let result = match self {
+            UnsignedOp::Div => dividend / divisor,
+            UnsignedOp::Rem => dividend % divisor,
+        };
+        Some(result as i128)
+    }
+}
+
+/// Round 82: Pre-computed masks for common bit widths
+const MASK_32: u128 = (1u128 << 32) - 1; // 0xFFFFFFFF
+const MASK_64: u128 = (1u128 << 64) - 1; // 0xFFFFFFFFFFFFFFFF
+
+/// Emit unsigned binary operation (Rounds 81, 82, 85, 87)
+#[inline]
 pub(in super::super) fn emit_unsigned_binary_op(
     script: &mut Vec<u8>,
     op: UnsignedOp,
@@ -56,28 +112,22 @@ pub(in super::super) fn emit_unsigned_binary_op(
     mask_unsigned_operands(script, bits)?;
     emit_abort_on_zero_divisor(script)?;
 
-    let opcode_name = match op {
-        UnsignedOp::Div => "DIV",
-        UnsignedOp::Rem => "MOD",
-    };
-    script.push(lookup_opcode(opcode_name)?.byte);
+    script.push(lookup_opcode(op.opcode_name())?.byte);
 
-    let mask = (1u128 << bits) - 1;
-    let const_value = match (lhs.const_value, rhs.const_value) {
-        (Some(a), Some(b)) => {
-            let dividend = (a as u128) & mask;
-            let divisor = (b as u128) & mask;
-            if divisor == 0 {
-                None
-            } else {
-                let value = match op {
-                    UnsignedOp::Div => dividend / divisor,
-                    UnsignedOp::Rem => dividend % divisor,
-                };
-                Some(value as i128)
-            }
-        }
-        _ => None,
+    // Round 82: Use const-evaluated mask
+    let mask = match bits {
+        32 => MASK_32,
+        64 => MASK_64,
+        _ => (1u128 << bits) - 1,
+    };
+
+    // Round 85: Constant folding is common
+    let const_value = if likely!(lhs.const_value.is_some() && rhs.const_value.is_some()) {
+        let dividend = (lhs.const_value.unwrap() as u128) & mask;
+        let divisor = (rhs.const_value.unwrap() as u128) & mask;
+        op.eval_const(dividend, divisor)
+    } else {
+        None
     };
 
     let result = StackValue {
@@ -87,8 +137,18 @@ pub(in super::super) fn emit_unsigned_binary_op(
     emit_sign_extend(script, result, bits, bits)
 }
 
+/// Mask unsigned operands (Rounds 81, 82, 87)
+///
+/// Round 87: Use bit manipulation for masking
+#[inline]
 pub(super) fn mask_unsigned_operands(script: &mut Vec<u8>, bits: u32) -> Result<()> {
-    let mask_value = ((1u128 << bits) - 1) as i128;
+    // Round 82: Const-evaluated masks
+    let mask_value = match bits {
+        32 => MASK_32 as i128,
+        64 => MASK_64 as i128,
+        _ => ((1u128 << bits) - 1) as i128,
+    };
+
     let and = lookup_opcode("AND")?;
     let swap = lookup_opcode("SWAP")?;
 

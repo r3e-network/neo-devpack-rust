@@ -22,7 +22,7 @@ exclude = [
 resolver = "2"
 
 [workspace.package]
-version = "0.4.0"
+version = "0.4.1"
 edition = "2021"
 authors = ["Neo LLVM Team <team@r3e.network>"]
 license = "MIT"
@@ -56,7 +56,7 @@ neo-macros = { path = "rust-devpack/neo-macros", version = "0.1.0" }
 neo-devpack = { path = "rust-devpack", version = "0.1.0" }
 
 # Internal dependencies
-wasm-neovm = { path = "wasm-neovm", version = "0.4.0" }
+wasm-neovm = { path = "wasm-neovm", version = "0.4.1" }
 move-neovm = { path = "move-neovm", version = "0.1.0" }
 neo-solana-compat = { path = "solana-compat", version = "0.1.0" }
 

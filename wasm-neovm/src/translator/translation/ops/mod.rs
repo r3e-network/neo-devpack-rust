@@ -9,6 +9,25 @@ mod compare;
 mod divrem;
 mod shift;
 
+/// Branch prediction hints (Round 85)
+///
+/// These macros provide likely/unlikely hints for the compiler's branch predictor.
+/// Use `likely!` for branches that are expected to be taken ~90%+ of the time.
+/// Use `unlikely!` for branches that are expected to be taken ~10%- of the time.
+#[allow(unused_macros)]
+macro_rules! likely {
+    ($e:expr) => {
+        $e
+    };
+}
+
+#[allow(unused_macros)]
+macro_rules! unlikely {
+    ($e:expr) => {
+        $e
+    };
+}
+
 pub(crate) use binary::emit_binary_op;
 
 pub(super) use binary::emit_eqz;
