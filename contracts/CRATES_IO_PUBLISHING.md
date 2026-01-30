@@ -2,102 +2,151 @@
 
 ## Prerequisites
 
-Before publishing contracts to crates.io, the following底层 crates must be published first:
+Before publishing contracts to crates.io, you need:
 
-1. `neo-types` (rust-devpack/neo-types/)
-2. `neo-syscalls` (rust-devpack/neo-syscalls/)
-3. `neo-runtime` (rust-devpack/neo-runtime/)
-4. `neo-macros` (rust-devpack/neo-macros/)
-5. `neo-devpack` (rust-devpack/)
+1. **crates.io account** with publishing access
+2. **API token** set in environment:
+   ```bash
+   export CRATES_IO_TOKEN=your_token_here
+   ```
+
+3. **Published devpack crates** in this order:
+   - `neo-types` v0.1.0
+   - `neo-syscalls` v0.1.0
+   - `neo-runtime` v0.1.0
+   - `neo-macros` v0.1.0
+   - `neo-devpack` v0.1.0
 
 ## Publishing Steps
 
-### 1. Publish Workspace Crates
+### Step 1: Publish DevPack Crates
 
 ```bash
-# Publish neo-types
-cd rust-devpack/neo-types && cargo publish
+# Each publish may take a few minutes due to compilation
 
-# Publish neo-syscalls
-cd rust-devpack/neo-syscalls && cargo publish
+# 1. Publish neo-types
+cd rust-devpack/neo-types
+cargo publish --token $CRATES_IO_TOKEN
 
-# Publish neo-runtime
-cd rust-devpack/neo-runtime && cargo publish
+# 2. Publish neo-syscalls (depends on neo-types)
+cd rust-devpack/neo-syscalls
+cargo publish --token $CRATES_IO_TOKEN
 
-# Publish neo-macros
-cd rust-devpack/neo-macros && cargo publish
+# 3. Publish neo-runtime (depends on neo-types, neo-syscalls)
+cd rust-devpack/neo-runtime
+cargo publish --token $CRATES_IO_TOKEN
 
-# Publish neo-devpack
-cd rust-devpack && cargo publish
+# 4. Publish neo-macros
+cd rust-devpack/neo-macros
+cargo publish --token $CRATES_IO_TOKEN
+
+# 5. Publish neo-devpack (depends on all above)
+cd rust-devpack
+cargo publish --token $CRATES_IO_TOKEN
 ```
 
-### 2. Update Contract Dependencies
+### Step 2: Update Contract Dependencies
 
-Update each contract's `Cargo.toml` to use crates.io versions:
+Edit each contract's `Cargo.toml` to use crates.io versions:
 
 ```toml
+[package]
+name = "nep17-token"
+version = "0.2.0"
+# ... metadata ...
+
 [dependencies]
-neo-devpack = "0.4"  # Use the published version
+neo-devpack = "0.1"
 serde = { version = "1.0", features = ["derive"] }
 ```
 
-### 3. Publish Contracts
+### Step 3: Publish Contracts
 
 ```bash
 # Publish each contract
-cd contracts/hello-world && cargo publish
-cd contracts/nep17-token && cargo publish
-cd contracts/nep11-nft && cargo publish
-cd contracts/constant-product && cargo publish
-cd contracts/crowdfunding && cargo publish
-cd contracts/escrow && cargo publish
-cd contracts/governance-dao && cargo publish
-cd contracts/multisig-wallet && cargo publish
-cd contracts/nft-marketplace && cargo publish
-cd contracts/oracle-consumer && cargo publish
+cd contracts/hello-world && cargo publish --token $CRATES_IO_TOKEN
+cd contracts/nep17-token && cargo publish --token $CRATES_IO_TOKEN
+cd contracts/nep11-nft && cargo publish --token $CRATES_IO_TOKEN
+cd contracts/constant-product && cargo publish --token $CRATES_IO_TOKEN
+cd contracts/crowdfunding && cargo publish --token $CRATES_IO_TOKEN
+cd contracts/escrow && cargo publish --token $CRATES_IO_TOKEN
+cd contracts/governance-dao && cargo publish --token $CRATES_IO_TOKEN
+cd contracts/multisig-wallet && cargo publish --token $CRATES_IO_TOKEN
+cd contracts/nft-marketplace && cargo publish --token $CRATES_IO_TOKEN
+cd contracts/oracle-consumer && cargo publish --token $CRATES_IO_TOKEN
 ```
 
-## Contract Crate Names on crates.io
+## Automated Publishing
 
-| Local Name | crates.io Name |
-|------------|----------------|
-| hello-world | hello-world-neo |
-| nep17-token | nep17-token-neo |
-| nep11-nft | nep11-nft-neo |
-| constant-product | constant-product-neo |
-| crowdfunding | crowdfunding-neo |
-| escrow | escrow-neo |
-| governance-dao | governance-dao-neo |
-| multisig-wallet | multisig-wallet-neo |
-| nft-marketplace | nft-marketplace-neo |
-| oracle-consumer | oracle-consumer-neo |
+Use the provided script for automated publishing:
 
-Note: Consider using `-neo` suffix to avoid naming conflicts.
+```bash
+# Preview what will be published
+./scripts/publish-to-cratesio.sh --prepare-only
+
+# Actually publish (requires CRATES_IO_TOKEN)
+./scripts/publish-to-cratesio.sh
+```
+
+## Crates.io Names
+
+| Local Name | crates.io Name | Status |
+|------------|----------------|--------|
+| hello-world | hello-world-neo | pending |
+| nep17-token | nep17-token-neo | pending |
+| nep11-nft | nep11-nft-neo | pending |
+| constant-product | constant-product-neo | pending |
+| crowdfunding | crowdfunding-neo | pending |
+| escrow | escrow-neo | pending |
+| governance-dao | governance-dao-neo | pending |
+| multisig-wallet | multisig-wallet-neo | pending |
+| nft-marketplace | nft-marketplace-neo | pending |
+| oracle-consumer | oracle-consumer-neo | pending |
+
+Note: Consider using `-neo` suffix to avoid naming conflicts with existing crates.
 
 ## Version Compatibility
 
-- Contracts: v0.2.0
-- neo-devpack: v0.4.2+ (required)
-- Rust: 1.70+
+| Component | Local Version | Published Version | Required |
+|-----------|---------------|-------------------|----------|
+| neo-types | 0.1.0 | 0.1 | ✓ |
+| neo-syscalls | 0.1.0 | 0.1 | ✓ |
+| neo-runtime | 0.1.0 | 0.1 | ✓ |
+| neo-macros | 0.1.0 | 0.1 | ✓ |
+| neo-devpack | 0.1.0 | 0.1 | ✓ |
+| contracts | 0.2.0 | 0.2 | ✓ |
 
 ## Verification
 
 After updating dependencies, verify compilation:
 
 ```bash
-cargo check --manifest-path contracts/<name>/Cargo.toml
+# Check all contracts compile
+for dir in contracts/*/; do
+    echo "Checking $(basename $dir)..."
+    cargo check --manifest-path "$dir"Cargo.toml"
+done
 ```
 
-## Current Status
+## Troubleshooting
 
-- [x] Metadata added to all Cargo.toml files
-- [ ] neo-devpack workspace crates published
-- [ ] Contract dependencies updated
-- [ ] Contracts published to crates.io
+### "dependency not found"
+Make sure devpack crates are published first. Check with:
+```bash
+cargo search neo-types --limit 1
+```
 
-## Important Notes
+### "version mismatch"
+Ensure all devpack crates use matching versions (e.g., all 0.1).
 
-1. **Path Dependencies**: Current contracts use `path = "../../rust-devpack"` which cannot be published
-2. **Version Matching**: Published contracts must match the neo-devpack version they were tested with
-3. **Workspace vs Standalone**: Contracts are currently in a workspace-excluded directory for flexibility
-4. **Crates.io Limits**: Publishing requires verified publisher for certain names
+### "API rate limited"
+Wait a few minutes between publishes or use `--干燥运行` to check first.
+
+## Current Publishing Status
+
+| Step | Status |
+|------|--------|
+| GitHub Release | ✓ v0.2.0 |
+| Metadata Added | ✓ All crates |
+| DevPack Published | ⏳ Pending |
+| Contracts Published | ⏳ Pending |
