@@ -1,3 +1,6 @@
+// Copyright (c) 2025 R3E Network
+// Licensed under the MIT License
+
 //! Storage utilities for Neo N3 smart contracts.
 //!
 //! This module provides convenient functions for storing and retrieving

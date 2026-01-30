@@ -1,3 +1,6 @@
+// Copyright (c) 2025 R3E Network
+// Licensed under the MIT License
+
 use super::NeoVMSyscallInfo;
 
 /// Neo N3 System Calls

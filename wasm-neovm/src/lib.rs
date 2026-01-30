@@ -65,8 +65,9 @@ pub mod syscalls;
 
 // Re-exports for convenient access
 pub use adapters::SourceChain;
-pub use config::{BehaviorConfig, DebugConfig, LogLevel, OutputConfig, TranslationConfig};
+pub use config::{BehaviorConfig, DebugConfig, OutputConfig, TranslationConfig};
 pub use core::traits;
+pub use logging::LogLevel;
 pub use manifest::RenderedManifest;
 pub use metadata::{extract_nef_metadata, NefMetadata};
 pub use nef::{write_nef, write_nef_with_metadata, MethodToken};

@@ -106,7 +106,10 @@ fn generate_opcodes(neo_dir: &Path) -> Result<()> {
         if let Some(caps) = attr_re.captures(line) {
             current_size = 0;
             current_prefix = 0;
-            let body = caps.name("body").unwrap().as_str();
+            let body = caps
+                .name("body")
+                .context("missing 'body' capture group in OperandSize attribute")?
+                .as_str();
             for part in body.split(',') {
                 let part = part.trim();
                 if part.starts_with("SizePrefix") {
@@ -123,8 +126,15 @@ fn generate_opcodes(neo_dir: &Path) -> Result<()> {
         }
 
         if let Some(caps) = entry_re.captures(line) {
-            let name = caps.name("name").unwrap().as_str().to_string();
-            let value_str = caps.name("value").unwrap().as_str();
+            let name = caps
+                .name("name")
+                .context("missing 'name' capture group in opcode entry")?
+                .as_str()
+                .to_string();
+            let value_str = caps
+                .name("value")
+                .context("missing 'value' capture group in opcode entry")?
+                .as_str();
             let value = if let Some(hex) = value_str
                 .strip_prefix("0x")
                 .or(value_str.strip_prefix("0X"))
@@ -188,7 +198,11 @@ fn generate_syscalls(neo_dir: &Path) -> Result<()> {
     {
         let contents = fs::read_to_string(entry.path())?;
         for cap in register_re.captures_iter(&contents) {
-            let name = cap.get(1).unwrap().as_str().to_string();
+            let name = cap
+                .get(1)
+                .context("missing capture group in Register call")?
+                .as_str()
+                .to_string();
             names.insert(name);
         }
     }

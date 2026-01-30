@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use serde_json::Value;
 
 use crate::adapters::SourceChain;
+use crate::logging::LogLevel;
 use crate::types::ContractName;
 
 /// Primary configuration structure for WASM to NeoVM translation
@@ -336,59 +337,6 @@ impl DebugConfig {
     pub fn with_log_level(mut self, level: LogLevel) -> Self {
         self.log_level = Some(level);
         self
-    }
-}
-
-/// Log level for translation debugging
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum LogLevel {
-    /// Error messages only
-    Error,
-    /// Warnings and errors
-    Warn,
-    /// General information
-    Info,
-    /// Detailed debug information
-    Debug,
-    /// Trace-level details
-    Trace,
-}
-
-impl fmt::Display for LogLevel {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Error => write!(f, "ERROR"),
-            Self::Warn => write!(f, "WARN"),
-            Self::Info => write!(f, "INFO"),
-            Self::Debug => write!(f, "DEBUG"),
-            Self::Trace => write!(f, "TRACE"),
-        }
-    }
-}
-
-use std::fmt;
-
-impl From<LogLevel> for log::Level {
-    fn from(level: LogLevel) -> Self {
-        match level {
-            LogLevel::Error => log::Level::Error,
-            LogLevel::Warn => log::Level::Warn,
-            LogLevel::Info => log::Level::Info,
-            LogLevel::Debug => log::Level::Debug,
-            LogLevel::Trace => log::Level::Trace,
-        }
-    }
-}
-
-impl From<log::Level> for LogLevel {
-    fn from(level: log::Level) -> Self {
-        match level {
-            log::Level::Error => Self::Error,
-            log::Level::Warn => Self::Warn,
-            log::Level::Info => Self::Info,
-            log::Level::Debug => Self::Debug,
-            log::Level::Trace => Self::Trace,
-        }
     }
 }
 

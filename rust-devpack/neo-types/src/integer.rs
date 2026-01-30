@@ -1,3 +1,6 @@
+// Copyright (c) 2025 R3E Network
+// Licensed under the MIT License
+
 use std::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Not, Rem, Shl, Shr, Sub};
 
 use num_bigint::BigInt;

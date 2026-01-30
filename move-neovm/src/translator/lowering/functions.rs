@@ -126,13 +126,15 @@ fn lower_function(
         f.instruction(&Instruction::End); // close current block
         let dispatch_depth = (case_count - idx) as u32;
         let entry_state = stack_states.get(idx).cloned().flatten();
-        if entry_state.is_none() {
-            // Unreachable case: trap and continue
-            f.instruction(&Instruction::Unreachable);
-            f.instruction(&Instruction::Br(dispatch_depth));
-            continue;
-        }
-        let entry_stack = entry_state.unwrap();
+        let entry_stack = match entry_state {
+            Some(state) => state,
+            None => {
+                // Unreachable case: trap and continue
+                f.instruction(&Instruction::Unreachable);
+                f.instruction(&Instruction::Br(dispatch_depth));
+                continue;
+            }
+        };
         let (stack_after, _) = stack_effect(
             opcode,
             func,

@@ -1,3 +1,6 @@
+// Copyright (c) 2025 R3E Network
+// Licensed under the MIT License
+
 use neo_types::*;
 
 /// Deterministic crypto helpers for tests and examples.

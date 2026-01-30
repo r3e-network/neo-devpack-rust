@@ -1,21 +1,24 @@
+// Copyright (c) 2025 R3E Network
+// Licensed under the MIT License
+
 use neo_devpack::prelude::*;
 
 #[test]
 fn runtime_core_syscalls_return_expected_types() {
     let timestamp = NeoRuntime::get_time().unwrap();
-    assert!(timestamp.as_i32() >= 0);
+    assert!(timestamp.as_i32_saturating() >= 0);
 
     let network = NeoRuntime::get_network().unwrap();
-    assert!(network.as_i32() >= 0);
+    assert!(network.as_i32_saturating() >= 0);
 
     let addr_version = NeoRuntime::get_address_version().unwrap();
-    assert!(addr_version.as_i32() >= 0);
+    assert!(addr_version.as_i32_saturating() >= 0);
 
     let gas_left = NeoRuntime::get_gas_left().unwrap();
-    assert!(gas_left.as_i32() >= 0);
+    assert!(gas_left.as_i32_saturating() >= 0);
 
     let trigger = NeoRuntime::get_trigger().unwrap();
-    assert!(trigger.as_i32() >= 0);
+    assert!(trigger.as_i32_saturating() >= 0);
 }
 
 #[test]
@@ -143,7 +146,7 @@ fn crypto_helpers_produce_deterministic_lengths() {
 
     let seed = NeoInteger::new(42);
     let murmur = NeoCrypto::murmur32(&data, seed).unwrap();
-    assert!(murmur.as_i32() != 0);
+    assert!(murmur.as_i32_saturating() != 0);
 
     let signature = NeoByteString::from_slice(&[0x42; 64]);
     let public_key = NeoByteString::from_slice(&[0x02; 33]);

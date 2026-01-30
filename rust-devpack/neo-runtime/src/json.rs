@@ -1,3 +1,6 @@
+// Copyright (c) 2025 R3E Network
+// Licensed under the MIT License
+
 use neo_types::*;
 use num_bigint::BigInt;
 use serde_json::{json, Value as JsonValue};

@@ -2,11 +2,12 @@
 name = "neo-macros"
 version = "0.1.0"
 edition.workspace = true
-authors = ["Neo N3 DevPack Team"]
+authors.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 description = "Procedural macros for Neo N3 contracts"
+documentation = "https://docs.rs/neo-macros"
 rust-version.workspace = true
 keywords = ["neo", "neovm", "blockchain", "smart-contracts", "macros"]
 categories = ["cryptography::cryptocurrencies", "development-tools::procedural-macro-helpers"]

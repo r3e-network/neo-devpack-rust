@@ -1,3 +1,6 @@
+// Copyright (c) 2025 R3E Network
+// Licensed under the MIT License
+
 // Comprehensive tests for Neo N3 types
 
 use neo_devpack::prelude::*;
@@ -7,32 +10,32 @@ use neo_types::{NeoContractABI, NeoContractPermission};
 #[test]
 fn test_neo_integer() {
     let int = NeoInteger::new(42);
-    assert_eq!(int.as_i32(), 42);
+    assert_eq!(int.as_i32_saturating(), 42);
     assert_eq!(int.as_u32(), 42);
 
     // Test arithmetic operations
     let int2 = NeoInteger::new(10);
-    assert_eq!((&int + &int2).as_i32(), 52);
-    assert_eq!((&int - &int2).as_i32(), 32);
-    assert_eq!((&int * &int2).as_i32(), 420);
-    assert_eq!((&int / &int2).as_i32(), 4);
-    assert_eq!((&int % &int2).as_i32(), 2);
+    assert_eq!((&int + &int2).as_i32_saturating(), 52);
+    assert_eq!((&int - &int2).as_i32_saturating(), 32);
+    assert_eq!((&int * &int2).as_i32_saturating(), 420);
+    assert_eq!((&int / &int2).as_i32_saturating(), 4);
+    assert_eq!((&int % &int2).as_i32_saturating(), 2);
 
     // Test bitwise operations
-    assert_eq!((&int & &int2).as_i32(), 10);
-    assert_eq!((&int | &int2).as_i32(), 42);
-    assert_eq!((&int ^ &int2).as_i32(), 32);
-    assert_eq!((!int.clone()).as_i32(), -43);
+    assert_eq!((&int & &int2).as_i32_saturating(), 10);
+    assert_eq!((&int | &int2).as_i32_saturating(), 42);
+    assert_eq!((&int ^ &int2).as_i32_saturating(), 32);
+    assert_eq!((!int.clone()).as_i32_saturating(), -43);
 
     // Test shift operations
-    assert_eq!((&int << 2).as_i32(), 168);
-    assert_eq!((&int >> 2).as_i32(), 10);
+    assert_eq!((&int << 2).as_i32_saturating(), 168);
+    assert_eq!((&int >> 2).as_i32_saturating(), 10);
 
     // Test constants
-    assert_eq!(NeoInteger::zero().as_i32(), 0);
-    assert_eq!(NeoInteger::one().as_i32(), 1);
-    assert_eq!(NeoInteger::min_i32().as_i32(), i32::MIN);
-    assert_eq!(NeoInteger::max_i32().as_i32(), i32::MAX);
+    assert_eq!(NeoInteger::zero().as_i32_saturating(), 0);
+    assert_eq!(NeoInteger::one().as_i32_saturating(), 1);
+    assert_eq!(NeoInteger::min_i32().as_i32_saturating(), i32::MIN);
+    assert_eq!(NeoInteger::max_i32().as_i32_saturating(), i32::MAX);
 }
 
 #[test]
@@ -174,7 +177,7 @@ fn test_neo_value() {
     let int_value = NeoValue::from(NeoInteger::new(42));
     assert!(!int_value.is_null());
     assert!(int_value.as_integer().is_some());
-    assert_eq!(int_value.as_integer().unwrap().as_i32(), 42);
+    assert_eq!(int_value.as_integer().unwrap().as_i32_saturating(), 42);
 
     // Test Boolean value
     let bool_value = NeoValue::from(NeoBoolean::TRUE);
@@ -248,17 +251,17 @@ fn test_neo_iterator() {
     // Test next
     let first = iterator.next();
     assert!(first.is_some());
-    assert_eq!(first.unwrap().as_integer().unwrap().as_i32(), 1);
+    assert_eq!(first.unwrap().as_integer().unwrap().as_i32_saturating(), 1);
 
     assert!(iterator.has_next());
     let second = iterator.next();
     assert!(second.is_some());
-    assert_eq!(second.unwrap().as_integer().unwrap().as_i32(), 2);
+    assert_eq!(second.unwrap().as_integer().unwrap().as_i32_saturating(), 2);
 
     assert!(iterator.has_next());
     let third = iterator.next();
     assert!(third.is_some());
-    assert_eq!(third.unwrap().as_integer().unwrap().as_i32(), 3);
+    assert_eq!(third.unwrap().as_integer().unwrap().as_i32_saturating(), 3);
 
     // Test end of iterator
     assert!(!iterator.has_next());
@@ -383,7 +386,7 @@ fn test_neo_result() {
 
     let ok_result = ok_integer();
     assert!(ok_result.is_ok());
-    assert_eq!(ok_result.unwrap().as_i32(), 42);
+    assert_eq!(ok_result.unwrap().as_i32_saturating(), 42);
 
     // Test Err result
     fn err_integer() -> NeoResult<NeoInteger> {

@@ -56,7 +56,7 @@ extern "C" {
 ///
 /// This function is safe because it only passes valid string references to the NeoVM runtime.
 /// The `message` reference is guaranteed to be valid for the duration of the call.
-pub const fn sol_log(message: &str) {
+pub fn sol_log(message: &str) {
     #[cfg(target_arch = "wasm32")]
     // SAFETY: We're passing a valid string slice to the NeoVM runtime.
     // The pointer and length come from a valid Rust reference.
@@ -90,7 +90,7 @@ pub fn sol_log_compute_units() {
 ///
 /// This function wraps the NeoVM syscall which returns an i64 value.
 /// It is safe because the syscall does not access any caller-provided memory.
-pub const fn sol_get_clock_sysvar() -> i64 {
+pub fn sol_get_clock_sysvar() -> i64 {
     #[cfg(target_arch = "wasm32")]
     // SAFETY: The NeoVM syscall returns a simple i64 value without
     // accessing any caller-provided memory.
@@ -150,7 +150,7 @@ pub fn sol_keccak256(data: &[u8], output: &mut [u8; 32]) {
 /// - The stack-allocated `hash160` buffer is always valid
 ///
 /// All pointers are derived from valid Rust references.
-pub const fn sol_verify_signature(signature: &[u8; 64], pubkey: &Pubkey, message: &[u8]) -> bool {
+pub fn sol_verify_signature(signature: &[u8; 64], pubkey: &Pubkey, message: &[u8]) -> bool {
     #[cfg(target_arch = "wasm32")]
     // SAFETY: All pointers come from valid references.
     // hash160 is a stack-allocated array that remains valid for the duration.
@@ -183,7 +183,7 @@ pub const fn sol_verify_signature(signature: &[u8; 64], pubkey: &Pubkey, message
 /// - `program_id`, `method`, and `args` are all valid references
 ///
 /// All pointers are derived from valid Rust references guaranteed to outlive the call.
-pub const fn sol_invoke(program_id: &Pubkey, method: &str, args: &[u8]) -> Result<(), u64> {
+pub fn sol_invoke(program_id: &Pubkey, method: &str, args: &[u8]) -> Result<(), u64> {
     #[cfg(target_arch = "wasm32")]
     {
         // SAFETY: All pointers come from valid references that outlive this call.
@@ -244,7 +244,7 @@ pub fn storage_read(key: &[u8], buffer: &mut [u8]) -> Option<usize> {
 /// # Safety
 ///
 /// This function is safe because `key` and `data` are valid references.
-pub const fn storage_write(key: &[u8], data: &[u8]) {
+pub fn storage_write(key: &[u8], data: &[u8]) {
     #[cfg(target_arch = "wasm32")]
     // SAFETY: Both pointers come from valid references.
     unsafe {
@@ -266,7 +266,7 @@ pub const fn storage_write(key: &[u8], data: &[u8]) {
 /// # Safety
 ///
 /// This function is safe because `key` is a valid reference.
-pub const fn storage_delete(key: &[u8]) {
+pub fn storage_delete(key: &[u8]) {
     #[cfg(target_arch = "wasm32")]
     // SAFETY: The pointer comes from a valid reference.
     unsafe {

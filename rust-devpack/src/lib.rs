@@ -109,7 +109,7 @@ mod tests {
     #[test]
     fn test_neo_types() {
         let int = NeoInteger::new(42);
-        assert_eq!(int.as_i32(), 42);
+        assert_eq!(int.as_i32_saturating(), 42);
 
         let bool_val = NeoBoolean::new(true);
         assert!(bool_val.as_bool());

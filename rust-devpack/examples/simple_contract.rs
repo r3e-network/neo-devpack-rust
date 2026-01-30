@@ -1,3 +1,6 @@
+// Copyright (c) 2025 R3E Network
+// Licensed under the MIT License
+
 //! Simple Neo N3 Contract Example
 //!
 //! This example demonstrates basic Neo N3 smart contract functionality
@@ -93,26 +96,32 @@ fn main() {
     let mut contract = SimpleContract::new();
 
     // Test basic operations
-    println!("Initial value: {}", contract.get_value().unwrap().as_i32());
+    println!(
+        "Initial value: {}",
+        contract.get_value().unwrap().as_i32_saturating()
+    );
     println!("Initial name: {}", contract.get_name().unwrap().as_str());
 
     // Set new values
     contract.set_value(NeoInteger::new(42)).unwrap();
     contract.set_name(NeoString::from_str("Hello Neo")).unwrap();
 
-    println!("New value: {}", contract.get_value().unwrap().as_i32());
+    println!(
+        "New value: {}",
+        contract.get_value().unwrap().as_i32_saturating()
+    );
     println!("New name: {}", contract.get_name().unwrap().as_str());
 
     // Test arithmetic operations
     let result = contract
         .add(NeoInteger::new(10), NeoInteger::new(20))
         .unwrap();
-    println!("10 + 20 = {}", result.as_i32());
+    println!("10 + 20 = {}", result.as_i32_saturating());
 
     let result = contract
         .multiply(NeoInteger::new(5), NeoInteger::new(6))
         .unwrap();
-    println!("5 * 6 = {}", result.as_i32());
+    println!("5 * 6 = {}", result.as_i32_saturating());
 
     // Test storage operations
     let context = NeoStorageContext::new(1);
@@ -123,7 +132,7 @@ fn main() {
 
     // Test syscalls
     let time = NeoVMSyscall::get_time().unwrap();
-    println!("Current time: {}", time.as_i32());
+    println!("Current time: {}", time.as_i32_saturating());
 
     let witness = NeoVMSyscall::check_witness(&NeoByteString::from_slice(b"test")).unwrap();
     println!("Witness check: {}", witness.as_bool());

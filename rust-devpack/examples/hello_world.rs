@@ -1,3 +1,6 @@
+// Copyright (c) 2025 R3E Network
+// Licensed under the MIT License
+
 //! Hello World Neo N3 Smart Contract
 //!
 //! This example demonstrates the basic structure of a Neo N3 smart contract
@@ -55,7 +58,7 @@ impl HelloWorld {
         let message = NeoString::from_str(&format!(
             "{} Counter: {}",
             self.greeting.as_str(),
-            self.counter.as_i32()
+            self.counter.as_i32_saturating()
         ));
         Ok(message)
     }
@@ -94,7 +97,7 @@ mod tests {
     fn test_hello_world_creation() {
         let contract = HelloWorld::new();
         assert_eq!(contract.get_greeting().unwrap().as_str(), "Hello, Neo N3!");
-        assert_eq!(contract.get_counter().unwrap().as_i32(), 0);
+        assert_eq!(contract.get_counter().unwrap().as_i32_saturating(), 0);
     }
 
     #[test]
@@ -108,7 +111,7 @@ mod tests {
 
         // Test counter
         contract.increment_counter().unwrap();
-        assert_eq!(contract.get_counter().unwrap().as_i32(), 1);
+        assert_eq!(contract.get_counter().unwrap().as_i32_saturating(), 1);
 
         // Test say_hello
         let hello = contract.say_hello().unwrap();

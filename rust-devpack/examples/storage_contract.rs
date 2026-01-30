@@ -1,3 +1,6 @@
+// Copyright (c) 2025 R3E Network
+// Licensed under the MIT License
+
 //! Storage Contract Example
 //!
 //! This example demonstrates Neo N3 storage operations and data persistence.
@@ -279,7 +282,7 @@ mod tests {
     #[test]
     fn test_storage_contract_creation() {
         let contract = StorageContract::new();
-        assert_eq!(contract.get_user_count().unwrap().as_i32(), 0);
+        assert_eq!(contract.get_user_count().unwrap().as_i32_saturating(), 0);
     }
 
     #[test]
@@ -297,7 +300,7 @@ mod tests {
         assert_eq!(result.unwrap().as_bool(), true);
 
         // Check user count
-        assert_eq!(contract.get_user_count().unwrap().as_i32(), 1);
+        assert_eq!(contract.get_user_count().unwrap().as_i32_saturating(), 1);
 
         // Get user data
         let user_data = contract.get_user(&user_id).unwrap();
@@ -327,13 +330,13 @@ mod tests {
         // Test counters
         let counter_name = NeoString::from_str("visits");
         let initial_value = contract.get_counter(&counter_name).unwrap();
-        assert_eq!(initial_value.as_i32(), 0);
+        assert_eq!(initial_value.as_i32_saturating(), 0);
 
         let incremented_value = contract.increment_counter(counter_name.clone()).unwrap();
-        assert_eq!(incremented_value.as_i32(), 1);
+        assert_eq!(incremented_value.as_i32_saturating(), 1);
 
         let final_value = contract.get_counter(&counter_name).unwrap();
-        assert_eq!(final_value.as_i32(), 1);
+        assert_eq!(final_value.as_i32_saturating(), 1);
     }
 }
 

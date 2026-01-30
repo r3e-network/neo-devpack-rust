@@ -8,7 +8,8 @@
 
 use thiserror::Error;
 
-use super::options::{BehaviorConfig, LogLevel, TranslationConfig};
+use super::options::{BehaviorConfig, TranslationConfig};
+use crate::logging::LogLevel;
 
 /// Errors that can occur during configuration validation
 #[derive(Debug, Error)]

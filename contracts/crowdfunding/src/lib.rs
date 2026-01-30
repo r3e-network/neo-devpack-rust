@@ -1,6 +1,6 @@
 use core::slice;
 use neo_devpack::{codec, prelude::*};
-use serde::{Deserialize, Serialize};
+use neo_devpack::serde::{Deserialize, Serialize};
 
 const CAMPAIGN_KEY: &[u8] = b"crowd:campaign";
 const CONTRIBUTION_PREFIX: &[u8] = b"crowd:contrib:";
@@ -50,9 +50,9 @@ pub struct RefundIssued {
     pub amount: NeoInteger,
 }
 
-#[allow(improper_ctypes_definitions)]
-#[neo_safe]
 #[no_mangle]
+#[neo_safe]
+#[allow(improper_ctypes_definitions)]
 pub extern "C" fn getCampaign() -> NeoByteString {
     storage_context()
         .and_then(|ctx| load_campaign(&ctx))
@@ -60,8 +60,8 @@ pub extern "C" fn getCampaign() -> NeoByteString {
         .unwrap_or_else(|| NeoByteString::new(Vec::new()))
 }
 
-#[neo_safe]
 #[no_mangle]
+#[neo_safe]
 pub extern "C" fn contributionOf(address_ptr: i64, address_len: i64) -> i64 {
     let Some(ctx) = storage_context() else {
         return 0;

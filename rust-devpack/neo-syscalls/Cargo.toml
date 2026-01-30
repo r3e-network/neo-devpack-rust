@@ -2,11 +2,12 @@
 name = "neo-syscalls"
 version = "0.1.0"
 edition.workspace = true
-authors = ["Neo N3 DevPack Team"]
+authors.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 description = "Neo N3 Syscall Definitions"
+documentation = "https://docs.rs/neo-syscalls"
 rust-version.workspace = true
 keywords = ["neo", "neovm", "blockchain", "smart-contracts", "syscalls"]
 categories = ["cryptography::cryptocurrencies", "no-std"]

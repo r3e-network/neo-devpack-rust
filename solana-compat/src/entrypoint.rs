@@ -98,11 +98,19 @@ pub unsafe fn __neo_process_instruction(
 
     // Extract program ID
     let mut program_id_bytes = [0u8; 32];
-    program_id_bytes.copy_from_slice(&data[0..32]);
+    program_id_bytes.copy_from_slice(
+        data.get(0..32)
+            .ok_or(ProgramError::InvalidInstructionData)?,
+    );
     let program_id = Pubkey::new(program_id_bytes);
 
     // Number of accounts
-    let num_accounts = u32::from_le_bytes([data[32], data[33], data[34], data[35]]) as usize;
+    let num_accounts = u32::from_le_bytes([
+        data.get(32).copied().unwrap_or(0),
+        data.get(33).copied().unwrap_or(0),
+        data.get(34).copied().unwrap_or(0),
+        data.get(35).copied().unwrap_or(0),
+    ]) as usize;
 
     // For now, pass empty accounts and remaining data as instruction_data
     // Full implementation would parse account infos from the data

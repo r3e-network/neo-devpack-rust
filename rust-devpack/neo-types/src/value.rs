@@ -1,3 +1,6 @@
+// Copyright (c) 2025 R3E Network
+// Licensed under the MIT License
+
 use crate::array::NeoArray;
 use crate::boolean::NeoBoolean;
 use crate::bytestring::NeoByteString;

@@ -1,3 +1,6 @@
+// Copyright (c) 2025 R3E Network
+// Licensed under the MIT License
+
 use std::vec::Vec;
 
 /// Neo N3 Iterator type

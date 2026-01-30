@@ -1,3 +1,6 @@
+// Copyright (c) 2025 R3E Network
+// Licensed under the MIT License
+
 //! Integration-style checks for the devpack facade.
 
 use neo_devpack::prelude::*;
@@ -15,14 +18,14 @@ fn syscall_registry_matches_canonical_list() {
 #[test]
 fn runtime_surface_is_coherent() {
     let ctx = NeoRuntimeContext::new();
-    assert!(ctx.trigger().unwrap().as_i32() >= 0);
-    assert!(ctx.gas_left().unwrap().as_i32() >= 0);
+    assert!(ctx.trigger().unwrap().as_i32_saturating() >= 0);
+    assert!(ctx.gas_left().unwrap().as_i32_saturating() >= 0);
 
     let time = NeoRuntime::get_time().unwrap();
-    assert!(time.as_i32() >= 0);
+    assert!(time.as_i32_saturating() >= 0);
 
     let random = NeoRuntime::get_random().unwrap();
-    assert!(random.as_i32() >= 0);
+    assert!(random.as_i32_saturating() >= 0);
 
     let platform = NeoRuntime::platform().unwrap();
     assert!(!platform.as_str().is_empty());

@@ -1,3 +1,6 @@
+// Copyright (c) 2025 R3E Network
+// Licensed under the MIT License
+
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{format_ident, quote};
 use serde_json::json;
@@ -357,7 +360,10 @@ pub(crate) fn neo_config(input: DeriveInput) -> TokenStream2 {
 
     // Generate field initializations based on type
     let field_inits = fields.iter().map(|field| {
-        let ident = field.ident.as_ref().expect("named field");
+        let ident = field
+            .ident
+            .as_ref()
+            .expect("#[neo_config] macro only supports named struct fields");
         let field_name = ident.to_string();
 
         // Generate appropriate default based on field name pattern

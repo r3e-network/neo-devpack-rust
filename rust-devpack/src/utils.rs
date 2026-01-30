@@ -1,3 +1,6 @@
+// Copyright (c) 2025 R3E Network
+// Licensed under the MIT License
+
 //! General utility functions for Neo N3 smart contracts.
 
 use neo_types::{NeoByteString, NeoStruct, NeoValue};

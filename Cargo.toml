@@ -24,10 +24,11 @@ resolver = "2"
 [workspace.package]
 version = "0.4.2"
 edition = "2021"
-authors = ["Neo LLVM Team <team@r3e.network>"]
+authors = ["R3E Network <team@r3e.network>"]
 license = "MIT"
 repository = "https://github.com/r3e-network/neo-llvm"
 homepage = "https://github.com/r3e-network/neo-llvm"
+documentation = "https://docs.rs"
 rust-version = "1.70"
 
 [workspace.dependencies]
@@ -49,14 +50,17 @@ wasm-encoder = "0.239"
 clap = { version = "4.5", features = ["derive"] }
 
 # Neo N3 dependencies
+# Neo DevPack crates (v0.1.0 - separate versioning)
 neo-types = { path = "rust-devpack/neo-types", version = "0.1.0" }
 neo-syscalls = { path = "rust-devpack/neo-syscalls", version = "0.1.0" }
 neo-runtime = { path = "rust-devpack/neo-runtime", version = "0.1.0" }
 neo-macros = { path = "rust-devpack/neo-macros", version = "0.1.0" }
 neo-devpack = { path = "rust-devpack", version = "0.1.0" }
 
-# Internal dependencies
-wasm-neovm = { path = "wasm-neovm", version = "0.4.1" }
+# Main translator crate (v0.4.2 - follows workspace version)
+wasm-neovm = { path = "wasm-neovm", version = "0.4.2" }
+
+# Cross-chain compatibility crates (v0.1.0 - experimental)
 move-neovm = { path = "move-neovm", version = "0.1.0" }
 neo-solana-compat = { path = "solana-compat", version = "0.1.0" }
 

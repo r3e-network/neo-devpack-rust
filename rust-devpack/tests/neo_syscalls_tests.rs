@@ -1,3 +1,6 @@
+// Copyright (c) 2025 R3E Network
+// Licensed under the MIT License
+
 // Neo N3 syscall integration tests aligned with the canonical registry
 
 use neo_devpack::prelude::*;

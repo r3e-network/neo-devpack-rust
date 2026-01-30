@@ -1,3 +1,6 @@
+// Copyright (c) 2025 R3E Network
+// Licensed under the MIT License
+
 use std::ops::{BitAnd, BitOr, BitXor, Not};
 
 #[cfg(feature = "serde")]

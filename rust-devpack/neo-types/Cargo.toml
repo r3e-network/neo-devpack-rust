@@ -2,11 +2,12 @@
 name = "neo-types"
 version = "0.1.0"
 edition.workspace = true
-authors = ["Neo N3 DevPack Team"]
+authors.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 description = "Neo N3 Core Types for Smart Contract Development"
+documentation = "https://docs.rs/neo-types"
 rust-version.workspace = true
 keywords = ["neo", "neovm", "blockchain", "smart-contracts", "types"]
 categories = ["cryptography::cryptocurrencies", "data-structures"]

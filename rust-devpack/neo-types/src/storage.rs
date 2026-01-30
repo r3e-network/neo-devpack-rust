@@ -1,3 +1,6 @@
+// Copyright (c) 2025 R3E Network
+// Licensed under the MIT License
+
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 

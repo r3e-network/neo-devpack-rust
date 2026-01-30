@@ -1,3 +1,6 @@
+// Copyright (c) 2025 R3E Network
+// Licensed under the MIT License
+
 //! Code generation utilities for Neo N3 procedural macros.
 //!
 //! This module provides shared utilities for generating code in Neo N3 macros,

@@ -1,3 +1,6 @@
+// Copyright (c) 2025 R3E Network
+// Licensed under the MIT License
+
 // Complete Neo N3 Smart Contract Example
 // Demonstrates all features of the Neo N3 Rust devpack
 
@@ -611,8 +614,11 @@ mod tests {
 
         assert_eq!(contract.name().unwrap().as_str(), "TestContract");
         assert_eq!(contract.version().unwrap().as_str(), "1.0.0");
-        assert_eq!(contract.total_supply().unwrap().as_i32(), 1000000);
-        assert_eq!(contract.decimals().unwrap().as_i32(), 8);
+        assert_eq!(
+            contract.total_supply().unwrap().as_i32_saturating(),
+            1000000
+        );
+        assert_eq!(contract.decimals().unwrap().as_i32_saturating(), 8);
     }
 
     #[test]
@@ -641,7 +647,7 @@ mod tests {
 
         // Test allowance
         let allowance = contract.allowance(&account1, &account2);
-        assert_eq!(allowance.unwrap().as_i32(), 50);
+        assert_eq!(allowance.unwrap().as_i32_saturating(), 50);
 
         // Test transfer from
         let transfer_from_result =

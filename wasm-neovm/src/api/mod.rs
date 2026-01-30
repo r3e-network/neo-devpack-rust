@@ -7,8 +7,8 @@
 //! and provides deprecation aliases for backward compatibility.
 
 pub use crate::adapters::SourceChain;
-pub use crate::config::{BehaviorConfig, DebugConfig, LogLevel, OutputConfig, TranslationConfig};
-pub use crate::logging::{LogCategory, LogLevel as WLogLevel};
+pub use crate::config::{BehaviorConfig, DebugConfig, OutputConfig, TranslationConfig};
+pub use crate::logging::{LogCategory, LogLevel};
 pub use crate::manifest::{ManifestMethod, ManifestParameter, RenderedManifest};
 pub use crate::metadata::NefMetadata;
 pub use crate::nef::{write_nef, write_nef_with_metadata, MethodToken};

@@ -1,3 +1,6 @@
+// Copyright (c) 2025 R3E Network
+// Licensed under the MIT License
+
 //! Token Contract Example
 //!
 //! This example demonstrates a more complex Neo N3 smart contract
@@ -293,8 +296,11 @@ mod tests {
 
         assert_eq!(contract.name().unwrap().as_str(), "Test Token");
         assert_eq!(contract.symbol().unwrap().as_str(), "TEST");
-        assert_eq!(contract.decimals().unwrap().as_i32(), 8);
-        assert_eq!(contract.total_supply().unwrap().as_i32(), 1000000);
+        assert_eq!(contract.decimals().unwrap().as_i32_saturating(), 8);
+        assert_eq!(
+            contract.total_supply().unwrap().as_i32_saturating(),
+            1000000
+        );
     }
 
     #[test]
@@ -310,7 +316,10 @@ mod tests {
         let account2 = NeoByteString::from_slice(b"account2");
 
         // Test balance (should be 0 initially)
-        assert_eq!(contract.balance_of(&account1).unwrap().as_i32(), 0);
+        assert_eq!(
+            contract.balance_of(&account1).unwrap().as_i32_saturating(),
+            0
+        );
 
         // Test transfer (should fail due to insufficient balance)
         let transfer_result = contract.transfer(&account2, NeoInteger::new(100));

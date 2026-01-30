@@ -1,3 +1,6 @@
+// Copyright (c) 2025 R3E Network
+// Licensed under the MIT License
+
 use neo_types::*;
 
 /// Minimal representation of contract management utilities used in tests.

@@ -1,3 +1,6 @@
+// Copyright (c) 2025 R3E Network
+// Licensed under the MIT License
+
 //! Serialization and deserialization utilities for Neo N3 smart contracts.
 //!
 //! This module provides binary serialization using bincode, which is efficient

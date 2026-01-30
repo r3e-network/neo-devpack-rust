@@ -1,6 +1,6 @@
 use core::slice;
 use neo_devpack::{codec, prelude::*};
-use serde::{Deserialize, Serialize};
+use neo_devpack::serde::{Deserialize, Serialize};
 
 const STATE_KEY: &[u8] = b"escrow:state";
 
@@ -49,9 +49,9 @@ pub struct EscrowRefunded {
     pub amount: NeoInteger,
 }
 
-#[allow(improper_ctypes_definitions)]
-#[neo_safe]
 #[no_mangle]
+#[neo_safe]
+#[allow(improper_ctypes_definitions)]
 pub extern "C" fn getState() -> NeoByteString {
     storage_context()
         .and_then(|ctx| load_state(&ctx))

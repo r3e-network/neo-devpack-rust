@@ -1,3 +1,6 @@
+// Copyright (c) 2025 R3E Network
+// Licensed under the MIT License
+
 use neo_devpack::prelude::*;
 
 neo_manifest_overlay!(r#"{"permissions": []}"#);

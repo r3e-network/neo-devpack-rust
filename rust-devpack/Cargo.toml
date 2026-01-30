@@ -2,7 +2,7 @@
 name = "neo-devpack"
 version = "0.1.0"
 edition.workspace = true
-authors = ["Neo N3 DevPack Team"]
+authors.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true

@@ -1,3 +1,6 @@
+// Copyright (c) 2025 R3E Network
+// Licensed under the MIT License
+
 //! Custom section generation helpers for Neo N3 manifest overlays.
 
 use proc_macro2::TokenStream as TokenStream2;

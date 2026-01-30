@@ -23,9 +23,9 @@ neo_manifest_overlay!(
 }"#
 );
 
-#[allow(improper_ctypes_definitions)]
-#[neo_safe]
 #[no_mangle]
+#[neo_safe]
+#[allow(improper_ctypes_definitions)]
 pub extern "C" fn getConfig() -> NeoByteString {
     storage_context()
         .and_then(|ctx| load_config(&ctx))
@@ -33,9 +33,9 @@ pub extern "C" fn getConfig() -> NeoByteString {
         .unwrap_or_else(|| NeoByteString::new(Vec::new()))
 }
 
+#[no_mangle]
 #[allow(improper_ctypes_definitions)]
 #[neo_safe]
-#[no_mangle]
 pub extern "C" fn getProposal(proposal_id: i64) -> NeoByteString {
     storage_context()
         .and_then(|ctx| load_proposal(&ctx, proposal_id))
