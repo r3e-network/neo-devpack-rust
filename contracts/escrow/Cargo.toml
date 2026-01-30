@@ -2,9 +2,12 @@
 name = "escrow"
 version = "0.2.0"
 edition = "2021"
+description = "Neo N3 escrow smart contract with arbiter-controlled release and refund functionality"
 license = "MIT"
 repository = "https://github.com/r3e-network/neo-llvm"
 homepage = "https://github.com/r3e-network/neo-llvm"
+keywords = ["neo", "n3", "escrow", "payments", "smart-contract"]
+categories = ["cryptography::cryptocurrencies", "wasm"]
 
 [lib]
 crate-type = ["cdylib"]

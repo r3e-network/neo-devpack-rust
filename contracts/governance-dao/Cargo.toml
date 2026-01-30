@@ -2,9 +2,12 @@
 name = "governance-dao"
 version = "0.2.0"
 edition = "2021"
+description = "Neo N3 DAO governance smart contract with stake-weighted voting and proposal execution"
 license = "MIT"
 repository = "https://github.com/r3e-network/neo-llvm"
 homepage = "https://github.com/r3e-network/neo-llvm"
+keywords = ["neo", "n3", "dao", "governance", "voting", "smart-contract"]
+categories = ["cryptography::cryptocurrencies", "wasm"]
 
 [lib]
 crate-type = ["cdylib"]

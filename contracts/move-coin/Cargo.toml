@@ -2,10 +2,12 @@
 name = "move-coin"
 version = "0.2.0"
 edition = "2021"
-description = "Example Move-style coin contract compiled for NeoVM"
+description = "Example Move-style coin contract compiled for NeoVM with resource semantics"
 license = "MIT"
 repository = "https://github.com/r3e-network/neo-llvm"
 homepage = "https://github.com/r3e-network/neo-llvm"
+keywords = ["neo", "n3", "move", "coin", "resource", "smart-contract"]
+categories = ["cryptography::cryptocurrencies", "wasm"]
 
 [lib]
 crate-type = ["cdylib"]

@@ -2,9 +2,12 @@
 name = "nft-marketplace"
 version = "0.2.0"
 edition = "2021"
+description = "Neo N3 NFT marketplace smart contract with escrow, buyer commitments, and NEP-17 payments"
 license = "MIT"
 repository = "https://github.com/r3e-network/neo-llvm"
 homepage = "https://github.com/r3e-network/neo-llvm"
+keywords = ["neo", "n3", "nft", "marketplace", "escrow", "smart-contract"]
+categories = ["cryptography::cryptocurrencies", "wasm"]
 
 [lib]
 crate-type = ["cdylib"]

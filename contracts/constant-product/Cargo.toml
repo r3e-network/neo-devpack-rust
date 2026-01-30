@@ -2,9 +2,12 @@
 name = "constant-product"
 version = "0.2.0"
 edition = "2021"
+description = "Neo N3 constant product AMM (Automated Market Maker) smart contract with swap fees and liquidity management"
 license = "MIT"
 repository = "https://github.com/r3e-network/neo-llvm"
 homepage = "https://github.com/r3e-network/neo-llvm"
+keywords = ["neo", "n3", "amm", "defi", "smart-contract"]
+categories = ["cryptography::cryptocurrencies", "wasm"]
 
 [lib]
 crate-type = ["cdylib"]
