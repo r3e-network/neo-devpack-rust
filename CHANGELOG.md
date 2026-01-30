@@ -31,6 +31,8 @@ this repository follow independent versioning (currently 0.1.x).
 - Consistent attribute ordering: `#[no_mangle]` → `#[neo_safe]` → `#[allow(...)]`
 - Standardized contract imports: all use `neo_devpack::serde` instead of direct serde
 - Standardized storage key naming with namespace prefixes (e.g., `token:`, `nft:`, `amm:`)
+- Fixed simple_contract.rs import pattern and missing NeoVMSyscall import
+- Fixed remaining as_u32() deprecation warning in tests
 
 ## [0.4.2] - 2026-01-29
 
