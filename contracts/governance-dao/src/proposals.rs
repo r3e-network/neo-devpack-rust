@@ -18,15 +18,10 @@ pub fn store_proposal(ctx: &NeoStorageContext, id: i64, proposal: &Proposal) -> 
     store_to_storage(ctx, &proposal_key(id), proposal)
 }
 
-pub fn execute_proposal(
-    target: &NeoByteString,
-    method: &str,
-) -> NeoResult<()> {
-    let args = NeoArray::<NeoValue>::new();
-    NeoContractRuntime::call(
-        target,
-        &NeoString::from_str(method),
-        &args,
-    )
-    .map(|_| ())
+pub fn execute_proposal(target: &NeoByteString, method: &str, arguments: &[u8]) -> NeoResult<()> {
+    let mut args = NeoArray::<NeoValue>::new();
+    if !arguments.is_empty() {
+        args.push(NeoValue::from(NeoByteString::from_slice(arguments)));
+    }
+    NeoContractRuntime::call(target, &NeoString::from_str(method), &args).map(|_| ())
 }

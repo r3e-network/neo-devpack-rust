@@ -8,6 +8,7 @@ const FEE_DENOMINATOR: i64 = 1_000;
 neo_manifest_overlay!(
     r#"{
     "name": "ConstantProductAMM",
+    "supportedstandards": ["NEP-17"],
     "features": { "storage": true },
     "abi": {
         "methods": [
@@ -34,7 +35,7 @@ neo_manifest_overlay!(
             {
                 "name": "swap",
                 "parameters": [
-                    {"name": "trader", "type": "Integer"},
+                    {"name": "trader", "type": "Hash160"},
                     {"name": "amount_in", "type": "Integer"}
                 ],
                 "returntype": "Integer"
@@ -44,7 +45,7 @@ neo_manifest_overlay!(
             {
                 "name": "Swap",
                 "parameters": [
-                    {"name": "trader", "type": "Integer"},
+                    {"name": "trader", "type": "Hash160"},
                     {"name": "amount_in", "type": "Integer"},
                     {"name": "amount_out", "type": "Integer"}
                 ]
@@ -56,7 +57,7 @@ neo_manifest_overlay!(
 
 #[neo_event]
 pub struct SwapEvent {
-    pub trader: NeoInteger,
+    pub trader: NeoByteString,
     pub amount_in: NeoInteger,
     pub amount_out: NeoInteger,
     pub new_reserve_x: NeoInteger,
@@ -99,12 +100,24 @@ fn store_reserves(ctx: &NeoStorageContext, x: i64, y: i64) -> NeoResult<()> {
 }
 
 fn calculate_swap_output(reserve_x: i64, reserve_y: i64, amount_in: i64) -> i64 {
-    if reserve_x <= 0 || reserve_y <= 0 {
+    if reserve_x <= 0 || reserve_y <= 0 || amount_in <= 0 {
         return 0;
     }
-    let amount_in_with_fee = amount_in * FEE_NUMERATOR;
-    let numerator = amount_in_with_fee * reserve_y;
-    let denominator = reserve_x * FEE_DENOMINATOR + amount_in_with_fee;
+    let amount_in_with_fee = match amount_in.checked_mul(FEE_NUMERATOR) {
+        Some(value) => value,
+        None => return 0,
+    };
+    let numerator = match amount_in_with_fee.checked_mul(reserve_y) {
+        Some(value) => value,
+        None => return 0,
+    };
+    let denominator = match reserve_x.checked_mul(FEE_DENOMINATOR) {
+        Some(x_fee) => match x_fee.checked_add(amount_in_with_fee) {
+            Some(value) => value,
+            None => return 0,
+        },
+        None => return 0,
+    };
     if denominator == 0 {
         0
     } else {
@@ -120,7 +133,10 @@ pub extern "C" fn init(initial_x: i64, initial_y: i64) -> i64 {
     let Some(ctx) = storage_context() else {
         return 0;
     };
-    let (x, y) = load_reserves(&ctx).unwrap_or((0, 0));
+    let (x, y) = match load_reserves(&ctx) {
+        Ok(reserves) => reserves,
+        Err(_) => (0, 0),
+    };
     if x != 0 || y != 0 {
         return 0; // already initialised
     }
@@ -151,19 +167,19 @@ pub extern "C" fn quote(amount_in: i64) -> i64 {
         .unwrap_or(0)
 }
 
+#[allow(improper_ctypes_definitions)]
 #[no_mangle]
-pub extern "C" fn swap(trader: i64, amount_in: i64) -> i64 {
+pub extern "C" fn swap(trader_ptr: i64, trader_len: i64, amount_in: i64) -> i64 {
     if amount_in <= 0 {
         return 0;
     }
     let Some(ctx) = storage_context() else {
         return 0;
     };
-    let witness = NeoByteString::from_slice(&trader.to_le_bytes());
-    if !NeoRuntime::check_witness(&witness)
-        .map(|flag| flag.as_bool())
-        .unwrap_or(false)
-    {
+    let Some(trader) = read_address(trader_ptr, trader_len) else {
+        return 0;
+    };
+    if !ensure_witness(&trader) {
         return 0;
     }
     let (reserve_x, reserve_y) = match load_reserves(&ctx) {
@@ -174,13 +190,19 @@ pub extern "C" fn swap(trader: i64, amount_in: i64) -> i64 {
     if amount_out <= 0 || amount_out >= reserve_y {
         return 0;
     }
-    let new_x = reserve_x + amount_in;
-    let new_y = reserve_y - amount_out;
+    let new_x = match reserve_x.checked_add(amount_in) {
+        Some(value) => value,
+        None => return 0,
+    };
+    let new_y = match reserve_y.checked_sub(amount_out) {
+        Some(value) => value,
+        None => return 0,
+    };
     if store_reserves(&ctx, new_x, new_y).is_err() {
         return 0;
     }
     SwapEvent {
-        trader: NeoInteger::new(trader),
+        trader,
         amount_in: NeoInteger::new(amount_in),
         amount_out: NeoInteger::new(amount_out),
         new_reserve_x: NeoInteger::new(new_x),
@@ -189,4 +211,78 @@ pub extern "C" fn swap(trader: i64, amount_in: i64) -> i64 {
     .emit()
     .ok();
     amount_out
+}
+
+#[allow(improper_ctypes_definitions)]
+fn read_address(ptr: i64, len: i64) -> Option<NeoByteString> {
+    let bytes = read_bytes(ptr, len)?;
+    if bytes.len() != 20 {
+        return None;
+    }
+    Some(NeoByteString::from_slice(&bytes))
+}
+
+fn read_bytes(ptr: i64, len: i64) -> Option<Vec<u8>> {
+    if ptr == 0 || len <= 0 {
+        return None;
+    }
+    let len = len as usize;
+    let slice = unsafe { core::slice::from_raw_parts(ptr as *const u8, len) };
+    Some(slice.to_vec())
+}
+
+fn ensure_witness(account: &NeoByteString) -> bool {
+    NeoRuntime::check_witness(account)
+        .ok()
+        .map(|b| b.as_bool())
+        .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Mutex, OnceLock};
+
+    fn test_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    fn address(byte: u8) -> Vec<u8> {
+        vec![byte; 20]
+    }
+
+    fn reset_state() {
+        let ctx = storage_context().unwrap();
+        NeoStorage::delete(&ctx, &NeoByteString::from_slice(RESERVE_X_KEY)).ok();
+        NeoStorage::delete(&ctx, &NeoByteString::from_slice(RESERVE_Y_KEY)).ok();
+    }
+
+    #[test]
+    fn init_stores_reserves() {
+        let _guard = test_lock().lock().unwrap();
+        reset_state();
+        assert_eq!(init(1000, 2000), 1);
+        assert_eq!(getReserves(), (1000i64 << 32) | 2000u32 as i64);
+    }
+
+    #[test]
+    fn quote_calculates_correct_output() {
+        let _guard = test_lock().lock().unwrap();
+        reset_state();
+        init(1000000, 1000000);
+        let output = quote(1000);
+        assert!(output > 0);
+        assert!(output < 1000);
+    }
+
+    #[test]
+    fn swap_fails_without_witness() {
+        let _guard = test_lock().lock().unwrap();
+        reset_state();
+        init(1000000, 1000000);
+        let trader = address(0x42);
+        let result = swap(trader.as_ptr() as i64, trader.len() as i64, 1000);
+        assert_eq!(result, 0);
+    }
 }

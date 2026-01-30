@@ -1,6 +1,6 @@
 use core::slice;
-use neo_devpack::{codec, prelude::*};
 use neo_devpack::serde::{Deserialize, Serialize};
+use neo_devpack::{codec, prelude::*};
 
 const CONFIG_KEY: &[u8] = b"oracle:config";
 const REQUEST_COUNTER_KEY: &[u8] = b"oracle:counter";
@@ -82,6 +82,9 @@ pub extern "C" fn configure(
     let Some(owner) = read_address(owner_ptr, owner_len) else {
         return 0;
     };
+    if !ensure_witness(&owner) {
+        return 0;
+    }
     let Some(oracle) = read_address(oracle_ptr, oracle_len) else {
         return 0;
     };
@@ -249,16 +252,16 @@ fn read_string(ptr: i64, len: i64) -> Option<String> {
 }
 
 /// Reads bytes from a raw pointer.
-/// 
+///
 /// # Safety
-/// 
+///
 /// The caller must ensure that:
 /// - `ptr` is a valid, non-null pointer allocated by the NeoVM runtime
 /// - `len` bytes starting at `ptr` are valid for reads
-/// 
+///
 /// These invariants are guaranteed when called from NeoVM contract entry points.
 fn read_bytes(ptr: i64, len: i64) -> Option<Vec<u8>> {
-    if ptr == 0 || len < 0 {
+    if ptr == 0 || len <= 0 {
         return None;
     }
     let len = len as usize;

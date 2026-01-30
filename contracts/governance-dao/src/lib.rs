@@ -13,7 +13,7 @@ use events::{ProposalCreated, ProposalExecuted, StakeDecreased, StakeIncreased, 
 use proposals::{execute_proposal, load_proposal, next_proposal_id, store_proposal};
 use storage::{serialize_value, storage_context, PROPOSAL_COUNTER_KEY};
 use types::{DaoConfig, Proposal};
-use utils::{addresses_equal, ensure_witness, read_address, read_string};
+use utils::{addresses_equal, ensure_witness, read_address, read_bytes, read_string};
 use voting::{call_transfer, has_voted, record_vote};
 
 neo_manifest_overlay!(
@@ -79,6 +79,10 @@ pub extern "C" fn configure(
         return 0;
     };
 
+    if addresses_equal(&owner, &token) {
+        return 0;
+    }
+
     let config = DaoConfig {
         owner: owner.clone(),
         token: token.clone(),
@@ -111,6 +115,8 @@ pub extern "C" fn propose(
     target_len: i64,
     method_ptr: i64,
     method_len: i64,
+    args_ptr: i64,
+    args_len: i64,
     title_ptr: i64,
     title_len: i64,
     description_ptr: i64,
@@ -147,6 +153,7 @@ pub extern "C" fn propose(
     if method.is_empty() {
         return 0;
     }
+    let arguments = read_bytes(args_ptr, args_len).unwrap_or_default();
     let Some(title) = read_string(title_ptr, title_len) else {
         return 0;
     };
@@ -164,6 +171,7 @@ pub extern "C" fn propose(
         proposer: proposer.clone(),
         target: target.clone(),
         method: method.clone(),
+        arguments,
         title: title.clone(),
         description,
         start_time,
@@ -275,7 +283,7 @@ pub extern "C" fn execute(proposal_id: i64) -> i64 {
         return 0;
     }
 
-    if execute_proposal(&proposal.target, &proposal.method).is_err() {
+    if execute_proposal(&proposal.target, &proposal.method, &proposal.arguments).is_err() {
         return 0;
     }
 
@@ -316,7 +324,10 @@ pub extern "C" fn unstake(address_ptr: i64, address_len: i64, amount: i64) -> i6
         return 0;
     }
 
-    let new_total = current - amount;
+    let new_total = match current.checked_sub(amount) {
+        Some(value) => value,
+        None => return 0,
+    };
     if store_stake(&ctx, &address, new_total).is_err() {
         return 0;
     }

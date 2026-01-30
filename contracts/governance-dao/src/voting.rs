@@ -25,7 +25,7 @@ pub fn call_transfer(
         Ok(value) => value
             .as_boolean()
             .map(|flag| flag.as_bool())
-            .unwrap_or(true),
+            .unwrap_or(false),
         Err(_) => false,
     }
 }

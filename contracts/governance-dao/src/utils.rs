@@ -2,14 +2,14 @@ use core::slice;
 use neo_devpack::prelude::*;
 
 /// Reads bytes from a raw pointer.
-/// 
+///
 /// # Safety
-/// 
+///
 /// The caller must ensure that:
 /// - `ptr` is a valid, non-null pointer to memory allocated by the NeoVM runtime
 /// - `len` bytes starting at `ptr` are valid for reads
 /// - The memory remains valid for the duration of this function call
-/// 
+///
 /// These invariants are guaranteed when called from NeoVM contract entry points.
 pub fn read_bytes(ptr: i64, len: i64) -> Option<Vec<u8>> {
     if ptr == 0 || len <= 0 {

@@ -14,6 +14,7 @@ pub struct Proposal {
     pub proposer: NeoByteString,
     pub target: NeoByteString,
     pub method: String,
+    pub arguments: Vec<u8>,
     pub title: String,
     pub description: String,
     pub start_time: i64,

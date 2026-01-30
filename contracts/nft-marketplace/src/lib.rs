@@ -1,6 +1,6 @@
 use core::slice;
-use neo_devpack::{codec, prelude::*};
 use neo_devpack::serde::{Deserialize, Serialize};
+use neo_devpack::{codec, prelude::*};
 
 const LISTING_COUNTER_KEY: &[u8] = b"market:counter";
 const LISTING_PREFIX: &[u8] = b"market:listing:";
@@ -10,6 +10,7 @@ const ESCROW_PREFIX: &[u8] = b"market:escrow:";
 struct Listing {
     id: i64,
     seller: NeoByteString,
+    buyer: Option<NeoByteString>,
     token_contract: NeoByteString,
     token_id: NeoByteString,
     payment_token: NeoByteString,
@@ -104,6 +105,7 @@ pub extern "C" fn createListing(
     let listing = Listing {
         id: listing_id,
         seller: seller.clone(),
+        buyer: None,
         token_contract: token_contract.clone(),
         token_id: token_id.clone(),
         payment_token: payment_token.clone(),
@@ -153,7 +155,17 @@ pub extern "C" fn cancelListing(listing_id: i64, seller_ptr: i64, seller_len: i6
         if !return_nft(&listing.token_contract, &seller, &listing.token_id) {
             return 0;
         }
+        if let Some(ref buyer) = listing.buyer {
+            let contract_hash = match NeoRuntime::get_executing_script_hash() {
+                Ok(hash) => hash,
+                Err(_) => return 0,
+            };
+            if !transfer_payment(&listing.payment_token, &contract_hash, buyer, listing.price) {
+                return 0;
+            }
+        }
         listing.escrowed = false;
+        listing.buyer = None;
     }
 
     listing.active = false;
@@ -167,6 +179,35 @@ pub extern "C" fn cancelListing(listing_id: i64, seller_ptr: i64, seller_len: i6
     }
     .emit()
     .ok();
+
+    1
+}
+
+#[no_mangle]
+pub extern "C" fn commitToPurchase(listing_id: i64, buyer_ptr: i64, buyer_len: i64) -> i64 {
+    let Some(ctx) = storage_context() else {
+        return 0;
+    };
+    let Some(mut listing) = load_listing(&ctx, listing_id) else {
+        return 0;
+    };
+    if !listing.active || !listing.escrowed {
+        return 0;
+    }
+    if listing.buyer.is_some() {
+        return 0;
+    }
+    let Some(buyer) = read_address(buyer_ptr, buyer_len) else {
+        return 0;
+    };
+    if !ensure_witness(&buyer) {
+        return 0;
+    }
+
+    listing.buyer = Some(buyer.clone());
+    if store_listing(&ctx, listing_id, &listing).is_err() {
+        return 0;
+    }
 
     1
 }
@@ -231,6 +272,12 @@ pub extern "C" fn onNEP17Payment(from: NeoByteString, amount: i64, data: NeoByte
     if !listing.active || !listing.escrowed {
         return 0;
     }
+    let Some(ref committed_buyer) = listing.buyer else {
+        return 0;
+    };
+    if !addresses_equal(&from, committed_buyer) {
+        return 0;
+    }
     if amount != listing.price {
         return 0;
     }
@@ -257,6 +304,12 @@ pub extern "C" fn onNEP17Payment(from: NeoByteString, amount: i64, data: NeoByte
     }
 
     if !return_nft(&listing.token_contract, &from, &listing.token_id) {
+        let _ = transfer_payment(
+            &listing.payment_token,
+            &listing.seller,
+            &contract_hash,
+            amount,
+        );
         return 0;
     }
 
@@ -345,16 +398,16 @@ fn read_address(ptr: i64, len: i64) -> Option<NeoByteString> {
 }
 
 /// Reads bytes from a raw pointer.
-/// 
+///
 /// # Safety
-/// 
+///
 /// The caller must ensure that:
 /// - `ptr` is a valid, non-null pointer allocated by the NeoVM runtime
 /// - `len` bytes starting at `ptr` are valid for reads
-/// 
+///
 /// These invariants are guaranteed when called from NeoVM contract entry points.
 fn read_bytes(ptr: i64, len: i64) -> Option<Vec<u8>> {
-    if ptr == 0 || len < 0 {
+    if ptr == 0 || len <= 0 {
         return None;
     }
     let len = len as usize;
@@ -398,7 +451,7 @@ fn transfer_payment(
         Ok(value) => value
             .as_boolean()
             .map(|flag| flag.as_bool())
-            .unwrap_or(true),
+            .unwrap_or(false),
         Err(_) => false,
     }
 }

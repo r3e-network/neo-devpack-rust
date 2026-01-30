@@ -1,6 +1,6 @@
 use core::slice;
-use neo_devpack::{codec, prelude::*};
 use neo_devpack::serde::{Deserialize, Serialize};
+use neo_devpack::{codec, prelude::*};
 
 const CAMPAIGN_KEY: &[u8] = b"crowd:campaign";
 const CONTRIBUTION_PREFIX: &[u8] = b"crowd:contrib:";
@@ -95,9 +95,15 @@ pub extern "C" fn configure(
     let Some(owner) = read_address(owner_ptr, owner_len) else {
         return 0;
     };
+    if !ensure_witness(&owner) {
+        return 0;
+    }
     let Some(token) = read_address(token_ptr, token_len) else {
         return 0;
     };
+    if addresses_equal(&owner, &token) {
+        return 0;
+    }
 
     let campaign = Campaign {
         owner: owner.clone(),
@@ -136,7 +142,10 @@ pub extern "C" fn finalize(current_time: i64) -> i64 {
         return 0;
     }
 
-    if campaign.total_raised < campaign.target && current_time < campaign.deadline {
+    if current_time < campaign.deadline {
+        return 0;
+    }
+    if campaign.total_raised < campaign.target {
         return 0;
     }
 
@@ -316,13 +325,13 @@ fn read_address(ptr: i64, len: i64) -> Option<NeoByteString> {
 }
 
 /// Reads bytes from a raw pointer.
-/// 
+///
 /// # Safety
-/// 
+///
 /// The caller must ensure that:
 /// - `ptr` is a valid, non-null pointer allocated by the NeoVM runtime
 /// - `len` bytes starting at `ptr` are valid for reads
-/// 
+///
 /// These invariants are guaranteed when called from NeoVM contract entry points.
 fn read_bytes(ptr: i64, len: i64) -> Option<Vec<u8>> {
     if ptr == 0 || len <= 0 {
@@ -360,7 +369,7 @@ fn call_transfer(
         Ok(value) => value
             .as_boolean()
             .map(|flag| flag.as_bool())
-            .unwrap_or(true),
+            .unwrap_or(false),
         Err(_) => false,
     }
 }

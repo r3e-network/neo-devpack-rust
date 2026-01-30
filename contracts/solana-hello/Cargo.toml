@@ -1,6 +1,6 @@
 [package]
 name = "solana-hello"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Example Solana-style contract compiled for NeoVM"
 license = "MIT"

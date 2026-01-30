@@ -1,6 +1,6 @@
 use core::slice;
-use neo_devpack::{codec, prelude::*};
 use neo_devpack::serde::{Deserialize, Serialize};
+use neo_devpack::{codec, prelude::*};
 
 const STATE_KEY: &[u8] = b"escrow:state";
 
@@ -13,6 +13,7 @@ struct EscrowState {
     amount: i64,
     funded: bool,
     released: bool,
+    refunded: bool,
 }
 
 neo_manifest_overlay!(
@@ -85,6 +86,9 @@ pub extern "C" fn configure(
     let Some(payer) = read_address(payer_ptr, payer_len) else {
         return 0;
     };
+    if !ensure_witness(&payer) {
+        return 0;
+    }
     let Some(payee) = read_address(payee_ptr, payee_len) else {
         return 0;
     };
@@ -95,6 +99,13 @@ pub extern "C" fn configure(
         return 0;
     };
 
+    if addresses_equal(&payer, &payee)
+        || addresses_equal(&payer, &arbiter)
+        || addresses_equal(&payee, &arbiter)
+    {
+        return 0;
+    }
+
     let state = EscrowState {
         payer: payer.clone(),
         payee: payee.clone(),
@@ -103,6 +114,7 @@ pub extern "C" fn configure(
         amount,
         funded: false,
         released: false,
+        refunded: false,
     };
 
     if store_state(&ctx, &state).is_err() {
@@ -194,6 +206,7 @@ pub extern "C" fn refund(signer_ptr: i64, signer_len: i64) -> i64 {
 
     state.funded = false;
     state.released = false;
+    state.refunded = true;
     if store_state(&ctx, &state).is_err() {
         return 0;
     }
@@ -217,7 +230,7 @@ pub extern "C" fn onNEP17Payment(from: NeoByteString, amount: i64, _data: NeoByt
     let Some(mut state) = load_state(&ctx) else {
         return;
     };
-    if state.funded || amount != state.amount {
+    if state.funded || state.refunded || amount != state.amount {
         return;
     }
 
@@ -265,13 +278,13 @@ fn read_address(ptr: i64, len: i64) -> Option<NeoByteString> {
 }
 
 /// Reads bytes from a raw pointer.
-/// 
+///
 /// # Safety
-/// 
+///
 /// The caller must ensure that:
 /// - `ptr` is a valid, non-null pointer allocated by the NeoVM runtime
 /// - `len` bytes starting at `ptr` are valid for reads
-/// 
+///
 /// These invariants are guaranteed when called from NeoVM contract entry points.
 fn read_bytes(ptr: i64, len: i64) -> Option<Vec<u8>> {
     if ptr == 0 || len <= 0 {
@@ -309,7 +322,7 @@ fn call_transfer(
         Ok(value) => value
             .as_boolean()
             .map(|flag| flag.as_bool())
-            .unwrap_or(true),
+            .unwrap_or(false),
         Err(_) => false,
     }
 }
