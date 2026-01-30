@@ -3,10 +3,10 @@ name = "nep17-token-neo"
 version = "0.2.0"
 edition = "2021"
 description = "Neo N3 NEP-17 compliant fungible token smart contract with transfer and balance management"
+keywords = ["neo", "n3", "smart-contract"]
 license = "MIT"
 repository = "https://github.com/r3e-network/neo-llvm"
 homepage = "https://github.com/r3e-network/neo-llvm"
-keywords = ["neo", "n3", "nep-17", "token", "fungible", "smart-contract"]
 categories = ["cryptography::cryptocurrencies", "wasm"]
 
 [lib]

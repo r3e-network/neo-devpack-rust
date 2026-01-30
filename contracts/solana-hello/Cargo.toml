@@ -3,10 +3,10 @@ name = "solana-hello-neo"
 version = "0.2.0"
 edition = "2021"
 description = "Example Solana-style contract compiled for NeoVM with solana-program compatibility"
+keywords = ["neo", "n3", "smart-contract"]
 license = "MIT"
 repository = "https://github.com/r3e-network/neo-llvm"
 homepage = "https://github.com/r3e-network/neo-llvm"
-keywords = ["neo", "n3", "solana", "cross-chain", "smart-contract"]
 categories = ["cryptography::cryptocurrencies", "wasm"]
 
 [lib]
