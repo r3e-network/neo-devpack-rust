@@ -11,7 +11,7 @@ use neo_types::{NeoContractABI, NeoContractPermission};
 fn test_neo_integer() {
     let int = NeoInteger::new(42);
     assert_eq!(int.as_i32_saturating(), 42);
-    assert_eq!(int.as_u32(), 42);
+    assert_eq!(int.as_u32_saturating(), 42);
 
     // Test arithmetic operations
     let int2 = NeoInteger::new(10);

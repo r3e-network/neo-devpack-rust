@@ -6,7 +6,8 @@
 //! This example demonstrates basic Neo N3 smart contract functionality
 //! without complex macros.
 
-use neo_devpack::*;
+use neo_devpack::prelude::*;
+use neo_devpack::NeoVMSyscall;
 
 /// Simple storage struct
 pub struct SimpleStorage {
