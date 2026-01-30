@@ -14,3 +14,4 @@ crate-type = ["cdylib"]
 
 [dependencies]
 neo-devpack = "0.1"
+[workspace]
