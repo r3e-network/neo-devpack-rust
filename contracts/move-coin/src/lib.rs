@@ -118,7 +118,7 @@ struct Coin {
 
 /// Storage key prefixes (simulate Move's typed global storage)
 const BALANCE_PREFIX: u8 = 0x01;
-const TOTAL_SUPPLY_KEY: &[u8] = b"SUPPLY";
+const TOTAL_SUPPLY_KEY: &[u8] = b"coin:total_supply";
 
 // ============================================================================
 // Storage Helpers (Move Global Storage Emulation)

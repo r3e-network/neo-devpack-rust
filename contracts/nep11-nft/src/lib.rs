@@ -1,8 +1,8 @@
 use neo_devpack::prelude::*;
 
-const TOTAL_SUPPLY_KEY: &[u8] = b"__total_nft_supply";
-const OWNER_PREFIX: &[u8] = b"owner:";
-const BALANCE_PREFIX: &[u8] = b"balance:";
+const TOTAL_SUPPLY_KEY: &[u8] = b"nft:total_supply";
+const OWNER_PREFIX: &[u8] = b"nft:owner:";
+const BALANCE_PREFIX: &[u8] = b"nft:balance:";
 
 neo_manifest_overlay!(
     r#"{

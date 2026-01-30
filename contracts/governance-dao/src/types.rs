@@ -1,5 +1,5 @@
 use neo_devpack::prelude::*;
-use serde::{Deserialize, Serialize};
+use neo_devpack::serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct DaoConfig {

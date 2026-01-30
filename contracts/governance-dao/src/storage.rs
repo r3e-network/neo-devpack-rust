@@ -1,5 +1,5 @@
 use neo_devpack::{codec, prelude::*};
-use serde::{Deserialize, Serialize};
+use neo_devpack::serde::{Deserialize, Serialize};
 
 pub const CONFIG_KEY: &[u8] = b"dao:config";
 pub const PROPOSAL_COUNTER_KEY: &[u8] = b"dao:counter";

@@ -16,6 +16,7 @@ this repository follow independent versioning (currently 0.1.x).
 - **API Consistency**: Removed deprecated `as_i32()` API usage, consolidated `LogLevel` definitions
 - **Code Quality**: Added copyright headers to all rust-devpack files
 - **Bug Fixes**: Fixed const fn issues in solana-compat for WASM builds
+- **Contract Consistency**: Standardized import patterns and storage key naming
 
 ### Fixed
 - Replaced all deprecated `as_i32()` calls with `as_i32_saturating()` across examples and tests
@@ -28,6 +29,8 @@ this repository follow independent versioning (currently 0.1.x).
 - All rust-devpack source files now have copyright headers
 - Updated author field to "R3E Network" across all crates
 - Consistent attribute ordering: `#[no_mangle]` → `#[neo_safe]` → `#[allow(...)]`
+- Standardized contract imports: all use `neo_devpack::serde` instead of direct serde
+- Standardized storage key naming with namespace prefixes (e.g., `token:`, `nft:`, `amm:`)
 
 ## [0.4.2] - 2026-01-29
 

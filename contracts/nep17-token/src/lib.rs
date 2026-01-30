@@ -1,7 +1,7 @@
 use neo_devpack::prelude::*;
 
-const TOTAL_SUPPLY_KEY: &[u8] = b"__total_supply";
-const BALANCE_PREFIX: &[u8] = b"balance:";
+const TOTAL_SUPPLY_KEY: &[u8] = b"token:total_supply";
+const BALANCE_PREFIX: &[u8] = b"token:balance:";
 
 neo_manifest_overlay!(r#"{
     "name": "SampleNEP17",

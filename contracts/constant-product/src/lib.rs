@@ -1,7 +1,7 @@
 use neo_devpack::prelude::*;
 
-const RESERVE_X_KEY: &[u8] = b"reserve_x";
-const RESERVE_Y_KEY: &[u8] = b"reserve_y";
+const RESERVE_X_KEY: &[u8] = b"amm:reserve_x";
+const RESERVE_Y_KEY: &[u8] = b"amm:reserve_y";
 const FEE_NUMERATOR: i64 = 997;
 const FEE_DENOMINATOR: i64 = 1_000;
 

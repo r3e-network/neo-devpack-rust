@@ -1,6 +1,6 @@
 use core::slice;
 use neo_devpack::{codec, prelude::*};
-use serde::{Deserialize, Serialize};
+use neo_devpack::serde::{Deserialize, Serialize};
 
 const LISTING_COUNTER_KEY: &[u8] = b"market:counter";
 const LISTING_PREFIX: &[u8] = b"market:listing:";

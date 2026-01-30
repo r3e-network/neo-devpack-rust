@@ -1,6 +1,6 @@
 use core::slice;
 use neo_devpack::{codec, prelude::*};
-use serde::{Deserialize, Serialize};
+use neo_devpack::serde::{Deserialize, Serialize};
 
 const CONFIG_KEY: &[u8] = b"oracle:config";
 const REQUEST_COUNTER_KEY: &[u8] = b"oracle:counter";
