@@ -1,5 +1,5 @@
 [package]
-name = "oracle-consumer"
+name = "oracle-consumer-neo"
 version = "0.2.0"
 edition = "2021"
 description = "Neo N3 Oracle consumer smart contract for requesting and receiving off-chain data"

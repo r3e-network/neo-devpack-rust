@@ -1,5 +1,5 @@
 [package]
-name = "nft-marketplace"
+name = "nft-marketplace-neo"
 version = "0.2.0"
 edition = "2021"
 description = "Neo N3 NFT marketplace smart contract with escrow, buyer commitments, and NEP-17 payments"

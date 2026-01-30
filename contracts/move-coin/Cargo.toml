@@ -1,5 +1,5 @@
 [package]
-name = "move-coin"
+name = "move-coin-neo"
 version = "0.2.0"
 edition = "2021"
 description = "Example Move-style coin contract compiled for NeoVM with resource semantics"

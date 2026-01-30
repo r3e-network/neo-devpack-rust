@@ -1,5 +1,5 @@
 [package]
-name = "multisig-wallet"
+name = "multisig-wallet-neo"
 version = "0.2.0"
 edition = "2021"
 description = "Neo N3 multisig wallet smart contract with configurable owners and threshold"

@@ -102,7 +102,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "nep17-token"
+name = "nep17-token-neo"
 version = "0.2.0"
 dependencies = [
  "neo-devpack",

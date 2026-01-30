@@ -1,5 +1,5 @@
 [package]
-name = "hello-world"
+name = "hello-world-neo"
 version = "0.2.0"
 edition = "2021"
 description = "Minimal Neo N3 smart contract example demonstrating basic contract structure"

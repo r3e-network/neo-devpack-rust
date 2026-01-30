@@ -1,5 +1,5 @@
 [package]
-name = "escrow"
+name = "escrow-neo"
 version = "0.2.0"
 edition = "2021"
 description = "Neo N3 escrow smart contract with arbiter-controlled release and refund functionality"

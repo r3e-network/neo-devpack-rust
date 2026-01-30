@@ -1,5 +1,5 @@
 [package]
-name = "crowdfunding"
+name = "crowdfunding-neo"
 version = "0.2.0"
 edition = "2021"
 description = "Neo N3 crowdfunding smart contract with campaign management, contributions, and refunds"

@@ -1,5 +1,5 @@
 [package]
-name = "solana-hello"
+name = "solana-hello-neo"
 version = "0.2.0"
 edition = "2021"
 description = "Example Solana-style contract compiled for NeoVM with solana-program compatibility"

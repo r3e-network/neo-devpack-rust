@@ -1,5 +1,5 @@
 [package]
-name = "governance-dao"
+name = "governance-dao-neo"
 version = "0.2.0"
 edition = "2021"
 description = "Neo N3 DAO governance smart contract with stake-weighted voting and proposal execution"
