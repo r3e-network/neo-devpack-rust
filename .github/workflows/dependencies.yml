@@ -95,7 +95,7 @@ jobs:
           cd wasm-neovm && cargo cyclonedx
 
       - name: Upload SBOM
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: sbom
           path: wasm-neovm/Cargo.toml.bom.xml
