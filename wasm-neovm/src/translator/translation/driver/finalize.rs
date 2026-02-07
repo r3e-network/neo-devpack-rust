@@ -80,13 +80,19 @@ impl DriverState {
             })?;
 
             for alias in entry.names.iter_mut() {
-                if alias.processed {
+                if alias.processed || alias.name.eq_ignore_ascii_case("_deploy") {
+                    alias.processed = true;
                     continue;
                 }
+                let (parameters, method_return) = normalize_exported_manifest_signature(
+                    &alias.name,
+                    parameter_defs.clone(),
+                    return_kind.clone(),
+                );
                 self.methods.push(ManifestMethod {
                     name: alias.name.clone(),
-                    parameters: parameter_defs.clone(),
-                    return_type: return_kind.clone(),
+                    parameters,
+                    return_type: method_return,
                     offset: offset as u32,
                     safe: false,
                 });
@@ -148,6 +154,9 @@ impl DriverState {
             start_descriptor.as_ref(),
             self.frontend.imports(),
             self.frontend.module_types().signatures(),
+            self.frontend.module_types().defined_type_indices(),
+            self.function_registry.as_mut(),
+            &mut self.feature_tracker,
             adapter,
         )?;
 

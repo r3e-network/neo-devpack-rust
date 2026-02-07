@@ -52,6 +52,12 @@ pub(crate) enum TableHelperKind {
     ElemDrop(usize),
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) struct CallIndirectHelperKey {
+    pub(super) table_index: usize,
+    pub(super) type_index: u32,
+}
+
 #[derive(Clone, Copy)]
 pub(crate) enum CallTarget {
     Import(u32),

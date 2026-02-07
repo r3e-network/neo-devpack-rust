@@ -4,87 +4,158 @@
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 
+use crate::syscalls;
+
+fn camel_to_snake(input: &str) -> String {
+    let mut output = String::with_capacity(input.len());
+    let mut prev_was_lower_or_digit = false;
+
+    for ch in input.chars() {
+        if ch.is_ascii_uppercase() {
+            if prev_was_lower_or_digit {
+                output.push('_');
+            }
+            output.push(ch.to_ascii_lowercase());
+            prev_was_lower_or_digit = false;
+        } else {
+            output.push(ch.to_ascii_lowercase());
+            prev_was_lower_or_digit = ch.is_ascii_lowercase() || ch.is_ascii_digit();
+        }
+    }
+
+    output
+}
+
+fn canonical_alias(descriptor: &str) -> Option<String> {
+    let mut parts = descriptor.split('.');
+    let root = parts.next()?;
+    if root != "System" {
+        return None;
+    }
+
+    let category = parts.next()?;
+    let method = parts.next()?;
+    if parts.next().is_some() {
+        return None;
+    }
+
+    Some(format!(
+        "{}_{}",
+        category.to_ascii_lowercase(),
+        camel_to_snake(method)
+    ))
+}
+
 /// Mapping from WASM import names to Neo syscall names
 /// Used for (import "neo" "storage_get") style imports
-pub static NEO_SYSCALL_MAP: Lazy<HashMap<&'static str, &'static str>> = Lazy::new(|| {
-    let mut map = HashMap::new();
+pub static NEO_SYSCALL_MAP: Lazy<HashMap<String, &'static str>> = Lazy::new(|| {
+    let mut map: HashMap<String, &'static str> = HashMap::new();
+    let mut alias = |import_name: &str, descriptor: &'static str| {
+        map.insert(import_name.to_string(), descriptor);
+    };
 
     // Storage syscalls
-    map.insert("storage_get", "System.Storage.Get");
-    map.insert("storage_put", "System.Storage.Put");
-    map.insert("storage_delete", "System.Storage.Delete");
-    map.insert("storage_find", "System.Storage.Find");
-    map.insert("storage_get_context", "System.Storage.GetContext");
-    map.insert(
+    alias("storage_get", "System.Storage.Get");
+    alias("storage_put", "System.Storage.Put");
+    alias("storage_delete", "System.Storage.Delete");
+    alias("storage_find", "System.Storage.Find");
+    alias("storage_get_context", "System.Storage.GetContext");
+    alias(
         "storage_get_readonly_context",
         "System.Storage.GetReadOnlyContext",
     );
-    map.insert("storage_as_readonly", "System.Storage.AsReadOnly");
+    alias(
+        "storage_get_read_only_context",
+        "System.Storage.GetReadOnlyContext",
+    );
+    alias("storage_as_readonly", "System.Storage.AsReadOnly");
+    alias("storage_as_read_only", "System.Storage.AsReadOnly");
 
     // Runtime syscalls
-    map.insert("check_witness", "System.Runtime.CheckWitness");
-    map.insert("runtime_check_witness", "System.Runtime.CheckWitness");
-    map.insert("log", "System.Runtime.Log");
-    map.insert("runtime_log", "System.Runtime.Log");
-    map.insert("notify", "System.Runtime.Notify");
-    map.insert("runtime_notify", "System.Runtime.Notify");
-    map.insert("get_time", "System.Runtime.GetTime");
-    map.insert("runtime_get_time", "System.Runtime.GetTime");
-    map.insert("get_trigger", "System.Runtime.GetTrigger");
-    map.insert("runtime_get_trigger", "System.Runtime.GetTrigger");
-    map.insert("get_platform", "System.Runtime.Platform");
-    map.insert("get_script_container", "System.Runtime.GetScriptContainer");
-    map.insert(
+    alias("check_witness", "System.Runtime.CheckWitness");
+    alias("runtime_check_witness", "System.Runtime.CheckWitness");
+    alias("log", "System.Runtime.Log");
+    alias("runtime_log", "System.Runtime.Log");
+    alias("notify", "System.Runtime.Notify");
+    alias("runtime_notify", "System.Runtime.Notify");
+    alias("get_time", "System.Runtime.GetTime");
+    alias("runtime_get_time", "System.Runtime.GetTime");
+    alias("get_trigger", "System.Runtime.GetTrigger");
+    alias("runtime_get_trigger", "System.Runtime.GetTrigger");
+    alias("get_platform", "System.Runtime.Platform");
+    alias("runtime_platform", "System.Runtime.Platform");
+    alias("get_script_container", "System.Runtime.GetScriptContainer");
+    alias(
         "get_executing_script_hash",
         "System.Runtime.GetExecutingScriptHash",
     );
-    map.insert(
+    alias(
         "get_calling_script_hash",
         "System.Runtime.GetCallingScriptHash",
     );
-    map.insert("get_entry_script_hash", "System.Runtime.GetEntryScriptHash");
-    map.insert("get_network", "System.Runtime.GetNetwork");
-    map.insert("get_random", "System.Runtime.GetRandom");
-    map.insert(
+    alias("get_entry_script_hash", "System.Runtime.GetEntryScriptHash");
+    alias("get_network", "System.Runtime.GetNetwork");
+    alias("runtime_get_network", "System.Runtime.GetNetwork");
+    alias("get_random", "System.Runtime.GetRandom");
+    alias(
         "get_invocation_counter",
         "System.Runtime.GetInvocationCounter",
     );
-    map.insert("get_notifications", "System.Runtime.GetNotifications");
-    map.insert("get_address_version", "System.Runtime.GetAddressVersion");
-    map.insert("current_signers", "System.Runtime.CurrentSigners");
-    map.insert("burn_gas", "System.Runtime.BurnGas");
-    map.insert("gas_left", "System.Runtime.GasLeft");
-    map.insert("load_script", "System.Runtime.LoadScript");
+    alias("get_notifications", "System.Runtime.GetNotifications");
+    alias("get_address_version", "System.Runtime.GetAddressVersion");
+    alias("current_signers", "System.Runtime.CurrentSigners");
+    alias("burn_gas", "System.Runtime.BurnGas");
+    alias("gas_left", "System.Runtime.GasLeft");
+    alias("load_script", "System.Runtime.LoadScript");
 
     // Crypto syscalls
-    map.insert("verify_signature", "System.Crypto.CheckSig");
-    map.insert("check_sig", "System.Crypto.CheckSig");
-    map.insert("check_multisig", "System.Crypto.CheckMultisig");
-    map.insert("crypto_sha256", "Neo.Crypto.SHA256");
-    map.insert("crypto_hash160", "Neo.Crypto.Hash160");
-    map.insert("crypto_hash256", "Neo.Crypto.Hash256");
+    alias("verify_signature", "System.Crypto.CheckSig");
+    alias("check_sig", "System.Crypto.CheckSig");
+    alias("check_multisig", "System.Crypto.CheckMultisig");
+    alias("crypto_sha256", "Neo.Crypto.SHA256");
+    alias("crypto_hash160", "Neo.Crypto.Hash160");
+    alias("crypto_hash256", "Neo.Crypto.Hash256");
     // Hashing helpers are not exposed as Neo syscalls. Callers should lower
     // to opcodes (e.g. `opcode::HASH160`) or native contract calls instead.
 
     // Contract management syscalls
-    map.insert("call_contract", "System.Contract.Call");
-    map.insert("contract_call", "System.Contract.Call");
-    map.insert("contract_create", "System.Contract.Call"); // Creation done via Call to ContractManagement
-    map.insert("contract_destroy", "System.Contract.Call"); // Destruction done via Call to ContractManagement
-    map.insert("call_native", "System.Contract.CallNative");
-    map.insert("get_call_flags", "System.Contract.GetCallFlags");
-    map.insert(
+    alias("call_contract", "System.Contract.Call");
+    alias("contract_call", "System.Contract.Call");
+    alias("contract_create", "System.Contract.Call"); // Creation done via Call to ContractManagement
+    alias("contract_destroy", "System.Contract.Call"); // Destruction done via Call to ContractManagement
+    alias("call_native", "System.Contract.CallNative");
+    alias("contract_call_native", "System.Contract.CallNative");
+    alias("get_call_flags", "System.Contract.GetCallFlags");
+    alias(
         "create_standard_account",
         "System.Contract.CreateStandardAccount",
     );
-    map.insert(
+    alias(
         "create_multisig_account",
         "System.Contract.CreateMultisigAccount",
     );
 
     // Iterator syscalls
-    map.insert("iterator_next", "System.Iterator.Next");
-    map.insert("iterator_value", "System.Iterator.Value");
+    alias("iterator_next", "System.Iterator.Next");
+    alias("iterator_value", "System.Iterator.Value");
+
+    // Extended descriptor names (resolved through lookup_extended)
+    alias("Neo.Crypto.SHA256", "Neo.Crypto.SHA256");
+    alias("Neo.Crypto.RIPEMD160", "Neo.Crypto.RIPEMD160");
+    alias("Neo.Crypto.Murmur32", "Neo.Crypto.Murmur32");
+    alias("Neo.Crypto.Keccak256", "Neo.Crypto.Keccak256");
+    alias("Neo.Crypto.Hash160", "Neo.Crypto.Hash160");
+    alias("Neo.Crypto.Hash256", "Neo.Crypto.Hash256");
+    alias("Neo.Crypto.VerifyWithECDsa", "Neo.Crypto.VerifyWithECDsa");
+
+    // Canonical coverage for all Neo N3 engine syscalls
+    for syscall in syscalls::all() {
+        let descriptor = syscall.name;
+        map.entry(descriptor.to_string()).or_insert(descriptor);
+        if let Some(generated_alias) = canonical_alias(descriptor) {
+            map.entry(generated_alias).or_insert(descriptor);
+        }
+    }
 
     map
 });
@@ -97,6 +168,14 @@ pub fn lookup_neo_syscall(import_name: &str) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn assert_alias_maps_to_known_syscall(alias: &str) {
+        let descriptor = lookup_neo_syscall(alias)
+            .unwrap_or_else(|| panic!("missing alias mapping for {alias}"));
+        let resolved = syscalls::lookup_extended(descriptor)
+            .unwrap_or_else(|| panic!("mapped descriptor '{descriptor}' is unknown"));
+        assert_eq!(resolved.name, descriptor);
+    }
 
     #[test]
     fn test_storage_syscalls() {
@@ -161,5 +240,42 @@ mod tests {
     #[test]
     fn test_unknown_syscall() {
         assert_eq!(lookup_neo_syscall("unknown_function"), None);
+    }
+
+    #[test]
+    fn canonical_system_syscalls_have_aliases() {
+        for syscall in syscalls::all() {
+            assert_eq!(lookup_neo_syscall(syscall.name), Some(syscall.name));
+            if let Some(alias) = canonical_alias(syscall.name) {
+                assert_eq!(lookup_neo_syscall(&alias), Some(syscall.name));
+            }
+        }
+    }
+
+    #[test]
+    fn generated_aliases_cover_edge_cases() {
+        assert_eq!(
+            lookup_neo_syscall("runtime_get_calling_script_hash"),
+            Some("System.Runtime.GetCallingScriptHash")
+        );
+        assert_eq!(
+            lookup_neo_syscall("runtime_get_executing_script_hash"),
+            Some("System.Runtime.GetExecutingScriptHash")
+        );
+        assert_eq!(
+            lookup_neo_syscall("runtime_get_invocation_counter"),
+            Some("System.Runtime.GetInvocationCounter")
+        );
+        assert_eq!(
+            lookup_neo_syscall("storage_get_read_only_context"),
+            Some("System.Storage.GetReadOnlyContext")
+        );
+    }
+
+    #[test]
+    fn all_aliases_resolve_to_known_syscalls() {
+        for alias in NEO_SYSCALL_MAP.keys().map(String::as_str) {
+            assert_alias_maps_to_known_syscall(alias);
+        }
     }
 }

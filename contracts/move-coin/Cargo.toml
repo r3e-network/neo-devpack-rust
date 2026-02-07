@@ -13,9 +13,12 @@ categories = ["cryptography::cryptocurrencies", "wasm"]
 crate-type = ["cdylib"]
 
 [dependencies]
+neo-devpack = { path = "../../rust-devpack", default-features = false }
 
 [profile.release]
-lto = true
 opt-level = "z"
+lto = true
+codegen-units = 1
 panic = "abort"
+strip = "symbols"
 [workspace]

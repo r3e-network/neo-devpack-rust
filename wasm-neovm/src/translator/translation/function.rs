@@ -61,24 +61,59 @@ pub(super) fn translate_function(ctx: &mut TranslationContext<'_>) -> Result<Str
         });
     }
 
+    let mut local_count: u32 = 0;
+    for entry in ctx.body.get_locals_reader()? {
+        let (count, ty) = entry?;
+        if ty != ValType::I32 && ty != ValType::I64 {
+            bail!("only i32/i64 locals are supported (found {:?})", ty);
+        }
+        local_count = local_count
+            .checked_add(count)
+            .ok_or_else(|| anyhow!("function {} local count overflow", ctx.function_name))?;
+    }
+
+    if param_count > u8::MAX as usize {
+        bail!(
+            "function {} has too many parameters ({}) for NeoVM INITSLOT",
+            ctx.function_name,
+            param_count
+        );
+    }
+    if local_count > u8::MAX as u32 {
+        bail!(
+            "function {} has too many locals ({}) for NeoVM INITSLOT",
+            ctx.function_name,
+            local_count
+        );
+    }
+
+    if local_count > 0 || param_count > 0 {
+        ctx.script.push(lookup_opcode("INITSLOT")?.byte);
+        ctx.script.push(local_count as u8);
+        ctx.script.push(param_count as u8);
+    }
+
     // NeoVM parameters are arbitrary-precision integers. Normalise them to the Wasm bit-width
     // so arithmetic, comparisons, and shifts observe WebAssembly's i32/i64 semantics.
-    for (index, ty) in params.iter().enumerate() {
-        emit_load_arg(ctx.script, index as u32)?;
-        let value = StackValue {
-            const_value: None,
-            bytecode_start: None,
-        };
-        match ty {
-            ValType::I32 => {
-                let _ = emit_sign_extend(ctx.script, value, 32, 32)?;
+    // `_deploy` is invoked with (Any, Boolean) by Neo and must not force integer coercions.
+    if !ctx.function_name.eq_ignore_ascii_case("_deploy") {
+        for (index, ty) in params.iter().enumerate() {
+            emit_load_arg(ctx.script, index as u32)?;
+            let value = StackValue {
+                const_value: None,
+                bytecode_start: None,
+            };
+            match ty {
+                ValType::I32 => {
+                    let _ = emit_sign_extend(ctx.script, value, 32, 32)?;
+                }
+                ValType::I64 => {
+                    let _ = emit_sign_extend(ctx.script, value, 64, 64)?;
+                }
+                _ => unreachable!("parameter types validated earlier"),
             }
-            ValType::I64 => {
-                let _ = emit_sign_extend(ctx.script, value, 64, 64)?;
-            }
-            _ => unreachable!("parameter types validated earlier"),
+            emit_store_arg(ctx.script, index as u32)?;
         }
-        emit_store_arg(ctx.script, index as u32)?;
     }
 
     let mut next_local_slot: u32 = 0;
@@ -202,6 +237,7 @@ pub(super) fn translate_function(ctx: &mut TranslationContext<'_>) -> Result<Str
             ctx.script,
             ctx.imports,
             ctx.func_type_indices,
+            ctx.runtime,
             &mut value_stack,
             &mut is_unreachable,
         )? {

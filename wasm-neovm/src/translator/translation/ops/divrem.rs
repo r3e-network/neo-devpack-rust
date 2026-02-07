@@ -123,9 +123,13 @@ pub(in super::super) fn emit_unsigned_binary_op(
 
     // Round 85: Constant folding is common
     let const_value = if likely!(lhs.const_value.is_some() && rhs.const_value.is_some()) {
-        let dividend = (lhs.const_value.unwrap() as u128) & mask;
-        let divisor = (rhs.const_value.unwrap() as u128) & mask;
-        op.eval_const(dividend, divisor)
+        if let (Some(dividend), Some(divisor)) = (lhs.const_value, rhs.const_value) {
+            let dividend = (dividend as u128) & mask;
+            let divisor = (divisor as u128) & mask;
+            op.eval_const(dividend, divisor)
+        } else {
+            None
+        }
     } else {
         None
     };

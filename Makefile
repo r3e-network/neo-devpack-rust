@@ -7,44 +7,66 @@ WASM_TARGET       := wasm32-unknown-unknown
 OUTDIR            := build
 TRANSLATOR        := cargo run --manifest-path wasm-neovm/Cargo.toml --quiet --
 
-HELLO_WASM        := contracts/hello-world/target/$(WASM_TARGET)/release/hello_world.wasm
+CONTRACT_RUSTFLAGS := -C opt-level=z -C strip=symbols -C panic=abort -C target-feature=-simd128,-reference-types,-multivalue,-tail-call,-atomics
+WASM_SNIP         ?= wasm-snip
+
+HELLO_WASM        := contracts/hello-world/target/$(WASM_TARGET)/release/hello_world_neo.wasm
 HELLO_NEF         := $(OUTDIR)/HelloWorld.nef
 HELLO_MANIFEST    := $(OUTDIR)/HelloWorld.manifest.json
-NEP17_WASM        := contracts/nep17-token/target/$(WASM_TARGET)/release/nep17_token.wasm
+NEP17_WASM        := contracts/nep17-token/target/$(WASM_TARGET)/release/nep17_token_neo.wasm
 NEP17_NEF         := $(OUTDIR)/NEP17.nef
 NEP17_MANIFEST    := $(OUTDIR)/NEP17.manifest.json
-AMM_WASM          := contracts/constant-product/target/$(WASM_TARGET)/release/constant_product.wasm
+AMM_WASM          := contracts/constant-product/target/$(WASM_TARGET)/release/constant_product_neo.wasm
 AMM_NEF           := $(OUTDIR)/AMM.nef
 AMM_MANIFEST      := $(OUTDIR)/AMM.manifest.json
-NEP11_WASM        := contracts/nep11-nft/target/$(WASM_TARGET)/release/nep11_nft.wasm
+NEP11_WASM        := contracts/nep11-nft/target/$(WASM_TARGET)/release/nep11_nft_neo.wasm
 NEP11_NEF         := $(OUTDIR)/NEP11.nef
 NEP11_MANIFEST    := $(OUTDIR)/NEP11.manifest.json
-MULTISIG_WASM     := contracts/multisig-wallet/target/$(WASM_TARGET)/release/multisig_wallet.wasm
+NEP17_SNIP_WASM   := $(OUTDIR)/NEP17.snip.wasm
+NEP11_SNIP_WASM   := $(OUTDIR)/NEP11.snip.wasm
+AMM_SNIP_WASM     := $(OUTDIR)/AMM.snip.wasm
+MULTISIG_WASM     := contracts/multisig-wallet/target/$(WASM_TARGET)/release/multisig_wallet_neo.wasm
 MULTISIG_NEF      := $(OUTDIR)/MultisigWallet.nef
 MULTISIG_MANIFEST := $(OUTDIR)/MultisigWallet.manifest.json
-ESCROW_WASM       := contracts/escrow/target/$(WASM_TARGET)/release/escrow.wasm
+ESCROW_WASM       := contracts/escrow/target/$(WASM_TARGET)/release/escrow_neo.wasm
 ESCROW_NEF        := $(OUTDIR)/Escrow.nef
 ESCROW_MANIFEST   := $(OUTDIR)/Escrow.manifest.json
-CROWD_WASM        := contracts/crowdfunding/target/$(WASM_TARGET)/release/crowdfunding.wasm
+CROWD_WASM        := contracts/crowdfunding/target/$(WASM_TARGET)/release/crowdfunding_neo.wasm
 CROWD_NEF         := $(OUTDIR)/Crowdfunding.nef
 CROWD_MANIFEST    := $(OUTDIR)/Crowdfunding.manifest.json
-GOV_WASM          := contracts/governance-dao/target/$(WASM_TARGET)/release/governance_dao.wasm
+GOV_WASM          := contracts/governance-dao/target/$(WASM_TARGET)/release/governance_dao_neo.wasm
 GOV_NEF           := $(OUTDIR)/GovernanceDAO.nef
 GOV_MANIFEST      := $(OUTDIR)/GovernanceDAO.manifest.json
-ORACLE_WASM       := contracts/oracle-consumer/target/$(WASM_TARGET)/release/oracle_consumer.wasm
+ORACLE_WASM       := contracts/oracle-consumer/target/$(WASM_TARGET)/release/oracle_consumer_neo.wasm
 ORACLE_NEF        := $(OUTDIR)/OracleConsumer.nef
 ORACLE_MANIFEST   := $(OUTDIR)/OracleConsumer.manifest.json
-MARKET_WASM       := contracts/nft-marketplace/target/$(WASM_TARGET)/release/nft_marketplace.wasm
+MARKET_WASM       := contracts/nft-marketplace/target/$(WASM_TARGET)/release/nft_marketplace_neo.wasm
 MARKET_NEF        := $(OUTDIR)/NFTMarketplace.nef
 MARKET_MANIFEST   := $(OUTDIR)/NFTMarketplace.manifest.json
-SOLANA_HELLO_WASM := contracts/solana-hello/target/$(WASM_TARGET)/release/solana_hello.wasm
+SOLANA_HELLO_WASM := contracts/solana-hello/target/$(WASM_TARGET)/release/solana_hello_neo.wasm
 SOLANA_HELLO_NEF  := $(OUTDIR)/solana_hello.nef
 SOLANA_HELLO_MANIFEST := $(OUTDIR)/solana_hello.manifest.json
-MOVE_COIN_WASM    := contracts/move-coin/target/$(WASM_TARGET)/release/move_coin.wasm
+MOVE_COIN_WASM    := contracts/move-coin/target/$(WASM_TARGET)/release/move_coin_neo.wasm
 MOVE_COIN_NEF     := $(OUTDIR)/MoveCoin.nef
 MOVE_COIN_MANIFEST := $(OUTDIR)/MoveCoin.manifest.json
+UNISWAP_WASM      := contracts/uniswap-v2/target/$(WASM_TARGET)/release/uniswap_v2_neo.wasm
+UNISWAP_NEF       := $(OUTDIR)/UniswapV2.nef
+UNISWAP_MANIFEST  := $(OUTDIR)/UniswapV2.manifest.json
+STAKING_WASM      := contracts/staking-rewards/target/$(WASM_TARGET)/release/staking_rewards_neo.wasm
+STAKING_NEF       := $(OUTDIR)/StakingRewards.nef
+STAKING_MANIFEST  := $(OUTDIR)/StakingRewards.manifest.json
+TIMELOCK_WASM     := contracts/timelock-vault/target/$(WASM_TARGET)/release/timelock_vault_neo.wasm
+TIMELOCK_NEF      := $(OUTDIR)/TimelockVault.nef
+TIMELOCK_MANIFEST := $(OUTDIR)/TimelockVault.manifest.json
+FLASHLOAN_WASM    := contracts/flashloan-pool/target/$(WASM_TARGET)/release/flashloan_pool_neo.wasm
+FLASHLOAN_NEF     := $(OUTDIR)/FlashLoanPool.nef
+FLASHLOAN_MANIFEST := $(OUTDIR)/FlashLoanPool.manifest.json
+UNISWAP_SNIP_WASM := $(OUTDIR)/UniswapV2.snip.wasm
+STAKING_SNIP_WASM := $(OUTDIR)/StakingRewards.snip.wasm
+TIMELOCK_SNIP_WASM := $(OUTDIR)/TimelockVault.snip.wasm
+FLASHLOAN_SNIP_WASM := $(OUTDIR)/FlashLoanPool.snip.wasm
 
-.PHONY: help examples cross-chain hello-world nep17-token constant-product nep11-nft multisig-wallet escrow crowdfunding governance-dao oracle-consumer nft-marketplace solana-hello move-coin c-hello fmt lint test test-cross-chain integration-tests security-check spec clean
+.PHONY: help examples cross-chain hello-world nep17-token constant-product nep11-nft uniswap-v2 staking-rewards timelock-vault flashloan-pool multisig-wallet escrow crowdfunding governance-dao oracle-consumer nft-marketplace solana-hello move-coin c-hello fmt lint test test-cross-chain integration-tests smoke-neoxp security-check spec clean
 
 help:
 	@echo "Usage: make <target>"
@@ -55,6 +77,10 @@ help:
 	@echo "  nep17-token     Generate NEP17.nef and manifest"
 	@echo "  constant-product Generate AMM.nef and manifest"
 	@echo "  nep11-nft       Generate NEP11.nef and manifest"
+	@echo "  uniswap-v2      Generate UniswapV2.nef and manifest"
+	@echo "  staking-rewards Generate StakingRewards.nef and manifest"
+	@echo "  timelock-vault  Generate TimelockVault.nef and manifest"
+	@echo "  flashloan-pool  Generate FlashLoanPool.nef and manifest"
 	@echo "  multisig-wallet Generate MultisigWallet.nef and manifest"
 	@echo "  escrow          Generate Escrow.nef and manifest"
 	@echo "  crowdfunding    Generate Crowdfunding.nef and manifest"
@@ -73,6 +99,7 @@ help:
 	@echo "  test            Execute cargo test for translator + devpack"
 	@echo "  test-cross-chain Run wasm-neovm cross-chain test suites"
 	@echo "  integration-tests  Run optional Neo Express integration harness"
+	@echo "  smoke-neoxp     Run local Neo Express deploy/invoke smoke checks"
 	@echo "  security-check Run cargo-audit/cargo-deny checks (requires cargo-audit/cargo-deny)"
 	@echo "  unused-deps     Check for unused dependencies (requires cargo-machete)"
 	@echo "  outdated        Check for outdated dependencies (requires cargo-outdated)"
@@ -82,7 +109,7 @@ help:
 	@echo "  spec            Build the LaTeX specification in spec/"
 	@echo "  clean           Remove generated build artefacts"
 
-examples: hello-world nep17-token constant-product nep11-nft multisig-wallet escrow crowdfunding governance-dao oracle-consumer nft-marketplace c-hello-optional cross-chain
+examples: hello-world nep17-token constant-product nep11-nft uniswap-v2 staking-rewards timelock-vault flashloan-pool multisig-wallet escrow crowdfunding governance-dao oracle-consumer nft-marketplace c-hello-optional cross-chain
 
 cross-chain: solana-hello move-coin
 
@@ -97,6 +124,18 @@ constant-product: $(AMM_NEF) $(AMM_MANIFEST)
 
 nep11-nft: $(NEP11_NEF) $(NEP11_MANIFEST)
 	@echo "✔ NEP-11 artifacts are in $(OUTDIR)/"
+
+uniswap-v2: $(UNISWAP_NEF) $(UNISWAP_MANIFEST)
+	@echo "✔ Uniswap V2 artifacts are in $(OUTDIR)/"
+
+staking-rewards: $(STAKING_NEF) $(STAKING_MANIFEST)
+	@echo "✔ Staking rewards artifacts are in $(OUTDIR)/"
+
+timelock-vault: $(TIMELOCK_NEF) $(TIMELOCK_MANIFEST)
+	@echo "✔ Timelock vault artifacts are in $(OUTDIR)/"
+
+flashloan-pool: $(FLASHLOAN_NEF) $(FLASHLOAN_MANIFEST)
+	@echo "✔ Flashloan pool artifacts are in $(OUTDIR)/"
 
 multisig-wallet: $(MULTISIG_NEF) $(MULTISIG_MANIFEST)
 	@echo "✔ Multisig wallet artifacts are in $(OUTDIR)/"
@@ -124,25 +163,60 @@ $(HELLO_NEF) $(HELLO_MANIFEST): $(HELLO_WASM) | $(OUTDIR)
 	  --name HelloWorld
 
 $(NEP17_NEF) $(NEP17_MANIFEST): $(NEP17_WASM) | $(OUTDIR)
+	$(WASM_SNIP) --snip-rust-fmt-code --snip-rust-panicking-code $(NEP17_WASM) -o $(NEP17_SNIP_WASM)
 	$(TRANSLATOR) \
-	  --input $(NEP17_WASM) \
+	  --input $(NEP17_SNIP_WASM) \
 	  --nef $(NEP17_NEF) \
 	  --manifest $(NEP17_MANIFEST) \
 	  --name SampleNEP17
 
 $(AMM_NEF) $(AMM_MANIFEST): $(AMM_WASM) | $(OUTDIR)
+	$(WASM_SNIP) --snip-rust-fmt-code --snip-rust-panicking-code $(AMM_WASM) -o $(AMM_SNIP_WASM)
 	$(TRANSLATOR) \
-	  --input $(AMM_WASM) \
+	  --input $(AMM_SNIP_WASM) \
 	  --nef $(AMM_NEF) \
 	  --manifest $(AMM_MANIFEST) \
 	  --name ConstantProductAMM
 
 $(NEP11_NEF) $(NEP11_MANIFEST): $(NEP11_WASM) | $(OUTDIR)
+	$(WASM_SNIP) --snip-rust-fmt-code --snip-rust-panicking-code $(NEP11_WASM) -o $(NEP11_SNIP_WASM)
 	$(TRANSLATOR) \
-	  --input $(NEP11_WASM) \
+	  --input $(NEP11_SNIP_WASM) \
 	  --nef $(NEP11_NEF) \
 	  --manifest $(NEP11_MANIFEST) \
 	  --name SampleNEP11
+
+$(UNISWAP_NEF) $(UNISWAP_MANIFEST): $(UNISWAP_WASM) | $(OUTDIR)
+	$(WASM_SNIP) --snip-rust-fmt-code --snip-rust-panicking-code $(UNISWAP_WASM) -o $(UNISWAP_SNIP_WASM)
+	$(TRANSLATOR) \
+	  --input $(UNISWAP_SNIP_WASM) \
+	  --nef $(UNISWAP_NEF) \
+	  --manifest $(UNISWAP_MANIFEST) \
+	  --name UniswapV2Router
+
+$(STAKING_NEF) $(STAKING_MANIFEST): $(STAKING_WASM) | $(OUTDIR)
+	$(WASM_SNIP) --snip-rust-fmt-code --snip-rust-panicking-code $(STAKING_WASM) -o $(STAKING_SNIP_WASM)
+	$(TRANSLATOR) \
+	  --input $(STAKING_SNIP_WASM) \
+	  --nef $(STAKING_NEF) \
+	  --manifest $(STAKING_MANIFEST) \
+	  --name StakingRewards
+
+$(TIMELOCK_NEF) $(TIMELOCK_MANIFEST): $(TIMELOCK_WASM) | $(OUTDIR)
+	$(WASM_SNIP) --snip-rust-fmt-code --snip-rust-panicking-code $(TIMELOCK_WASM) -o $(TIMELOCK_SNIP_WASM)
+	$(TRANSLATOR) \
+	  --input $(TIMELOCK_SNIP_WASM) \
+	  --nef $(TIMELOCK_NEF) \
+	  --manifest $(TIMELOCK_MANIFEST) \
+	  --name TimelockVault
+
+$(FLASHLOAN_NEF) $(FLASHLOAN_MANIFEST): $(FLASHLOAN_WASM) | $(OUTDIR)
+	$(WASM_SNIP) --snip-rust-fmt-code --snip-rust-panicking-code $(FLASHLOAN_WASM) -o $(FLASHLOAN_SNIP_WASM)
+	$(TRANSLATOR) \
+	  --input $(FLASHLOAN_SNIP_WASM) \
+	  --nef $(FLASHLOAN_NEF) \
+	  --manifest $(FLASHLOAN_MANIFEST) \
+	  --name FlashLoanPool
 
 $(MULTISIG_NEF) $(MULTISIG_MANIFEST): $(MULTISIG_WASM) | $(OUTDIR)
 	$(TRANSLATOR) \
@@ -209,41 +283,67 @@ $(MOVE_COIN_NEF) $(MOVE_COIN_MANIFEST): $(MOVE_COIN_WASM) | $(OUTDIR)
 	  --source-chain move
 
 $(HELLO_WASM):
+	RUSTFLAGS="$(CONTRACT_RUSTFLAGS)" \
 	cargo build --manifest-path contracts/hello-world/Cargo.toml --release --target $(WASM_TARGET) --quiet
 
 $(NEP17_WASM):
+	RUSTFLAGS="$(CONTRACT_RUSTFLAGS)" \
 	cargo build --manifest-path contracts/nep17-token/Cargo.toml --release --target $(WASM_TARGET) --quiet
 
 $(AMM_WASM):
+	RUSTFLAGS="$(CONTRACT_RUSTFLAGS)" \
 	cargo build --manifest-path contracts/constant-product/Cargo.toml --release --target $(WASM_TARGET) --quiet
 
 $(NEP11_WASM):
+	RUSTFLAGS="$(CONTRACT_RUSTFLAGS)" \
 	cargo build --manifest-path contracts/nep11-nft/Cargo.toml --release --target $(WASM_TARGET) --quiet
 
+$(UNISWAP_WASM):
+	RUSTFLAGS="$(CONTRACT_RUSTFLAGS)" \
+	cargo build --manifest-path contracts/uniswap-v2/Cargo.toml --release --target $(WASM_TARGET) --quiet
+
+$(STAKING_WASM):
+	RUSTFLAGS="$(CONTRACT_RUSTFLAGS)" \
+	cargo build --manifest-path contracts/staking-rewards/Cargo.toml --release --target $(WASM_TARGET) --quiet
+
+$(TIMELOCK_WASM):
+	RUSTFLAGS="$(CONTRACT_RUSTFLAGS)" \
+	cargo build --manifest-path contracts/timelock-vault/Cargo.toml --release --target $(WASM_TARGET) --quiet
+
+$(FLASHLOAN_WASM):
+	RUSTFLAGS="$(CONTRACT_RUSTFLAGS)" \
+	cargo build --manifest-path contracts/flashloan-pool/Cargo.toml --release --target $(WASM_TARGET) --quiet
+
 $(MULTISIG_WASM):
+	RUSTFLAGS="$(CONTRACT_RUSTFLAGS)" \
 	cargo build --manifest-path contracts/multisig-wallet/Cargo.toml --release --target $(WASM_TARGET) --quiet
 
 $(ESCROW_WASM):
+	RUSTFLAGS="$(CONTRACT_RUSTFLAGS)" \
 	cargo build --manifest-path contracts/escrow/Cargo.toml --release --target $(WASM_TARGET) --quiet
 
 $(CROWD_WASM):
+	RUSTFLAGS="$(CONTRACT_RUSTFLAGS)" \
 	cargo build --manifest-path contracts/crowdfunding/Cargo.toml --release --target $(WASM_TARGET) --quiet
 
 $(GOV_WASM):
+	RUSTFLAGS="$(CONTRACT_RUSTFLAGS)" \
 	cargo build --manifest-path contracts/governance-dao/Cargo.toml --release --target $(WASM_TARGET) --quiet
 
 $(ORACLE_WASM):
+	RUSTFLAGS="$(CONTRACT_RUSTFLAGS)" \
 	cargo build --manifest-path contracts/oracle-consumer/Cargo.toml --release --target $(WASM_TARGET) --quiet
 
 $(MARKET_WASM):
+	RUSTFLAGS="$(CONTRACT_RUSTFLAGS)" \
 	cargo build --manifest-path contracts/nft-marketplace/Cargo.toml --release --target $(WASM_TARGET) --quiet
 
 $(SOLANA_HELLO_WASM):
-	RUSTFLAGS="-C opt-level=z -C strip=symbols -C panic=abort -C target-feature=-simd128,-reference-types,-multivalue,-tail-call,-atomics" \
+	RUSTFLAGS="$(CONTRACT_RUSTFLAGS)" \
 	  cargo build --manifest-path contracts/solana-hello/Cargo.toml --release --target $(WASM_TARGET) --quiet
 
 $(MOVE_COIN_WASM):
-	RUSTFLAGS="-C opt-level=z -C strip=symbols -C panic=abort -C target-feature=-simd128,-reference-types,-multivalue,-tail-call,-atomics" \
+	RUSTFLAGS="$(CONTRACT_RUSTFLAGS)" \
 	  cargo build --manifest-path contracts/move-coin/Cargo.toml --release --target $(WASM_TARGET) --quiet
 
 c-hello:
@@ -291,6 +391,9 @@ integration-tests:
 	@echo "Running integration tests (requires NEO_EXPRESS_RPC)..."
 	cargo test --manifest-path integration-tests/Cargo.toml -- --ignored
 
+smoke-neoxp:
+	scripts/neoxp_smoke.sh
+
 security-check:
 	cargo audit --file wasm-neovm/Cargo.lock --deny warnings
 	cargo audit --file move-neovm/Cargo.lock --deny warnings
@@ -331,7 +434,8 @@ spec:
 clean:
 	rm -rf $(OUTDIR)
 	rm -rf contracts/hello-world/target contracts/nep17-token/target contracts/constant-product/target \
-	       contracts/nep11-nft/target contracts/multisig-wallet/target contracts/escrow/target \
+	       contracts/nep11-nft/target contracts/uniswap-v2/target contracts/staking-rewards/target \
+	       contracts/timelock-vault/target contracts/flashloan-pool/target contracts/multisig-wallet/target contracts/escrow/target \
 	       contracts/crowdfunding/target contracts/governance-dao/target contracts/oracle-consumer/target \
 	       contracts/nft-marketplace/target contracts/solana-hello/target contracts/move-coin/target
 	rm -rf wasm-neovm/target rust-devpack/target

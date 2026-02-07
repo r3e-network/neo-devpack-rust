@@ -16,8 +16,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "solana-hello"
-version = "0.1.0"
+name = "solana-hello-neo"
+version = "0.2.0"
 dependencies = [
  "neo-solana-compat",
 ]

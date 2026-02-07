@@ -575,3 +575,65 @@ fn translate_complex_state_machine() {
         "overlay should mark transition safe"
     );
 }
+
+#[test]
+fn exported_methods_with_params_start_with_initslot() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (func (export "sum") (param i32 i32) (result i32)
+                (local i32)
+                local.get 0
+                local.get 1
+                i32.add
+                local.set 2
+                local.get 2)
+            )"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "InitSlotContract").expect("translation succeeds");
+    let methods = translation.manifest.value["abi"]["methods"]
+        .as_array()
+        .expect("methods array");
+    let sum_offset = methods
+        .iter()
+        .find(|method| method["name"].as_str() == Some("sum"))
+        .and_then(|method| method["offset"].as_u64())
+        .expect("sum offset") as usize;
+
+    let initslot = opcodes::lookup("INITSLOT").expect("INITSLOT opcode").byte;
+    assert_eq!(
+        translation.script[sum_offset], initslot,
+        "exported method must begin with INITSLOT to initialize argument/local slots"
+    );
+}
+
+#[test]
+fn deploy_method_is_not_exposed_in_manifest() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (func (export "_deploy") (param i32 i32))
+              (func (export "hello") (result i32)
+                i32.const 1)
+            )"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "DeployContract").expect("translation succeeds");
+    let methods = translation.manifest.value["abi"]["methods"]
+        .as_array()
+        .expect("methods array");
+
+    assert!(
+        methods
+            .iter()
+            .all(|method| method["name"].as_str() != Some("_deploy")),
+        "translator should not expose internal _deploy entrypoint in manifest"
+    );
+    assert!(
+        methods
+            .iter()
+            .any(|method| method["name"].as_str() == Some("hello")),
+        "non-internal exports should remain in manifest"
+    );
+}

@@ -5,6 +5,7 @@ pub(super) fn try_handle(
     script: &mut Vec<u8>,
     imports: &[FunctionImport],
     func_type_indices: &[u32],
+    runtime: &mut RuntimeHelpers,
     value_stack: &mut Vec<StackValue>,
     is_unreachable: &mut bool,
 ) -> Result<bool> {
@@ -71,6 +72,7 @@ pub(super) fn try_handle(
                     total_functions
                 );
             }
+            runtime.register_ref_func_constant(*function_index);
             let entry = emit_push_int(script, (*function_index) as i128);
             value_stack.push(entry);
             Ok(true)

@@ -24,7 +24,7 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     // Parse source chain
-    let source_chain = cli.parse_source_chain();
+    let source_chain = cli.parse_source_chain()?;
 
     if source_chain != SourceChain::Neo {
         info!("Cross-chain compilation: {:?} -> NeoVM", source_chain);

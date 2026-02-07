@@ -167,84 +167,12 @@ pub(super) fn try_handle(
 
             let _table_index_value = super::pop_value(value_stack, "call_indirect table index")?;
 
-            let mut params = Vec::with_capacity(func_sig.params().len());
             for _ in 0..func_sig.params().len() {
-                params.push(super::pop_value(value_stack, "call_indirect argument")?);
+                let _ = super::pop_value(value_stack, "call_indirect argument")?;
             }
-            params.reverse();
 
             runtime.emit_memory_init_call(script)?;
-            runtime.table_slot(table_index as usize)?;
-            runtime.emit_table_helper(script, TableHelperKind::Get(table_index as usize))?;
-
-            script.push(lookup_opcode("DUP")?.byte);
-            let _ = emit_push_int(script, FUNCREF_NULL);
-            script.push(lookup_opcode("EQUAL")?.byte);
-            let trap_null = emit_jump_placeholder(script, "JMPIF_L")?;
-
-            let total_functions = imports.len() + func_type_indices.len();
-            // Pre-allocate case_fixups based on actual matches found (Round 62 optimization)
-            let estimated_matches = total_functions.min(32);
-            let mut case_fixups: Vec<(usize, CallTarget)> = Vec::with_capacity(estimated_matches);
-            for fn_index in 0..total_functions {
-                let candidate_type_index = if fn_index < imports.len() {
-                    get_import_type_index(&imports[fn_index])?
-                } else {
-                    let defined_index = fn_index - imports.len();
-                    *func_type_indices.get(defined_index).ok_or_else(|| {
-                        anyhow!(
-                            "call_indirect target function {} missing type entry",
-                            fn_index
-                        )
-                    })?
-                };
-
-                if candidate_type_index != type_index {
-                    continue;
-                }
-
-                script.push(lookup_opcode("DUP")?.byte);
-                let _ = emit_push_int(script, fn_index as i128);
-                script.push(lookup_opcode("EQUAL")?.byte);
-                let jump = emit_jump_placeholder(script, "JMPIF_L")?;
-
-                let target = if fn_index < imports.len() {
-                    CallTarget::Import(fn_index as u32)
-                } else {
-                    CallTarget::Defined(fn_index)
-                };
-                case_fixups.push((jump, target));
-            }
-
-            let trap_label = script.len();
-            script.push(lookup_opcode("DROP")?.byte);
-            script.push(lookup_opcode("ABORT")?.byte);
-            patch_jump(script, trap_null, trap_label)?;
-
-            // Pre-allocate end_fixups with same capacity as case_fixups (Round 62 optimization)
-            let mut end_fixups: Vec<usize> = Vec::with_capacity(estimated_matches);
-            for (jump, target) in case_fixups {
-                let label = script.len();
-                patch_jump(script, jump, label)?;
-                script.push(lookup_opcode("DROP")?.byte);
-                match target {
-                    CallTarget::Import(idx) => {
-                        handle_import_call(
-                            idx, script, imports, types, &params, features, adapter,
-                        )?;
-                    }
-                    CallTarget::Defined(idx) => {
-                        functions.emit_call(script, idx)?;
-                    }
-                }
-                let end_jump = emit_jump_placeholder(script, "JMP_L")?;
-                end_fixups.push(end_jump);
-            }
-
-            let end_label = script.len();
-            for fixup in end_fixups {
-                patch_jump(script, fixup, end_label)?;
-            }
+            runtime.emit_call_indirect_helper(script, table_index as usize, type_index)?;
 
             if !func_sig.results().is_empty() {
                 push_placeholder_value(value_stack);

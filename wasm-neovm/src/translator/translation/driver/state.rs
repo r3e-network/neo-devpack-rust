@@ -1,5 +1,6 @@
+use super::reachability::analyze_reachable_defined_functions;
 use super::*;
-use crate::config::ManifestOverlay;
+use crate::config::{BehaviorConfig, ManifestOverlay};
 
 use exports::ExportedFunction;
 
@@ -7,6 +8,7 @@ pub(super) struct DriverState {
     pub(super) contract_name: String,
     pub(super) adapter: Box<dyn ChainAdapter>,
     pub(super) extra_manifest_overlay: Option<ManifestOverlay>,
+    pub(super) behavior: BehaviorConfig,
     pub(super) frontend: ModuleFrontend,
     pub(super) exported_funcs: BTreeMap<u32, ExportedFunction>,
     pub(super) import_export_indices: BTreeSet<usize>,
@@ -24,6 +26,7 @@ pub(super) struct DriverState {
     pub(super) function_registry: Option<FunctionRegistry>,
     pub(super) start_function: Option<u32>,
     pub(super) start_defined_offset: Option<usize>,
+    pub(super) reachable_defined_functions: Option<HashSet<u32>>,
 }
 
 impl DriverState {
@@ -36,6 +39,7 @@ impl DriverState {
             contract_name: config.contract_name.into_inner(),
             adapter: get_adapter(config.source_chain),
             extra_manifest_overlay: config.extra_manifest_overlay,
+            behavior: config.behavior,
             frontend: ModuleFrontend::new(),
             exported_funcs: BTreeMap::new(),
             import_export_indices: BTreeSet::new(),
@@ -56,10 +60,15 @@ impl DriverState {
             function_registry: None,
             start_function: None,
             start_defined_offset: None,
+            reachable_defined_functions: None,
         }
     }
 
     pub(super) fn translate(mut self, bytes: &[u8]) -> Result<Translation> {
+        self.reachable_defined_functions = Some(
+            analyze_reachable_defined_functions(bytes)
+                .context("failed to analyze reachable functions for size optimization")?,
+        );
         self.parse_payloads(bytes)?;
         self.finalize()
     }

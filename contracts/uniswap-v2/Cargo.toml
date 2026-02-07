@@ -1,0 +1,24 @@
+[package]
+name = "uniswap-v2-neo"
+version = "0.1.0"
+edition = "2021"
+description = "Uniswap V2 style AMM example contract for Neo N3"
+keywords = ["neo", "n3", "smart-contract", "defi", "uniswap"]
+license = "MIT"
+repository = "https://github.com/r3e-network/neo-llvm"
+homepage = "https://github.com/r3e-network/neo-llvm"
+categories = ["cryptography::cryptocurrencies", "wasm"]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+neo-devpack = { path = "../../rust-devpack", default-features = false }
+[workspace]
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = "symbols"

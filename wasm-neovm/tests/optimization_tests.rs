@@ -504,3 +504,102 @@ fn translate_optimizes_method_tokens() {
         "no syscalls should mean empty method tokens"
     );
 }
+
+#[test]
+fn translate_skips_large_unreachable_function_bodies() {
+    let mut wat = String::from("(module\n");
+
+    for idx in 0..80 {
+        wat.push_str(&format!("  (func $dead{idx} (result i32)\n"));
+        for _ in 0..32 {
+            wat.push_str("    i32.const 1 i32.const 2 i32.add drop\n");
+        }
+        wat.push_str("    i32.const 0)\n");
+    }
+
+    wat.push_str(
+        r#"  (func (export "main") (result i32)
+    i32.const 42)
+)"#,
+    );
+
+    let wasm = wat::parse_str(&wat).expect("valid wat");
+    let translation =
+        translate_module(&wasm, "ReachabilityTrim").expect("translation should succeed");
+
+    assert!(
+        translation.script.len() < 12_000,
+        "expected compact script after skipping unreachable bodies, got {} bytes",
+        translation.script.len()
+    );
+}
+
+#[test]
+fn translate_call_indirect_dispatch_avoids_all_function_fanout() {
+    let mut wat = String::from("(module\n");
+    wat.push_str("  (type $t (func))\n");
+    wat.push_str("  (table 2 funcref)\n");
+    wat.push_str("  (func $f0 (type $t))\n");
+    wat.push_str("  (func $f1 (type $t))\n");
+
+    for idx in 0..180 {
+        wat.push_str(&format!("  (func $dead{idx} (type $t))\n"));
+    }
+
+    wat.push_str("  (func (export \"main\") (type $t)\n");
+    for _ in 0..48 {
+        wat.push_str("    i32.const 0\n");
+        wat.push_str("    call_indirect (type $t)\n");
+    }
+    wat.push_str("  )\n");
+    wat.push_str("  (elem (i32.const 0) $f0 $f1)\n");
+    wat.push_str(")\n");
+
+    let wasm = wat::parse_str(&wat).expect("valid wat");
+    let translation =
+        translate_module(&wasm, "IndirectDispatchTight").expect("translation should succeed");
+
+    assert!(
+        translation.script.len() < 40_000,
+        "call_indirect dispatch should stay compact, got {} bytes",
+        translation.script.len()
+    );
+}
+
+#[test]
+fn translate_call_indirect_dispatch_is_shared_across_call_sites() {
+    const TABLE_FUNCS: usize = 32;
+    const CALL_SITES: usize = 48;
+
+    let mut wat = String::from("(module\n");
+    wat.push_str("  (type $t (func))\n");
+    wat.push_str(&format!("  (table {TABLE_FUNCS} funcref)\n"));
+
+    for idx in 0..TABLE_FUNCS {
+        wat.push_str(&format!("  (func $f{idx} (type $t))\n"));
+    }
+
+    wat.push_str("  (func (export \"main\")\n");
+    for _ in 0..CALL_SITES {
+        wat.push_str("    i32.const 0\n");
+        wat.push_str("    call_indirect (type $t)\n");
+    }
+    wat.push_str("  )\n");
+
+    wat.push_str("  (elem (i32.const 0)");
+    for idx in 0..TABLE_FUNCS {
+        wat.push_str(&format!(" $f{idx}"));
+    }
+    wat.push_str(")\n");
+    wat.push_str(")\n");
+
+    let wasm = wat::parse_str(&wat).expect("valid wat");
+    let translation =
+        translate_module(&wasm, "IndirectDispatchShared").expect("translation should succeed");
+
+    assert!(
+        translation.script.len() < 12_000,
+        "shared call_indirect dispatch should stay compact, got {} bytes",
+        translation.script.len()
+    );
+}

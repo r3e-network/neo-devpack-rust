@@ -6,7 +6,7 @@
 //! This crate provides procedural macros for Neo N3 smart contract development.
 
 use proc_macro::TokenStream;
-use syn::{parse_macro_input, DeriveInput, ItemFn, LitStr};
+use syn::{parse_macro_input, DeriveInput, Item, ItemFn, LitStr};
 
 // Module declarations - these are helper modules, not proc macros
 mod codegen;
@@ -43,13 +43,20 @@ mod parse;
 /// ```
 #[proc_macro_attribute]
 pub fn neo_contract(_args: TokenStream, input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-    expand::neo_contract(input).into()
+    let input = parse_macro_input!(input as Item);
+    match expand::neo_contract_item(input) {
+        Ok(tokens) => tokens.into(),
+        Err(err) => err.to_compile_error().into(),
+    }
 }
 
 /// Neo N3 Method macro
 ///
 /// This macro marks a function as a Neo N3 contract method.
+///
+/// Optional arguments are supported when used inside a `#[neo_contract]` impl block:
+/// - `safe` to emit safe manifest metadata for the generated export
+/// - `name = "..."` to override the generated export name.
 ///
 /// # Example
 ///

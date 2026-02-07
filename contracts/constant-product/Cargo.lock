@@ -45,8 +45,6 @@ checksum = "f52b00d39961fc5b2736ea853c9cc86238e165017a493d1d5c8eac6bdc4cc273"
 [[package]]
 name = "neo-devpack"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e17620af7e07c8869ee4e6a227631966d47e82e66f01e4445c806c8a1ec8d9b"
 dependencies = [
  "anyhow",
  "bincode",
@@ -62,8 +60,6 @@ dependencies = [
 [[package]]
 name = "neo-macros"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3639a8ede49e936e2f1348c85b2240f3890c123078b3a554bf4875b12bacac04"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -75,8 +71,6 @@ dependencies = [
 [[package]]
 name = "neo-runtime"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1cf81fbf6b7476a024e7294f54710a000d3679ff2cd1e62dd3fd46886bc5e53d"
 dependencies = [
  "neo-syscalls",
  "neo-types",
@@ -88,8 +82,6 @@ dependencies = [
 [[package]]
 name = "neo-syscalls"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dfa3d244b1a45d746c7feed3614710e0d3dfd5d0683b67b2170400b99d1340e8"
 dependencies = [
  "neo-types",
  "once_cell",
@@ -98,8 +90,6 @@ dependencies = [
 [[package]]
 name = "neo-types"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5e0e6d94582edd30435c59b3c2461ad2bf05af8c1dc6043c583fac0519224939"
 dependencies = [
  "anyhow",
  "num-bigint",

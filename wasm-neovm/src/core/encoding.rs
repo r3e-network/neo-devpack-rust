@@ -439,7 +439,7 @@ mod tests {
             .write_string("test");
 
         let bytes = writer.finish();
-        assert!(bytes.len() > 0);
+        assert!(!bytes.is_empty());
 
         let mut reader = ByteReader::new(&bytes);
         assert_eq!(reader.read_u8().unwrap(), 0x01);

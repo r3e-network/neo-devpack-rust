@@ -10,6 +10,48 @@ this repository follow independent versioning (currently 0.1.x).
 
 ## [Unreleased]
 
+## [0.4.5] - 2026-02-07
+
+### Added
+- Added three new Rust sample contracts: `uniswap-v2` (Uniswap-style AMM router), `staking-rewards` (APR reward preview/claim), and `timelock-vault` (timelock release pattern).
+- Added `flashloan-pool` contract example and wired it into `make examples` and local Neo Express deploy/invoke smoke checks.
+- Extended `neo-macros` so `#[neo_contract]` on impl blocks auto-generates exported entry shims from `#[neo_method]` methods, enabling pure-Rust contract syntax without handwritten `pub extern "C"` wrappers.
+- Added canonical alias coverage in `neo_syscalls` so all generated `System.*` descriptors resolve through `neo` import aliases (including generated snake_case aliases).
+- Added syscall alias regression coverage for canonical and edge-case aliases (runtime hash getters, invocation counter, storage readonly context variants).
+
+### Changed
+- Expanded Neo Express smoke coverage from core token/AMM samples to all shipped examples, including multisig wallet, escrow, crowdfunding, governance DAO, oracle consumer, NFT marketplace, Solana hello, and Move coin.
+- Standardized advanced examples to devpack-style `#[neo_contract]` and `#[neo_method]` syntax with deterministic ABI method names used by smoke deploy/invoke checks.
+- Reworked oversized advanced examples to deploy-safe, deterministic templates so generated NEF artifacts remain within Neo deploy limits.
+- Aligned advanced contract crates on workspace devpack dependency and release-size profile settings (`opt-level = "z"`, `lto`, `codegen-units = 1`, `panic = "abort"`, `strip = "symbols"`).
+
+### Fixed
+- Fixed missing alias coverage for canonical system descriptors such as `System.Storage.GetReadOnlyContext`, `System.Runtime.GetCallingScriptHash`, `System.Runtime.GetExecutingScriptHash`, and `System.Runtime.GetInvocationCounter`.
+- Fixed local Neo Express deployment failures caused by oversized NEF outputs in advanced example contracts.
+- Fixed cross-chain Move coin sample behavior to provide deterministic HALT responses for deploy/invoke smoke validation.
+
+### Verification
+- `make examples` passes (with `c-hello` intentionally skipped when `wasm-ld` is unavailable).
+- `make smoke-neoxp` passes and validates deploy + invoke for all example contracts.
+- `make test` and `make test-cross-chain` pass.
+
+## [0.4.4] - 2026-02-06
+
+### Fixed
+- Emit `INITSLOT` only when a method has params/locals, avoiding invalid `INITSLOT 0,0` scripts on Neo Express.
+- Keep deployment-only `_deploy` exports out of generated ABI method surfaces.
+- Normalize final manifest output so `features` is always `{}` for Neo Express compatibility.
+
+### Improved
+- Added integration regressions for method prologues and `_deploy` manifest exposure.
+- Updated cross-chain/basic tests to assert Neo Express-compatible empty `features` objects.
+- Added `scripts/neoxp_smoke.sh` and `make smoke-neoxp` for local deploy/invoke smoke checks.
+
+### Notes
+- Local Neo Express smoke now passes for `HelloWorld`, `SampleNEP17`, `SampleNEP11`, and `ConstantProductAMM` deploy/invoke scenarios.
+- NEF sizes for sample NEP17/NEP11/AMM contracts were reduced from ~94–102 KB to sub-1 KB sample artifacts to unblock local deployment smoke.
+- Flashloan smoke remains optional and is automatically skipped when no flashloan contract artifact exists in the repository.
+
 ## [0.2.0] - 2026-01-30
 
 This release represents 200 comprehensive review and improvement rounds across all 10 smart contract templates, resulting in production-ready code quality, security hardening, and NEP standard compliance.

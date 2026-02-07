@@ -7,9 +7,15 @@
 
 use neo_types::*;
 use once_cell::sync::Lazy;
-use std::collections::HashMap;
 use std::slice::Iter;
+
+#[cfg(not(target_arch = "wasm32"))]
+use std::collections::HashMap;
+#[cfg(target_arch = "wasm32")]
+use std::sync::Mutex;
+#[cfg(not(target_arch = "wasm32"))]
 use std::sync::atomic::{AtomicU32, Ordering};
+#[cfg(not(target_arch = "wasm32"))]
 use std::sync::{Arc, RwLock};
 
 mod syscalls;
@@ -96,8 +102,10 @@ pub static SYSCALL_REGISTRY: NeoVMSyscallRegistry = NeoVMSyscallRegistry::new(SY
 
 const DEFAULT_CONTRACT_HASH: [u8; 20] = [0u8; 20];
 
+#[cfg(not(target_arch = "wasm32"))]
 type ContractStore = Arc<RwLock<HashMap<Vec<u8>, Vec<u8>>>>;
 
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Clone)]
 struct ContextHandle {
     read_only: bool,
@@ -105,6 +113,7 @@ struct ContextHandle {
     store: ContractStore,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[allow(clippy::type_complexity)]
 struct StorageState {
     next_context: AtomicU32,
@@ -112,6 +121,7 @@ struct StorageState {
     contract_stores: RwLock<HashMap<[u8; 20], ContractStore>>,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl StorageState {
     fn new() -> Self {
         Self {
@@ -182,7 +192,15 @@ impl StorageState {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 static STORAGE_STATE: Lazy<StorageState> = Lazy::new(StorageState::new);
+
+#[cfg(target_arch = "wasm32")]
+type StorageEntry = (Vec<u8>, Vec<u8>);
+
+#[cfg(target_arch = "wasm32")]
+static STORAGE_ENTRIES: Lazy<Mutex<Vec<StorageEntry>>> = Lazy::new(|| Mutex::new(Vec::new()));
+
 
 fn find_syscall(name: &str) -> Option<&'static NeoVMSyscallInfo> {
     SYSCALLS.iter().find(|info| info.name == name)
@@ -336,18 +354,37 @@ impl NeoVMSyscall {
         Self::call_array("System.Runtime.GetScriptContainer", &[])
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn storage_get_context() -> NeoResult<NeoStorageContext> {
         STORAGE_STATE.create_context(DEFAULT_CONTRACT_HASH, false)
     }
 
+    #[cfg(target_arch = "wasm32")]
+    pub fn storage_get_context() -> NeoResult<NeoStorageContext> {
+        Ok(NeoStorageContext::new(1))
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn storage_get_read_only_context() -> NeoResult<NeoStorageContext> {
         STORAGE_STATE.create_context(DEFAULT_CONTRACT_HASH, true)
     }
 
+    #[cfg(target_arch = "wasm32")]
+    pub fn storage_get_read_only_context() -> NeoResult<NeoStorageContext> {
+        Ok(NeoStorageContext::read_only(1))
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn storage_as_read_only(context: &NeoStorageContext) -> NeoResult<NeoStorageContext> {
         STORAGE_STATE.clone_as_read_only(context)
     }
 
+    #[cfg(target_arch = "wasm32")]
+    pub fn storage_as_read_only(context: &NeoStorageContext) -> NeoResult<NeoStorageContext> {
+        Ok(context.as_read_only())
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn storage_get(
         context: &NeoStorageContext,
         key: &NeoByteString,
@@ -358,6 +395,21 @@ impl NeoVMSyscall {
         Ok(NeoByteString::new(value))
     }
 
+    #[cfg(target_arch = "wasm32")]
+    pub fn storage_get(
+        _context: &NeoStorageContext,
+        key: &NeoByteString,
+    ) -> NeoResult<NeoByteString> {
+        let store = STORAGE_ENTRIES.lock().map_err(|_| NeoError::InvalidState)?;
+        let value = store
+            .iter()
+            .find(|(entry_key, _)| entry_key.as_slice() == key.as_slice())
+            .map(|(_, entry_value)| entry_value.clone())
+            .unwrap_or_default();
+        Ok(NeoByteString::new(value))
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn storage_put(
         context: &NeoStorageContext,
         key: &NeoByteString,
@@ -372,6 +424,30 @@ impl NeoVMSyscall {
         Ok(())
     }
 
+    #[cfg(target_arch = "wasm32")]
+    pub fn storage_put(
+        context: &NeoStorageContext,
+        key: &NeoByteString,
+        value: &NeoByteString,
+    ) -> NeoResult<()> {
+        if context.is_read_only() {
+            return Err(NeoError::InvalidOperation);
+        }
+
+        let mut store = STORAGE_ENTRIES.lock().map_err(|_| NeoError::InvalidState)?;
+        if let Some((_, existing_value)) = store
+            .iter_mut()
+            .find(|(entry_key, _)| entry_key.as_slice() == key.as_slice())
+        {
+            *existing_value = value.as_slice().to_vec();
+        } else {
+            store.push((key.as_slice().to_vec(), value.as_slice().to_vec()));
+        }
+
+        Ok(())
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn storage_delete(context: &NeoStorageContext, key: &NeoByteString) -> NeoResult<()> {
         let handle = STORAGE_STATE.get_handle(context)?;
         if handle.read_only {
@@ -382,6 +458,18 @@ impl NeoVMSyscall {
         Ok(())
     }
 
+    #[cfg(target_arch = "wasm32")]
+    pub fn storage_delete(context: &NeoStorageContext, key: &NeoByteString) -> NeoResult<()> {
+        if context.is_read_only() {
+            return Err(NeoError::InvalidOperation);
+        }
+
+        let mut store = STORAGE_ENTRIES.lock().map_err(|_| NeoError::InvalidState)?;
+        store.retain(|(entry_key, _)| entry_key.as_slice() != key.as_slice());
+        Ok(())
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn storage_find(
         context: &NeoStorageContext,
         prefix: &NeoByteString,
@@ -389,6 +477,29 @@ impl NeoVMSyscall {
         let handle = STORAGE_STATE.get_handle(context)?;
         let prefix_bytes = prefix.as_slice();
         let store = handle.store.read().map_err(|_| NeoError::InvalidState)?;
+        let matches: Vec<NeoValue> = store
+            .iter()
+            .filter_map(|(key_bytes, value)| {
+                if key_bytes.starts_with(prefix_bytes) {
+                    let mut entry = NeoStruct::new();
+                    entry.set_field("key", NeoValue::from(NeoByteString::from_slice(key_bytes)));
+                    entry.set_field("value", NeoValue::from(NeoByteString::from_slice(value)));
+                    Some(NeoValue::from(entry))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        Ok(NeoIterator::new(matches))
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn storage_find(
+        _context: &NeoStorageContext,
+        prefix: &NeoByteString,
+    ) -> NeoResult<NeoIterator<NeoValue>> {
+        let prefix_bytes = prefix.as_slice();
+        let store = STORAGE_ENTRIES.lock().map_err(|_| NeoError::InvalidState)?;
         let matches: Vec<NeoValue> = store
             .iter()
             .filter_map(|(key_bytes, value)| {

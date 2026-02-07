@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 
 use anyhow::{anyhow, bail, Context, Result};
@@ -115,7 +115,9 @@ use types::{
     GlobalDescriptor, GlobalLayout, HelperRecord, MemoryConfig, MemoryHelperKind,
     PassiveElementLayout, PassiveSegmentLayout, TableDescriptor, TableLayout,
 };
-pub(crate) use types::{BitHelperKind, CallTarget, TableHelperKind, TableInfo};
+pub(crate) use types::{
+    BitHelperKind, CallIndirectHelperKey, CallTarget, TableHelperKind, TableInfo,
+};
 
 use bits::{emit_clz_helper, emit_ctz_helper, emit_popcnt_helper};
 use data::{emit_data_drop_helper, emit_data_init_helper};
@@ -154,6 +156,7 @@ pub(crate) struct RuntimeHelpers {
     memory_config: MemoryConfig,
     bit_helpers: HashMap<BitHelperKind, HelperRecord>,
     table_helpers: HashMap<TableHelperKind, HelperRecord>,
+    call_indirect_helpers: HashMap<CallIndirectHelperKey, HelperRecord>,
 
     // === Cold fields (accessed during setup/finalization) ===
     data_segments: Vec<DataSegmentInfo>,
@@ -162,6 +165,7 @@ pub(crate) struct RuntimeHelpers {
     next_element_index: usize,
     globals: Vec<GlobalDescriptor>,
     tables: Vec<TableDescriptor>,
+    ref_func_constants: BTreeSet<u32>,
     start_slot: Option<usize>,
     start_call_positions: Vec<usize>,
 
@@ -186,12 +190,14 @@ impl RuntimeHelpers {
             memory_config: MemoryConfig::default(),
             bit_helpers: HashMap::with_capacity(8),
             table_helpers: HashMap::with_capacity(8),
+            call_indirect_helpers: HashMap::with_capacity(8),
             data_segments: Vec::with_capacity(expected_data_segments),
             element_segments: Vec::with_capacity(expected_element_segments),
             next_data_index: 0,
             next_element_index: 0,
             globals: Vec::with_capacity(expected_globals),
             tables: Vec::with_capacity(4),
+            ref_func_constants: BTreeSet::new(),
             start_slot: None,
             start_call_positions: Vec::with_capacity(2),
             buffer_pool: None,

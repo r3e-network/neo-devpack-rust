@@ -39,7 +39,7 @@ pub mod prelude {
 /// Neo N3 Contract Examples
 ///
 /// Basic Hello-World pattern showing how to expose a method that simply
-/// returns contract state:
+/// returns contract state. This shows canonical devpack syntax for contract methods and metadata:
 ///
 /// ```rust
 /// use neo_devpack::prelude::*;

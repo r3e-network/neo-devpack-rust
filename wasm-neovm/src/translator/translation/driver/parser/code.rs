@@ -65,6 +65,24 @@ impl DriverState {
             self.start_defined_offset = Some(offset);
         }
 
+        if let Some(reachable) = &self.reachable_defined_functions {
+            if !reachable.contains(&func_index_u32) {
+                if maybe_export.is_some() || self.start_function == Some(func_index_u32) {
+                    bail!(
+                        "reachability analysis skipped required function '{}' (index {})",
+                        function_name,
+                        func_index_u32
+                    );
+                }
+
+                let abort = lookup_opcode("ABORT").context(
+                    "failed to emit stub for unreachable function during size optimization",
+                )?;
+                self.script.push(abort.byte);
+                return Ok(());
+            }
+        }
+
         let suppress_init = self.start_function == Some(func_index as u32);
         let was_suppressed = self.runtime.set_memory_init_suppressed(suppress_init);
 
@@ -101,10 +119,19 @@ impl DriverState {
                 .collect();
 
             for alias in entry.names.iter_mut() {
+                if alias.name.eq_ignore_ascii_case("_deploy") {
+                    alias.processed = true;
+                    continue;
+                }
+                let (parameters, method_return) = normalize_exported_manifest_signature(
+                    &alias.name,
+                    parameter_defs.clone(),
+                    return_kind.clone(),
+                );
                 let method = ManifestMethod {
                     name: alias.name.clone(),
-                    parameters: parameter_defs.clone(),
-                    return_type: return_kind.clone(),
+                    parameters,
+                    return_type: method_return,
                     offset: offset as u32,
                     safe: false,
                 };

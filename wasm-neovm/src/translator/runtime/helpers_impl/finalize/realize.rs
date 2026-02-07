@@ -1,7 +1,17 @@
 use super::super::super::*;
 
 impl RuntimeHelpers {
-    pub(super) fn realize_helper_calls(&mut self, script: &mut Vec<u8>) -> Result<()> {
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn realize_helper_calls(
+        &mut self,
+        script: &mut Vec<u8>,
+        imports: &[FunctionImport],
+        types: &[FuncType],
+        func_type_indices: &[u32],
+        mut functions: Option<&mut FunctionRegistry>,
+        features: &mut FeatureTracker,
+        adapter: &dyn ChainAdapter,
+    ) -> Result<()> {
         let memory_kinds: Vec<MemoryHelperKind> = self
             .memory_helpers
             .iter()
@@ -41,6 +51,36 @@ impl RuntimeHelpers {
         for kind in table_kinds {
             let offset = self.realize_table_helper(script, kind)?;
             if let Some(record) = self.table_helpers.get_mut(&kind) {
+                for &call_pos in &record.calls {
+                    patch_call(script, call_pos, offset)?;
+                }
+            }
+        }
+
+        let call_indirect_keys: Vec<CallIndirectHelperKey> = self
+            .call_indirect_helpers
+            .iter()
+            .filter(|(_, record)| !record.calls.is_empty())
+            .map(|(key, _)| *key)
+            .collect();
+        if !call_indirect_keys.is_empty() && functions.is_none() {
+            bail!("call_indirect helpers requested without function registry");
+        }
+        for key in call_indirect_keys {
+            let functions = functions.as_deref_mut().ok_or_else(|| {
+                anyhow!("call_indirect helpers requested without function registry")
+            })?;
+            let offset = self.realize_call_indirect_helper(
+                script,
+                key,
+                imports,
+                types,
+                func_type_indices,
+                functions,
+                features,
+                adapter,
+            )?;
+            if let Some(record) = self.call_indirect_helpers.get_mut(&key) {
                 for &call_pos in &record.calls {
                     patch_call(script, call_pos, offset)?;
                 }
@@ -150,6 +190,153 @@ impl RuntimeHelpers {
                 },
             );
         }
+        Ok(helper_offset)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn realize_call_indirect_helper(
+        &mut self,
+        script: &mut Vec<u8>,
+        key: CallIndirectHelperKey,
+        imports: &[FunctionImport],
+        types: &[FuncType],
+        func_type_indices: &[u32],
+        functions: &mut FunctionRegistry,
+        features: &mut FeatureTracker,
+        adapter: &dyn ChainAdapter,
+    ) -> Result<usize> {
+        if let Some(record) = self.call_indirect_helpers.get(&key) {
+            if let Some(offset) = record.offset {
+                return Ok(offset);
+            }
+        }
+
+        types.get(key.type_index as usize).ok_or_else(|| {
+            anyhow!(
+                "type index {} out of bounds for call_indirect helper",
+                key.type_index
+            )
+        })?;
+
+        let table_helper_offset =
+            self.realize_table_helper(script, TableHelperKind::Get(key.table_index))?;
+        let helper_offset = script.len();
+
+        let table_get_call = emit_call_placeholder(script)?;
+        patch_call(script, table_get_call, table_helper_offset)?;
+
+        script.push(lookup_opcode("DUP")?.byte);
+        let _ = emit_push_int(script, FUNCREF_NULL);
+        script.push(lookup_opcode("EQUAL")?.byte);
+        let trap_null = emit_jump_placeholder(script, "JMPIF_L")?;
+
+        let total_functions = imports.len() + func_type_indices.len();
+        let candidate_functions = self.call_indirect_candidates(key.table_index)?;
+
+        let estimated_matches = candidate_functions.len().min(32);
+        let mut case_fixups: Vec<(usize, CallTarget)> = Vec::with_capacity(estimated_matches);
+        for fn_index_u32 in candidate_functions {
+            let fn_index = fn_index_u32 as usize;
+            if fn_index >= total_functions {
+                bail!(
+                    "call_indirect candidate function {} out of range (total functions: {})",
+                    fn_index,
+                    total_functions
+                );
+            }
+
+            let candidate_type_index = if fn_index < imports.len() {
+                imports[fn_index].type_index
+            } else {
+                let defined_index = fn_index - imports.len();
+                *func_type_indices.get(defined_index).ok_or_else(|| {
+                    anyhow!(
+                        "call_indirect target function {} missing type entry",
+                        fn_index
+                    )
+                })?
+            };
+
+            if candidate_type_index != key.type_index {
+                continue;
+            }
+
+            script.push(lookup_opcode("DUP")?.byte);
+            let _ = emit_push_int(script, fn_index as i128);
+            script.push(lookup_opcode("EQUAL")?.byte);
+            let jump = emit_jump_placeholder(script, "JMPIF_L")?;
+
+            let target = if fn_index < imports.len() {
+                CallTarget::Import(fn_index as u32)
+            } else {
+                CallTarget::Defined(fn_index)
+            };
+            case_fixups.push((jump, target));
+        }
+
+        let trap_label = script.len();
+        script.push(lookup_opcode("DROP")?.byte);
+        script.push(lookup_opcode("ABORT")?.byte);
+        patch_jump(script, trap_null, trap_label)?;
+
+        let helper_type = types.get(key.type_index as usize).ok_or_else(|| {
+            anyhow!(
+                "type index {} out of bounds for call_indirect helper",
+                key.type_index
+            )
+        })?;
+        let import_params = vec![
+            StackValue {
+                const_value: None,
+                bytecode_start: None,
+            };
+            helper_type.params().len()
+        ];
+
+        let mut end_fixups: Vec<usize> = Vec::with_capacity(estimated_matches);
+        for (jump, target) in case_fixups {
+            let label = script.len();
+            patch_jump(script, jump, label)?;
+            script.push(lookup_opcode("DROP")?.byte);
+            match target {
+                CallTarget::Import(idx) => {
+                    handle_import_call(
+                        idx,
+                        script,
+                        imports,
+                        types,
+                        &import_params,
+                        features,
+                        adapter,
+                    )?;
+                }
+                CallTarget::Defined(idx) => {
+                    functions.emit_call(script, idx)?;
+                }
+            }
+            let end_jump = emit_jump_placeholder(script, "JMP_L")?;
+            end_fixups.push(end_jump);
+        }
+
+        let end_label = script.len();
+        for fixup in end_fixups {
+            patch_jump(script, fixup, end_label)?;
+        }
+
+        script.push(lookup_opcode("RET")?.byte);
+
+        if let Some(record) = self.call_indirect_helpers.get_mut(&key) {
+            record.offset = Some(helper_offset);
+        } else {
+            self.call_indirect_helpers.insert(
+                key,
+                HelperRecord {
+                    offset: Some(helper_offset),
+                    calls: Vec::new(),
+                },
+            );
+        }
+
         Ok(helper_offset)
     }
 }

@@ -22,7 +22,7 @@ exclude = [
 resolver = "2"
 
 [workspace.package]
-version = "0.4.2"
+version = "0.4.5"
 edition = "2021"
 authors = ["R3E Network <team@r3e.network>"]
 license = "MIT"
@@ -57,8 +57,8 @@ neo-runtime = { path = "rust-devpack/neo-runtime", version = "0.1.0" }
 neo-macros = { path = "rust-devpack/neo-macros", version = "0.1.0" }
 neo-devpack = { path = "rust-devpack", version = "0.1.0" }
 
-# Main translator crate (v0.4.2 - follows workspace version)
-wasm-neovm = { path = "wasm-neovm", version = "0.4.2" }
+# Main translator crate (v0.4.5 - follows workspace version)
+wasm-neovm = { path = "wasm-neovm", version = "0.4.5" }
 
 # Cross-chain compatibility crates (v0.1.0 - experimental)
 move-neovm = { path = "move-neovm", version = "0.1.0" }

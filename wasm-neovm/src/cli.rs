@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
+use anyhow::{anyhow, Result};
 use clap::Parser;
-use log::warn;
 
 use wasm_neovm::SourceChain;
 
@@ -46,13 +46,54 @@ pub(crate) struct Cli {
 }
 
 impl Cli {
-    pub(crate) fn parse_source_chain(&self) -> SourceChain {
-        SourceChain::from_str(&self.source_chain).unwrap_or_else(|| {
-            warn!(
-                "Unknown source chain '{}', defaulting to 'neo'",
+    pub(crate) fn parse_source_chain(&self) -> Result<SourceChain> {
+        SourceChain::from_str(&self.source_chain).ok_or_else(|| {
+            anyhow!(
+                "unknown source chain '{}' (expected one of: neo, native, solana, sol, move, aptos, sui)",
                 self.source_chain
-            );
-            SourceChain::Neo
+            )
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_source_chain_accepts_aliases() {
+        let cli = Cli {
+            input: PathBuf::from("in.wasm"),
+            nef: None,
+            manifest: None,
+            name: "Contract".to_string(),
+            manifest_overlay: None,
+            source_url: None,
+            compare_manifest: None,
+            source_chain: "sol".to_string(),
+        };
+        assert_eq!(cli.parse_source_chain().unwrap(), SourceChain::Solana);
+
+        let cli = Cli {
+            source_chain: "aptos".to_string(),
+            ..cli
+        };
+        assert_eq!(cli.parse_source_chain().unwrap(), SourceChain::Move);
+    }
+
+    #[test]
+    fn parse_source_chain_rejects_unknown_value() {
+        let cli = Cli {
+            input: PathBuf::from("in.wasm"),
+            nef: None,
+            manifest: None,
+            name: "Contract".to_string(),
+            manifest_overlay: None,
+            source_url: None,
+            compare_manifest: None,
+            source_chain: "ethereum".to_string(),
+        };
+
+        assert!(cli.parse_source_chain().is_err());
     }
 }

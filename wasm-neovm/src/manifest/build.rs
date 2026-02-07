@@ -66,5 +66,21 @@ pub fn build_manifest_with_config(
         "extra": extra,
     });
 
+    // Neo manifest compatibility: omit explicit false feature flags.
+    if let Some(features) = manifest
+        .get("features")
+        .and_then(serde_json::Value::as_object)
+    {
+        let all_false_or_empty = features
+            .values()
+            .all(|value| value.as_bool().map(|b| !b).unwrap_or(false));
+        if all_false_or_empty {
+            // Safe to mutate because we just created this object literal.
+            let mut manifest = manifest;
+            manifest["features"] = json!({});
+            return RenderedManifest { value: manifest };
+        }
+    }
+
     RenderedManifest { value: manifest }
 }

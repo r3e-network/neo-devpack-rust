@@ -22,8 +22,8 @@ use super::runtime::{
     emit_bit_count, emit_select, emit_sign_extend, emit_zero_extend, ensure_memory_access,
     evaluate_global_init, evaluate_offset_expr, infer_contract_tokens, translate_data_drop,
     translate_memory_copy, translate_memory_fill, translate_memory_init, translate_memory_load,
-    translate_memory_store, BitHelperKind, CallTarget, FunctionRegistry, RuntimeHelpers,
-    StartDescriptor, StartKind, TableHelperKind, TableInfo,
+    translate_memory_store, BitHelperKind, FunctionRegistry, RuntimeHelpers, StartDescriptor,
+    StartKind, TableHelperKind, TableInfo,
 };
 use super::types::{StackValue, Translation, TranslationConfig};
 use super::{FunctionImport, ModuleFrontend};
@@ -57,3 +57,27 @@ use ops::{
 use wasm_utils::{
     describe_float_op, describe_simd_op, ensure_select_type_supported, wasm_val_type_to_manifest,
 };
+
+fn normalize_exported_manifest_signature(
+    method_name: &str,
+    parameters: Vec<ManifestParameter>,
+    return_type: String,
+) -> (Vec<ManifestParameter>, String) {
+    if method_name.eq_ignore_ascii_case("_deploy") {
+        return (
+            vec![
+                ManifestParameter {
+                    name: "data".to_string(),
+                    kind: "Any".to_string(),
+                },
+                ManifestParameter {
+                    name: "update".to_string(),
+                    kind: "Boolean".to_string(),
+                },
+            ],
+            "Void".to_string(),
+        );
+    }
+
+    (parameters, return_type)
+}

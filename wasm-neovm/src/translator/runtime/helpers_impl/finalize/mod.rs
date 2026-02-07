@@ -30,10 +30,21 @@ impl RuntimeHelpers {
         start: Option<&StartDescriptor>,
         imports: &[FunctionImport],
         types: &[FuncType],
+        func_type_indices: &[u32],
+        functions: Option<&mut FunctionRegistry>,
+        features: &mut FeatureTracker,
         adapter: &dyn ChainAdapter,
     ) -> Result<()> {
         self.prepare_init_helper(script, start, imports, types, adapter)?;
-        self.realize_helper_calls(script)?;
+        self.realize_helper_calls(
+            script,
+            imports,
+            types,
+            func_type_indices,
+            functions,
+            features,
+            adapter,
+        )?;
         self.emit_passive_data_helpers(script)?;
         Ok(())
     }

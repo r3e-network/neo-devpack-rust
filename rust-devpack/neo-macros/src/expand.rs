@@ -4,7 +4,10 @@
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{format_ident, quote};
 use serde_json::json;
-use syn::{DeriveInput, Fields, ItemFn, LitStr};
+use syn::{
+    DeriveInput, Fields, FnArg, GenericArgument, ImplItem, ImplItemFn, Item, ItemFn, ItemImpl,
+    LitStr, Pat, PatIdent, PathArguments, ReturnType, Type,
+};
 
 use crate::codegen;
 
@@ -34,6 +37,430 @@ pub(crate) fn neo_contract(input: DeriveInput) -> TokenStream2 {
     }
 }
 
+pub(crate) fn neo_contract_item(input: Item) -> syn::Result<TokenStream2> {
+    match input {
+        Item::Struct(item_struct) => {
+            let derived: DeriveInput = syn::parse2(quote!(#item_struct))?;
+            Ok(neo_contract(derived))
+        }
+        Item::Impl(item_impl) => neo_contract_impl(item_impl),
+        other => Err(syn::Error::new_spanned(
+            other,
+            "#[neo_contract] supports structs and impl blocks",
+        )),
+    }
+}
+
+fn neo_contract_impl(input: ItemImpl) -> syn::Result<TokenStream2> {
+    let contract_ty = (*input.self_ty).clone();
+    let exported = collect_export_methods(&input)?;
+
+    let wrappers = exported
+        .into_iter()
+        .map(|method| method.wrapper_tokens(&contract_ty))
+        .collect::<syn::Result<Vec<_>>>()?;
+
+    Ok(quote! {
+        #input
+        #(#wrappers)*
+    })
+}
+
+struct ExportedMethod {
+    method_ident: syn::Ident,
+    export_ident: syn::Ident,
+    wrapper_inputs: Vec<TokenStream2>,
+    call_args: Vec<TokenStream2>,
+    has_receiver: bool,
+    mutable_receiver: bool,
+    output_kind: ExportOutputKind,
+    safe: bool,
+}
+
+enum ExportOutputKind {
+    ResultNeoInteger,
+    ResultNeoBoolean,
+    ResultVoid,
+    NeoInteger,
+    NeoBoolean,
+    I64,
+    Bool,
+    Void,
+}
+
+impl ExportedMethod {
+    fn wrapper_tokens(self, contract_ty: &Type) -> syn::Result<TokenStream2> {
+        let ExportedMethod {
+            method_ident,
+            export_ident,
+            wrapper_inputs,
+            call_args,
+            has_receiver,
+            mutable_receiver,
+            output_kind,
+            safe,
+        } = self;
+
+        let safe_attr = if safe {
+            quote! { #[::neo_devpack::neo_safe] }
+        } else {
+            quote! {}
+        };
+
+        let invoke = if has_receiver {
+            if mutable_receiver {
+                quote! {
+                    let mut __contract = #contract_ty::new();
+                    __contract.#method_ident(#(#call_args),*)
+                }
+            } else {
+                quote! {
+                    let __contract = #contract_ty::new();
+                    __contract.#method_ident(#(#call_args),*)
+                }
+            }
+        } else {
+            quote! {
+                #contract_ty::#method_ident(#(#call_args),*)
+            }
+        };
+
+        let (wrapper_output, body) = match output_kind {
+            ExportOutputKind::ResultNeoInteger => (
+                quote! { i64 },
+                quote! {
+                    match { #invoke } {
+                        Ok(value) => value.as_i32_saturating() as i64,
+                        Err(_) => 0i64,
+                    }
+                },
+            ),
+            ExportOutputKind::ResultNeoBoolean => (
+                quote! { i64 },
+                quote! {
+                    match { #invoke } {
+                        Ok(value) => {
+                            if value.as_bool() {
+                                1i64
+                            } else {
+                                0i64
+                            }
+                        }
+                        Err(_) => 0i64,
+                    }
+                },
+            ),
+            ExportOutputKind::ResultVoid => (
+                quote! { () },
+                quote! {
+                    let _ = { #invoke };
+                },
+            ),
+            ExportOutputKind::NeoInteger => (
+                quote! { i64 },
+                quote! {
+                    { #invoke }.as_i32_saturating() as i64
+                },
+            ),
+            ExportOutputKind::NeoBoolean => (
+                quote! { i64 },
+                quote! {
+                    if { #invoke }.as_bool() {
+                        1i64
+                    } else {
+                        0i64
+                    }
+                },
+            ),
+            ExportOutputKind::I64 => (
+                quote! { i64 },
+                quote! {
+                    { #invoke }
+                },
+            ),
+            ExportOutputKind::Bool => (
+                quote! { i64 },
+                quote! {
+                    if { #invoke } {
+                        1i64
+                    } else {
+                        0i64
+                    }
+                },
+            ),
+            ExportOutputKind::Void => (
+                quote! { () },
+                quote! {
+                    { #invoke };
+                },
+            ),
+        };
+
+        Ok(quote! {
+            #safe_attr
+            #[no_mangle]
+            pub extern "C" fn #export_ident(#(#wrapper_inputs),*) -> #wrapper_output {
+                #body
+            }
+        })
+    }
+}
+
+#[derive(Default)]
+struct NeoMethodConfig {
+    safe: bool,
+    export_name: Option<String>,
+}
+
+fn collect_export_methods(item_impl: &ItemImpl) -> syn::Result<Vec<ExportedMethod>> {
+    let mut methods = Vec::new();
+
+    for item in &item_impl.items {
+        let ImplItem::Fn(method) = item else {
+            continue;
+        };
+
+        let Some(config) = parse_neo_method_config(&method.attrs)? else {
+            continue;
+        };
+
+        let (has_receiver, mutable_receiver, wrapper_inputs, call_args) =
+            parse_method_inputs(method)?;
+
+        let output_kind = parse_output_kind(&method.sig.output)?;
+
+        let export_name = config
+            .export_name
+            .unwrap_or_else(|| snake_to_camel(&method.sig.ident.to_string()));
+        let export_ident = syn::parse_str::<syn::Ident>(&export_name).map_err(|_| {
+            syn::Error::new(
+                method.sig.ident.span(),
+                format!("Invalid export name `{export_name}` generated for #[neo_method]"),
+            )
+        })?;
+
+        methods.push(ExportedMethod {
+            method_ident: method.sig.ident.clone(),
+            export_ident,
+            wrapper_inputs,
+            call_args,
+            has_receiver,
+            mutable_receiver,
+            output_kind,
+            safe: config.safe,
+        });
+    }
+
+    Ok(methods)
+}
+
+fn parse_neo_method_config(attrs: &[syn::Attribute]) -> syn::Result<Option<NeoMethodConfig>> {
+    for attr in attrs {
+        if !attr.path().is_ident("neo_method") {
+            continue;
+        }
+
+        let mut config = NeoMethodConfig::default();
+
+        if matches!(attr.meta, syn::Meta::List(_)) {
+            attr.parse_nested_meta(|meta| {
+                if meta.path.is_ident("safe") {
+                    config.safe = true;
+                    return Ok(());
+                }
+
+                if meta.path.is_ident("name") || meta.path.is_ident("export_name") {
+                    let value = meta.value()?;
+                    let lit: LitStr = value.parse()?;
+                    config.export_name = Some(lit.value());
+                    return Ok(());
+                }
+
+                Err(meta.error("unsupported #[neo_method] option; use `safe` or `name = \"...\"`"))
+            })?;
+        }
+
+        return Ok(Some(config));
+    }
+
+    Ok(None)
+}
+
+fn parse_method_inputs(
+    method: &ImplItemFn,
+) -> syn::Result<(bool, bool, Vec<TokenStream2>, Vec<TokenStream2>)> {
+    let mut has_receiver = false;
+    let mut mutable_receiver = false;
+    let mut wrapper_inputs = Vec::new();
+    let mut call_args = Vec::new();
+
+    for input in &method.sig.inputs {
+        match input {
+            FnArg::Receiver(receiver) => {
+                has_receiver = true;
+                mutable_receiver = receiver.mutability.is_some();
+            }
+            FnArg::Typed(typed) => {
+                let ident = parse_ident_pattern(&typed.pat)?;
+                let conversion = argument_conversion(&typed.ty, &ident)?;
+                wrapper_inputs.push(quote! { #ident: i64 });
+                call_args.push(conversion);
+            }
+        }
+    }
+
+    Ok((has_receiver, mutable_receiver, wrapper_inputs, call_args))
+}
+
+fn parse_ident_pattern(pattern: &Pat) -> syn::Result<syn::Ident> {
+    match pattern {
+        Pat::Ident(PatIdent { ident, .. }) => Ok(ident.clone()),
+        _ => Err(syn::Error::new_spanned(
+            pattern,
+            "#[neo_method] parameters must be simple identifiers",
+        )),
+    }
+}
+
+fn argument_conversion(ty: &Type, ident: &syn::Ident) -> syn::Result<TokenStream2> {
+    let Some(type_ident) = type_ident(ty) else {
+        return Err(syn::Error::new_spanned(
+            ty,
+            "Unsupported #[neo_method] argument type",
+        ));
+    };
+
+    match type_ident.to_string().as_str() {
+        "NeoInteger" => Ok(quote! { ::neo_devpack::NeoInteger::new(#ident) }),
+        "NeoBoolean" => Ok(quote! { ::neo_devpack::NeoBoolean::new(#ident != 0) }),
+        "i64" => Ok(quote! { #ident }),
+        "bool" => Ok(quote! { #ident != 0 }),
+        unsupported => Err(syn::Error::new_spanned(
+            ty,
+            format!(
+                "Unsupported #[neo_method] argument type `{unsupported}` for auto-export wrappers"
+            ),
+        )),
+    }
+}
+
+fn parse_output_kind(output: &ReturnType) -> syn::Result<ExportOutputKind> {
+    let return_type = match output {
+        ReturnType::Default => {
+            return Ok(ExportOutputKind::Void);
+        }
+        ReturnType::Type(_, ty) => ty,
+    };
+
+    let Some(top_ident) = type_ident(return_type) else {
+        return Err(syn::Error::new_spanned(
+            return_type,
+            "Unsupported #[neo_method] return type",
+        ));
+    };
+
+    if top_ident == "NeoResult" {
+        let Type::Path(type_path) = return_type.as_ref() else {
+            return Err(syn::Error::new_spanned(
+                return_type,
+                "NeoResult return type must be a path",
+            ));
+        };
+
+        let Some(segment) = type_path.path.segments.last() else {
+            return Err(syn::Error::new_spanned(
+                type_path,
+                "Invalid NeoResult return type",
+            ));
+        };
+
+        let PathArguments::AngleBracketed(arguments) = &segment.arguments else {
+            return Err(syn::Error::new_spanned(
+                segment,
+                "NeoResult must include a concrete inner return type",
+            ));
+        };
+
+        let Some(GenericArgument::Type(inner_type)) = arguments.args.first() else {
+            return Err(syn::Error::new_spanned(
+                arguments,
+                "NeoResult inner return type is required",
+            ));
+        };
+
+        let inner = parse_inner_output_kind(inner_type)?;
+        return Ok(match inner {
+            ExportOutputKind::NeoInteger => ExportOutputKind::ResultNeoInteger,
+            ExportOutputKind::NeoBoolean => ExportOutputKind::ResultNeoBoolean,
+            ExportOutputKind::Void => ExportOutputKind::ResultVoid,
+            _ => {
+                return Err(syn::Error::new_spanned(
+                    inner_type,
+                    "Unsupported nested NeoResult return type",
+                ));
+            }
+        });
+    }
+
+    parse_inner_output_kind(return_type)
+}
+
+fn parse_inner_output_kind(ty: &Type) -> syn::Result<ExportOutputKind> {
+    if let Type::Tuple(tuple) = ty {
+        if tuple.elems.is_empty() {
+            return Ok(ExportOutputKind::Void);
+        }
+    }
+
+    let Some(inner_ident) = type_ident(ty) else {
+        return Err(syn::Error::new_spanned(
+            ty,
+            "Unsupported #[neo_method] return type for auto-export wrappers",
+        ));
+    };
+
+    match inner_ident.to_string().as_str() {
+        "NeoInteger" => Ok(ExportOutputKind::NeoInteger),
+        "NeoBoolean" => Ok(ExportOutputKind::NeoBoolean),
+        "i64" => Ok(ExportOutputKind::I64),
+        "bool" => Ok(ExportOutputKind::Bool),
+        unsupported => Err(syn::Error::new_spanned(
+            ty,
+            format!(
+                "Unsupported #[neo_method] return type `{unsupported}` for auto-export wrappers"
+            ),
+        )),
+    }
+}
+
+fn type_ident(ty: &Type) -> Option<&syn::Ident> {
+    match ty {
+        Type::Path(type_path) => type_path.path.segments.last().map(|segment| &segment.ident),
+        Type::Reference(reference) => type_ident(&reference.elem),
+        _ => None,
+    }
+}
+
+fn snake_to_camel(name: &str) -> String {
+    let mut output = String::with_capacity(name.len());
+    let mut uppercase_next = false;
+
+    for ch in name.chars() {
+        if ch == '_' {
+            uppercase_next = true;
+            continue;
+        }
+
+        if uppercase_next {
+            output.extend(ch.to_uppercase());
+            uppercase_next = false;
+        } else {
+            output.push(ch);
+        }
+    }
+
+    output
+}
 pub(crate) fn neo_method(input: ItemFn) -> TokenStream2 {
     let vis = &input.vis;
     let sig = &input.sig;

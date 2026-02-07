@@ -1,7 +1,7 @@
 // Comprehensive error handling tests for WASM-NeoVM translator
 // Phase 1: Critical coverage additions - Error paths are <20% tested
 
-use wasm_neovm::translate_module;
+use wasm_neovm::{translate_module, translate_with_config, BehaviorConfig, TranslationConfig};
 
 // ============================================================================
 // Translation Rejection Tests (Validation Errors)
@@ -318,6 +318,77 @@ fn translate_handles_complex_valid_module() {
 
     // Complex valid module should translate successfully
     assert!(!translation.script.is_empty());
+}
+
+#[test]
+fn translate_respects_configured_memory_limit() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (memory 2)
+              (func (export "main") (result i32)
+                i32.const 0))"#,
+    )
+    .expect("valid wat");
+
+    let config = TranslationConfig::new("MemoryLimitTest")
+        .with_behavior(BehaviorConfig::default().with_max_memory_pages(1));
+    let result = translate_with_config(&wasm, config);
+
+    assert!(
+        result.is_err(),
+        "should reject memory above configured limit"
+    );
+    let err = result.unwrap_err().to_string();
+    assert!(
+        err.contains("memory initial pages") && err.contains("configured maximum"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn translate_respects_configured_table_limit() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (table 2 funcref)
+              (func (export "main") (result i32)
+                i32.const 0))"#,
+    )
+    .expect("valid wat");
+
+    let config = TranslationConfig::new("TableLimitTest")
+        .with_behavior(BehaviorConfig::default().with_max_table_size(1));
+    let result = translate_with_config(&wasm, config);
+
+    assert!(
+        result.is_err(),
+        "should reject table above configured limit"
+    );
+    let err = result.unwrap_err().to_string();
+    assert!(
+        err.contains("table initial size") && err.contains("configured maximum"),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn translate_rejects_invalid_behavior_config() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (func (export "main") (result i32)
+                i32.const 0))"#,
+    )
+    .expect("valid wat");
+
+    let config = TranslationConfig::new("InvalidConfig")
+        .with_behavior(BehaviorConfig::default().with_max_memory_pages(0));
+    let result = translate_with_config(&wasm, config);
+
+    assert!(result.is_err(), "invalid config should be rejected");
+    let err = result.unwrap_err().to_string();
+    assert!(
+        err.contains("invalid translation configuration") || err.contains("Invalid memory page"),
+        "unexpected error: {err}"
+    );
 }
 
 #[test]

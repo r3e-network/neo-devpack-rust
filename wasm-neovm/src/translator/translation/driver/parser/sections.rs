@@ -78,9 +78,25 @@ impl DriverState {
             }
             let initial_len = usize::try_from(table.ty.initial)
                 .context("table initial size exceeds host limits")?;
+            if initial_len as u32 > self.behavior.max_table_size {
+                bail!(
+                    "table initial size {} exceeds configured maximum {}",
+                    initial_len,
+                    self.behavior.max_table_size
+                );
+            }
             let maximum = match table.ty.maximum {
                 Some(max) => {
-                    Some(u32::try_from(max).context("table maximum exceeds 32-bit range")?)
+                    let max_u32 =
+                        u32::try_from(max).context("table maximum exceeds 32-bit range")?;
+                    if max_u32 > self.behavior.max_table_size {
+                        bail!(
+                            "table maximum size {} exceeds configured maximum {}",
+                            max_u32,
+                            self.behavior.max_table_size
+                        );
+                    }
+                    Some(max_u32)
                 }
                 None => None,
             };
@@ -145,9 +161,25 @@ impl DriverState {
             }
             let initial =
                 u32::try_from(mem.initial).context("memory initial size exceeds 32-bit range")?;
+            if initial > self.behavior.max_memory_pages {
+                bail!(
+                    "memory initial pages {} exceeds configured maximum {}",
+                    initial,
+                    self.behavior.max_memory_pages
+                );
+            }
             let maximum = match mem.maximum {
                 Some(max) => {
-                    Some(u32::try_from(max).context("memory maximum exceeds 32-bit range")?)
+                    let max_u32 =
+                        u32::try_from(max).context("memory maximum exceeds 32-bit range")?;
+                    if max_u32 > self.behavior.max_memory_pages {
+                        bail!(
+                            "memory maximum pages {} exceeds configured maximum {}",
+                            max_u32,
+                            self.behavior.max_memory_pages
+                        );
+                    }
+                    Some(max_u32)
                 }
                 None => None,
             };

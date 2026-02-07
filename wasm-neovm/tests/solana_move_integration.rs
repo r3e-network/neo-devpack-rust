@@ -143,11 +143,11 @@ fn test_solana_storage_contract_compilation() {
 
     let translation = result.unwrap();
 
-    // Verify storage feature enabled
-    assert_eq!(
-        translation.manifest.value["features"]["storage"].as_bool(),
-        Some(true)
-    );
+    // Neo Express requires manifest.features to be empty.
+    assert!(translation.manifest.value["features"]
+        .as_object()
+        .map(|value| value.is_empty())
+        .unwrap_or(false));
 
     // Verify methods
     let methods = translation.manifest.value["abi"]["methods"]
@@ -427,11 +427,11 @@ fn test_move_resource_semantics_mapping() {
 
     let translation = translate_with_config(&wasm, config).unwrap();
 
-    // Storage should be enabled for resource operations
-    assert_eq!(
-        translation.manifest.value["features"]["storage"].as_bool(),
-        Some(true)
-    );
+    // Neo Express requires manifest.features to be empty.
+    assert!(translation.manifest.value["features"]
+        .as_object()
+        .map(|value| value.is_empty())
+        .unwrap_or(false));
 }
 
 // ============================================================================
@@ -501,8 +501,8 @@ fn test_storage_operations_compile() {
 
     let translation = result.unwrap();
     assert!(!translation.script.is_empty());
-    assert_eq!(
-        translation.manifest.value["features"]["storage"].as_bool(),
-        Some(true)
-    );
+    assert!(translation.manifest.value["features"]
+        .as_object()
+        .map(|value| value.is_empty())
+        .unwrap_or(false));
 }

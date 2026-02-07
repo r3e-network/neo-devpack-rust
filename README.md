@@ -143,7 +143,7 @@ See [`docs/CROSS_CHAIN_SPEC.md`](docs/CROSS_CHAIN_SPEC.md) for the full technica
 
 - **`wasm-neovm`** – a Rust CLI/library that translates a Wasm module into NeoVM bytecode and emits the accompanying NEF+manifest pair.
 - **`rust-devpack`** – the existing Rust developer tooling (types, macros, runtime stubs) for authoring Neo contracts.
-- **`contracts/`** – assemble-ready Rust smart-contracts (`hello-world`, `nep17-token`, `constant-product`) showcasing different patterns.
+- **`contracts/`** – assemble-ready Rust smart-contracts (`hello-world`, `nep17-token`, `nep11-nft`, `constant-product`, `uniswap-v2`, `staking-rewards`, `timelock-vault`, `flashloan-pool`, etc.) showcasing token, DeFi, wallet, and governance patterns.
 - See [`contracts/README.md`](contracts/README.md) for per-contract entry points and build notes.
 - **`scripts/build_contract.sh`** – helper script that builds a Rust contract to Wasm and invokes the translator in a single step.
 - **`scripts/build_c_contract.sh`** – clang-based helper that compiles plain C contracts to Wasm before translating them.
@@ -227,6 +227,12 @@ Use `--compare-manifest <file>` to assert that the generated manifest matches a 
    scripts/neoexpress_deploy.sh build/HelloWorld.nef build/HelloWorld.manifest.json HelloWorld
    ```
 
+   For a local end-to-end smoke pass (build + deploy/invoke checks), run:
+
+   ```bash
+   make smoke-neoxp
+   ```
+
 Rust contracts can now embed manifest metadata directly via DevPack macros:
 
 ```rust
@@ -244,7 +250,7 @@ neo_supported_standards!(["NEP-17"]);
 neo_trusts!(["*"]);
 ```
 
-Each `#[neo_event]` declaration automatically registers the event schema using canonical manifest parameter types (Boolean, Integer, ByteArray, …), and the helper macros (`neo_permission!`, `neo_trusts!`, `neo_supported_standards!`) record additional metadata. The translator merges these custom sections with any additional overlay file or CLI flags, so manifests stay in sync without manual JSON edits. Storage-heavy contracts no longer need to opt into the `storage` feature manually—the translator watches for `System.Storage.*` syscalls and flips `features.storage` on their behalf. Likewise, exporting `onPayment`/`onNEP17Payment`/`onNEP11Payment` automatically enables `features.payable`.
+Each `#[neo_event]` declaration automatically registers the event schema using canonical manifest parameter types (Boolean, Integer, ByteArray, …), and the helper macros (`neo_permission!`, `neo_trusts!`, `neo_supported_standards!`) record additional metadata. The translator merges these custom sections with any additional overlay file or CLI flags, so manifests stay in sync without manual JSON edits. For Neo Express compatibility, generated manifests currently emit an empty `features` object (`{}`), even when storage/payable behavior is present in the contract implementation.
 
 ### Supported Wasm Features & Limits
 
@@ -282,7 +288,7 @@ The accompanying Rust contract can declare the imports with `#[link(wasm_import_
 - [x] Manifest overlay merge + permission deduplication
 - [x] Method-token inference for `System.Contract.Call` and syscall usage
 - [x] Comprehensive unit tests for translator modules
-- [x] Production-grade Rust contract examples (10 templates covering NEP‑17, NEP‑11, multisig, escrow, DAO, oracle, NFT marketplace, etc.)
+- [x] Production-grade Rust contract examples (14 templates covering NEP‑17, NEP‑11, AMM/Uniswap-style routing, staking, timelocks, flashloans, multisig, escrow, DAO, oracle, NFT marketplace, etc.)
 - [x] Makefile automation (`make examples`) to build and translate every contract
 - [x] Documentation for quick start, contract catalogue, and Neo Express deployment
 - [x] **Solana compatibility layer** (`neo-solana-compat`) with full API support (Pubkey, AccountInfo, ProgramError, invoke)
@@ -372,6 +378,11 @@ Unsupported instructions (floating-point, reference types beyond funcref, and mu
 │   ├── hello-world/      # Basic Neo contract
 │   ├── nep17-token/      # NEP-17 fungible token standard
 │   ├── nep11-nft/        # NEP-11 non-fungible token standard
+│   ├── constant-product/ # Constant-product AMM sample
+│   ├── uniswap-v2/       # Uniswap V2-style router sample
+│   ├── staking-rewards/  # Staking rewards pool sample
+│   ├── timelock-vault/   # Timelock/vesting vault sample
+│   ├── flashloan-pool/   # Flashloan pool sample
 │   ├── solana-hello/     # Cross-chain Solana program example
 │   ├── move-coin/        # Move-style coin with resource semantics
 │   ├── multisig-wallet/  # Multi-signature wallet

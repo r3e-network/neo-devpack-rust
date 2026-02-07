@@ -120,6 +120,52 @@ impl RuntimeHelpers {
         index
     }
 
+    pub(crate) fn register_ref_func_constant(&mut self, function_index: u32) {
+        self.ref_func_constants.insert(function_index);
+    }
+
+    pub(crate) fn call_indirect_candidates(&self, table_index: usize) -> Result<Vec<u32>> {
+        let table = self.table_descriptor_const(table_index)?;
+        let mut candidates = std::collections::BTreeSet::<u32>::new();
+
+        for &entry in &table.initial_entries {
+            if entry == FUNCREF_NULL as i32 {
+                continue;
+            }
+            if entry < 0 {
+                bail!(
+                    "table {} contains invalid negative function index {}",
+                    table_index,
+                    entry
+                );
+            }
+            candidates.insert(entry as u32);
+        }
+
+        for segment in &self.element_segments {
+            if let ElementSegmentKind::Passive { .. } = segment.kind {
+                for &entry in &segment.values {
+                    if entry == FUNCREF_NULL as i32 {
+                        continue;
+                    }
+                    if entry < 0 {
+                        bail!(
+                            "passive element contains invalid negative function index {}",
+                            entry
+                        );
+                    }
+                    candidates.insert(entry as u32);
+                }
+            }
+        }
+
+        for &function_index in &self.ref_func_constants {
+            candidates.insert(function_index);
+        }
+
+        Ok(candidates.into_iter().collect())
+    }
+
     pub(crate) fn ensure_passive_element(
         &mut self,
         index: usize,
