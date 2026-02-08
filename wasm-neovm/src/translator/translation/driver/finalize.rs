@@ -4,6 +4,7 @@ use import_stub::emit_import_export_stub;
 use start::{append_start_stub, resolve_start_descriptor};
 
 use super::state::DriverState;
+use crate::translator::runtime::FinalizeParams;
 
 impl DriverState {
     pub(super) fn finalize(mut self) -> Result<Translation> {
@@ -149,16 +150,16 @@ impl DriverState {
             adapter,
         )?;
 
-        self.runtime.finalize(
-            &mut self.script,
-            start_descriptor.as_ref(),
-            self.frontend.imports(),
-            self.frontend.module_types().signatures(),
-            self.frontend.module_types().defined_type_indices(),
-            self.function_registry.as_mut(),
-            &mut self.feature_tracker,
+        self.runtime.finalize(FinalizeParams {
+            script: &mut self.script,
+            start: start_descriptor.as_ref(),
+            imports: self.frontend.imports(),
+            types: self.frontend.module_types().signatures(),
+            func_type_indices: self.frontend.module_types().defined_type_indices(),
+            functions: self.function_registry.as_mut(),
+            features: &mut self.feature_tracker,
             adapter,
-        )?;
+        })?;
 
         if let Some(descriptor) = &start_descriptor {
             if let (Some(init_offset), Some(start_slot)) =

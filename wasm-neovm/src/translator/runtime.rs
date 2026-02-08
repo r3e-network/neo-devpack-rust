@@ -102,6 +102,7 @@ mod tokens;
 mod types;
 
 pub(crate) use bits::{emit_bit_count, emit_select, emit_sign_extend, emit_zero_extend};
+pub(crate) use helpers_impl::finalize::FinalizeParams;
 pub(crate) use memory::{
     ensure_memory_access, evaluate_global_init, evaluate_offset_expr, translate_data_drop,
     translate_memory_copy, translate_memory_fill, translate_memory_init, translate_memory_load,

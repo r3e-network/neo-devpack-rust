@@ -1,4 +1,4 @@
-mod finalize;
+pub(crate) mod finalize;
 mod globals;
 mod memory;
 mod records;

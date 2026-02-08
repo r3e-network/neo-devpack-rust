@@ -4,6 +4,18 @@ mod init_helper;
 mod passive_data;
 mod realize;
 
+/// Bundled parameters for the `RuntimeHelpers::finalize` method.
+pub(crate) struct FinalizeParams<'a> {
+    pub script: &'a mut Vec<u8>,
+    pub start: Option<&'a StartDescriptor>,
+    pub imports: &'a [FunctionImport],
+    pub types: &'a [FuncType],
+    pub func_type_indices: &'a [u32],
+    pub functions: Option<&'a mut FunctionRegistry>,
+    pub features: &'a mut FeatureTracker,
+    pub adapter: &'a dyn ChainAdapter,
+}
+
 impl RuntimeHelpers {
     pub(crate) fn emit_memory_init_call(&mut self, script: &mut Vec<u8>) -> Result<()> {
         if self.memory_init_suppressed {
@@ -24,28 +36,24 @@ impl RuntimeHelpers {
         previous
     }
 
-    pub(crate) fn finalize(
-        &mut self,
-        script: &mut Vec<u8>,
-        start: Option<&StartDescriptor>,
-        imports: &[FunctionImport],
-        types: &[FuncType],
-        func_type_indices: &[u32],
-        functions: Option<&mut FunctionRegistry>,
-        features: &mut FeatureTracker,
-        adapter: &dyn ChainAdapter,
-    ) -> Result<()> {
-        self.prepare_init_helper(script, start, imports, types, adapter)?;
-        self.realize_helper_calls(
-            script,
-            imports,
-            types,
-            func_type_indices,
-            functions,
-            features,
-            adapter,
+    pub(crate) fn finalize(&mut self, params: FinalizeParams<'_>) -> Result<()> {
+        self.prepare_init_helper(
+            params.script,
+            params.start,
+            params.imports,
+            params.types,
+            params.adapter,
         )?;
-        self.emit_passive_data_helpers(script)?;
+        self.realize_helper_calls(
+            params.script,
+            params.imports,
+            params.types,
+            params.func_type_indices,
+            params.functions,
+            params.features,
+            params.adapter,
+        )?;
+        self.emit_passive_data_helpers(params.script)?;
         Ok(())
     }
 
