@@ -970,7 +970,7 @@ dependencies = [
 
 [[package]]
 name = "wasm-neovm"
-version = "0.4.6"
+version = "0.4.7-dev"
 dependencies = [
  "anyhow",
  "assert_cmd",

@@ -10,6 +10,18 @@ this repository follow independent versioning (currently 0.1.x).
 
 ## [Unreleased]
 
+### Added
+- _TBD_
+
+### Changed
+- _TBD_
+
+### Fixed
+- _TBD_
+
+### Verification
+- _TBD_
+
 ## [0.4.6] - 2026-02-11
 
 ### Changed
