@@ -101,3 +101,21 @@ fn neovm_syscall_rejects_argument_type_mismatch() {
     let err = neovm_syscall(info.hash, &args).unwrap_err();
     assert!(err.message().contains("invalid syscall argument type"));
 }
+
+#[test]
+fn neovm_syscall_rejects_invalid_hash160_length() {
+    let registry = registry();
+    let info = registry
+        .get_syscall("System.Contract.Call")
+        .expect("syscall exists");
+
+    let args = [
+        NeoValue::from(NeoByteString::new(vec![0u8; 19])),
+        NeoValue::from(NeoString::from_str("transfer")),
+        NeoValue::from(NeoInteger::new(0)),
+        NeoValue::from(NeoArray::<NeoValue>::new()),
+    ];
+
+    let err = neovm_syscall(info.hash, &args).unwrap_err();
+    assert!(err.message().contains("invalid syscall argument type"));
+}

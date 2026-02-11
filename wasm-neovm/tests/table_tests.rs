@@ -249,19 +249,12 @@ fn translate_table_element_negative_offset_fails_with_bounds_error() {
     .expect("valid wat");
 
     let err = translate_module(&wasm, "TableElemNegOffset")
-        .expect_err("element segment offset should be interpreted as u32 and trap on table bounds");
-    let reports_bounds = err
-        .chain()
-        .any(|cause| cause.to_string().contains("writes past table bounds"));
-    assert!(reports_bounds, "unexpected error: {err}");
+        .expect_err("element segment negative offset should be rejected");
 
     let reports_negative = err
         .chain()
         .any(|cause| cause.to_string().contains("must be non-negative"));
-    assert!(
-        !reports_negative,
-        "unexpected negative-offset rejection: {err}"
-    );
+    assert!(reports_negative, "unexpected error: {err}");
 }
 
 #[test]

@@ -39,7 +39,13 @@ fn value_matches_param_type(value: &NeoValue, param_type: &str) -> bool {
     match param_type {
         "Boolean" => value.as_boolean().is_some(),
         "Integer" => value.as_integer().is_some(),
-        "Hash160" => value.is_null() || value.as_byte_string().is_some(),
+        "Hash160" => {
+            value.is_null()
+                || value
+                    .as_byte_string()
+                    .map(|bytes| bytes.len() == 20)
+                    .unwrap_or(false)
+        }
         "ByteString" => value.as_byte_string().is_some(),
         "String" => value.as_string().is_some(),
         "Array" => value.as_array().is_some(),

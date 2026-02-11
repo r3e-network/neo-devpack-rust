@@ -23,7 +23,8 @@ impl DriverState {
                     }
                     let offset_raw = evaluate_offset_expr(offset_expr)
                         .context("failed to evaluate active data segment offset")?;
-                    let offset = (offset_raw as u32) as u64;
+                    let offset = u64::try_from(offset_raw)
+                        .map_err(|_| anyhow!("active data segment offset must be non-negative"))?;
                     self.runtime
                         .register_active_segment(memory_index, offset, data_bytes)
                         .context("failed to register active data segment")?;

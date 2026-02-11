@@ -13,10 +13,13 @@ impl DriverState {
                     table_index,
                     offset_expr,
                 } => {
-                    let table_idx = table_index.unwrap_or(0) as usize;
+                    let table_index = table_index.unwrap_or(0);
+                    let table_idx = usize::try_from(table_index)
+                        .map_err(|_| anyhow!("element table index {} exceeds usize range", table_index))?;
                     let offset_raw = evaluate_offset_expr(offset_expr)
                         .context("failed to evaluate element offset")?;
-                    let offset = (offset_raw as u32) as usize;
+                    let offset = usize::try_from(offset_raw)
+                        .map_err(|_| anyhow!("element segment offset must be non-negative"))?;
                     (Some(table_idx), Some(offset))
                 }
                 wasmparser::ElementKind::Passive => (None, None),
@@ -76,8 +79,16 @@ impl DriverState {
 
             let values_i32: Vec<i32> = func_refs
                 .iter()
-                .map(|opt| opt.map(|v| v as i32).unwrap_or(FUNCREF_NULL as i32))
-                .collect();
+                .map(|opt| match opt {
+                    Some(value) => i32::try_from(*value).map_err(|_| {
+                        anyhow!(
+                            "function index {} exceeds i32 range for table representation",
+                            value
+                        )
+                    }),
+                    None => Ok(FUNCREF_NULL as i32),
+                })
+                .collect::<Result<Vec<_>>>()?;
 
             if let Some(table_index) = table_index_opt {
                 let offset = offset_opt

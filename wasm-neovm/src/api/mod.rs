@@ -181,8 +181,10 @@ pub struct TranslationBuilder {
 }
 
 impl TranslationBuilder {
-    /// Create a new translation builder
-    pub fn new(contract_name: impl Into<ContractName>) -> Self {
+    /// Create a new translation builder.
+    ///
+    /// Empty names are normalized to `"Contract"` to avoid constructor-time panics.
+    pub fn new(contract_name: impl AsRef<str>) -> Self {
         Self {
             config: TranslationConfig::new(contract_name),
             wasm_bytes: None,
@@ -319,6 +321,15 @@ mod tests {
             .with_wasm(vec![0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]);
 
         assert!(builder.wasm_bytes.is_some());
+    }
+
+    #[test]
+    fn test_translation_builder_new_empty_name_defaults_to_contract() {
+        let builder = TranslationBuilder::new("")
+            .from_chain(SourceChain::Neo)
+            .with_wasm(vec![0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]);
+
+        assert_eq!(builder.config.contract_name.as_str(), "Contract");
     }
 
     #[test]

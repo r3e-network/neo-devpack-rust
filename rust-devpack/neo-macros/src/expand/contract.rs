@@ -2,7 +2,7 @@
 // Licensed under the MIT License
 
 use proc_macro2::TokenStream as TokenStream2;
-use quote::quote;
+use quote::{format_ident, quote};
 use syn::{
     DeriveInput, FnArg, GenericArgument, ImplItem, ImplItemFn, Item, ItemImpl, LitStr, Pat,
     PatIdent, PathArguments, ReturnType, Type,
@@ -122,46 +122,72 @@ impl ExportedMethod {
             }
         };
 
-        let method_name = method_ident.to_string();
+        let status_slot_ident = format_ident!("__neo_status_{}", export_ident);
+        let status_getter_ident = format_ident!("{}LastError", export_ident);
 
-        let (wrapper_output, body) = match output_kind {
+        let (wrapper_output, body, tracks_status) = match output_kind {
             ExportOutputKind::ResultNeoInteger => (
                 quote! { i64 },
                 quote! {
                     match { #invoke } {
-                        Ok(value) => value.as_i64_saturating(),
-                        Err(error) => -error.status_code(),
+                        Ok(value) => {
+                            #status_slot_ident.store(0, ::core::sync::atomic::Ordering::Relaxed);
+                            value.as_i64_saturating()
+                        }
+                        Err(error) => {
+                            #status_slot_ident.store(
+                                error.status_code(),
+                                ::core::sync::atomic::Ordering::Relaxed,
+                            );
+                            0i64
+                        }
                     }
                 },
+                true,
             ),
             ExportOutputKind::ResultNeoBoolean => (
                 quote! { i64 },
                 quote! {
                     match { #invoke } {
                         Ok(value) => {
+                            #status_slot_ident.store(0, ::core::sync::atomic::Ordering::Relaxed);
                             if value.as_bool() {
                                 1i64
                             } else {
                                 0i64
                             }
                         }
-                        Err(error) => -error.status_code(),
+                        Err(error) => {
+                            #status_slot_ident.store(
+                                error.status_code(),
+                                ::core::sync::atomic::Ordering::Relaxed,
+                            );
+                            0i64
+                        }
                     }
                 },
+                true,
             ),
             ExportOutputKind::ResultVoid => (
                 quote! { () },
                 quote! {
                     if let Err(error) = { #invoke } {
-                        panic!("neo_method wrapper '{}' failed: {}", #method_name, error);
+                        #status_slot_ident.store(
+                            error.status_code(),
+                            ::core::sync::atomic::Ordering::Relaxed,
+                        );
+                    } else {
+                        #status_slot_ident.store(0, ::core::sync::atomic::Ordering::Relaxed);
                     }
                 },
+                true,
             ),
             ExportOutputKind::NeoInteger => (
                 quote! { i64 },
                 quote! {
                     { #invoke }.as_i64_saturating()
                 },
+                false,
             ),
             ExportOutputKind::NeoBoolean => (
                 quote! { i64 },
@@ -172,12 +198,14 @@ impl ExportedMethod {
                         0i64
                     }
                 },
+                false,
             ),
             ExportOutputKind::I64 => (
                 quote! { i64 },
                 quote! {
                     { #invoke }
                 },
+                false,
             ),
             ExportOutputKind::Bool => (
                 quote! { i64 },
@@ -188,16 +216,33 @@ impl ExportedMethod {
                         0i64
                     }
                 },
+                false,
             ),
             ExportOutputKind::Void => (
                 quote! { () },
                 quote! {
                     { #invoke };
                 },
+                false,
             ),
         };
 
+        let status_support = if tracks_status {
+            quote! {
+                static #status_slot_ident: ::core::sync::atomic::AtomicI64 =
+                    ::core::sync::atomic::AtomicI64::new(0);
+
+                #[no_mangle]
+                pub extern "C" fn #status_getter_ident() -> i64 {
+                    #status_slot_ident.load(::core::sync::atomic::Ordering::Relaxed)
+                }
+            }
+        } else {
+            quote! {}
+        };
+
         Ok(quote! {
+            #status_support
             #safe_attr
             #[no_mangle]
             pub extern "C" fn #export_ident(#(#wrapper_inputs),*) -> #wrapper_output {

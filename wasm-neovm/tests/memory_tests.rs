@@ -278,21 +278,12 @@ fn translate_active_data_segment_negative_offset_fails_with_bounds_error() {
     .expect("valid wat");
 
     let err = translate_module(&wasm, "ActiveDataNegOffset")
-        .expect_err("active data segment offset should be interpreted as u32 and trap on bounds");
-    let reports_bounds = err.chain().any(|cause| {
-        cause
-            .to_string()
-            .contains("active data segment exceeds initial memory size")
-    });
-    assert!(reports_bounds, "unexpected error: {err}");
+        .expect_err("active data segment negative offset should be rejected");
 
     let reports_negative = err
         .chain()
         .any(|cause| cause.to_string().contains("must be non-negative"));
-    assert!(
-        !reports_negative,
-        "unexpected negative-offset rejection: {err}"
-    );
+    assert!(reports_negative, "unexpected error: {err}");
 }
 
 #[test]

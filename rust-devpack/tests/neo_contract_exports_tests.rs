@@ -36,6 +36,15 @@ impl ExportedContract {
     pub fn fail_boolean(&self) -> NeoResult<NeoBoolean> {
         Err(NeoError::InvalidType)
     }
+
+    #[neo_method]
+    pub fn maybe_touch(&self, should_fail: NeoBoolean) -> NeoResult<()> {
+        if should_fail.as_bool() {
+            Err(NeoError::InvalidOperation)
+        } else {
+            Ok(())
+        }
+    }
 }
 
 impl Default for ExportedContract {
@@ -47,9 +56,24 @@ impl Default for ExportedContract {
 #[test]
 fn generated_exports_are_callable() {
     assert_eq!(getValue(7), 7);
+    assert_eq!(getValueLastError(), 0);
+
     assert_eq!(isPositive(4), 1);
     assert_eq!(isPositive(0), 0);
+    assert_eq!(isPositiveLastError(), 0);
+
     assert_eq!(hugeValue(), i64::MAX);
-    assert_eq!(failInteger(), -NeoError::InvalidArgument.status_code());
-    assert_eq!(failBoolean(), -NeoError::InvalidType.status_code());
+    assert_eq!(hugeValueLastError(), 0);
+
+    assert_eq!(failInteger(), 0);
+    assert_eq!(failIntegerLastError(), NeoError::InvalidArgument.status_code());
+
+    assert_eq!(failBoolean(), 0);
+    assert_eq!(failBooleanLastError(), NeoError::InvalidType.status_code());
+
+    maybeTouch(0);
+    assert_eq!(maybeTouchLastError(), 0);
+
+    maybeTouch(1);
+    assert_eq!(maybeTouchLastError(), NeoError::InvalidOperation.status_code());
 }

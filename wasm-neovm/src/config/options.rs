@@ -52,10 +52,15 @@ pub struct ManifestOverlay {
 }
 
 impl TranslationConfig {
-    /// Create a new translation config with the given contract name
-    pub fn new(contract_name: impl Into<ContractName>) -> Self {
+    /// Create a new translation config with the given contract name.
+    ///
+    /// Empty names are normalized to `"Contract"` to avoid constructor-time panics.
+    pub fn new(contract_name: impl AsRef<str>) -> Self {
+        let contract_name = ContractName::try_new(contract_name.as_ref())
+            .unwrap_or_else(|| ContractName::new("Contract"));
+
         Self {
-            contract_name: contract_name.into(),
+            contract_name,
             source_chain: SourceChain::default(),
             source_url: None,
             manifest_overlay: None,
@@ -355,6 +360,12 @@ mod tests {
         assert_eq!(config.source_chain, SourceChain::Solana);
         assert_eq!(config.source_url, Some("https://example.com".to_string()));
         assert_eq!(config.behavior.max_memory_pages, 2048);
+    }
+
+    #[test]
+    fn test_translation_config_empty_name_defaults_to_contract() {
+        let config = TranslationConfig::new("");
+        assert_eq!(config.contract_name.as_str(), "Contract");
     }
 
     #[test]
