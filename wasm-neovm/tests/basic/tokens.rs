@@ -180,3 +180,106 @@ fn translate_infers_contract_call_tokens() {
     assert_eq!(tokens_value.len(), 1);
     assert_eq!(tokens_value[0]["method"].as_str(), Some("ping"));
 }
+
+#[test]
+fn translate_skips_contract_call_tokens_with_excessive_parameter_count() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (import "opcode" "RAW" (func $raw (param i32)))
+              (import "opcode" "PUSHINT32" (func $pushint32 (param i32)))
+              (import "opcode" "NEWARRAY0" (func $newarray0))
+              (import "syscall" "System.Contract.Call" (func $call (result i32)))
+              (func (export "main") (result i32)
+                ;; PUSHDATA1 (0x0C) with length 20
+                i32.const 12
+                call $raw
+                i32.const 20
+                call $raw
+                i32.const 1
+                call $raw
+                i32.const 2
+                call $raw
+                i32.const 3
+                call $raw
+                i32.const 4
+                call $raw
+                i32.const 5
+                call $raw
+                i32.const 6
+                call $raw
+                i32.const 7
+                call $raw
+                i32.const 8
+                call $raw
+                i32.const 9
+                call $raw
+                i32.const 10
+                call $raw
+                i32.const 11
+                call $raw
+                i32.const 12
+                call $raw
+                i32.const 13
+                call $raw
+                i32.const 14
+                call $raw
+                i32.const 15
+                call $raw
+                i32.const 16
+                call $raw
+                i32.const 17
+                call $raw
+                i32.const 18
+                call $raw
+                i32.const 19
+                call $raw
+                i32.const 20
+                call $raw
+                ;; PUSHDATA1 (0x0C) with length 4 for "ping"
+                i32.const 12
+                call $raw
+                i32.const 4
+                call $raw
+                i32.const 112
+                call $raw
+                i32.const 105
+                call $raw
+                i32.const 110
+                call $raw
+                i32.const 103
+                call $raw
+                ;; 70000 args would overflow u16 if truncated
+                i32.const 70000
+                call $pushint32
+                call $newarray0
+                call $call)
+            )"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "OverflowCaller").expect("translation succeeds");
+
+    assert!(translation
+        .method_tokens
+        .iter()
+        .all(|token| token.method != "ping"));
+}
+
+#[test]
+fn translate_rejects_empty_contract_name() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (func (export "main")
+                nop)
+            )"#,
+    )
+    .expect("valid wat");
+
+    let err = translate_module(&wasm, "").expect_err("empty contract name should error");
+    let message = err.to_string();
+    assert!(
+        message
+            .to_ascii_lowercase()
+            .contains("contract name cannot be empty")
+    );
+}

@@ -220,7 +220,10 @@ impl RuntimeHelpers {
     #[allow(dead_code)]
     pub(crate) fn acquire_buffer(&self, capacity: usize) -> Vec<u8> {
         match &self.buffer_pool {
-            Some(pool) => pool.lock().unwrap().acquire(capacity),
+            Some(pool) => match pool.lock() {
+                Ok(mut guard) => guard.acquire(capacity),
+                Err(poisoned) => poisoned.into_inner().acquire(capacity),
+            },
             None => Vec::with_capacity(capacity),
         }
     }
@@ -230,7 +233,10 @@ impl RuntimeHelpers {
     #[allow(dead_code)]
     pub(crate) fn release_buffer(&self, buf: Vec<u8>) {
         if let Some(pool) = &self.buffer_pool {
-            pool.lock().unwrap().release(buf);
+            match pool.lock() {
+                Ok(mut guard) => guard.release(buf),
+                Err(poisoned) => poisoned.into_inner().release(buf),
+            }
         }
     }
 }
@@ -248,4 +254,28 @@ pub(crate) enum StartKind {
 pub(crate) struct StartHelper<'a> {
     slot: usize,
     descriptor: &'a StartDescriptor,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{RuntimeHelpers, TranslationMemoryPool};
+    use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn acquire_buffer_recovers_from_poisoned_pool_lock() {
+        let pool = Arc::new(Mutex::new(TranslationMemoryPool::default()));
+        let _ = std::panic::catch_unwind({
+            let pool = Arc::clone(&pool);
+            move || {
+                let _guard = pool.lock().unwrap();
+                panic!("poison pool lock");
+            }
+        });
+
+        let helpers = RuntimeHelpers::with_capacity(0, 0, 0).with_memory_pool(Arc::clone(&pool));
+        let buffer = helpers.acquire_buffer(256);
+        assert!(buffer.capacity() >= 256);
+
+        helpers.release_buffer(buffer);
+    }
 }

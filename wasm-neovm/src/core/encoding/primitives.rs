@@ -5,6 +5,9 @@
 
 use super::error::{EncodingError, EncodingResult};
 
+/// Maximum decoded byte/string payload accepted by encoding helpers.
+pub const MAX_DECODE_BYTES: usize = 16 * 1024 * 1024;
+
 /// Encode a variable-length integer (compact encoding)
 pub fn encode_varint(value: u64) -> Vec<u8> {
     if value < 253 {
@@ -75,6 +78,10 @@ pub fn decode_string(bytes: &[u8]) -> EncodingResult<(String, usize)> {
     let (len, prefix_len) = decode_varint(bytes)?;
     let len = len as usize;
 
+    if len > MAX_DECODE_BYTES {
+        return Err(EncodingError::OutOfRange);
+    }
+
     if bytes.len() < prefix_len + len {
         return Err(EncodingError::BufferTooSmall);
     }
@@ -96,6 +103,10 @@ pub fn encode_bytes(data: &[u8]) -> Vec<u8> {
 pub fn decode_bytes(bytes: &[u8]) -> EncodingResult<(Vec<u8>, usize)> {
     let (len, prefix_len) = decode_varint(bytes)?;
     let len = len as usize;
+
+    if len > MAX_DECODE_BYTES {
+        return Err(EncodingError::OutOfRange);
+    }
 
     if bytes.len() < prefix_len + len {
         return Err(EncodingError::BufferTooSmall);

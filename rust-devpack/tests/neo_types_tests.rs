@@ -371,9 +371,12 @@ fn test_neo_error() {
         NeoError::Custom("Test error".to_string()),
     ];
 
-    for error in errors {
+    let expected_codes = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+    for (error, expected_code) in errors.into_iter().zip(expected_codes) {
         let error_string = format!("{}", error);
         assert!(!error_string.is_empty());
+        assert_eq!(error.status_code(), expected_code);
     }
 }
 

@@ -93,4 +93,20 @@ mod tests {
         reader.seek(3).unwrap();
         assert_eq!(reader.read_u8().unwrap(), 0x04);
     }
+
+    #[test]
+    fn test_decode_string_rejects_excessive_declared_length() {
+        let oversized = primitives::MAX_DECODE_BYTES as u64 + 1;
+        let encoded = encode_varint(oversized);
+        let err = decode_string(&encoded).unwrap_err();
+        assert_eq!(err, EncodingError::OutOfRange);
+    }
+
+    #[test]
+    fn test_decode_bytes_rejects_excessive_declared_length() {
+        let oversized = primitives::MAX_DECODE_BYTES as u64 + 1;
+        let encoded = encode_varint(oversized);
+        let err = decode_bytes(&encoded).unwrap_err();
+        assert_eq!(err, EncodingError::OutOfRange);
+    }
 }

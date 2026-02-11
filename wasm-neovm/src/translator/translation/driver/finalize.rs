@@ -231,7 +231,8 @@ impl DriverState {
             manifest: manifest_builder.into_rendered(),
             method_tokens: metadata.method_tokens.clone(),
             source_url: metadata.source.clone(),
-            contract_name: crate::types::ContractName::new(self.contract_name),
+            contract_name: crate::types::ContractName::try_new(self.contract_name)
+                .ok_or_else(|| anyhow!("contract name cannot be empty"))?,
         })
     }
 }

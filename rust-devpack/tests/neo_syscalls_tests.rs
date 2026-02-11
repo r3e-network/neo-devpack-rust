@@ -20,7 +20,7 @@ fn placeholder_arg(param: &str) -> NeoValue {
             NeoByteString::new(vec![]).into()
         }
         "String" => NeoString::from_str("").into(),
-        "Array" => NeoArray::<NeoValue>::new().into(),
+        "Array" | "Iterator" => NeoArray::<NeoValue>::new().into(),
         "Map" => NeoMap::<NeoValue, NeoValue>::new().into(),
         "Struct" => NeoStruct::new().into(),
         _ => NeoValue::Null,
@@ -77,6 +77,27 @@ fn neovm_syscall_returns_placeholder_for_known_entries() {
 
 #[test]
 fn neovm_syscall_handles_unknown_hash() {
-    let result = neovm_syscall(0xDEADBEEF, &[]).expect("unexpected error for unknown syscall");
-    assert!(result.is_null());
+    let result = neovm_syscall(0xDEADBEEF, &[]);
+    assert!(result.is_err());
+}
+
+#[test]
+fn neovm_syscall_rejects_argument_count_mismatch() {
+    let registry = registry();
+    let info = registry
+        .get_syscall("System.Runtime.Log")
+        .expect("syscall exists");
+    let err = neovm_syscall(info.hash, &[]).unwrap_err();
+    assert!(err.message().contains("invalid syscall argument count"));
+}
+
+#[test]
+fn neovm_syscall_rejects_argument_type_mismatch() {
+    let registry = registry();
+    let info = registry
+        .get_syscall("System.Runtime.Log")
+        .expect("syscall exists");
+    let args = [NeoValue::from(NeoInteger::new(7))];
+    let err = neovm_syscall(info.hash, &args).unwrap_err();
+    assert!(err.message().contains("invalid syscall argument type"));
 }

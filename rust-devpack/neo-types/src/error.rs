@@ -63,6 +63,25 @@ impl NeoError {
         NeoError::Custom(message.to_string())
     }
 
+    /// Returns a stable status code for this error variant.
+    ///
+    /// These codes are used by generated export wrappers to avoid silently
+    /// treating failures as successful `0` values.
+    pub fn status_code(&self) -> i64 {
+        match self {
+            NeoError::InvalidOperation => 1,
+            NeoError::InvalidArgument => 2,
+            NeoError::InvalidType => 3,
+            NeoError::OutOfBounds => 4,
+            NeoError::DivisionByZero => 5,
+            NeoError::Overflow => 6,
+            NeoError::Underflow => 7,
+            NeoError::NullReference => 8,
+            NeoError::InvalidState => 9,
+            NeoError::Custom(_) => 10,
+        }
+    }
+
     /// Returns the error message if this is a custom error, otherwise returns a generic description.
     pub fn message(&self) -> &str {
         match self {

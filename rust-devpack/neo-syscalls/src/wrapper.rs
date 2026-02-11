@@ -13,8 +13,10 @@ fn find_syscall(name: &str) -> Option<&'static NeoVMSyscallInfo> {
     SYSCALLS.iter().find(|info| info.name == name)
 }
 
-fn syscall_hash(name: &str) -> u32 {
-    find_syscall(name).expect("unknown syscall").hash
+fn syscall_hash(name: &str) -> NeoResult<u32> {
+    find_syscall(name)
+        .map(|info| info.hash)
+        .ok_or_else(|| NeoError::new(&format!("unknown syscall: {name}")))
 }
 
 fn default_value_for(return_type: &str) -> NeoValue {
@@ -33,14 +35,47 @@ fn default_value_for(return_type: &str) -> NeoValue {
     }
 }
 
-/// Neo N3 System Call Function
-pub fn neovm_syscall(hash: u32, _args: &[NeoValue]) -> NeoResult<NeoValue> {
-    let registry = crate::NeoVMSyscallRegistry::get_instance();
-    if let Some(info) = registry.get_syscall_by_hash(hash) {
-        Ok(default_value_for(info.return_type))
-    } else {
-        Ok(NeoValue::Null)
+fn value_matches_param_type(value: &NeoValue, param_type: &str) -> bool {
+    match param_type {
+        "Boolean" => value.as_boolean().is_some(),
+        "Integer" => value.as_integer().is_some(),
+        "Hash160" => value.is_null() || value.as_byte_string().is_some(),
+        "ByteString" => value.as_byte_string().is_some(),
+        "String" => value.as_string().is_some(),
+        "Array" => value.as_array().is_some(),
+        "Iterator" => value.as_array().is_some(),
+        "StorageContext" => value.is_null() || value.as_integer().is_some(),
+        "StackItem" | "Any" | "ExecutionContext" => true,
+        _ => true,
     }
+}
+
+/// Neo N3 System Call Function
+pub fn neovm_syscall(hash: u32, args: &[NeoValue]) -> NeoResult<NeoValue> {
+    let registry = crate::NeoVMSyscallRegistry::get_instance();
+    let info = registry
+        .get_syscall_by_hash(hash)
+        .ok_or_else(|| NeoError::new(&format!("unknown syscall hash: 0x{hash:08x}")))?;
+
+    if args.len() != info.parameters.len() {
+        return Err(NeoError::new(&format!(
+            "invalid syscall argument count for {}: expected {}, got {}",
+            info.name,
+            info.parameters.len(),
+            args.len()
+        )));
+    }
+
+    for (index, (arg, expected_type)) in args.iter().zip(info.parameters.iter()).enumerate() {
+        if !value_matches_param_type(arg, expected_type) {
+            return Err(NeoError::new(&format!(
+                "invalid syscall argument type for {} param #{}: expected {}",
+                info.name, index, expected_type
+            )));
+        }
+    }
+
+    Ok(default_value_for(info.return_type))
 }
 
 /// Neo N3 System Call Wrapper
@@ -48,27 +83,27 @@ pub struct NeoVMSyscall;
 
 impl NeoVMSyscall {
     fn call_integer(name: &str) -> NeoResult<NeoInteger> {
-        let value = neovm_syscall(syscall_hash(name), &[])?;
+        let value = neovm_syscall(syscall_hash(name)?, &[])?;
         value.as_integer().ok_or(NeoError::InvalidType)
     }
 
     fn call_boolean(name: &str, args: &[NeoValue]) -> NeoResult<NeoBoolean> {
-        let value = neovm_syscall(syscall_hash(name), args)?;
+        let value = neovm_syscall(syscall_hash(name)?, args)?;
         value.as_boolean().ok_or(NeoError::InvalidType)
     }
 
     fn call_bytes(name: &str) -> NeoResult<NeoByteString> {
-        let value = neovm_syscall(syscall_hash(name), &[])?;
+        let value = neovm_syscall(syscall_hash(name)?, &[])?;
         value.as_byte_string().cloned().ok_or(NeoError::InvalidType)
     }
 
     fn call_string(name: &str) -> NeoResult<NeoString> {
-        let value = neovm_syscall(syscall_hash(name), &[])?;
+        let value = neovm_syscall(syscall_hash(name)?, &[])?;
         value.as_string().cloned().ok_or(NeoError::InvalidType)
     }
 
     fn call_array(name: &str, args: &[NeoValue]) -> NeoResult<NeoArray<NeoValue>> {
-        let value = neovm_syscall(syscall_hash(name), args)?;
+        let value = neovm_syscall(syscall_hash(name)?, args)?;
         value.as_array().cloned().ok_or(NeoError::InvalidType)
     }
 
@@ -85,15 +120,17 @@ impl NeoVMSyscall {
 
     /// Send notification to the runtime.
     pub fn notify(event: &NeoString, state: &NeoArray<NeoValue>) -> NeoResult<()> {
-        let args = [NeoValue::from(event.clone()), NeoValue::from(state.clone())];
-        neovm_syscall(syscall_hash("System.Runtime.Notify"), &args)?;
+        let event_bytes = NeoByteString::from_slice(event.as_str().as_bytes());
+        let args = [NeoValue::from(event_bytes), NeoValue::from(state.clone())];
+        neovm_syscall(syscall_hash("System.Runtime.Notify")?, &args)?;
         Ok(())
     }
 
     /// Log message to the runtime.
     pub fn log(message: &NeoString) -> NeoResult<()> {
-        let args = [NeoValue::from(message.clone())];
-        neovm_syscall(syscall_hash("System.Runtime.Log"), &args)?;
+        let message_bytes = NeoByteString::from_slice(message.as_str().as_bytes());
+        let args = [NeoValue::from(message_bytes)];
+        neovm_syscall(syscall_hash("System.Runtime.Log")?, &args)?;
         Ok(())
     }
 
@@ -140,9 +177,10 @@ impl NeoVMSyscall {
 
     /// Get notifications for the specified script hash, or all notifications if None.
     pub fn get_notifications(script_hash: Option<&NeoByteString>) -> NeoResult<NeoArray<NeoValue>> {
-        let args: Vec<NeoValue> = script_hash
-            .map(|hash| vec![NeoValue::from(hash.clone())])
-            .unwrap_or_default();
+        let script_hash_value = script_hash
+            .map(|hash| NeoValue::from(hash.clone()))
+            .unwrap_or(NeoValue::Null);
+        let args = [script_hash_value];
         Self::call_array("System.Runtime.GetNotifications", &args)
     }
 

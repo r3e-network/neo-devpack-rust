@@ -50,6 +50,11 @@ impl NeoInteger {
         self.0.to_u32()
     }
 
+    /// Convert to i64, returning None if the value is out of range.
+    pub fn try_as_i64(&self) -> Option<i64> {
+        self.0.to_i64()
+    }
+
     /// Convert to i32, saturating at the boundaries if the value is out of range.
     /// This never panics.
     pub fn as_i32_saturating(&self) -> i32 {
@@ -70,6 +75,18 @@ impl NeoInteger {
                 0
             } else {
                 u32::MAX
+            }
+        })
+    }
+
+    /// Convert to i64, saturating at the boundaries if the value is out of range.
+    /// This never panics.
+    pub fn as_i64_saturating(&self) -> i64 {
+        self.0.to_i64().unwrap_or_else(|| {
+            if self.0.sign() == num_bigint::Sign::Minus {
+                i64::MIN
+            } else {
+                i64::MAX
             }
         })
     }
@@ -104,6 +121,10 @@ impl NeoInteger {
 
     pub fn to_u32(&self) -> Option<u32> {
         self.0.to_u32()
+    }
+
+    pub fn to_i64(&self) -> Option<i64> {
+        self.0.to_i64()
     }
 }
 

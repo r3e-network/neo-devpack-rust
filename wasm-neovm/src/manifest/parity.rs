@@ -55,13 +55,15 @@ pub(super) fn collect_method_shapes(manifest: &Value) -> Result<HashMap<String, 
             .get("offset")
             .and_then(Value::as_u64)
             .ok_or_else(|| anyhow!("manifest method '{}' missing offset", name))?;
+        let offset_u32 = u32::try_from(offset)
+            .map_err(|_| anyhow!("manifest method '{}' offset exceeds u32 range", name))?;
 
         shapes.insert(
             name,
             MethodShape {
                 param_types,
                 return_type: return_type.to_string(),
-                offset: offset as u32,
+                offset: offset_u32,
             },
         );
     }

@@ -122,13 +122,15 @@ impl ExportedMethod {
             }
         };
 
+        let method_name = method_ident.to_string();
+
         let (wrapper_output, body) = match output_kind {
             ExportOutputKind::ResultNeoInteger => (
                 quote! { i64 },
                 quote! {
                     match { #invoke } {
-                        Ok(value) => value.as_i32_saturating() as i64,
-                        Err(_) => 0i64,
+                        Ok(value) => value.as_i64_saturating(),
+                        Err(error) => -error.status_code(),
                     }
                 },
             ),
@@ -143,20 +145,22 @@ impl ExportedMethod {
                                 0i64
                             }
                         }
-                        Err(_) => 0i64,
+                        Err(error) => -error.status_code(),
                     }
                 },
             ),
             ExportOutputKind::ResultVoid => (
                 quote! { () },
                 quote! {
-                    let _ = { #invoke };
+                    if let Err(error) = { #invoke } {
+                        panic!("neo_method wrapper '{}' failed: {}", #method_name, error);
+                    }
                 },
             ),
             ExportOutputKind::NeoInteger => (
                 quote! { i64 },
                 quote! {
-                    { #invoke }.as_i32_saturating() as i64
+                    { #invoke }.as_i64_saturating()
                 },
             ),
             ExportOutputKind::NeoBoolean => (

@@ -189,6 +189,17 @@ impl TranslationBuilder {
         }
     }
 
+    /// Create a new translation builder with explicit contract-name validation.
+    pub fn try_new(contract_name: impl AsRef<str>) -> anyhow::Result<Self> {
+        let contract_name = contract_name.as_ref();
+        let contract_name = ContractName::try_new(contract_name)
+            .ok_or_else(|| anyhow::anyhow!("contract name cannot be empty"))?;
+        Ok(Self {
+            config: TranslationConfig::new(contract_name),
+            wasm_bytes: None,
+        })
+    }
+
     /// Set the WASM input bytes
     pub fn with_wasm(mut self, bytes: impl Into<Vec<u8>>) -> Self {
         self.wasm_bytes = Some(bytes.into());
@@ -260,9 +271,12 @@ impl TranslationBuilder {
 /// ```
 pub fn translate_wasm(
     wasm_bytes: &[u8],
-    contract_name: impl Into<ContractName>,
+    contract_name: impl AsRef<str>,
 ) -> anyhow::Result<Translation> {
-    translate_module(wasm_bytes, contract_name.into().as_str())
+    let contract_name = contract_name.as_ref();
+    let _ = ContractName::try_new(contract_name)
+        .ok_or_else(|| anyhow::anyhow!("contract name cannot be empty"))?;
+    translate_module(wasm_bytes, contract_name)
 }
 
 #[cfg(test)]
@@ -305,5 +319,39 @@ mod tests {
             .with_wasm(vec![0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]);
 
         assert!(builder.wasm_bytes.is_some());
+    }
+
+    #[test]
+    fn test_translation_builder_try_new_rejects_empty_contract_name() {
+        let err = TranslationBuilder::try_new("").expect_err("empty contract name should error");
+        assert!(err
+            .to_string()
+            .to_ascii_lowercase()
+            .contains("contract name cannot be empty"));
+    }
+
+    #[test]
+    fn test_translate_wasm_accepts_contract_name_value() {
+        let wasm = wat::parse_str(
+            r#"(module
+                  (func (export "main")
+                    nop)
+                )"#,
+        )
+        .expect("valid wat");
+
+        let name = ContractName::new("TypedName");
+        let translation = translate_wasm(&wasm, &name).expect("translation should succeed");
+        assert_eq!(translation.contract_name.as_str(), "TypedName");
+    }
+
+    #[test]
+    fn test_translate_wasm_rejects_empty_contract_name() {
+        let wasm = vec![0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00];
+        let err = translate_wasm(&wasm, "").expect_err("empty contract name should error");
+        assert!(err
+            .to_string()
+            .to_ascii_lowercase()
+            .contains("contract name cannot be empty"));
     }
 }

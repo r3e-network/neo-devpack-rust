@@ -234,3 +234,32 @@ fn ensure_manifest_methods_allows_type_overrides() {
         .ensure_method_parity()
         .expect("parameter/return types may be overridden when arity and offsets match");
 }
+
+#[test]
+fn ensure_manifest_methods_rejects_offset_out_of_u32_range() {
+    let methods = vec![crate::manifest::ManifestMethod {
+        name: "foo".to_string(),
+        parameters: vec![],
+        return_type: "Void".to_string(),
+        offset: 4,
+        safe: false,
+    }];
+
+    let mut builder = crate::manifest::ManifestBuilder::new("Contract", &methods);
+    let overlay = json!({
+        "abi": {
+            "methods": [{
+                "name": "foo",
+                "parameters": [],
+                "returntype": "Void",
+                "offset": 4294967296u64
+            }]
+        }
+    });
+    builder.merge_overlay(&overlay, Some("overlay.json".to_string()));
+
+    let err = builder.ensure_method_parity().unwrap_err();
+    assert!(err
+        .to_string()
+        .contains("offset exceeds u32 range"));
+}

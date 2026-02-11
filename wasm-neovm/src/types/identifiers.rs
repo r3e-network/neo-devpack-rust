@@ -53,6 +53,12 @@ impl Deref for ContractName {
     }
 }
 
+impl AsRef<str> for ContractName {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
 impl fmt::Display for ContractName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)

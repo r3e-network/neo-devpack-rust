@@ -46,7 +46,8 @@ impl Arena {
         let layout = Layout::new::<T>();
         let size = layout.size();
         let align = layout.align();
-        let aligned_pos = (self.pos.get() + align - 1) & !(align - 1);
+        let old_pos = self.pos.get();
+        let aligned_pos = (old_pos + align - 1) & !(align - 1);
 
         if aligned_pos + size > self.pos.get() + self.remaining.get() {
             self.grow(size.max(DEFAULT_BLOCK_SIZE));
@@ -55,11 +56,9 @@ impl Arena {
         let ptr = unsafe { self.current.get().unwrap().as_ptr().add(aligned_pos) };
 
         self.pos.set(aligned_pos + size);
-        self.remaining.set(
-            self.remaining
-                .get()
-                .saturating_sub(aligned_pos + size - self.pos.get()),
-        );
+        let consumed = (aligned_pos - old_pos) + size;
+        self.remaining
+            .set(self.remaining.get().saturating_sub(consumed));
         self.total_allocated.set(self.total_allocated.get() + size);
 
         unsafe {
@@ -108,5 +107,21 @@ impl Arena {
 impl Drop for Arena {
     fn drop(&mut self) {
         self.reset();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Arena, DEFAULT_BLOCK_SIZE};
+
+    #[test]
+    fn alloc_consumes_remaining_capacity() {
+        let arena = Arena::new();
+
+        let _ = arena.alloc(1u8);
+        assert_eq!(arena.remaining.get(), DEFAULT_BLOCK_SIZE - 1);
+
+        let _ = arena.alloc(2u8);
+        assert_eq!(arena.remaining.get(), DEFAULT_BLOCK_SIZE - 2);
     }
 }

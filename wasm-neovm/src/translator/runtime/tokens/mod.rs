@@ -56,17 +56,19 @@ pub(crate) fn infer_contract_tokens(script: &[u8]) -> Vec<MethodToken> {
                                         } else {
                                             true
                                         };
-                                        tokens.push(MethodToken {
-                                            contract_hash: {
-                                                let mut array = [0u8; HASH160_LENGTH];
-                                                array.copy_from_slice(&contract_hash);
-                                                array
-                                            },
-                                            method: method_name,
-                                            parameters_count: param_count as u16,
-                                            has_return_value,
-                                            call_flags: flags as u8,
-                                        });
+                                        if let Ok(parameters_count) = u16::try_from(param_count) {
+                                            tokens.push(MethodToken {
+                                                contract_hash: {
+                                                    let mut array = [0u8; HASH160_LENGTH];
+                                                    array.copy_from_slice(&contract_hash);
+                                                    array
+                                                },
+                                                method: method_name,
+                                                parameters_count,
+                                                has_return_value,
+                                                call_flags: flags as u8,
+                                            });
+                                        }
                                     }
                                 }
                             }
@@ -95,4 +97,54 @@ pub(crate) fn infer_contract_tokens(script: &[u8]) -> Vec<MethodToken> {
     }
 
     tokens
+}
+
+#[cfg(test)]
+mod tests {
+    use super::infer_contract_tokens;
+
+    fn opcode(name: &str) -> u8 {
+        crate::opcodes::lookup(name)
+            .unwrap_or_else(|| panic!("missing opcode {name}"))
+            .byte
+    }
+
+    #[test]
+    fn infer_contract_tokens_skips_param_count_overflow() {
+        let push0 = opcode("PUSH0");
+        let pushint8 = opcode("PUSHINT8");
+        let pushint32 = opcode("PUSHINT32");
+        let pushdata1 = opcode("PUSHDATA1");
+        let pack = opcode("PACK");
+        let syscall = opcode("SYSCALL");
+
+        let call_hash = crate::syscalls::lookup("System.Contract.Call")
+            .expect("System.Contract.Call syscall exists")
+            .hash;
+
+        let mut script = Vec::new();
+
+        script.push(pushdata1);
+        script.push(20);
+        script.extend(1u8..=20);
+
+        script.push(pushdata1);
+        script.push(4);
+        script.extend_from_slice(b"ping");
+
+        script.push(pushint8);
+        script.push(5);
+
+        script.extend(std::iter::repeat_n(push0, 70_000));
+
+        script.push(pushint32);
+        script.extend_from_slice(&70_000i32.to_le_bytes());
+        script.push(pack);
+
+        script.push(syscall);
+        script.extend_from_slice(&call_hash.to_le_bytes());
+
+        let tokens = infer_contract_tokens(&script);
+        assert!(tokens.is_empty());
+    }
 }

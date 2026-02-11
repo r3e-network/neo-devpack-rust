@@ -112,7 +112,8 @@ impl NeoJSON {
                 let mut bytes = Vec::with_capacity(array.len());
                 for item in array {
                     let byte = item.as_u64().ok_or(NeoError::InvalidType)?;
-                    bytes.push(byte as u8);
+                    let byte = u8::try_from(byte).map_err(|_| NeoError::InvalidType)?;
+                    bytes.push(byte);
                 }
                 Ok(NeoValue::from(NeoByteString::new(bytes)))
             }

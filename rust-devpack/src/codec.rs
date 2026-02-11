@@ -10,6 +10,10 @@ use neo_types::{NeoError, NeoResult};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
+use bincode::Options;
+
+const MAX_CODEC_BYTES: u64 = 1024 * 1024;
+
 /// Serializes a value to bytes using bincode.
 ///
 /// # Type Parameters
@@ -31,7 +35,9 @@ use serde::Serialize;
 /// let bytes = serialize(&value).unwrap();
 /// ```
 pub fn serialize<T: Serialize>(value: &T) -> NeoResult<Vec<u8>> {
-    bincode::serialize(value)
+    bincode::DefaultOptions::new()
+        .with_limit(MAX_CODEC_BYTES)
+        .serialize(value)
         .map_err(|err| NeoError::new(&format!("Failed to serialize value: {err}")))
 }
 
@@ -58,6 +64,8 @@ pub fn serialize<T: Serialize>(value: &T) -> NeoResult<Vec<u8>> {
 /// assert_eq!(value, restored);
 /// ```
 pub fn deserialize<T: DeserializeOwned>(bytes: &[u8]) -> NeoResult<T> {
-    bincode::deserialize(bytes)
+    bincode::DefaultOptions::new()
+        .with_limit(MAX_CODEC_BYTES)
+        .deserialize(bytes)
         .map_err(|err| NeoError::new(&format!("Failed to deserialize bytes: {err}")))
 }

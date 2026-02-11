@@ -103,10 +103,10 @@ impl StorageState {
     }
 
     fn get_or_create_store(&self, contract: [u8; 20]) -> ContractStore {
-        let mut stores = self
-            .contract_stores
-            .write()
-            .expect("storage contract lock poisoned");
+        let mut stores = match self.contract_stores.write() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
         stores
             .entry(contract)
             .or_insert_with(|| Arc::new(RwLock::new(HashMap::new())))
@@ -123,3 +123,21 @@ pub(crate) type StorageEntry = (Vec<u8>, Vec<u8>);
 #[cfg(target_arch = "wasm32")]
 pub(crate) static STORAGE_ENTRIES: Lazy<Mutex<Vec<StorageEntry>>> =
     Lazy::new(|| Mutex::new(Vec::new()));
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn create_context_recovers_when_store_lock_is_poisoned() {
+        let state = StorageState::new();
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = state.contract_stores.write().unwrap();
+            panic!("poison contract stores lock");
+        }));
+
+        let result = state.create_context(DEFAULT_CONTRACT_HASH, false);
+        assert!(result.is_ok());
+    }
+}

@@ -35,12 +35,12 @@ pub fn read_json<T: for<'de> Deserialize<'de>>(bytes: &NeoByteString) -> Option<
 /// * `value` - The value to serialize
 ///
 /// # Returns
-/// A NeoByteString containing the JSON representation, or an empty byte string on error.
-pub fn write_json<T: Serialize>(value: &T) -> NeoByteString {
-    match serde_json::to_vec(value) {
-        Ok(data) => NeoByteString::from_slice(&data),
-        Err(_) => NeoByteString::new(Vec::new()),
-    }
+/// * `Ok(NeoByteString)` containing the JSON representation
+/// * `Err(NeoError)` if serialization fails
+pub fn write_json<T: Serialize>(value: &T) -> NeoResult<NeoByteString> {
+    let data = serde_json::to_vec(value)
+        .map_err(|err| neo_types::NeoError::new(&format!("failed to serialize storage JSON: {err}")))?;
+    Ok(NeoByteString::from_slice(&data))
 }
 
 /// Loads a typed value from storage.
@@ -77,10 +77,11 @@ pub fn load<T: for<'de> Deserialize<'de>>(ctx: &NeoStorageContext, key: &[u8]) -
 ///
 /// # Returns
 /// * `Ok(())` on success
-/// * `Err(NeoError)` if storage fails (e.g., read-only context)
+/// * `Err(NeoError)` if serialization or storage fails
 pub fn store<T: Serialize>(ctx: &NeoStorageContext, key: &[u8], value: &T) -> NeoResult<()> {
     let key_bytes = NeoByteString::from_slice(key);
-    NeoStorage::put(ctx, &key_bytes, &write_json(value))
+    let value_bytes = write_json(value)?;
+    NeoStorage::put(ctx, &key_bytes, &value_bytes)
 }
 
 /// Deletes a key from storage.

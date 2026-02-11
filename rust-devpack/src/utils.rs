@@ -25,12 +25,12 @@ pub fn bytes_to_json<T: for<'de> Deserialize<'de>>(bytes: &NeoByteString) -> Opt
 /// * `T` - The type to serialize
 ///
 /// # Returns
-/// A NeoByteString containing the JSON, or an empty byte string on error.
-pub fn json_to_bytes<T: Serialize>(value: &T) -> NeoByteString {
-    match serde_json::to_vec(value) {
-        Ok(data) => NeoByteString::from_slice(&data),
-        Err(_) => NeoByteString::new(Vec::new()),
-    }
+/// * `Ok(NeoByteString)` containing JSON bytes
+/// * `Err(NeoError)` if serialization fails
+pub fn json_to_bytes<T: Serialize>(value: &T) -> neo_types::NeoResult<NeoByteString> {
+    let data = serde_json::to_vec(value)
+        .map_err(|err| neo_types::NeoError::new(&format!("failed to serialize JSON bytes: {err}")))?;
+    Ok(NeoByteString::from_slice(&data))
 }
 
 /// Creates a storage entry struct with key and value fields.
