@@ -14,10 +14,18 @@ this repository follow independent versioning (currently 0.1.x).
 - None yet.
 
 ### Changed
-- Initialized `0.4.7-dev` development cycle metadata for workspace and `wasm-neovm` version tracking.
+- None yet.
 
 ### Fixed
 - None yet.
+
+### Verification
+- _TBD_
+
+## [0.4.7] - 2026-02-11
+
+### Changed
+- Promoted workspace and `wasm-neovm` package version from `0.4.7-dev` to formal `0.4.7`.
 
 ### Verification
 - `cargo test -p wasm-neovm`
