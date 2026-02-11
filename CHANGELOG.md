@@ -11,16 +11,19 @@ this repository follow independent versioning (currently 0.1.x).
 ## [Unreleased]
 
 ### Added
-- _TBD_
+- None yet.
 
 ### Changed
-- _TBD_
+- Initialized `0.4.7-dev` development cycle metadata for workspace and `wasm-neovm` version tracking.
 
 ### Fixed
-- _TBD_
+- None yet.
 
 ### Verification
-- _TBD_
+- `cargo test -p wasm-neovm`
+- `cargo test --manifest-path rust-devpack/Cargo.toml`
+- `cargo clippy -p wasm-neovm --all-targets -- -D warnings`
+- `cargo clippy --manifest-path rust-devpack/Cargo.toml --all-targets -- -D warnings`
 
 ## [0.4.6] - 2026-02-11
 
