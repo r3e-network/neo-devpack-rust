@@ -10,6 +10,24 @@ this repository follow independent versioning (currently 0.1.x).
 
 ## [Unreleased]
 
+## [0.4.6] - 2026-02-11
+
+### Changed
+- `#[neo_contract]` generated exports for `NeoResult<NeoInteger>`, `NeoResult<NeoBoolean>`, and `NeoResult<()>` now use per-method `<MethodName>LastError` status slots for deterministic error signaling without panic-based paths.
+- `TranslationConfig::new` and `TranslationBuilder::new` now normalize empty contract names to `Contract` while preserving `try_new` as the strict fallible constructor.
+
+### Fixed
+- Reject negative active data segment offsets during translation instead of silently wrapping into large unsigned offsets.
+- Reject negative active element segment offsets and out-of-range element function indices (`u32` → `i32`) during table translation.
+- Enforce strict 20-byte `Hash160` validation for syscall wrapper argument decoding.
+- Added regressions for wrapper last-error status propagation, offset validation, constructor defaults, and invalid `Hash160` lengths.
+
+### Verification
+- `cargo test -p wasm-neovm`
+- `cargo test --manifest-path rust-devpack/Cargo.toml`
+- `cargo clippy -p wasm-neovm --all-targets -- -D warnings`
+- `cargo clippy --manifest-path rust-devpack/Cargo.toml --all-targets -- -D warnings`
+
 ## [0.4.5] - 2026-02-07
 
 ### Added
