@@ -216,11 +216,44 @@ mod tests {
 ### Integration Tests
 
 ```rust
-#[neo_test]
-pub fn test_contract_integration() {
-    let contract = MyContract::new();
-    // Test contract functionality
+use neo_test::{MethodCallResult, TestBuilder};
+use neo_types::{NeoBoolean, NeoValue};
+
+#[test]
+fn transfer_updates_state() {
+    let mut env = TestBuilder::new()
+        .storage(b"balance:alice", b"100")
+        .witness(b"alice")
+        .build();
+
+    // Invoke your contract method here.
+    let result = MethodCallResult::ok(NeoValue::from(NeoBoolean::new(true)));
+    result.assert_returns_bool(true);
+
+    env.assert_storage().assert_contains(b"balance:alice");
 }
+```
+
+`neo-test` also supports deployment/update lifecycle checks (`deploy`, `update`,
+`update_with_manifest`, `destroy`) and context-aware storage assertions for
+writable vs read-only contexts.
+
+Use `#[neo_test]` when you want a host `#[test]` wrapper generated around a
+helper function:
+
+```rust
+#[neo_test]
+fn contract_regression_case() {
+    // setup + assertions
+}
+```
+
+Run the test suites with:
+
+```bash
+cargo test --manifest-path rust-devpack/neo-test/Cargo.toml
+cargo test --manifest-path rust-devpack/Cargo.toml
+make test-contracts
 ```
 
 ### Benchmarks

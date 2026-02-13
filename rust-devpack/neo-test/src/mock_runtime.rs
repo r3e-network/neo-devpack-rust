@@ -265,7 +265,11 @@ impl MockRuntime {
     }
 
     pub fn consume_gas(&mut self, amount: i64) {
-        self.gas_left = (self.gas_left - amount).max(0);
+        if amount <= 0 {
+            return;
+        }
+
+        self.gas_left = self.gas_left.checked_sub(amount).unwrap_or(0).max(0);
     }
 
     pub fn invocation_counter(&self) -> i32 {
@@ -299,9 +303,40 @@ impl MockRuntime {
         self.storage.put(key, value);
     }
 
+    /// Simulate storage put operation with storage context validation.
+    pub fn storage_put_with_context(
+        &mut self,
+        context: &MockStorageContext,
+        key: &[u8],
+        value: &[u8],
+    ) -> NeoResult<()> {
+        self.ensure_context_valid(context)?;
+        if context.is_read_only() {
+            return Err(NeoError::InvalidOperation);
+        }
+
+        self.storage.put(key, value);
+        Ok(())
+    }
+
     /// Simulate storage delete operation
     pub fn storage_delete(&mut self, key: &[u8]) {
         self.storage.delete(key);
+    }
+
+    /// Simulate storage delete operation with storage context validation.
+    pub fn storage_delete_with_context(
+        &mut self,
+        context: &MockStorageContext,
+        key: &[u8],
+    ) -> NeoResult<()> {
+        self.ensure_context_valid(context)?;
+        if context.is_read_only() {
+            return Err(NeoError::InvalidOperation);
+        }
+
+        self.storage.delete(key);
+        Ok(())
     }
 
     /// Simulate storage find operation
@@ -314,6 +349,24 @@ impl MockRuntime {
         self.notifications.clear();
         self.logs.clear();
         self.invocation_counter = 0;
+    }
+
+    /// Reset known storage contexts to the runtime default context.
+    pub fn clear_storage_contexts(&mut self) {
+        self.storage_contexts.clear();
+        self.storage_contexts.push(MockStorageContext::new(0));
+    }
+
+    fn ensure_context_valid(&self, context: &MockStorageContext) -> NeoResult<()> {
+        let is_known_context = self
+            .storage_contexts
+            .iter()
+            .any(|ctx| ctx.id == context.id && ctx.is_read_only == context.is_read_only);
+        if !is_known_context {
+            return Err(NeoError::InvalidArgument);
+        }
+
+        Ok(())
     }
 }
 

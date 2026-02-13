@@ -117,5 +117,6 @@ These examples avoid complex reference types so they translate cleanly with the 
 - Modify `contracts/hello-world/src/lib.rs` to add more methods, events, or manifest overlays.
 - Use the generated NEF/manifest pair with the Neo CLI, Neo Express, or any compatible deployment tool.
 - Add unit tests to the contract crate with standard Rust `#[test]`s; they will run natively before translating.
+- Run `make test-contracts` from the repository root to execute contract tests across the full sample suite.
 
 The same workflow applies to any `neo-devpack` contract crate—just point the translator at the compiled Wasm module.

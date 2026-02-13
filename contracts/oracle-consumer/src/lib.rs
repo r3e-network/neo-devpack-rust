@@ -69,3 +69,28 @@ impl Default for NeoOracleConsumerContract {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::NeoOracleConsumerContract;
+
+    #[test]
+    fn configure_requires_non_zero_pointers_and_lengths() {
+        assert!(NeoOracleConsumerContract::configure(1, 1, 1, 1));
+        assert!(!NeoOracleConsumerContract::configure(0, 1, 1, 1));
+        assert!(!NeoOracleConsumerContract::configure(1, 0, 1, 1));
+    }
+
+    #[test]
+    fn request_returns_identifier_only_for_valid_payloads() {
+        assert_eq!(NeoOracleConsumerContract::request(1, 1, 1, 1, 1, 1), 1);
+        assert_eq!(NeoOracleConsumerContract::request(0, 1, 1, 1, 1, 1), 0);
+    }
+
+    #[test]
+    fn oracle_response_validation_and_last_request_are_stable() {
+        assert!(NeoOracleConsumerContract::on_oracle_response(1, 0, 1, 1));
+        assert!(!NeoOracleConsumerContract::on_oracle_response(0, 0, 1, 1));
+        assert_eq!(NeoOracleConsumerContract::last_request_id(), 1);
+    }
+}

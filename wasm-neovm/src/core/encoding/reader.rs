@@ -34,8 +34,7 @@ impl<'a> ByteReader<'a> {
         if self.position + 2 > self.data.len() {
             return Err(EncodingError::BufferTooSmall);
         }
-        let value =
-            u16::from_le_bytes([self.data[self.position], self.data[self.position + 1]]);
+        let value = u16::from_le_bytes([self.data[self.position], self.data[self.position + 1]]);
         self.position += 2;
         Ok(value)
     }

@@ -1,8 +1,84 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+require_command() {
+  local command_name="$1"
+  local guidance="$2"
+  if ! command -v "$command_name" >/dev/null 2>&1; then
+    echo "ERROR: required command '$command_name' not found." >&2
+    echo "$guidance" >&2
+    exit 1
+  fi
+}
+
 NEOXP_BIN=${NEOXP_BIN:-/tmp/neo-tools/neoxp}
+WASM_SNIP_BIN=${WASM_SNIP:-wasm-snip}
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+
+BUILD_TARGETS=(
+  hello-world
+  nep17-token
+  nep11-nft
+  constant-product
+  uniswap-v2
+  staking-rewards
+  timelock-vault
+  flashloan-pool
+  multisig-wallet
+  escrow
+  crowdfunding
+  governance-dao
+  oracle-consumer
+  nft-marketplace
+  solana-hello
+  move-coin
+)
+
+CONTRACT_NEF_PATHS=(
+  build/HelloWorld.nef
+  build/NEP17.nef
+  build/NEP11.nef
+  build/AMM.nef
+  build/UniswapV2.nef
+  build/StakingRewards.nef
+  build/TimelockVault.nef
+  build/FlashLoanPool.nef
+  build/MultisigWallet.nef
+  build/Escrow.nef
+  build/Crowdfunding.nef
+  build/GovernanceDAO.nef
+  build/OracleConsumer.nef
+  build/NFTMarketplace.nef
+  build/solana_hello.nef
+  build/MoveCoin.nef
+)
+
+CONTRACT_DEPLOY_NAMES=(
+  HelloWorld
+  SampleNEP17
+  SampleNEP11
+  ConstantProductAMM
+  UniswapV2Router
+  StakingRewards
+  TimelockVault
+  FlashLoanPool
+  SampleMultisig
+  NeoEscrow
+  NeoCrowdfund
+  NeoGovernanceDAO
+  NeoOracleConsumer
+  NeoNFTMarketplace
+  solana-hello
+  MoveCoin
+)
+
+if [ "${#CONTRACT_NEF_PATHS[@]}" -ne "${#CONTRACT_DEPLOY_NAMES[@]}" ]; then
+  echo "ERROR: CONTRACT_NEF_PATHS and CONTRACT_DEPLOY_NAMES length mismatch." >&2
+  exit 1
+fi
+
+require_command jq "Install jq and retry."
+require_command "$WASM_SNIP_BIN" "Install wasm-snip (cargo install wasm-snip --locked) or set WASM_SNIP."
 
 if [ ! -x "$NEOXP_BIN" ]; then
   echo "ERROR: Neo Express binary not found at $NEOXP_BIN" >&2
@@ -13,42 +89,14 @@ fi
 cd "$ROOT_DIR"
 
 echo "[smoke] rebuilding target contracts"
-make -B \
-  hello-world \
-  nep17-token \
-  nep11-nft \
-  constant-product \
-  uniswap-v2 \
-  staking-rewards \
-  timelock-vault \
-  flashloan-pool \
-  multisig-wallet \
-  escrow \
-  crowdfunding \
-  governance-dao \
-  oracle-consumer \
-  nft-marketplace \
-  solana-hello \
-  move-coin >/dev/null
+make -B "${BUILD_TARGETS[@]}" >/dev/null
 
 echo "[smoke] generated NEF sizes"
-for nef in \
-  build/HelloWorld.nef \
-  build/AMM.nef \
-  build/NEP17.nef \
-  build/NEP11.nef \
-  build/UniswapV2.nef \
-  build/StakingRewards.nef \
-  build/TimelockVault.nef \
-  build/FlashLoanPool.nef \
-  build/MultisigWallet.nef \
-  build/Escrow.nef \
-  build/Crowdfunding.nef \
-  build/GovernanceDAO.nef \
-  build/OracleConsumer.nef \
-  build/NFTMarketplace.nef \
-  build/solana_hello.nef \
-  build/MoveCoin.nef; do
+for nef in "${CONTRACT_NEF_PATHS[@]}"; do
+  if [ ! -f "$nef" ]; then
+    echo "ERROR: expected translated artifact not found: $nef" >&2
+    exit 1
+  fi
   printf "  %9d  %s\n" "$(wc -c < "$nef")" "$nef"
 done
 
@@ -145,22 +193,9 @@ run_expect_int_min() {
 }
 
 echo "[smoke] deploying contracts"
-deploy_contract build/HelloWorld.nef HelloWorld
-deploy_contract build/NEP17.nef SampleNEP17
-deploy_contract build/NEP11.nef SampleNEP11
-deploy_contract build/AMM.nef ConstantProductAMM
-deploy_contract build/UniswapV2.nef UniswapV2Router
-deploy_contract build/StakingRewards.nef StakingRewards
-deploy_contract build/TimelockVault.nef TimelockVault
-deploy_contract build/FlashLoanPool.nef FlashLoanPool
-deploy_contract build/MultisigWallet.nef SampleMultisig
-deploy_contract build/Escrow.nef NeoEscrow
-deploy_contract build/Crowdfunding.nef NeoCrowdfund
-deploy_contract build/GovernanceDAO.nef NeoGovernanceDAO
-deploy_contract build/OracleConsumer.nef NeoOracleConsumer
-deploy_contract build/NFTMarketplace.nef NeoNFTMarketplace
-deploy_contract build/solana_hello.nef solana-hello
-deploy_contract build/MoveCoin.nef MoveCoin
+for i in "${!CONTRACT_NEF_PATHS[@]}"; do
+  deploy_contract "${CONTRACT_NEF_PATHS[$i]}" "${CONTRACT_DEPLOY_NAMES[$i]}"
+done
 
 echo "[smoke] HelloWorld invoke"
 run_expect HelloWorld hello 42

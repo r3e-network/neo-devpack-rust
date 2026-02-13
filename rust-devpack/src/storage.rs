@@ -38,8 +38,9 @@ pub fn read_json<T: for<'de> Deserialize<'de>>(bytes: &NeoByteString) -> Option<
 /// * `Ok(NeoByteString)` containing the JSON representation
 /// * `Err(NeoError)` if serialization fails
 pub fn write_json<T: Serialize>(value: &T) -> NeoResult<NeoByteString> {
-    let data = serde_json::to_vec(value)
-        .map_err(|err| neo_types::NeoError::new(&format!("failed to serialize storage JSON: {err}")))?;
+    let data = serde_json::to_vec(value).map_err(|err| {
+        neo_types::NeoError::new(&format!("failed to serialize storage JSON: {err}"))
+    })?;
     Ok(NeoByteString::from_slice(&data))
 }
 

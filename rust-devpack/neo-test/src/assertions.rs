@@ -41,13 +41,11 @@ impl MethodCallResult {
     }
 
     pub fn assert_returns(&self, expected: i64) {
-        let actual = self
-            .result
-            .as_ref()
-            .ok()
-            .and_then(|v| v.as_integer())
-            .map(|i| i.as_i64_saturating())
-            .unwrap_or(0);
+        let value = self.expect_ok_value();
+        let actual = value
+            .as_integer()
+            .unwrap_or_else(|| panic!("Expected integer return value, got {:?}", value))
+            .as_i64_saturating();
         assert_eq!(
             actual, expected,
             "Expected return value {}, got {}",
@@ -56,13 +54,11 @@ impl MethodCallResult {
     }
 
     pub fn assert_returns_bool(&self, expected: bool) {
-        let actual = self
-            .result
-            .as_ref()
-            .ok()
-            .and_then(|v| v.as_boolean())
-            .map(|b| b.as_bool())
-            .unwrap_or(false);
+        let value = self.expect_ok_value();
+        let actual = value
+            .as_boolean()
+            .unwrap_or_else(|| panic!("Expected boolean return value, got {:?}", value))
+            .as_bool();
         assert_eq!(
             actual, expected,
             "Expected return value {}, got {}",
@@ -71,13 +67,11 @@ impl MethodCallResult {
     }
 
     pub fn assert_returns_slice(&self, expected: &[u8]) {
-        let actual = self
-            .result
-            .as_ref()
-            .ok()
-            .and_then(|v| v.as_byte_string())
-            .map(|s| s.as_slice())
-            .unwrap_or(&[]);
+        let value = self.expect_ok_value();
+        let actual = value
+            .as_byte_string()
+            .unwrap_or_else(|| panic!("Expected byte string return value, got {:?}", value))
+            .as_slice();
         assert_eq!(
             actual, expected,
             "Expected return value {:?}, got {:?}",
@@ -86,13 +80,11 @@ impl MethodCallResult {
     }
 
     pub fn assert_returns_string(&self, expected: &str) {
-        let actual = self
-            .result
-            .as_ref()
-            .ok()
-            .and_then(|v| v.as_string())
-            .map(|s| s.as_str())
-            .unwrap_or("");
+        let value = self.expect_ok_value();
+        let actual = value
+            .as_string()
+            .unwrap_or_else(|| panic!("Expected string return value, got {:?}", value))
+            .as_str();
         assert_eq!(
             actual, expected,
             "Expected return value '{}', got '{}'",
@@ -100,12 +92,32 @@ impl MethodCallResult {
         );
     }
 
+    pub fn assert_error(&self, expected: NeoError) {
+        match self.result.as_ref() {
+            Ok(value) => panic!("Expected Err({:?}), got Ok({:?})", expected, value),
+            Err(actual) => {
+                assert_eq!(
+                    actual, &expected,
+                    "Expected error {:?}, got {:?}",
+                    expected, actual
+                )
+            }
+        }
+    }
+
     pub fn value(&self) -> &NeoValue {
-        self.result.as_ref().unwrap()
+        self.expect_ok_value()
     }
 
     pub fn error(&self) -> Option<&NeoError> {
         self.result.as_ref().err()
+    }
+
+    fn expect_ok_value(&self) -> &NeoValue {
+        match self.result.as_ref() {
+            Ok(value) => value,
+            Err(error) => panic!("Expected Ok result, got Err: {:?}", error),
+        }
     }
 }
 

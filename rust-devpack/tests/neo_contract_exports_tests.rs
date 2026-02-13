@@ -66,7 +66,10 @@ fn generated_exports_are_callable() {
     assert_eq!(hugeValueLastError(), 0);
 
     assert_eq!(failInteger(), 0);
-    assert_eq!(failIntegerLastError(), NeoError::InvalidArgument.status_code());
+    assert_eq!(
+        failIntegerLastError(),
+        NeoError::InvalidArgument.status_code()
+    );
 
     assert_eq!(failBoolean(), 0);
     assert_eq!(failBooleanLastError(), NeoError::InvalidType.status_code());
@@ -75,5 +78,8 @@ fn generated_exports_are_callable() {
     assert_eq!(maybeTouchLastError(), 0);
 
     maybeTouch(1);
-    assert_eq!(maybeTouchLastError(), NeoError::InvalidOperation.status_code());
+    assert_eq!(
+        maybeTouchLastError(),
+        NeoError::InvalidOperation.status_code()
+    );
 }

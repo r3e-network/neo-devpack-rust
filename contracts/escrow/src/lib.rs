@@ -60,3 +60,23 @@ impl Default for NeoEscrowContract {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::NeoEscrowContract;
+
+    #[test]
+    fn configure_validates_heights_and_amounts() {
+        assert!(NeoEscrowContract::configure(1, 1, 2, 3, 4, 100, 10, 20, 0));
+        assert!(!NeoEscrowContract::configure(1, 1, 2, 3, 4, 0, 10, 20, 0));
+        assert!(!NeoEscrowContract::configure(1, 1, 2, 3, 4, 100, 20, 10, 0));
+    }
+
+    #[test]
+    fn release_and_refund_require_valid_ids() {
+        assert!(NeoEscrowContract::release(1, 1));
+        assert!(NeoEscrowContract::refund(1, 1));
+        assert!(!NeoEscrowContract::release(0, 1));
+        assert!(!NeoEscrowContract::refund(1, 0));
+    }
+}

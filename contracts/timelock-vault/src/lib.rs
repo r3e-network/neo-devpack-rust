@@ -36,3 +36,24 @@ impl Default for TimelockVaultContract {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::TimelockVaultContract;
+
+    #[test]
+    fn queue_release_requires_positive_values() {
+        assert!(TimelockVaultContract::queue_release(1, 100, 10));
+        assert!(!TimelockVaultContract::queue_release(0, 100, 10));
+        assert!(!TimelockVaultContract::queue_release(1, 0, 10));
+    }
+
+    #[test]
+    fn maturity_and_release_follow_time_guardrails() {
+        assert!(TimelockVaultContract::is_mature(10, 10));
+        assert!(!TimelockVaultContract::is_mature(11, 10));
+
+        assert!(TimelockVaultContract::release(1, 100, 10, 10));
+        assert!(!TimelockVaultContract::release(1, 100, 10, 9));
+    }
+}

@@ -28,8 +28,9 @@ pub fn bytes_to_json<T: for<'de> Deserialize<'de>>(bytes: &NeoByteString) -> Opt
 /// * `Ok(NeoByteString)` containing JSON bytes
 /// * `Err(NeoError)` if serialization fails
 pub fn json_to_bytes<T: Serialize>(value: &T) -> neo_types::NeoResult<NeoByteString> {
-    let data = serde_json::to_vec(value)
-        .map_err(|err| neo_types::NeoError::new(&format!("failed to serialize JSON bytes: {err}")))?;
+    let data = serde_json::to_vec(value).map_err(|err| {
+        neo_types::NeoError::new(&format!("failed to serialize JSON bytes: {err}"))
+    })?;
     Ok(NeoByteString::from_slice(&data))
 }
 

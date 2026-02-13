@@ -60,3 +60,25 @@ impl Default for SampleMultisigContract {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::SampleMultisigContract;
+
+    #[test]
+    fn configure_requires_threshold_not_exceeding_signers() {
+        assert!(SampleMultisigContract::configure(1, 3, 2));
+        assert!(!SampleMultisigContract::configure(1, 2, 3));
+        assert!(!SampleMultisigContract::configure(0, 3, 2));
+    }
+
+    #[test]
+    fn proposal_flow_validates_required_fields() {
+        assert!(SampleMultisigContract::propose(1, 1, 1, 0, 0, 0, 1, 0));
+        assert!(!SampleMultisigContract::propose(1, 1, 1, 0, 0, 0, 0, 0));
+        assert!(SampleMultisigContract::approve(1, 0, 1));
+        assert!(!SampleMultisigContract::approve(0, 0, 1));
+        assert!(SampleMultisigContract::execute(1, 0, 1));
+        assert!(!SampleMultisigContract::execute(1, 0, 0));
+    }
+}

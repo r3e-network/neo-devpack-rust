@@ -35,6 +35,18 @@ make examples
 Artifacts appear in the repository-level `build/` directory. To regenerate a specific contract,
 invoke its target (e.g., `make nep17-token`).
 
+## Unit Testing
+
+Run unit tests across all Rust sample contracts with:
+
+```bash
+make test-contracts
+```
+
+This target auto-discovers and executes `cargo test` for every Rust contract
+crate under `contracts/`, including `solana-hello` in host test mode. It also
+checks that each contract crate defines test markers to prevent silent gaps.
+
 ## Deployment
 
 Refer to `scripts/neoexpress_deploy.sh` and [`docs/neoexpress-integration.md`](../docs/neoexpress-integration.md)

@@ -46,10 +46,7 @@ pub struct NeoContractManifest {
     pub abi: NeoContractABI,
     pub permissions: Vec<NeoContractPermission>,
     pub trusts: Vec<String>,
-    #[cfg_attr(
-        feature = "serde",
-        serde(alias = "supportedstandards", default)
-    )]
+    #[cfg_attr(feature = "serde", serde(alias = "supportedstandards", default))]
     pub supported_standards: Vec<String>,
 }
 

@@ -62,11 +62,117 @@ jobs:
       - name: Run tests - rust-devpack
         run: cargo test --manifest-path rust-devpack/Cargo.toml --all-features
 
+      - name: Run tests - neo-test
+        run: cargo test --manifest-path rust-devpack/neo-test/Cargo.toml
+
       - name: Run tests - integration-tests
         run: cargo test --manifest-path integration-tests/Cargo.toml --all-features
 
       - name: Run tests - solana-compat
         run: cargo test --manifest-path solana-compat/Cargo.toml --all-features
+
+  contract-tests:
+    name: Contract Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-contract-tests-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-contract-tests-cargo-registry-
+
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-contract-tests-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-contract-tests-cargo-index-
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-contract-tests-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-contract-tests-cargo-build-target-
+
+      - name: Run contract unit tests
+        run: make test-contracts
+
+  neoxp-smoke:
+    name: Neo Express Smoke
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-neoxp-smoke-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-neoxp-smoke-cargo-registry-
+
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-neoxp-smoke-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-neoxp-smoke-cargo-index-
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-neoxp-smoke-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-neoxp-smoke-cargo-build-target-
+
+      - name: Install smoke-test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+          if ! command -v wasm-snip >/dev/null 2>&1; then
+            cargo install wasm-snip --locked
+          fi
+
+      - name: Install Neo Express CLI
+        run: |
+          mkdir -p /tmp/neo-tools
+          if [ -x /tmp/neo-tools/neoxp ]; then
+            dotnet tool update Neo.Express --tool-path /tmp/neo-tools
+          else
+            dotnet tool install Neo.Express --tool-path /tmp/neo-tools
+          fi
+          /tmp/neo-tools/neoxp --version
+
+      - name: Run Neo Express smoke suite
+        env:
+          NEOXP_BIN: /tmp/neo-tools/neoxp
+        run: make smoke-neoxp
 
   clippy:
     name: Clippy
@@ -108,6 +214,9 @@ jobs:
       - name: Run clippy - rust-devpack
         run: cargo clippy --manifest-path rust-devpack/Cargo.toml --all-targets --all-features -- -D warnings
 
+      - name: Run clippy - neo-test
+        run: cargo clippy --manifest-path rust-devpack/neo-test/Cargo.toml --all-targets --all-features -- -D warnings
+
       - name: Run clippy - integration-tests
         run: cargo clippy --manifest-path integration-tests/Cargo.toml --all-targets --all-features -- -D warnings
 
@@ -134,6 +243,9 @@ jobs:
 
       - name: Check formatting - rust-devpack
         run: cargo fmt --manifest-path rust-devpack/Cargo.toml --all -- --check
+
+      - name: Check formatting - neo-test
+        run: cargo fmt --manifest-path rust-devpack/neo-test/Cargo.toml --all -- --check
 
       - name: Check formatting - integration-tests
         run: cargo fmt --manifest-path integration-tests/Cargo.toml --all -- --check
@@ -177,6 +289,9 @@ jobs:
       - name: Generate coverage - rust-devpack
         run: cargo tarpaulin --manifest-path rust-devpack/Cargo.toml --out xml --output-dir ./coverage-rust-devpack
 
+      - name: Generate coverage - neo-test
+        run: cargo tarpaulin --manifest-path rust-devpack/neo-test/Cargo.toml --out xml --output-dir ./coverage-neo-test
+
       - name: Upload coverage to Codecov - wasm-neovm
         uses: codecov/codecov-action@v4
         with:
@@ -196,6 +311,13 @@ jobs:
         with:
           files: ./coverage-rust-devpack/cobertura.xml
           flags: rust-devpack
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Upload coverage to Codecov - neo-test
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage-neo-test/cobertura.xml
+          flags: neo-test
           token: ${{ secrets.CODECOV_TOKEN }}
 
   security:

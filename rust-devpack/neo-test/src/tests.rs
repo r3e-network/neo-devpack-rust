@@ -7,6 +7,7 @@ use crate::assertions::MethodCallResult;
 use crate::environment::{ContractTest, TestBuilder, TestEnvironment};
 use crate::mock_runtime::{MockRuntime, MockRuntimeBuilder, MockStorage, MockStorageContext};
 use neo_types::{NeoArray, NeoBoolean, NeoByteString, NeoError, NeoInteger, NeoString, NeoValue};
+use std::panic;
 
 #[test]
 fn test_mock_storage_basic_operations() {
@@ -160,6 +161,10 @@ fn test_mock_runtime_gas_consumption() {
     // Can't go below zero
     runtime.consume_gas(1000);
     assert_eq!(runtime.gas_left(), 0);
+
+    // Negative gas consumption is ignored
+    runtime.consume_gas(-100);
+    assert_eq!(runtime.gas_left(), 0);
 }
 
 #[test]
@@ -198,6 +203,37 @@ fn test_mock_runtime_storage_context_creation() {
 
     let ro_ctx = runtime.get_read_only_storage_context();
     assert!(ro_ctx.is_read_only());
+}
+
+#[test]
+fn test_mock_runtime_contextual_storage_operations() {
+    let mut runtime = MockRuntime::new();
+
+    let writable = runtime.get_storage_context();
+    runtime
+        .storage_put_with_context(&writable, b"balance", b"100")
+        .expect("writable context should allow put");
+    assert_eq!(runtime.storage_get(b"balance"), Some(b"100".to_vec()));
+    runtime
+        .storage_delete_with_context(&writable, b"balance")
+        .expect("writable context should allow delete");
+    assert_eq!(runtime.storage_get(b"balance"), None);
+
+    let read_only = runtime.get_read_only_storage_context();
+    let err = runtime
+        .storage_put_with_context(&read_only, b"balance", b"100")
+        .expect_err("read-only context should reject put");
+    assert_eq!(err, NeoError::InvalidOperation);
+}
+
+#[test]
+fn test_mock_runtime_rejects_unknown_storage_context() {
+    let mut runtime = MockRuntime::new();
+    let unknown = MockStorageContext::new(999);
+    let err = runtime
+        .storage_put_with_context(&unknown, b"balance", b"100")
+        .expect_err("unknown storage context should be rejected");
+    assert_eq!(err, NeoError::InvalidArgument);
 }
 
 #[test]
@@ -244,6 +280,77 @@ fn test_test_environment_logs() {
 
     env.clear_logs();
     assert!(env.logs().is_empty());
+}
+
+#[test]
+fn test_test_environment_storage_context_helpers() {
+    let mut env = TestEnvironment::new();
+    let writable = env.get_storage_context();
+    env.put_storage_with_context(&writable, b"k", b"v")
+        .expect("writable context should allow writes");
+    assert_eq!(env.get_storage(b"k"), Some(b"v".to_vec()));
+
+    let read_only = env.get_read_only_storage_context();
+    let err = env
+        .put_storage_with_context(&read_only, b"k2", b"v2")
+        .expect_err("read-only context should reject writes");
+    assert_eq!(err, NeoError::InvalidOperation);
+}
+
+#[test]
+fn test_test_environment_deployment_lifecycle() {
+    let mut env = TestEnvironment::new();
+
+    assert!(!env.is_deployed());
+    assert!(env.deploy(b"", b"manifest").is_err());
+    assert!(env.deploy(b"script", b"").is_err());
+
+    env.deploy(b"script-v1", b"manifest-v1")
+        .expect("deployment should succeed");
+    assert!(env.deploy(b"script-v1b", b"manifest-v1b").is_err());
+    assert!(env.is_deployed());
+    assert_eq!(env.deployed_script(), Some(b"script-v1".as_slice()));
+    assert_eq!(env.deployed_manifest(), Some(b"manifest-v1".as_slice()));
+
+    assert!(env.update(b"").is_err());
+    env.update(b"script-v2").expect("update should succeed");
+    assert_eq!(env.deployed_script(), Some(b"script-v2".as_slice()));
+
+    assert!(env.update_with_manifest(b"script-v3", b"").is_err());
+    env.update_with_manifest(b"script-v3", b"manifest-v3")
+        .expect("update with manifest should succeed");
+    assert_eq!(env.deployed_script(), Some(b"script-v3".as_slice()));
+    assert_eq!(env.deployed_manifest(), Some(b"manifest-v3".as_slice()));
+
+    env.destroy().expect("destroy should succeed");
+    assert!(!env.is_deployed());
+    assert!(env.update(b"script-v3").is_err());
+    assert!(env.destroy().is_err());
+
+    env.deploy(b"script-v4", b"manifest-v4")
+        .expect("redeploy should succeed");
+    env.reset();
+    assert!(!env.is_deployed());
+}
+
+#[test]
+fn test_destroy_clears_storage_and_invalidates_existing_contexts() {
+    let mut env = TestEnvironment::new();
+    env.deploy(b"script", b"manifest")
+        .expect("deployment should succeed");
+
+    let context = env.get_storage_context();
+    env.put_storage_with_context(&context, b"balance", b"100")
+        .expect("storage write should succeed before destroy");
+    assert_eq!(env.get_storage(b"balance"), Some(b"100".to_vec()));
+
+    env.destroy().expect("destroy should succeed");
+    assert_eq!(env.get_storage(b"balance"), None);
+
+    let err = env
+        .put_storage_with_context(&context, b"balance", b"100")
+        .expect_err("stale storage contexts should be invalid after destroy");
+    assert_eq!(err, NeoError::InvalidArgument);
 }
 
 #[test]
@@ -344,6 +451,7 @@ fn test_method_call_result_assertions() {
     // Test Err result
     let result = MethodCallResult::err(NeoError::InvalidOperation);
     result.assert_err();
+    result.assert_error(NeoError::InvalidOperation);
 }
 
 #[test]
@@ -367,4 +475,18 @@ fn test_method_call_result_string() {
     let result = MethodCallResult::ok(NeoValue::from(s));
     result.assert_ok();
     result.assert_returns_string("test string");
+}
+
+#[test]
+fn test_method_call_result_rejects_error_paths_for_value_assertions() {
+    let err_result = MethodCallResult::err(NeoError::InvalidOperation);
+    let panicked = panic::catch_unwind(|| err_result.assert_returns(0));
+    assert!(panicked.is_err());
+}
+
+#[test]
+fn test_method_call_result_rejects_wrong_type_assertions() {
+    let bool_result = MethodCallResult::ok(NeoValue::from(NeoBoolean::TRUE));
+    let panicked = panic::catch_unwind(|| bool_result.assert_returns(1));
+    assert!(panicked.is_err());
 }

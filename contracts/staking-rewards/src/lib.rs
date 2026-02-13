@@ -58,3 +58,29 @@ impl Default for StakingRewardsContract {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::StakingRewardsContract;
+
+    #[test]
+    fn staking_and_unstaking_require_positive_inputs() {
+        assert!(StakingRewardsContract::stake(1, 1));
+        assert!(!StakingRewardsContract::stake(0, 1));
+        assert!(StakingRewardsContract::unstake(1, 1));
+        assert!(!StakingRewardsContract::unstake(1, 0));
+    }
+
+    #[test]
+    fn reward_preview_handles_boundaries() {
+        assert_eq!(StakingRewardsContract::preview_reward(10_000, 365), 1_200);
+        assert_eq!(StakingRewardsContract::preview_reward(10_000, 0), 0);
+        assert_eq!(StakingRewardsContract::preview_reward(10_000, 3_651), 0);
+    }
+
+    #[test]
+    fn claim_requires_valid_staker() {
+        assert_eq!(StakingRewardsContract::claim(1, 10_000, 365), 1_200);
+        assert_eq!(StakingRewardsContract::claim(0, 10_000, 365), 0);
+    }
+}

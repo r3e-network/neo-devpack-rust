@@ -65,8 +65,7 @@ UNISWAP_SNIP_WASM := $(OUTDIR)/UniswapV2.snip.wasm
 STAKING_SNIP_WASM := $(OUTDIR)/StakingRewards.snip.wasm
 TIMELOCK_SNIP_WASM := $(OUTDIR)/TimelockVault.snip.wasm
 FLASHLOAN_SNIP_WASM := $(OUTDIR)/FlashLoanPool.snip.wasm
-
-.PHONY: help examples cross-chain hello-world nep17-token constant-product nep11-nft uniswap-v2 staking-rewards timelock-vault flashloan-pool multisig-wallet escrow crowdfunding governance-dao oracle-consumer nft-marketplace solana-hello move-coin c-hello fmt lint test test-cross-chain integration-tests smoke-neoxp security-check spec clean
+.PHONY: help examples cross-chain hello-world nep17-token constant-product nep11-nft uniswap-v2 staking-rewards timelock-vault flashloan-pool multisig-wallet escrow crowdfunding governance-dao oracle-consumer nft-marketplace solana-hello move-coin c-hello fmt lint test verify-contract-tests test-contracts test-cross-chain integration-tests smoke-neoxp security-check spec clean
 
 help:
 	@echo "Usage: make <target>"
@@ -96,7 +95,9 @@ help:
 	@echo "Maintenance targets:"
 	@echo "  fmt             Run cargo fmt across the workspace"
 	@echo "  lint            Run cargo clippy across the workspace"
-	@echo "  test            Execute cargo test for translator + devpack"
+	@echo "  test            Execute translator/devpack/neo-test + contract unit suites"
+	@echo "  verify-contract-tests Ensure each Rust contract crate defines tests"
+	@echo "  test-contracts  Run unit tests for all Rust sample contracts"
 	@echo "  test-cross-chain Run wasm-neovm cross-chain test suites"
 	@echo "  integration-tests  Run optional Neo Express integration harness"
 	@echo "  smoke-neoxp     Run local Neo Express deploy/invoke smoke checks"
@@ -371,18 +372,33 @@ fmt:
 	cargo fmt --manifest-path move-neovm/Cargo.toml
 	cargo fmt --manifest-path solana-compat/Cargo.toml
 	cargo fmt --manifest-path rust-devpack/Cargo.toml
+	cargo fmt --manifest-path rust-devpack/neo-test/Cargo.toml
 	cargo fmt --manifest-path integration-tests/Cargo.toml
 
 lint:
-	cargo clippy --manifest-path wasm-neovm/Cargo.toml --all-targets --all-features
-	cargo clippy --manifest-path move-neovm/Cargo.toml --all-targets --all-features
-	cargo clippy --manifest-path solana-compat/Cargo.toml --all-targets --all-features
-	cargo clippy --manifest-path rust-devpack/Cargo.toml --all-targets --all-features
-	cargo clippy --manifest-path integration-tests/Cargo.toml --all-targets --all-features
+	cargo clippy --manifest-path wasm-neovm/Cargo.toml --all-targets --all-features -- -D warnings
+	cargo clippy --manifest-path move-neovm/Cargo.toml --all-targets --all-features -- -D warnings
+	cargo clippy --manifest-path solana-compat/Cargo.toml --all-targets --all-features -- -D warnings
+	cargo clippy --manifest-path rust-devpack/Cargo.toml --all-targets --all-features -- -D warnings
+	cargo clippy --manifest-path rust-devpack/neo-test/Cargo.toml --all-targets --all-features -- -D warnings
+	cargo clippy --manifest-path integration-tests/Cargo.toml --all-targets --all-features -- -D warnings
 
 test:
 	cargo test --manifest-path wasm-neovm/Cargo.toml
 	cargo test --manifest-path rust-devpack/Cargo.toml
+	cargo test --manifest-path rust-devpack/neo-test/Cargo.toml
+	$(MAKE) test-contracts
+
+verify-contract-tests:
+	scripts/verify_contract_tests.sh
+
+test-contracts:
+	$(MAKE) verify-contract-tests
+	@set -e; \
+	for manifest in $$(find contracts -name Cargo.toml ! -path 'contracts/Cargo.toml' | sort); do \
+		echo "==> cargo test --manifest-path $$manifest"; \
+		cargo test --manifest-path "$$manifest" --quiet; \
+	done
 
 test-cross-chain:
 	cargo test --manifest-path wasm-neovm/Cargo.toml --test cross_chain_tests --test solana_move_integration

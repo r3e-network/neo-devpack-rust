@@ -214,13 +214,29 @@ Use `--compare-manifest <file>` to assert that the generated manifest matches a 
    make test-cross-chain
    ```
 
-7. Individual contracts can be built with their dedicated targets, for example:
+7. To run unit tests for all Rust contract examples:
+
+   ```bash
+   make test-contracts
+   ```
+
+   This command auto-discovers Rust contract crates under `contracts/` so new
+   examples are included without updating the runner list. It also verifies
+   that each crate contains test markers before execution.
+
+8. To run the full local quality test path (translator + devpack + `neo-test` + contracts):
+
+   ```bash
+   make test
+   ```
+
+9. Individual contracts can be built with their dedicated targets, for example:
 
    ```bash
    make nep11-nft
    ```
 
-8. To deploy a generated contract to a running Neo Express instance you can use the
+10. To deploy a generated contract to a running Neo Express instance you can use the
    helper script:
    ```bash
    export NEO_EXPRESS_RPC=http://localhost:50012
@@ -232,6 +248,10 @@ Use `--compare-manifest <file>` to assert that the generated manifest matches a 
    ```bash
    make smoke-neoxp
    ```
+
+   CI runs the same `Neo Express Smoke` suite on every run.
+   This adds CI time because it performs full Neo Express provisioning and
+   deploy/invoke validation for the sample suite.
 
 Rust contracts can now embed manifest metadata directly via DevPack macros:
 

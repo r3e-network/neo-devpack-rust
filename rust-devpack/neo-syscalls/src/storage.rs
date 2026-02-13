@@ -3,18 +3,20 @@
 
 //! Storage state management for Neo N3 syscall simulation.
 
-use neo_types::*;
 use once_cell::sync::Lazy;
 
 #[cfg(not(target_arch = "wasm32"))]
+use neo_types::{NeoError, NeoResult, NeoStorageContext};
+#[cfg(not(target_arch = "wasm32"))]
 use std::collections::HashMap;
+#[cfg(not(target_arch = "wasm32"))]
+use std::sync::atomic::{AtomicU32, Ordering};
 #[cfg(target_arch = "wasm32")]
 use std::sync::Mutex;
 #[cfg(not(target_arch = "wasm32"))]
-use std::sync::atomic::{AtomicU32, Ordering};
-#[cfg(not(target_arch = "wasm32"))]
 use std::sync::{Arc, RwLock};
 
+#[cfg(not(target_arch = "wasm32"))]
 pub(crate) const DEFAULT_CONTRACT_HASH: [u8; 20] = [0u8; 20];
 
 #[cfg(not(target_arch = "wasm32"))]

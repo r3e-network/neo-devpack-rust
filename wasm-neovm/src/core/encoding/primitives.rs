@@ -46,8 +46,7 @@ pub fn decode_varint(bytes: &[u8]) -> EncodingResult<(u64, usize)> {
             if bytes.len() < 5 {
                 return Err(EncodingError::BufferTooSmall);
             }
-            let value =
-                u32::from_le_bytes([bytes[1], bytes[2], bytes[3], bytes[4]]) as u64;
+            let value = u32::from_le_bytes([bytes[1], bytes[2], bytes[3], bytes[4]]) as u64;
             Ok((value, 5))
         }
         0xFF => {
@@ -55,8 +54,7 @@ pub fn decode_varint(bytes: &[u8]) -> EncodingResult<(u64, usize)> {
                 return Err(EncodingError::BufferTooSmall);
             }
             let value = u64::from_le_bytes([
-                bytes[1], bytes[2], bytes[3], bytes[4],
-                bytes[5], bytes[6], bytes[7], bytes[8],
+                bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7], bytes[8],
             ]);
             Ok((value, 9))
         }

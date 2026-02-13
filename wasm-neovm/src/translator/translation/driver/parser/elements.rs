@@ -14,8 +14,9 @@ impl DriverState {
                     offset_expr,
                 } => {
                     let table_index = table_index.unwrap_or(0);
-                    let table_idx = usize::try_from(table_index)
-                        .map_err(|_| anyhow!("element table index {} exceeds usize range", table_index))?;
+                    let table_idx = usize::try_from(table_index).map_err(|_| {
+                        anyhow!("element table index {} exceeds usize range", table_index)
+                    })?;
                     let offset_raw = evaluate_offset_expr(offset_expr)
                         .context("failed to evaluate element offset")?;
                     let offset = usize::try_from(offset_raw)

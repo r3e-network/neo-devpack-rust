@@ -4,7 +4,7 @@
 //! Test Environment
 
 use crate::assertions::{RuntimeAssertions, StorageAssertions};
-use crate::mock_runtime::MockRuntime;
+use crate::mock_runtime::{MockRuntime, MockStorageContext};
 use neo_types::NeoByteString;
 
 pub type TestResult<T = ()> = Result<T, TestError>;
@@ -44,12 +44,20 @@ impl std::error::Error for TestError {}
 /// Test environment for Neo N3 contract testing
 pub struct TestEnvironment {
     runtime: MockRuntime,
+    deployment: Option<DeploymentState>,
+}
+
+#[derive(Debug, Clone)]
+struct DeploymentState {
+    script: Vec<u8>,
+    manifest: Vec<u8>,
 }
 
 impl TestEnvironment {
     pub fn new() -> Self {
         Self {
             runtime: MockRuntime::new(),
+            deployment: None,
         }
     }
 
@@ -68,6 +76,31 @@ impl TestEnvironment {
 
     pub fn set_storage(&mut self, key: &[u8], value: &[u8]) {
         self.runtime.storage_mut().put(key, value);
+    }
+
+    pub fn get_storage_context(&mut self) -> MockStorageContext {
+        self.runtime.get_storage_context()
+    }
+
+    pub fn get_read_only_storage_context(&mut self) -> MockStorageContext {
+        self.runtime.get_read_only_storage_context()
+    }
+
+    pub fn put_storage_with_context(
+        &mut self,
+        context: &MockStorageContext,
+        key: &[u8],
+        value: &[u8],
+    ) -> Result<(), neo_types::NeoError> {
+        self.runtime.storage_put_with_context(context, key, value)
+    }
+
+    pub fn delete_storage_with_context(
+        &mut self,
+        context: &MockStorageContext,
+        key: &[u8],
+    ) -> Result<(), neo_types::NeoError> {
+        self.runtime.storage_delete_with_context(context, key)
     }
 
     pub fn get_storage(&self, key: &[u8]) -> Option<Vec<u8>> {
@@ -127,20 +160,84 @@ impl TestEnvironment {
         _f()
     }
 
-    pub fn deploy(&mut self, _script: &[u8], _manifest: &[u8]) -> TestResult {
+    pub fn deploy(&mut self, script: &[u8], manifest: &[u8]) -> TestResult {
+        if self.deployment.is_some() {
+            return Err(TestError::new("contract is already deployed").with_context("deploy"));
+        }
+        if script.is_empty() {
+            return Err(TestError::new("script cannot be empty").with_context("deploy"));
+        }
+        if manifest.is_empty() {
+            return Err(TestError::new("manifest cannot be empty").with_context("deploy"));
+        }
+
+        self.deployment = Some(DeploymentState {
+            script: script.to_vec(),
+            manifest: manifest.to_vec(),
+        });
         Ok(())
     }
 
-    pub fn update(&mut self, _script: &[u8]) -> TestResult {
+    pub fn update(&mut self, script: &[u8]) -> TestResult {
+        let existing_manifest = self
+            .deployment
+            .as_ref()
+            .ok_or_else(|| TestError::new("contract is not deployed").with_context("update"))?
+            .manifest
+            .clone();
+        self.update_with_manifest(script, &existing_manifest)
+    }
+
+    pub fn update_with_manifest(&mut self, script: &[u8], manifest: &[u8]) -> TestResult {
+        if script.is_empty() {
+            return Err(TestError::new("script cannot be empty").with_context("update"));
+        }
+        if manifest.is_empty() {
+            return Err(TestError::new("manifest cannot be empty").with_context("update"));
+        }
+
+        let deployment = self
+            .deployment
+            .as_mut()
+            .ok_or_else(|| TestError::new("contract is not deployed").with_context("update"))?;
+        deployment.script.clear();
+        deployment.script.extend_from_slice(script);
+        deployment.manifest.clear();
+        deployment.manifest.extend_from_slice(manifest);
         Ok(())
     }
 
     pub fn destroy(&mut self) -> TestResult {
+        if self.deployment.take().is_none() {
+            return Err(TestError::new("contract is not deployed").with_context("destroy"));
+        }
+
+        // Simulate ContractManagement.Destroy semantics by wiping contract storage state.
+        self.runtime.storage_mut().clear();
+        self.runtime.clear_storage_contexts();
+
         Ok(())
+    }
+
+    pub fn is_deployed(&self) -> bool {
+        self.deployment.is_some()
+    }
+
+    pub fn deployed_script(&self) -> Option<&[u8]> {
+        self.deployment
+            .as_ref()
+            .map(|deployment| deployment.script.as_slice())
+    }
+
+    pub fn deployed_manifest(&self) -> Option<&[u8]> {
+        self.deployment
+            .as_ref()
+            .map(|deployment| deployment.manifest.as_slice())
     }
 
     pub fn reset(&mut self) {
         self.runtime = MockRuntime::new();
+        self.deployment = None;
     }
 }
 

@@ -100,7 +100,9 @@ fn codec_rejects_oversized_payloads() {
 #[test]
 fn json_helpers_propagate_serialization_errors() {
     let utils_err = neo_devpack::utils::json_to_bytes(&FailingSerialize).unwrap_err();
-    assert!(utils_err.message().contains("failed to serialize JSON bytes"));
+    assert!(utils_err
+        .message()
+        .contains("failed to serialize JSON bytes"));
 
     let storage_err = neo_devpack::storage::write_json(&FailingSerialize).unwrap_err();
     assert!(storage_err
@@ -140,7 +142,8 @@ fn neo_manifest_serde_accepts_translator_supportedstandards_alias() {
         "supportedstandards": ["NEP-17"]
     });
 
-    let parsed: NeoContractManifest = serde_json::from_value(manifest_json).expect("manifest should deserialize");
+    let parsed: NeoContractManifest =
+        serde_json::from_value(manifest_json).expect("manifest should deserialize");
     assert_eq!(parsed.supported_standards, vec!["NEP-17"]);
 }
 
@@ -164,7 +167,8 @@ fn neo_manifest_serde_accepts_translator_extra_metadata() {
         }
     });
 
-    let parsed: NeoContractManifest = serde_json::from_value(manifest_json).expect("manifest should deserialize");
+    let parsed: NeoContractManifest =
+        serde_json::from_value(manifest_json).expect("manifest should deserialize");
     assert_eq!(parsed.version, "1.2.3");
     assert_eq!(parsed.author, "Neo");
     assert_eq!(parsed.email, "dev@neo.org");

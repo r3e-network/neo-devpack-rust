@@ -67,3 +67,30 @@ impl Default for SampleNep17Contract {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::SampleNep17Contract;
+
+    #[test]
+    fn init_and_supply_paths_match_contract_rules() {
+        assert!(SampleNep17Contract::init(1, 1));
+        assert!(!SampleNep17Contract::init(0, 1));
+        assert_eq!(SampleNep17Contract::total_supply(), 1_000_000);
+    }
+
+    #[test]
+    fn balance_distribution_is_deterministic() {
+        assert_eq!(SampleNep17Contract::balance_of(1), 750_000);
+        assert_eq!(SampleNep17Contract::balance_of(2), 250_000);
+        assert_eq!(SampleNep17Contract::balance_of(3), 0);
+    }
+
+    #[test]
+    fn transfer_rejects_invalid_paths() {
+        assert!(SampleNep17Contract::transfer(1, 2, 1));
+        assert!(!SampleNep17Contract::transfer(1, 1, 1));
+        assert!(!SampleNep17Contract::transfer(0, 2, 1));
+        assert!(!SampleNep17Contract::transfer(1, 2, 0));
+    }
+}

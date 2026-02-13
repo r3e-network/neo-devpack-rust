@@ -73,3 +73,26 @@ impl Default for SampleNep11Contract {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::SampleNep11Contract;
+
+    #[test]
+    fn supply_and_read_paths_are_consistent() {
+        assert_eq!(SampleNep11Contract::total_supply(), 1_000);
+        assert_eq!(SampleNep11Contract::balance_of(1), 1);
+        assert_eq!(SampleNep11Contract::balance_of(0), 0);
+        assert_eq!(SampleNep11Contract::owner_of(0), 0);
+        assert_eq!(SampleNep11Contract::owner_of(12), 3);
+    }
+
+    #[test]
+    fn mint_and_transfer_validate_inputs() {
+        assert!(SampleNep11Contract::mint(1, 1));
+        assert!(!SampleNep11Contract::mint(0, 1));
+        assert!(SampleNep11Contract::transfer(1, 2, 1));
+        assert!(!SampleNep11Contract::transfer(1, 1, 1));
+        assert!(!SampleNep11Contract::transfer(1, 2, 0));
+    }
+}

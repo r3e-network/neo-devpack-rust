@@ -73,3 +73,38 @@ impl Default for UniswapV2RouterContract {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::UniswapV2RouterContract;
+
+    #[test]
+    fn add_liquidity_requires_balanced_ratio() {
+        assert!(UniswapV2RouterContract::add_liquidity(100, 50));
+        assert!(!UniswapV2RouterContract::add_liquidity(100, 1));
+        assert!(!UniswapV2RouterContract::add_liquidity(0, 50));
+    }
+
+    #[test]
+    fn reserves_and_quote_are_stable() {
+        let packed = UniswapV2RouterContract::get_reserves();
+        assert_eq!(packed >> 32, 1_000_000);
+        assert_eq!(packed & 0xFFFF_FFFF, 500_000);
+
+        assert_eq!(UniswapV2RouterContract::quote(0), 0);
+        assert!(UniswapV2RouterContract::quote(1_000) > 0);
+    }
+
+    #[test]
+    fn swap_enforces_min_output() {
+        let expected = UniswapV2RouterContract::quote(1_000);
+        assert_eq!(
+            UniswapV2RouterContract::swap_exact_tokens_for_tokens(1_000, expected),
+            expected
+        );
+        assert_eq!(
+            UniswapV2RouterContract::swap_exact_tokens_for_tokens(1_000, expected + 1),
+            0
+        );
+    }
+}

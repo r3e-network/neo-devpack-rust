@@ -259,7 +259,5 @@ fn ensure_manifest_methods_rejects_offset_out_of_u32_range() {
     builder.merge_overlay(&overlay, Some("overlay.json".to_string()));
 
     let err = builder.ensure_method_parity().unwrap_err();
-    assert!(err
-        .to_string()
-        .contains("offset exceeds u32 range"));
+    assert!(err.to_string().contains("offset exceeds u32 range"));
 }

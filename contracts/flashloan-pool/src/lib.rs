@@ -64,3 +64,29 @@ impl Default for FlashLoanPoolContract {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::FlashLoanPoolContract;
+
+    #[test]
+    fn flash_fee_and_capacity_are_consistent() {
+        assert_eq!(FlashLoanPoolContract::max_flash_loan(), 1_000_000);
+        assert_eq!(FlashLoanPoolContract::flash_fee(0), 0);
+        assert_eq!(FlashLoanPoolContract::flash_fee(10_000), 9);
+    }
+
+    #[test]
+    fn flash_loan_requires_valid_borrower_and_bounds() {
+        assert_eq!(FlashLoanPoolContract::flash_loan(1, 10_000), 9);
+        assert_eq!(FlashLoanPoolContract::flash_loan(0, 10_000), 0);
+        assert_eq!(FlashLoanPoolContract::flash_loan(1, 1_000_001), 0);
+    }
+
+    #[test]
+    fn repay_enforces_fee_coverage() {
+        assert!(FlashLoanPoolContract::repay(10_000, 10_009));
+        assert!(!FlashLoanPoolContract::repay(10_000, 10_008));
+        assert!(!FlashLoanPoolContract::repay(0, 0));
+    }
+}

@@ -63,3 +63,30 @@ impl Default for NeoCrowdfundContract {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::NeoCrowdfundContract;
+
+    #[test]
+    fn configure_enforces_basic_invariants() {
+        assert!(NeoCrowdfundContract::configure(1, 1, 1, 100, 10, 1));
+        assert!(!NeoCrowdfundContract::configure(0, 1, 1, 100, 10, 1));
+        assert!(!NeoCrowdfundContract::configure(1, 1, 1, 0, 10, 1));
+    }
+
+    #[test]
+    fn contribution_and_refund_paths_are_deterministic() {
+        assert_eq!(NeoCrowdfundContract::contribution_of(1, 1), 100);
+        assert_eq!(NeoCrowdfundContract::contribution_of(0, 1), 0);
+
+        assert!(NeoCrowdfundContract::claim_refund(1, 1));
+        assert!(!NeoCrowdfundContract::claim_refund(0, 1));
+    }
+
+    #[test]
+    fn finalize_requires_valid_campaign_id() {
+        assert!(NeoCrowdfundContract::finalize(1));
+        assert!(!NeoCrowdfundContract::finalize(0));
+    }
+}

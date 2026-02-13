@@ -62,3 +62,32 @@ impl Default for NeoNftMarketplaceContract {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::NeoNftMarketplaceContract;
+
+    #[test]
+    fn create_and_cancel_listing_validate_core_fields() {
+        assert!(NeoNftMarketplaceContract::create_listing(
+            1, 1, 0, 1, 100, 0, 10, 0, 0
+        ));
+        assert!(!NeoNftMarketplaceContract::create_listing(
+            0, 1, 0, 1, 100, 0, 10, 0, 0
+        ));
+        assert!(!NeoNftMarketplaceContract::create_listing(
+            1, 1, 0, 1, 0, 0, 10, 0, 0
+        ));
+
+        assert!(NeoNftMarketplaceContract::cancel_listing(0, 1, 0));
+        assert!(!NeoNftMarketplaceContract::cancel_listing(0, 0, 0));
+    }
+
+    #[test]
+    fn payment_handlers_require_positive_sender() {
+        assert!(NeoNftMarketplaceContract::on_nep11_payment(1, 0, 0, 0));
+        assert!(!NeoNftMarketplaceContract::on_nep11_payment(0, 0, 0, 0));
+        assert!(NeoNftMarketplaceContract::on_nep17_payment(1, 0, 0));
+        assert!(!NeoNftMarketplaceContract::on_nep17_payment(0, 0, 0));
+    }
+}

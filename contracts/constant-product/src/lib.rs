@@ -76,3 +76,32 @@ impl Default for ConstantProductAmmContract {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::ConstantProductAmmContract;
+
+    #[test]
+    fn init_requires_positive_reserves() {
+        assert!(ConstantProductAmmContract::init(1, 1));
+        assert!(!ConstantProductAmmContract::init(0, 1));
+        assert!(!ConstantProductAmmContract::init(1, 0));
+    }
+
+    #[test]
+    fn quote_and_swap_respect_validation() {
+        assert_eq!(ConstantProductAmmContract::quote(0), 0);
+        assert_eq!(ConstantProductAmmContract::swap(0, 100), 0);
+
+        let out = ConstantProductAmmContract::quote(100);
+        assert!(out > 0);
+        assert_eq!(ConstantProductAmmContract::swap(1, 100), out);
+    }
+
+    #[test]
+    fn reserves_are_packed_consistently() {
+        let packed = ConstantProductAmmContract::get_reserves();
+        assert_eq!(packed >> 32, 10_000);
+        assert_eq!(packed & 0xFFFF_FFFF, 5_000);
+    }
+}

@@ -277,9 +277,7 @@ fn translate_rejects_empty_contract_name() {
 
     let err = translate_module(&wasm, "").expect_err("empty contract name should error");
     let message = err.to_string();
-    assert!(
-        message
-            .to_ascii_lowercase()
-            .contains("contract name cannot be empty")
-    );
+    assert!(message
+        .to_ascii_lowercase()
+        .contains("contract name cannot be empty"));
 }

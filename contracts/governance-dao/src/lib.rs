@@ -88,3 +88,35 @@ impl Default for NeoGovernanceDaoContract {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::NeoGovernanceDaoContract;
+
+    #[test]
+    fn configure_and_propose_validate_parameters() {
+        assert!(NeoGovernanceDaoContract::configure(1, 1, 1, 1, 1));
+        assert!(!NeoGovernanceDaoContract::configure(0, 1, 1, 1, 1));
+
+        assert!(NeoGovernanceDaoContract::propose(
+            1, 1, 1, 0, 0, 10, 20, 0, 0, 0, 0, 0
+        ));
+        assert!(!NeoGovernanceDaoContract::propose(
+            1, 1, 1, 0, 0, 20, 10, 0, 0, 0, 0, 0
+        ));
+    }
+
+    #[test]
+    fn vote_enforces_side_and_weight() {
+        assert!(NeoGovernanceDaoContract::vote(1, 0, 1, 0, 1));
+        assert!(NeoGovernanceDaoContract::vote(1, 0, 1, 2, 1));
+        assert!(!NeoGovernanceDaoContract::vote(1, 0, 1, 3, 1));
+        assert!(!NeoGovernanceDaoContract::vote(1, 0, 1, 1, 0));
+    }
+
+    #[test]
+    fn stake_lookup_is_deterministic() {
+        assert_eq!(NeoGovernanceDaoContract::stake_of(1, 1), 1000);
+        assert_eq!(NeoGovernanceDaoContract::stake_of(0, 1), 0);
+    }
+}

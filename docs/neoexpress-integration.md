@@ -30,6 +30,17 @@ The harness verifies that the translated artefacts exist and surfaces their size
 Augment the test with project-specific deployment logic (for example by invoking
 `neo-express contract deploy`) as you plug the suite into CI.
 
+## CI Smoke Job
+
+The CI workflow includes a `Neo Express Smoke` job that provisions Neo Express,
+builds/translates all sample contracts, deploys them, and runs invoke checks via
+`scripts/neoxp_smoke.sh`.
+
+The job runs on every CI execution.
+
+This increases CI duration because it installs Neo Express tooling and runs
+full build/deploy/invoke checks across the contract suite.
+
 ## Deployment Helper Script
 
 For convenience the repo ships with `scripts/neoexpress_deploy.sh`. After setting
