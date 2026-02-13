@@ -22,7 +22,7 @@ Rust contract (neo-devpack) ──cargo build --target wasm32-unknown-unknown─
 | Resource | Description |
 |----------|-------------|
 | [📖 Quick Start Guide](docs/rust-smart-contract-quickstart.md) | Step-by-step tutorial for writing your first contract |
-| [📋 Contract Examples](contracts/) | 12 production-ready example contracts |
+| [📋 Contract Examples](contracts/) | 17 production-ready example contracts |
 | [🔧 API Documentation](https://docs.rs/wasm-neovm) | Rust API docs for wasm-neovm |
 | [🌉 Cross-Chain Spec](docs/CROSS_CHAIN_SPEC.md) | Technical specification for Solana/Move compatibility |
 | [🏗️ Architecture](docs/wasm-pipeline.md) | WebAssembly to NeoVM translation pipeline |
@@ -33,7 +33,7 @@ Rust contract (neo-devpack) ──cargo build --target wasm32-unknown-unknown─
 
 This toolchain is **production-ready** and fully compatible with **Neo N3 version 3.9.1**. All components have been thoroughly tested with:
 
-- ✅ 310+ automated tests across all modules
+- ✅ 500+ automated tests across all modules
 - ✅ Multi-platform CI (Linux, macOS, Windows)
 - ✅ Security auditing (cargo-audit, cargo-deny)
 - ✅ Code coverage tracking
