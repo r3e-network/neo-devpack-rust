@@ -43,6 +43,10 @@ pub(crate) struct Cli {
     /// Source blockchain for cross-chain compilation (neo, solana, move)
     #[arg(long = "source-chain", default_value = "neo")]
     pub(crate) source_chain: String,
+
+    /// Enable verbose logging
+    #[arg(short, long, action = clap::ArgAction::Count)]
+    pub(crate) verbose: u8,
 }
 
 impl Cli {
@@ -71,6 +75,7 @@ mod tests {
             source_url: None,
             compare_manifest: None,
             source_chain: "sol".to_string(),
+            verbose: 0,
         };
         assert_eq!(cli.parse_source_chain().unwrap(), SourceChain::Solana);
 
@@ -92,6 +97,7 @@ mod tests {
             source_url: None,
             compare_manifest: None,
             source_chain: "ethereum".to_string(),
+            verbose: 0,
         };
 
         assert!(cli.parse_source_chain().is_err());

@@ -20,8 +20,17 @@ use wasm_neovm::{
 };
 
 fn main() -> Result<()> {
-    env_logger::init();
     let cli = Cli::parse();
+
+    // Initialize logger with appropriate level based on verbose flag
+    let log_level = match cli.verbose {
+        0 => log::LevelFilter::Warn,
+        1 => log::LevelFilter::Info,
+        _ => log::LevelFilter::Debug,
+    };
+    env_logger::Builder::from_default_env()
+        .filter_level(log_level)
+        .init();
 
     // Parse source chain
     let source_chain = cli.parse_source_chain()?;

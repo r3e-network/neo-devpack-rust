@@ -13,6 +13,3 @@ pub fn emit_call_placeholder(script: &mut Vec<u8>) -> Result<usize> {
 ///
 /// Re-exported from offsets module for backward compatibility
 pub use super::offsets::patch_offset as patch_call;
-
-// Kept for backward compatibility - all functionality is now in offsets.rs
-// TODO: Migrate all callers to use offsets module directly, then deprecate this module

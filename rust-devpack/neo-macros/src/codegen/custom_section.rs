@@ -14,7 +14,7 @@ static MANIFEST_OVERLAY_COUNTER: AtomicUsize = AtomicUsize::new(0);
 ///
 /// This function creates a static byte array in the `.custom_section.neo.manifest`
 /// section (or `__DATA,__neo_manifest` on macOS), which will be extracted during
-/// contract deployment.
+/// the contract deployment.
 ///
 /// # Arguments
 ///
