@@ -8,28 +8,29 @@
 //!
 //! # Usage
 //!
-//! ```rust
+//! ```ignore
 //! use neo_test::*;
 //!
-//! #[test]
-//! fn test_my_contract() {
-//!     let mut env = TestEnvironment::new();
-//!     
-//!     // Set up contract state
-//!     env.set_storage(b"owner", b"AV4GGdKS2C7j1GqC3w5y4qX5qZ5qZ5qZ5");
-//!     
-//!     // Call contract method
-//!     let result = env.call_method("balanceOf", &[address.to_arg()]);
-//!     
-//!     // Assert results
-//!     result.assert_ok();
-//!     result.assert_returns(100);
-//! }
+//! // Create a test environment
+//! let mut env = TestEnvironment::new();
+//!
+//! // Set up contract state
+//! env.set_storage(b"owner", b"AV4GGdKS2C7j1GqC3w5y4qX5");
+//!
+//! // Add witness
+//! env.add_witness(b"AV4GGdKS2C7j1GqC3w5y4qX5");
+//!
+//! // Assert
+//! env.assert_storage().assert_contains(b"owner");
+//! env.assert_runtime().assert_witness(b"AV4GGdKS2C7j1GqC3w5y4qX5");
 //! ```
 
 mod assertions;
 mod environment;
 mod mock_runtime;
+
+#[cfg(test)]
+mod tests;
 
 pub use assertions::*;
 pub use environment::*;

@@ -1,12 +1,15 @@
 // Copyright (c) 2025 R3E Network
 // Licensed under the MIT License
 
-//! Mock Runtime for Testing
+//! Mock Runtime for Testing Neo N3 Smart Contracts
+//!
+//! This module provides a comprehensive mock runtime environment for testing
+//! Neo N3 smart contracts without requiring a full Neo node.
 
 use neo_types::*;
 use std::collections::HashMap;
 
-/// Mock storage for testing
+/// Mock storage that simulates Neo blockchain storage
 #[derive(Debug, Clone, Default)]
 pub struct MockStorage {
     data: HashMap<Vec<u8>, Vec<u8>>,
@@ -44,9 +47,51 @@ impl MockStorage {
     pub fn is_empty(&self) -> bool {
         self.data.is_empty()
     }
+
+    pub fn keys(&self) -> Vec<Vec<u8>> {
+        self.data.keys().cloned().collect()
+    }
+
+    pub fn find(&self, prefix: &[u8]) -> Vec<(Vec<u8>, Vec<u8>)> {
+        self.data
+            .iter()
+            .filter(|(k, _)| k.starts_with(prefix))
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect()
+    }
+}
+
+/// Mock storage context for simulating storage operations
+#[derive(Debug, Clone)]
+pub struct MockStorageContext {
+    pub id: u32,
+    is_read_only: bool,
+}
+
+impl MockStorageContext {
+    pub fn new(id: u32) -> Self {
+        Self {
+            id,
+            is_read_only: false,
+        }
+    }
+
+    pub fn read_only(id: u32) -> Self {
+        Self {
+            id,
+            is_read_only: true,
+        }
+    }
+
+    pub fn is_read_only(&self) -> bool {
+        self.is_read_only
+    }
 }
 
 /// Mock runtime for testing contract execution
+///
+/// This provides a complete simulation of the Neo N3 runtime environment
+/// for testing smart contracts.
 #[derive(Debug, Clone)]
 pub struct MockRuntime {
     pub storage: MockStorage,
@@ -61,6 +106,9 @@ pub struct MockRuntime {
     pub calling_script_hash: Option<NeoByteString>,
     pub executing_script_hash: Option<NeoByteString>,
     pub entry_script_hash: Option<NeoByteString>,
+    pub gas_left: i64,
+    pub invocation_counter: i32,
+    storage_contexts: Vec<MockStorageContext>,
 }
 
 impl Default for MockRuntime {
@@ -75,7 +123,7 @@ impl MockRuntime {
             storage: MockStorage::new(),
             trigger: 0,
             time: 0,
-            network: 860905102,
+            network: 860905102, // MainNet
             address_version: 53,
             witnesses: Vec::new(),
             notifications: Vec::new(),
@@ -84,6 +132,9 @@ impl MockRuntime {
             calling_script_hash: None,
             executing_script_hash: None,
             entry_script_hash: None,
+            gas_left: 100_000_000, // 100 GAS
+            invocation_counter: 0,
+            storage_contexts: vec![MockStorageContext::new(0)],
         }
     }
 
@@ -114,6 +165,26 @@ impl MockRuntime {
 
     pub fn with_script_container(mut self, container: NeoArray<NeoValue>) -> Self {
         self.script_container = Some(container);
+        self
+    }
+
+    pub fn with_calling_script_hash(mut self, hash: &[u8]) -> Self {
+        self.calling_script_hash = Some(NeoByteString::from_slice(hash));
+        self
+    }
+
+    pub fn with_executing_script_hash(mut self, hash: &[u8]) -> Self {
+        self.executing_script_hash = Some(NeoByteString::from_slice(hash));
+        self
+    }
+
+    pub fn with_entry_script_hash(mut self, hash: &[u8]) -> Self {
+        self.entry_script_hash = Some(NeoByteString::from_slice(hash));
+        self
+    }
+
+    pub fn with_gas_left(mut self, gas: i64) -> Self {
+        self.gas_left = gas;
         self
     }
 
@@ -188,6 +259,62 @@ impl MockRuntime {
     pub fn entry_script_hash(&self) -> Option<&NeoByteString> {
         self.entry_script_hash.as_ref()
     }
+
+    pub fn gas_left(&self) -> i64 {
+        self.gas_left
+    }
+
+    pub fn consume_gas(&mut self, amount: i64) {
+        self.gas_left = (self.gas_left - amount).max(0);
+    }
+
+    pub fn invocation_counter(&self) -> i32 {
+        self.invocation_counter
+    }
+
+    pub fn increment_invocation_counter(&mut self) {
+        self.invocation_counter += 1;
+    }
+
+    pub fn get_storage_context(&mut self) -> MockStorageContext {
+        let id = self.storage_contexts.len() as u32;
+        self.storage_contexts.push(MockStorageContext::new(id));
+        MockStorageContext::new(id)
+    }
+
+    pub fn get_read_only_storage_context(&mut self) -> MockStorageContext {
+        let id = self.storage_contexts.len() as u32;
+        self.storage_contexts
+            .push(MockStorageContext::read_only(id));
+        MockStorageContext::read_only(id)
+    }
+
+    /// Simulate storage get operation
+    pub fn storage_get(&self, key: &[u8]) -> Option<Vec<u8>> {
+        self.storage.get(key)
+    }
+
+    /// Simulate storage put operation
+    pub fn storage_put(&mut self, key: &[u8], value: &[u8]) {
+        self.storage.put(key, value);
+    }
+
+    /// Simulate storage delete operation
+    pub fn storage_delete(&mut self, key: &[u8]) {
+        self.storage.delete(key);
+    }
+
+    /// Simulate storage find operation
+    pub fn storage_find(&self, prefix: &[u8]) -> Vec<(Vec<u8>, Vec<u8>)> {
+        self.storage.find(prefix)
+    }
+
+    /// Reset the runtime state
+    pub fn reset(&mut self) {
+        self.notifications.clear();
+        self.logs.clear();
+        self.invocation_counter = 0;
+    }
 }
 
 /// Builder for creating mock runtime
@@ -226,6 +353,16 @@ impl MockRuntimeBuilder {
         self.runtime
             .witnesses
             .push(NeoByteString::from_slice(address));
+        self
+    }
+
+    pub fn script_hash(mut self, hash: &[u8]) -> Self {
+        self.runtime.executing_script_hash = Some(NeoByteString::from_slice(hash));
+        self
+    }
+
+    pub fn gas(mut self, gas: i64) -> Self {
+        self.runtime.gas_left = gas;
         self
     }
 

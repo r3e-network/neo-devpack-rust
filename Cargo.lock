@@ -640,7 +640,7 @@ name = "neo-test"
 version = "0.1.0"
 dependencies = [
  "neo-devpack",
- "neo-runtime",
+ "neo-syscalls",
  "neo-types",
  "trybuild",
 ]
