@@ -1,0 +1,16 @@
+[package]
+name = "neo-test"
+version = "0.1.0"
+edition = "2021"
+description = "Testing framework for Neo N3 Rust smart contracts"
+authors = ["R3E Network <team@r3e.network>"]
+license = "MIT"
+repository = "https://github.com/r3e-network/neo-llvm"
+
+[dependencies]
+neo-devpack = { path = "..", version = "0.1.0" }
+neo-types = { path = "../neo-types", version = "0.1.0" }
+neo-runtime = { path = "../neo-runtime", version = "0.1.0" }
+
+[dev-dependencies]
+trybuild = "1.0"
