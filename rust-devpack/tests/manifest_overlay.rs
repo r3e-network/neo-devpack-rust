@@ -15,6 +15,23 @@ pub struct SampleEvent {
 neo_permission!("0xff", ["balanceOf"]);
 neo_supported_standards!(["NEP-17"]);
 neo_trusts!(["*"]);
+neo_manifest_overlay!(
+    r#"{
+    "extra": {
+        "author": "Neo Team",
+        "description": "syntax coverage",
+        "version": "1.2.3",
+        "customField": {"channel": "ci"}
+    },
+    "permissions": [
+        {
+            "contract": "0xff",
+            "methods": "*",
+            "labels": ["runtime", "wildcard"]
+        }
+    ]
+}"#
+);
 
 #[test]
 fn overlay_macro_compiles() {}

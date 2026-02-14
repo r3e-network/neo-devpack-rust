@@ -259,3 +259,102 @@ fn translate_manifest_custom_section_merges_metadata() {
     assert!(token.has_return_value);
     assert_eq!(token.call_flags, 3);
 }
+
+#[test]
+fn translate_manifest_preserves_permission_wildcard_and_extra_metadata_fields() {
+    use std::borrow::Cow;
+    use wasm_encoder::{
+        CodeSection, CustomSection, ExportKind, ExportSection, Function, FunctionSection, Module,
+        TypeSection,
+    };
+
+    let mut module = Module::new();
+
+    let mut types = TypeSection::new();
+    types.ty().function(vec![], vec![]);
+    module.section(&types);
+
+    let mut functions = FunctionSection::new();
+    functions.function(0);
+    module.section(&functions);
+
+    let mut exports = ExportSection::new();
+    exports.export("main", ExportKind::Func, 0);
+    module.section(&exports);
+
+    let mut codes = CodeSection::new();
+    let mut body = Function::new(vec![]);
+    body.instructions().end();
+    codes.function(&body);
+    module.section(&codes);
+
+    let overlay_primary = r#"{
+        "permissions": [
+            {"contract": "0xff", "methods": ["balanceOf"], "note": "base"}
+        ],
+        "extra": {
+            "author": "Neo Team",
+            "customOne": "alpha"
+        }
+    }"#;
+
+    let custom_primary = CustomSection {
+        name: Cow::Borrowed("neo.manifest"),
+        data: Cow::Borrowed(overlay_primary.as_bytes()),
+    };
+    module.section(&custom_primary);
+
+    let overlay_secondary = r#"{
+        "permissions": [
+            {"contract": "0xff", "methods": "*", "scope": "all"}
+        ],
+        "supportedstandards": ["NEP-17"],
+        "extra": {
+            "customTwo": {"enabled": true}
+        }
+    }"#;
+
+    let custom_secondary = CustomSection {
+        name: Cow::Borrowed("neo.manifest"),
+        data: Cow::Borrowed(overlay_secondary.as_bytes()),
+    };
+    module.section(&custom_secondary);
+
+    let wasm = module.finish();
+    let translation = translate_module(&wasm, "OverlayMeta").expect("translation succeeds");
+
+    let permissions = translation.manifest.value["permissions"]
+        .as_array()
+        .expect("permissions present");
+    assert_eq!(permissions.len(), 1);
+    let permission = &permissions[0];
+    assert_eq!(permission["contract"].as_str(), Some("0xff"));
+    assert_eq!(permission["methods"].as_str(), Some("*"));
+    assert_eq!(permission["note"].as_str(), Some("base"));
+    assert_eq!(permission["scope"].as_str(), Some("all"));
+
+    let standards = translation.manifest.value["supportedstandards"]
+        .as_array()
+        .expect("supported standards present");
+    assert_eq!(standards.len(), 1);
+    assert_eq!(standards[0].as_str(), Some("NEP-17"));
+
+    let extra = translation.manifest.value["extra"]
+        .as_object()
+        .expect("extra object present");
+    assert_eq!(
+        extra.get("author").and_then(|v| v.as_str()),
+        Some("Neo Team")
+    );
+    assert_eq!(
+        extra.get("customOne").and_then(|v| v.as_str()),
+        Some("alpha")
+    );
+    assert_eq!(
+        extra
+            .get("customTwo")
+            .and_then(|v| v.get("enabled"))
+            .and_then(|v| v.as_bool()),
+        Some(true)
+    );
+}

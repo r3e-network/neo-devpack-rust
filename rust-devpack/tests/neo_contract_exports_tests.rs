@@ -45,6 +45,16 @@ impl ExportedContract {
             Ok(())
         }
     }
+
+    #[neo_method(name = "renamedValue", safe)]
+    pub fn renamed_value(&self, input: NeoInteger) -> NeoResult<NeoInteger> {
+        Ok(NeoInteger::new(input.as_i32_saturating() as i64 + 1))
+    }
+
+    #[neo_method(export_name = "legacyAlias")]
+    pub fn legacy_alias(&self) -> NeoResult<NeoInteger> {
+        Ok(NeoInteger::new(9))
+    }
 }
 
 impl Default for ExportedContract {
@@ -82,4 +92,10 @@ fn generated_exports_are_callable() {
         maybeTouchLastError(),
         NeoError::InvalidOperation.status_code()
     );
+
+    assert_eq!(renamedValue(41), 42);
+    assert_eq!(renamedValueLastError(), 0);
+
+    assert_eq!(legacyAlias(), 9);
+    assert_eq!(legacyAliasLastError(), 0);
 }
