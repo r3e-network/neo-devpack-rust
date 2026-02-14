@@ -7,7 +7,7 @@ WASM_TARGET       := wasm32-unknown-unknown
 OUTDIR            := build
 TRANSLATOR        := cargo run --manifest-path wasm-neovm/Cargo.toml --quiet --
 
-CONTRACT_RUSTFLAGS := -C opt-level=z -C strip=symbols -C panic=abort -C target-feature=-simd128,-reference-types,-multivalue,-tail-call,-atomics
+CONTRACT_RUSTFLAGS := -C opt-level=z -C strip=symbols -C panic=abort -C target-feature=-simd128,-reference-types,-multivalue,-tail-call
 WASM_SNIP         ?= wasm-snip
 
 HELLO_WASM        := contracts/hello-world/target/$(WASM_TARGET)/release/hello_world_neo.wasm
@@ -391,6 +391,9 @@ test:
 
 verify-contract-tests:
 	scripts/verify_contract_tests.sh
+
+verify-neo-n3-conformance:
+	bash scripts/check_neo_n3_conformance_matrix.sh
 
 test-contracts:
 	$(MAKE) verify-contract-tests

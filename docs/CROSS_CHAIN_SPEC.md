@@ -201,7 +201,7 @@ cargo build --manifest-path contracts/solana-hello/Cargo.toml \
 
 # Step 2: Translate to NEF
 cargo run --manifest-path wasm-neovm/Cargo.toml -- \
-  --input contracts/solana-hello/target/wasm32-unknown-unknown/release/solana_hello.wasm \
+  --input contracts/solana-hello/target/wasm32-unknown-unknown/release/solana_hello_neo.wasm \
   --nef build/solana_hello.nef \
   --manifest build/solana_hello.manifest.json \
   --name solana-hello \
@@ -229,7 +229,7 @@ cargo build --manifest-path contracts/move-coin/Cargo.toml \
   --target wasm32-unknown-unknown --release
 
 cargo run --manifest-path wasm-neovm/Cargo.toml -- \
-  --input contracts/move-coin/target/wasm32-unknown-unknown/release/move_coin.wasm \
+  --input contracts/move-coin/target/wasm32-unknown-unknown/release/move_coin_neo.wasm \
   --nef build/MoveCoin.nef \
   --manifest build/MoveCoin.manifest.json \
   --name MoveCoin \

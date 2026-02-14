@@ -50,7 +50,7 @@ fi
 
 echo "==> Building Wasm contract ($CONTRACT_NAME)"
 # Default mask disables unsupported Wasm features; override via NEO_WASM_RUSTFLAGS if needed.
-DEFAULT_RUSTFLAGS="-C opt-level=z -C strip=symbols -C panic=abort -C target-feature=-simd128,-reference-types,-multivalue,-tail-call,-atomics"
+DEFAULT_RUSTFLAGS="-C opt-level=z -C strip=symbols -C panic=abort -C target-feature=-simd128,-reference-types,-multivalue,-tail-call"
 RUSTFLAGS_TO_USE="${NEO_WASM_RUSTFLAGS:-$DEFAULT_RUSTFLAGS}"
 echo "    RUSTFLAGS=$RUSTFLAGS_TO_USE"
 RUSTFLAGS="$RUSTFLAGS_TO_USE" cargo build --manifest-path "$CONTRACT_DIR/Cargo.toml" \

@@ -6,7 +6,7 @@ This document outlines the technical architecture for compiling smart contracts 
 
 | Chain | Status | Components |
 |-------|--------|------------|
-| Solana | ✅ **Working** | `solana-compat/`, `wasm-neovm/src/adapters/solana.rs` |
+| Solana | ✅ **Working** | `solana-compat/`, `wasm-neovm/src/adapters/solana/mod.rs` |
 | Move | ⚠️ **Experimental** | `move-neovm/` lowers Move bytecode → WASM with control flow + storage-backed resources (ability-checked); `wasm-neovm` will auto-run Move bytecode through this step |
 
 ## Quick Start
@@ -20,7 +20,7 @@ cargo build --manifest-path contracts/solana-hello/Cargo.toml \
 
 # 2. Translate to NEF
 cargo run --manifest-path wasm-neovm/Cargo.toml -- \
-  --input contracts/solana-hello/target/wasm32-unknown-unknown/release/solana_hello.wasm \
+  --input contracts/solana-hello/target/wasm32-unknown-unknown/release/solana_hello_neo.wasm \
   --nef build/solana_hello.nef \
   --manifest build/solana_hello.manifest.json \
   --name solana-hello \

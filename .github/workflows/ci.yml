@@ -5,14 +5,61 @@ on:
     branches: [ master ]
   pull_request:
     branches: [ master ]
+  schedule:
+    - cron: '0 0 * * *'
+
+permissions:
+  actions: read
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
 
 jobs:
+  daily-run-gate:
+    name: Daily Run Gate
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.gate.outputs.should_run }}
+    steps:
+      - name: Check if CI already ran today
+        id: gate
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const todayUtc = new Date().toISOString().slice(0, 10);
+            const { data } = await github.rest.actions.listWorkflowRuns({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: context.workflow,
+              per_page: 100,
+            });
+
+            const alreadyRanToday = data.workflow_runs.some((run) => {
+              if (run.id === context.runId) return false;
+              if (!["push", "schedule", "pull_request"].includes(run.event)) return false;
+              return run.created_at.startsWith(todayUtc);
+            });
+
+            core.setOutput("should_run", alreadyRanToday ? "false" : "true");
+
+  neo-n3-conformance-gate:
+    name: Neo N3 Conformance Matrix Gate
+    needs: daily-run-gate
+    if: needs.daily-run-gate.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Verify Neo N3 conformance matrix has no unresolved gaps
+        run: bash scripts/check_neo_n3_conformance_matrix.sh
+
   test:
     name: Test Suite
+    needs: [daily-run-gate, neo-n3-conformance-gate]
+    if: needs.daily-run-gate.outputs.should_run == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -73,6 +120,8 @@ jobs:
 
   contract-tests:
     name: Contract Unit Tests
+    needs: [daily-run-gate, neo-n3-conformance-gate]
+    if: needs.daily-run-gate.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -112,6 +161,8 @@ jobs:
 
   neoxp-smoke:
     name: Neo Express Smoke
+    needs: [daily-run-gate, neo-n3-conformance-gate]
+    if: needs.daily-run-gate.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -176,6 +227,8 @@ jobs:
 
   clippy:
     name: Clippy
+    needs: [daily-run-gate, neo-n3-conformance-gate]
+    if: needs.daily-run-gate.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -225,6 +278,8 @@ jobs:
 
   fmt:
     name: Rustfmt
+    needs: [daily-run-gate, neo-n3-conformance-gate]
+    if: needs.daily-run-gate.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -255,6 +310,8 @@ jobs:
 
   coverage:
     name: Code Coverage
+    needs: [daily-run-gate, neo-n3-conformance-gate]
+    if: needs.daily-run-gate.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -322,6 +379,8 @@ jobs:
 
   security:
     name: Security Audit
+    needs: [daily-run-gate, neo-n3-conformance-gate]
+    if: needs.daily-run-gate.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -379,6 +438,8 @@ jobs:
 
   benchmark:
     name: Benchmark
+    needs: [daily-run-gate, neo-n3-conformance-gate]
+    if: needs.daily-run-gate.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -442,6 +503,8 @@ jobs:
   # New: Check for unused dependencies
   unused-deps:
     name: Check Unused Dependencies
+    needs: [daily-run-gate, neo-n3-conformance-gate]
+    if: needs.daily-run-gate.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -460,6 +523,8 @@ jobs:
   # New: Documentation check
   doc:
     name: Documentation
+    needs: [daily-run-gate, neo-n3-conformance-gate]
+    if: needs.daily-run-gate.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -481,6 +546,8 @@ jobs:
   # New: Build verification for all targets
   build:
     name: Build Verification
+    needs: [daily-run-gate, neo-n3-conformance-gate]
+    if: needs.daily-run-gate.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -521,6 +588,8 @@ jobs:
   # New: Version consistency check
   version-check:
     name: Version Consistency
+    needs: [daily-run-gate, neo-n3-conformance-gate]
+    if: needs.daily-run-gate.outputs.should_run == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code

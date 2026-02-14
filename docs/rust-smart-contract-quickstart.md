@@ -49,7 +49,7 @@ cargo build --manifest-path contracts/hello-world/Cargo.toml \
 The compiled module will be written to:
 
 ```
-contracts/hello-world/target/wasm32-unknown-unknown/release/hello_world.wasm
+contracts/hello-world/target/wasm32-unknown-unknown/release/hello_world_neo.wasm
 ```
 
 ## 4. Translate Wasm → NEF + Manifest
@@ -58,7 +58,7 @@ Invoke the translator with the Wasm payload, choosing the desired output locatio
 
 ```bash
 cargo run --manifest-path wasm-neovm/Cargo.toml -- \
-  --input contracts/hello-world/target/wasm32-unknown-unknown/release/hello_world.wasm \
+  --input contracts/hello-world/target/wasm32-unknown-unknown/release/hello_world_neo.wasm \
   --nef build/HelloWorld.nef \
   --manifest build/HelloWorld.manifest.json \
   --name HelloWorld
