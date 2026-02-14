@@ -64,7 +64,9 @@ Any valid manifest field can be specified. Common structure:
   and `trusts`, so additional entries are merged automatically. You generally no longer
   need to toggle the `storage` or `payable` flags manually—using `System.Storage.*`
   syscalls flips `features.storage`, and exporting `onPayment`/`onNEP17Payment`/
-  `onNEP11Payment` enables `features.payable`.
+  `onNEP11Payment` enables `features.payable`. Permission `methods` may be either
+  `"*"` or an array; wildcard values are preserved, and extra permission fields are
+  retained when duplicate contract entries are merged.
 
 ## CLI Usage
 

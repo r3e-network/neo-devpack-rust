@@ -16,6 +16,15 @@ static OPCODE_LOOKUP: Lazy<std::collections::HashMap<&'static str, &'static Opco
         map
     });
 
+/// Fast O(1) opcode lookup by byte value.
+static OPCODE_BYTE_LOOKUP: Lazy<[Option<&'static OpcodeInfo>; 256]> = Lazy::new(|| {
+    let mut table = [None; 256];
+    for op in generated::OPCODES {
+        table[op.byte as usize] = Some(op);
+    }
+    table
+});
+
 pub fn all() -> &'static [OpcodeInfo] {
     generated::OPCODES
 }
@@ -29,4 +38,8 @@ pub fn lookup(name: &str) -> Option<&'static OpcodeInfo> {
     // Slow path: case-insensitive fallback for compatibility
     let upper_name = name.to_ascii_uppercase();
     OPCODE_LOOKUP.get(upper_name.as_str()).copied()
+}
+
+pub fn lookup_by_byte(byte: u8) -> Option<&'static OpcodeInfo> {
+    OPCODE_BYTE_LOOKUP[byte as usize]
 }

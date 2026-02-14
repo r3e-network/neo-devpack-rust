@@ -107,24 +107,17 @@ fn dedup_permissions(value: &mut Value) {
     let mut index_by_contract: HashMap<String, usize> = HashMap::new();
     let mut fallback_seen: HashSet<String> = HashSet::new();
 
-    for mut entry in array.drain(..) {
+    for entry in array.drain(..) {
         if let Some(contract) = entry
             .get("contract")
             .and_then(serde_json::Value::as_str)
             .map(|s| s.to_string())
         {
-            let position = index_by_contract
-                .entry(contract.clone())
-                .or_insert_with(|| {
-                    merged.push(serde_json::json!({
-                        "contract": contract,
-                        "methods": []
-                    }));
-                    merged.len() - 1
-                });
-
-            if let Some(methods) = entry.get_mut("methods") {
-                merge_methods(&mut merged[*position], methods);
+            if let Some(position) = index_by_contract.get(&contract).copied() {
+                merge_permission_entry(&mut merged[position], &entry);
+            } else {
+                index_by_contract.insert(contract, merged.len());
+                merged.push(entry);
             }
         } else {
             let key = entry.to_string();
@@ -137,28 +130,97 @@ fn dedup_permissions(value: &mut Value) {
     *array = merged;
 }
 
-fn merge_methods(target: &mut Value, incoming: &Value) {
+fn merge_permission_entry(target: &mut Value, incoming: &Value) {
     let Some(target_obj) = target.as_object_mut() else {
         return;
     };
-    let Some(target_methods) = target_obj.get_mut("methods") else {
+    let Some(incoming_obj) = incoming.as_object() else {
         return;
     };
-    if !target_methods.is_array() {
-        *target_methods = serde_json::Value::Array(Vec::new());
+
+    for (key, incoming_value) in incoming_obj {
+        if key == "contract" {
+            continue;
+        }
+
+        if key == "methods" {
+            let target_methods = target_obj
+                .entry("methods".to_string())
+                .or_insert_with(|| serde_json::Value::Array(Vec::new()));
+            merge_permission_methods(target_methods, incoming_value);
+            continue;
+        }
+
+        match target_obj.get_mut(key) {
+            Some(existing) => merge_manifest(existing, incoming_value),
+            None => {
+                target_obj.insert(key.clone(), incoming_value.clone());
+            }
+        }
     }
-    if let Some(array) = target_methods.as_array_mut() {
-        if let Some(incoming_array) = incoming.as_array() {
-            let mut seen: HashSet<String> = array
-                .iter()
-                .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                .collect();
-            for method in incoming_array {
-                if let Some(name) = method.as_str() {
-                    if seen.insert(name.to_string()) {
-                        array.push(serde_json::Value::String(name.to_string()));
-                    }
+}
+
+fn merge_permission_methods(target: &mut Value, incoming: &Value) {
+    if target.as_str() == Some("*") {
+        return;
+    }
+
+    if incoming.as_str() == Some("*") {
+        *target = Value::String("*".to_string());
+        return;
+    }
+
+    if let Some(incoming_array) = incoming.as_array() {
+        let array = match target {
+            Value::Array(array) => array,
+            Value::String(existing) => {
+                let existing_value = existing.clone();
+                *target = Value::Array(vec![Value::String(existing_value)]);
+                target
+                    .as_array_mut()
+                    .expect("target was just converted to array")
+            }
+            _ => {
+                *target = Value::Array(Vec::new());
+                target
+                    .as_array_mut()
+                    .expect("target was just converted to array")
+            }
+        };
+
+        let mut seen: HashSet<String> = array
+            .iter()
+            .filter_map(|v| v.as_str().map(|s| s.to_string()))
+            .collect();
+        for method in incoming_array {
+            if let Some(name) = method.as_str() {
+                if seen.insert(name.to_string()) {
+                    array.push(Value::String(name.to_string()));
                 }
+            }
+        }
+        return;
+    }
+
+    if let Some(incoming_method) = incoming.as_str() {
+        match target {
+            Value::Array(array) => {
+                if !array.iter().any(|v| v.as_str() == Some(incoming_method)) {
+                    array.push(Value::String(incoming_method.to_string()));
+                }
+            }
+            Value::String(existing) => {
+                if existing != incoming_method {
+                    let existing_value = existing.clone();
+                    *target = Value::Array(vec![
+                        Value::String(existing_value),
+                        Value::String(incoming_method.to_string()),
+                    ]);
+                    dedup_string_array(target);
+                }
+            }
+            _ => {
+                *target = Value::String(incoming_method.to_string());
             }
         }
     }

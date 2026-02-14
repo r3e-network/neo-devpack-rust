@@ -151,11 +151,13 @@ pub(super) fn step(
                 return TokenScanEvent::Continue;
             }
         };
-        if count < 0 {
-            stack.push(Literal::Unknown);
-            return TokenScanEvent::Continue;
-        }
-        let count = count as usize;
+        let count = match usize::try_from(count) {
+            Ok(v) => v,
+            Err(_) => {
+                stack.push(Literal::Unknown);
+                return TokenScanEvent::Continue;
+            }
+        };
         for _ in 0..count {
             if stack.pop().is_none() {
                 stack.clear();
@@ -173,11 +175,13 @@ pub(super) fn step(
                 return TokenScanEvent::Continue;
             }
         };
-        if count < 0 {
-            stack.push(Literal::Unknown);
-            return TokenScanEvent::Continue;
-        }
-        let count = count as usize;
+        let count = match usize::try_from(count) {
+            Ok(v) => v,
+            Err(_) => {
+                stack.push(Literal::Unknown);
+                return TokenScanEvent::Continue;
+            }
+        };
         if stack.len() < count {
             stack.clear();
             return TokenScanEvent::Continue;
@@ -208,6 +212,44 @@ pub(super) fn step(
         ]);
         *pc += 4;
         return TokenScanEvent::Syscall(hash);
+    }
+
+    if let Some(info) = crate::opcodes::lookup_by_byte(op) {
+        let prefix_size = usize::from(info.operand_size_prefix);
+        if prefix_size != 0 {
+            let prefix_end = match pc.checked_add(prefix_size) {
+                Some(end) if end <= script.len() => end,
+                _ => return TokenScanEvent::Stop,
+            };
+
+            let dynamic_size = match prefix_size {
+                1 => usize::from(script[*pc]),
+                2 => usize::from(u16::from_le_bytes([script[*pc], script[*pc + 1]])),
+                4 => u32::from_le_bytes([
+                    script[*pc],
+                    script[*pc + 1],
+                    script[*pc + 2],
+                    script[*pc + 3],
+                ]) as usize,
+                _ => return TokenScanEvent::Stop,
+            };
+            *pc = prefix_end;
+
+            let operand_end = match pc
+                .checked_add(usize::from(info.operand_size))
+                .and_then(|end| end.checked_add(dynamic_size))
+            {
+                Some(end) if end <= script.len() => end,
+                _ => return TokenScanEvent::Stop,
+            };
+            *pc = operand_end;
+        } else if info.operand_size != 0 {
+            let operand_end = match pc.checked_add(usize::from(info.operand_size)) {
+                Some(end) if end <= script.len() => end,
+                _ => return TokenScanEvent::Stop,
+            };
+            *pc = operand_end;
+        }
     }
 
     stack.clear();

@@ -147,4 +147,64 @@ mod tests {
         let tokens = infer_contract_tokens(&script);
         assert!(tokens.is_empty());
     }
+
+    #[test]
+    fn infer_contract_tokens_skips_param_count_that_overflows_usize() {
+        let pushint8 = opcode("PUSHINT8");
+        let pushint128 = opcode("PUSHINT128");
+        let pushdata1 = opcode("PUSHDATA1");
+        let pack = opcode("PACK");
+        let syscall = opcode("SYSCALL");
+
+        let call_hash = crate::syscalls::lookup("System.Contract.Call")
+            .expect("System.Contract.Call syscall exists")
+            .hash;
+
+        let mut script = Vec::new();
+
+        script.push(pushdata1);
+        script.push(20);
+        script.extend(1u8..=20);
+
+        script.push(pushdata1);
+        script.push(4);
+        script.extend_from_slice(b"ping");
+
+        script.push(pushint8);
+        script.push(5);
+
+        // 2^64 overflows usize on 64-bit targets if converted with `as`.
+        let overflow_count = (u64::MAX as i128) + 1;
+        script.push(pushint128);
+        script.extend_from_slice(&overflow_count.to_le_bytes());
+        script.push(pack);
+
+        script.push(syscall);
+        script.extend_from_slice(&call_hash.to_le_bytes());
+
+        let tokens = infer_contract_tokens(&script);
+        assert!(tokens.is_empty());
+    }
+
+    #[test]
+    fn infer_contract_tokens_ignores_jump_operand_bytes() {
+        let jmp_l = opcode("JMP_L");
+        let syscall = opcode("SYSCALL");
+        let runtime_log_hash = crate::syscalls::lookup("System.Runtime.Log")
+            .expect("System.Runtime.Log syscall exists")
+            .hash
+            .to_le_bytes();
+
+        let script = vec![
+            jmp_l,
+            syscall,
+            runtime_log_hash[0],
+            runtime_log_hash[1],
+            runtime_log_hash[2],
+            runtime_log_hash[3],
+        ];
+
+        let tokens = infer_contract_tokens(&script);
+        assert!(tokens.is_empty());
+    }
 }

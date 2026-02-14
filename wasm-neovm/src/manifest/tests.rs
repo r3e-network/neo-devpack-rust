@@ -103,6 +103,36 @@ fn merge_manifest_deduplicates_permissions_and_standards() {
 }
 
 #[test]
+fn merge_manifest_permissions_preserve_wildcard_and_extra_fields() {
+    let mut base = json!({
+        "permissions": [
+            {"contract": "0x01", "methods": ["balanceOf"], "note": "base"}
+        ]
+    });
+
+    let overlay = json!({
+        "permissions": [
+            {"contract": "0x01", "methods": "*", "author": "neo"},
+            {"contract": "0x01", "methods": ["transfer"], "extraField": true}
+        ]
+    });
+
+    merge_manifest(&mut base, &overlay);
+
+    let permissions = base["permissions"]
+        .as_array()
+        .expect("permissions should be an array");
+    assert_eq!(permissions.len(), 1);
+
+    let permission = &permissions[0];
+    assert_eq!(permission["contract"].as_str(), Some("0x01"));
+    assert_eq!(permission["methods"].as_str(), Some("*"));
+    assert_eq!(permission["note"].as_str(), Some("base"));
+    assert_eq!(permission["author"].as_str(), Some("neo"));
+    assert_eq!(permission["extraField"].as_bool(), Some(true));
+}
+
+#[test]
 fn merge_manifest_deduplicates_events() {
     let mut base = json!({
         "abi": {
