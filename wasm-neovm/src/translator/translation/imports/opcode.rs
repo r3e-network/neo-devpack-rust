@@ -74,6 +74,7 @@ pub(super) fn emit_opcode_call(
         4 => script.extend_from_slice(&(immediate as i32).to_le_bytes()),
         8 => script.extend_from_slice(&(immediate as i64).to_le_bytes()),
         16 => script.extend_from_slice(&immediate.to_le_bytes()),
+        32 => script.extend_from_slice(&sign_extend_i128_to_32(immediate)),
         other => {
             bail!(
                 "unsupported operand size {} for opcode '{}'; use opcode.raw/raw4",
@@ -141,12 +142,18 @@ fn literal_instruction_len(script: &[u8], start: usize) -> Result<usize> {
     Ok(len)
 }
 
+fn sign_extend_i128_to_32(value: i128) -> [u8; 32] {
+    let mut bytes = [if value < 0 { 0xFF } else { 0x00 }; 32];
+    bytes[..16].copy_from_slice(&value.to_le_bytes());
+    bytes
+}
+
 fn truncate_literal(param: &StackValue, script: &mut Vec<u8>, max_bytes: usize) -> Result<i128> {
     let value = param
         .const_value
         .ok_or_else(|| anyhow!("import argument must be a compile-time constant"))?;
     // Treat the literal as signed; validate it fits within the requested bytes.
-    if max_bytes == 0 || max_bytes > 16 {
+    if max_bytes == 0 || max_bytes > 32 {
         bail!("unsupported immediate width {} bytes", max_bytes);
     }
 

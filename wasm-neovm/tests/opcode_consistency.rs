@@ -183,3 +183,22 @@ fn neo_opcodes_match_reference() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+
+#[test]
+fn opcode_import_supports_all_fixed_operand_widths() {
+    const SUPPORTED_WIDTHS: &[u8] = &[0, 1, 2, 4, 8, 16, 32];
+
+    let unsupported: Vec<String> = wasm_neovm::opcodes::all()
+        .iter()
+        .filter(|info| {
+            info.operand_size_prefix == 0 && !SUPPORTED_WIDTHS.contains(&info.operand_size)
+        })
+        .map(|info| format!("{}({})", info.name, info.operand_size))
+        .collect();
+
+    assert!(
+        unsupported.is_empty(),
+        "opcode import translator missing support for fixed operand widths: {}",
+        unsupported.join(", ")
+    );
+}

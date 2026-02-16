@@ -106,6 +106,27 @@ fn translate_opcode_pushint128_immediate() {
 }
 
 #[test]
+fn translate_opcode_pushint256_immediate_sign_extends() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (import "opcode" "PUSHINT256" (func $push256 (param i64)))
+              (func (export "emit")
+                i64.const -1
+                call $push256)
+            )"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "Emit256").expect("translation succeeds");
+
+    let pushint256 = wasm_neovm::opcodes::lookup("PUSHINT256").unwrap().byte;
+    assert_eq!(translation.script.len(), 34);
+    assert_eq!(translation.script[0], pushint256);
+    assert!(translation.script[1..33].iter().all(|&b| b == 0xFF));
+    assert_eq!(translation.script[33], 0x40); // RET
+}
+
+#[test]
 fn translate_internal_function_call() {
     let wasm = wat::parse_str(
         r#"(module
