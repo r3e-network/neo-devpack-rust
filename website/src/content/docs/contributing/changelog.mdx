@@ -8,6 +8,15 @@ import { Aside } from '@astrojs/starlight/components';
 
 This page summarizes the notable changes in each release. For the complete commit-level history, see the [full changelog on GitHub](https://github.com/r3e-network/neo-llvm/blob/master/CHANGELOG.md).
 
+## 0.4.8 — February 2026
+
+Production hardening release focused on Neo N3 correctness at import boundaries and syscall conformance.
+
+- **Syscall conformance gates** — added parity and reference-vector checks across `neo-syscalls` and translator resolution.
+- **Adapter consistency** — Neo, Move, and Solana adapters now consistently support extended Neo descriptors through `syscall` imports.
+- **Opcode import hardening** — strict signature/arity validation and complete fixed-width immediate handling through `PUSHINT256`.
+- **Env import hardening** — added alias coverage for `__memcpy`, `__memmove`, and `__memset` plus improved error diagnostics.
+
 ## 0.4.7 — February 2026
 
 Formal version promotion from development builds. This release stabilizes all changes introduced during the 0.4.x development cycle and marks the current recommended version for production use.

@@ -22,6 +22,28 @@ this repository follow independent versioning (currently 0.1.x).
 ### Verification
 - _TBD_
 
+## [0.4.8] - 2026-02-16
+
+### Added
+- Added syscall parity regression tests that verify descriptor/hash/alias consistency between `neo-syscalls` and translator resolution.
+- Added reference-vector tests for critical syscall descriptors and alias lowering, including mixed-case `syscall` module handling.
+- Added opcode import conformance coverage for fixed-width operands, including explicit `PUSHINT128` and `PUSHINT256` translation tests.
+
+### Changed
+- Hardened `NeoAdapter`, `MoveAdapter`, and `SolanaAdapter` to consistently pass through extended Neo syscall descriptors from the `syscall` module.
+- Hardened opcode import translation to enforce void return signatures and strict arity contracts across `opcode` imports, including `raw/raw4`.
+- Expanded env import alias coverage to include `__memcpy`, `__memmove`, and `__memset`.
+
+### Fixed
+- Fixed boolean host syscall placeholders to fail closed by default unless explicit host overrides are provided.
+- Fixed opcode immediate translation gaps by adding 16-byte and 32-byte operand encoding support with deterministic sign extension for 256-bit immediates.
+- Fixed import diagnostics to preserve original import spelling and report full `module::name` paths for recognized-but-unmapped imports.
+
+### Verification
+- `cargo fmt --all -- --check`
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings`
+- `cargo test --workspace --all-targets --all-features --no-fail-fast`
+
 ## [0.4.7] - 2026-02-11
 
 ### Changed
