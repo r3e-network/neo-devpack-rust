@@ -63,11 +63,12 @@ fn registry_contains_expected_syscalls() {
     let _guard = setup_syscall_test();
     let registry = registry();
     let names: Vec<_> = registry.names().collect();
-    assert_eq!(names.len(), 37);
+    assert_eq!(names.len(), 38);
     assert!(names.contains(&"System.Runtime.GetTime"));
     assert!(names.contains(&"System.Runtime.GasLeft"));
     assert!(names.contains(&"System.Contract.Call"));
     assert!(names.contains(&"System.Storage.Get"));
+    assert!(names.contains(&"Neo.Crypto.VerifyWithECDsa"));
 }
 
 #[test]
@@ -190,6 +191,15 @@ fn syscall_wrapper_supports_extended_system_surface() {
         NeoVMSyscall::check_multisig(&pubkeys, &signatures).expect("check multisig");
     assert!(check_multisig.as_bool());
 
+    let verify_with_ecdsa = NeoVMSyscall::verify_with_ecdsa(
+        &NeoByteString::new(vec![8u8; 32]),
+        &NeoByteString::new(vec![9u8; 33]),
+        &NeoByteString::new(vec![10u8; 64]),
+        &NeoInteger::new(1),
+    )
+    .expect("verify with ecdsa");
+    assert!(verify_with_ecdsa.as_bool());
+
     let iterator_values = NeoArray::<NeoValue>::new();
     let has_next = NeoVMSyscall::iterator_next(&iterator_values).expect("iterator next");
     assert!(has_next.as_bool());
@@ -244,6 +254,9 @@ fn host_overrides_check_witness_and_script_hash_syscalls() {
     let check_multisig = registry
         .get_syscall("System.Crypto.CheckMultisig")
         .expect("check multisig syscall");
+    let verify_with_ecdsa = registry
+        .get_syscall("Neo.Crypto.VerifyWithECDsa")
+        .expect("verify with ecdsa syscall");
     let check_sig_args = [
         NeoValue::from(NeoByteString::new(vec![1u8; 33])),
         NeoValue::from(NeoByteString::new(vec![2u8; 64])),
@@ -251,6 +264,12 @@ fn host_overrides_check_witness_and_script_hash_syscalls() {
     let check_multisig_args = [
         NeoValue::from(NeoArray::<NeoValue>::new()),
         NeoValue::from(NeoArray::<NeoValue>::new()),
+    ];
+    let verify_with_ecdsa_args = [
+        NeoValue::from(NeoByteString::new(vec![3u8; 32])),
+        NeoValue::from(NeoByteString::new(vec![4u8; 33])),
+        NeoValue::from(NeoByteString::new(vec![5u8; 64])),
+        NeoValue::from(NeoInteger::new(1)),
     ];
 
     assert!(!neovm_syscall(check_sig.hash, &check_sig_args)
@@ -263,6 +282,13 @@ fn host_overrides_check_witness_and_script_hash_syscalls() {
         .as_boolean()
         .expect("boolean result")
         .as_bool());
+    assert!(
+        !neovm_syscall(verify_with_ecdsa.hash, &verify_with_ecdsa_args)
+            .expect("verify with ecdsa call")
+            .as_boolean()
+            .expect("boolean result")
+            .as_bool()
+    );
 
     NeoVMSyscall::set_crypto_verification_results(true, true).expect("set crypto results");
     assert!(neovm_syscall(check_sig.hash, &check_sig_args)
@@ -275,4 +301,20 @@ fn host_overrides_check_witness_and_script_hash_syscalls() {
         .as_boolean()
         .expect("boolean result")
         .as_bool());
+    assert!(
+        neovm_syscall(verify_with_ecdsa.hash, &verify_with_ecdsa_args)
+            .expect("verify with ecdsa call")
+            .as_boolean()
+            .expect("boolean result")
+            .as_bool()
+    );
+
+    NeoVMSyscall::set_verify_with_ecdsa_result(false).expect("set verify with ecdsa result");
+    assert!(
+        !neovm_syscall(verify_with_ecdsa.hash, &verify_with_ecdsa_args)
+            .expect("verify with ecdsa call")
+            .as_boolean()
+            .expect("boolean result")
+            .as_bool()
+    );
 }

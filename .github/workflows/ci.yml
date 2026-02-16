@@ -257,6 +257,75 @@ jobs:
           NEOXP_BIN: /tmp/neo-tools/neoxp
         run: make smoke-neoxp
 
+  neoxp-integration:
+    name: Neo Express Integration Tests
+    needs: [daily-run-gate, neo-n3-conformance-gate]
+    if: needs.daily-run-gate.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-neoxp-integration-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-neoxp-integration-cargo-registry-
+
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-neoxp-integration-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-neoxp-integration-cargo-index-
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-neoxp-integration-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-neoxp-integration-cargo-build-target-
+
+      - name: Install integration-test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+          if ! command -v wasm-snip >/dev/null 2>&1; then
+            cargo install wasm-snip --locked
+          fi
+
+      - name: Install Neo Express CLI
+        run: |
+          mkdir -p /tmp/neo-tools
+          if [ -x /tmp/neo-tools/neoxp ]; then
+            dotnet tool update Neo.Express --tool-path /tmp/neo-tools
+          else
+            dotnet tool install Neo.Express --tool-path /tmp/neo-tools
+          fi
+          /tmp/neo-tools/neoxp --version
+
+      - name: Build cross-chain integration artifacts
+        run: make cross-chain
+
+      - name: Run Neo Express integration tests
+        env:
+          NEOXP_BIN: /tmp/neo-tools/neoxp
+        run: make integration-tests
+
   clippy:
     name: Clippy
     needs: [daily-run-gate, neo-n3-conformance-gate]

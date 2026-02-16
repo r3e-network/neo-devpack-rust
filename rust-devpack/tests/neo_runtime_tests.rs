@@ -190,11 +190,27 @@ fn crypto_helpers_produce_deterministic_lengths() {
     assert!(!NeoCrypto::verify_signature(&data, &signature, &public_key)
         .unwrap()
         .as_bool());
+    assert!(
+        !NeoCrypto::verify_with_ecdsa(&data, &public_key, &signature, NeoInteger::new(1),)
+            .unwrap()
+            .as_bool()
+    );
 
     NeoVMSyscall::set_crypto_verification_results(true, true).unwrap();
     assert!(NeoCrypto::verify_signature(&data, &signature, &public_key)
         .unwrap()
         .as_bool());
+    assert!(
+        NeoCrypto::verify_with_ecdsa(&data, &public_key, &signature, NeoInteger::new(1),)
+            .unwrap()
+            .as_bool()
+    );
+
+    assert!(
+        !NeoCrypto::verify_with_ecdsa(&data, &public_key, &signature, NeoInteger::new(7),)
+            .unwrap()
+            .as_bool()
+    );
 }
 
 #[test]

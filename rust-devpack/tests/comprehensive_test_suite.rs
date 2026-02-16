@@ -20,10 +20,11 @@ impl serde::Serialize for FailingSerialize {
 #[test]
 fn syscall_registry_matches_canonical_list() {
     let registry = NeoVMSyscallRegistry::get_instance();
-    assert_eq!(registry.iter().count(), 37);
+    assert_eq!(registry.iter().count(), 38);
     assert!(registry.has_syscall("System.Runtime.GetTime"));
     assert!(registry.has_syscall("System.Storage.Get"));
     assert!(registry.has_syscall("System.Contract.Call"));
+    assert!(registry.has_syscall("Neo.Crypto.VerifyWithECDsa"));
 }
 
 #[test]

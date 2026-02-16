@@ -407,7 +407,7 @@ test-cross-chain:
 	cargo test --manifest-path wasm-neovm/Cargo.toml --test cross_chain_tests --test solana_move_integration
 
 integration-tests:
-	@echo "Running integration tests (requires NEO_EXPRESS_RPC)..."
+	@echo "Running Neo Express integration tests (requires Neo Express CLI; set NEOXP_BIN if needed)..."
 	cargo test --manifest-path integration-tests/Cargo.toml -- --ignored
 
 smoke-neoxp:

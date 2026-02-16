@@ -78,6 +78,14 @@ pub const SYSCALLS: &[NeoVMSyscallInfo] = &[
         description: "",
     },
     NeoVMSyscallInfo {
+        name: "Neo.Crypto.VerifyWithECDsa",
+        hash: 0xcf822a6a,
+        parameters: &["ByteString", "ByteString", "ByteString", "Integer"],
+        return_type: "Boolean",
+        gas_cost: 32768,
+        description: "",
+    },
+    NeoVMSyscallInfo {
         name: "System.Iterator.Next",
         hash: 0x9ced089c,
         parameters: &["Iterator"],

@@ -37,6 +37,7 @@ pub(crate) static ACTIVE_CRYPTO_RESULTS: Lazy<RwLock<CryptoVerificationResults>>
 pub(crate) struct CryptoVerificationResults {
     pub(crate) check_sig: bool,
     pub(crate) check_multisig: bool,
+    pub(crate) verify_with_ecdsa: bool,
 }
 
 #[cfg(not(target_arch = "wasm32"))]

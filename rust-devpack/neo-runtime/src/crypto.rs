@@ -61,6 +61,26 @@ impl NeoCrypto {
         NeoVMSyscall::check_sig(public_key, signature)
     }
 
+    pub fn verify_with_ecdsa(
+        message: &NeoByteString,
+        public_key: &NeoByteString,
+        signature: &NeoByteString,
+        curve: NeoInteger,
+    ) -> NeoResult<NeoBoolean> {
+        // Keep deterministic shape checks in host tests.
+        if signature.len() != 64 || public_key.len() != 33 {
+            return Ok(NeoBoolean::FALSE);
+        }
+
+        // Neo supports secp256k1 (0) and secp256r1 (1) here.
+        let curve_id = curve.try_as_i32().unwrap_or(-1);
+        if curve_id != 0 && curve_id != 1 {
+            return Ok(NeoBoolean::FALSE);
+        }
+
+        NeoVMSyscall::verify_with_ecdsa(message, public_key, signature, &curve)
+    }
+
     pub fn verify_signature_with_recovery(
         _message: &NeoByteString,
         signature: &NeoByteString,

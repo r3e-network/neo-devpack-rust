@@ -102,6 +102,11 @@ pub fn neovm_syscall(hash: u32, args: &[NeoValue]) -> NeoResult<NeoValue> {
             return Ok(NeoBoolean::new(results.check_multisig).into());
         }
 
+        if info.name == "Neo.Crypto.VerifyWithECDsa" {
+            let results = active_crypto_verification_results();
+            return Ok(NeoBoolean::new(results.verify_with_ecdsa).into());
+        }
+
         if matches!(
             info.name,
             "System.Runtime.GetCallingScriptHash"
@@ -210,22 +215,60 @@ impl NeoVMSyscall {
         Ok(())
     }
 
-    /// Configure host-mode crypto syscall results (secure default: both false).
+    /// Configure host-mode CheckSig/CheckMultisig results.
+    ///
+    /// `verify_with_ecdsa` tracks `check_sig` unless overridden explicitly.
     #[cfg(not(target_arch = "wasm32"))]
     pub fn set_crypto_verification_results(check_sig: bool, check_multisig: bool) -> NeoResult<()> {
+        Self::set_crypto_verification_results_full(check_sig, check_multisig, check_sig)
+    }
+
+    /// Configure host-mode crypto syscall results (secure default: all false).
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn set_crypto_verification_results_full(
+        check_sig: bool,
+        check_multisig: bool,
+        verify_with_ecdsa: bool,
+    ) -> NeoResult<()> {
         crate::storage::set_crypto_verification_results(CryptoVerificationResults {
             check_sig,
             check_multisig,
+            verify_with_ecdsa,
         });
         Ok(())
     }
 
-    /// Configure host-mode crypto syscall results (secure default: both false).
+    /// Configure host-mode VerifyWithECDsa syscall result.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn set_verify_with_ecdsa_result(result: bool) -> NeoResult<()> {
+        let mut current = active_crypto_verification_results();
+        current.verify_with_ecdsa = result;
+        crate::storage::set_crypto_verification_results(current);
+        Ok(())
+    }
+
+    /// Configure host-mode CheckSig/CheckMultisig results.
     #[cfg(target_arch = "wasm32")]
     pub fn set_crypto_verification_results(
         _check_sig: bool,
         _check_multisig: bool,
     ) -> NeoResult<()> {
+        Ok(())
+    }
+
+    /// Configure host-mode crypto syscall results (secure default: all false).
+    #[cfg(target_arch = "wasm32")]
+    pub fn set_crypto_verification_results_full(
+        _check_sig: bool,
+        _check_multisig: bool,
+        _verify_with_ecdsa: bool,
+    ) -> NeoResult<()> {
+        Ok(())
+    }
+
+    /// Configure host-mode VerifyWithECDsa syscall result.
+    #[cfg(target_arch = "wasm32")]
+    pub fn set_verify_with_ecdsa_result(_result: bool) -> NeoResult<()> {
         Ok(())
     }
 
@@ -424,6 +467,21 @@ impl NeoVMSyscall {
             NeoValue::from(signatures.clone()),
         ];
         Self::call_boolean("System.Crypto.CheckMultisig", &values)
+    }
+
+    pub fn verify_with_ecdsa(
+        message: &NeoByteString,
+        pubkey: &NeoByteString,
+        signature: &NeoByteString,
+        curve: &NeoInteger,
+    ) -> NeoResult<NeoBoolean> {
+        let values = [
+            NeoValue::from(message.clone()),
+            NeoValue::from(pubkey.clone()),
+            NeoValue::from(signature.clone()),
+            NeoValue::from(curve.clone()),
+        ];
+        Self::call_boolean("Neo.Crypto.VerifyWithECDsa", &values)
     }
 
     pub fn iterator_next(items: &NeoArray<NeoValue>) -> NeoResult<NeoBoolean> {
