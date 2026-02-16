@@ -56,6 +56,38 @@ jobs:
       - name: Verify Neo N3 conformance matrix has no unresolved gaps
         run: bash scripts/check_neo_n3_conformance_matrix.sh
 
+  neo-reference-sync:
+    name: Neo Reference Snapshot Sync
+    needs: [daily-run-gate, neo-n3-conformance-gate]
+    if: needs.daily-run-gate.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Checkout canonical Neo source
+        uses: actions/checkout@v4
+        with:
+          repository: neo-project/neo
+          path: neo
+          fetch-depth: 1
+
+      - name: Checkout canonical Neo VM source
+        uses: actions/checkout@v4
+        with:
+          repository: neo-project/neo-vm
+          path: neo-vm
+          fetch-depth: 1
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Verify wasm-neovm against canonical Neo source
+        env:
+          WASM_NEOVM_REQUIRE_NEO_CHECKOUT: "1"
+        run: |
+          cargo test --manifest-path wasm-neovm/Cargo.toml --all-features --test opcode_consistency --test syscall_consistency
+
   test:
     name: Test Suite
     needs: [daily-run-gate, neo-n3-conformance-gate]

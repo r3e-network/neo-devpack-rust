@@ -9,10 +9,15 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use regex::Regex;
 use sha2::{Digest, Sha256};
 use walkdir::WalkDir;
+
+const REQUIRE_NEO_CHECKOUT_ENV: &str = "WASM_NEOVM_REQUIRE_NEO_CHECKOUT";
+const LEGACY_NEO_OPCODE_REL_PATH: &str = "neo/src/Neo.VM/OpCode.cs";
+const SPLIT_NEO_VM_OPCODE_REL_PATH: &str = "neo-vm/src/Neo.VM/OpCode.cs";
+const NEO_SYSCALL_REL_PATH: &str = "neo/src/Neo/SmartContract";
 
 /// Main entry point for the build script.
 ///
@@ -22,18 +27,22 @@ use walkdir::WalkDir;
 /// 3. Sets up file watch triggers for incremental builds
 fn main() -> Result<()> {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?);
+    let require_neo_checkout = env_flag_enabled(REQUIRE_NEO_CHECKOUT_ENV);
     let repo_root = manifest_dir
         .parent()
         .context("unable to locate repository root")?
         .to_path_buf();
-    let neo_dir = repo_root.join("neo");
     let fallback_dir = manifest_dir.join("src/generated");
-    let opcode_path = neo_dir.join("src/Neo.VM/OpCode.cs");
-    let syscall_root = neo_dir.join("src/Neo/SmartContract");
+    let opcode_path = resolve_opcode_path(&repo_root);
+    let syscall_root = repo_root.join(NEO_SYSCALL_REL_PATH);
+    let has_partial_reference_checkout =
+        repo_root.join("neo").exists() || repo_root.join("neo-vm").exists();
 
-    if opcode_path.exists() && syscall_root.exists() {
-        generate_opcodes(&neo_dir)?;
-        generate_syscalls(&neo_dir)?;
+    println!("cargo:rerun-if-env-changed={REQUIRE_NEO_CHECKOUT_ENV}");
+
+    if let Some(opcode_path) = opcode_path.as_deref().filter(|_| syscall_root.exists()) {
+        generate_opcodes(opcode_path)?;
+        generate_syscalls(&syscall_root)?;
 
         println!("cargo:rerun-if-changed={}", opcode_path.display());
         for entry in WalkDir::new(&syscall_root)
@@ -44,9 +53,29 @@ fn main() -> Result<()> {
             println!("cargo:rerun-if-changed={}", entry.path().display());
         }
     } else {
+        let missing_sources =
+            missing_neo_sources(&repo_root, opcode_path.as_deref(), &syscall_root);
+        if require_neo_checkout {
+            bail!(
+                "{REQUIRE_NEO_CHECKOUT_ENV}=1 but Neo source checkout is incomplete; missing: {}",
+                missing_sources.join(", ")
+            );
+        }
+
         emit_fallback(&fallback_dir, "opcodes.rs")?;
         emit_fallback(&fallback_dir, "syscalls.rs")?;
-        println!("cargo:warning=neo checkout not found; using bundled opcode/syscall snapshot");
+        if has_partial_reference_checkout {
+            println!(
+                "cargo:warning=Neo reference checkout is incomplete (missing: {}); using bundled opcode/syscall snapshot",
+                missing_sources.join(", ")
+            );
+        } else {
+            println!(
+                "cargo:warning=Neo reference checkouts not found (expected {} + {}); using bundled opcode/syscall snapshot",
+                repo_root.join(NEO_SYSCALL_REL_PATH).display(),
+                repo_root.join(SPLIT_NEO_VM_OPCODE_REL_PATH).display()
+            );
+        }
         println!(
             "cargo:rerun-if-changed={}",
             fallback_dir.join("opcodes.rs").display()
@@ -59,6 +88,53 @@ fn main() -> Result<()> {
     println!("cargo:rerun-if-changed=build.rs");
 
     Ok(())
+}
+
+fn env_flag_enabled(name: &str) -> bool {
+    env::var(name)
+        .ok()
+        .map(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false)
+}
+
+fn resolve_opcode_path(repo_root: &Path) -> Option<PathBuf> {
+    let candidates = [
+        repo_root.join(LEGACY_NEO_OPCODE_REL_PATH),
+        repo_root.join(SPLIT_NEO_VM_OPCODE_REL_PATH),
+    ];
+    candidates.into_iter().find(|path| path.exists())
+}
+
+fn missing_neo_sources(
+    repo_root: &Path,
+    opcode_path: Option<&Path>,
+    syscall_root: &Path,
+) -> Vec<String> {
+    let mut missing = Vec::new();
+    if opcode_path.is_none() {
+        missing.push(format!(
+            "{} or {}",
+            repo_root.join(LEGACY_NEO_OPCODE_REL_PATH).display(),
+            repo_root.join(SPLIT_NEO_VM_OPCODE_REL_PATH).display()
+        ));
+    }
+    if !syscall_root.exists() {
+        missing.push(syscall_root.display().to_string());
+    }
+    missing
+}
+
+fn parse_u8_decimal(value: &str, field_name: &str) -> Result<u8> {
+    let value = value.trim();
+    let parsed = value
+        .parse::<u16>()
+        .with_context(|| format!("invalid {field_name} value '{value}'"))?;
+    u8::try_from(parsed).with_context(|| format!("{field_name} value '{value}' exceeds u8 range"))
 }
 
 /// Emits a fallback file from the bundled snapshots.
@@ -82,9 +158,8 @@ fn emit_fallback(fallback_dir: &Path, filename: &str) -> Result<()> {
 /// - Operand sizes and prefixes
 ///
 /// The generated table is written to $OUT_DIR/opcodes.rs
-fn generate_opcodes(neo_dir: &Path) -> Result<()> {
-    let opcode_path = neo_dir.join("src/Neo.VM/OpCode.cs");
-    let contents = fs::read_to_string(&opcode_path)
+fn generate_opcodes(opcode_path: &Path) -> Result<()> {
+    let contents = fs::read_to_string(opcode_path)
         .with_context(|| format!("failed to read {}", opcode_path.display()))?;
 
     let attr_re = Regex::new(r"\[OperandSize\((?P<body>[^)]*)\)\]")?;
@@ -112,14 +187,16 @@ fn generate_opcodes(neo_dir: &Path) -> Result<()> {
                 .as_str();
             for part in body.split(',') {
                 let part = part.trim();
-                if part.starts_with("SizePrefix") {
-                    if let Some(value) = part.split('=').nth(1) {
-                        current_prefix = value.trim().parse::<u8>().unwrap_or(0);
-                    }
-                } else if part.starts_with("Size") {
-                    if let Some(value) = part.split('=').nth(1) {
-                        current_size = value.trim().parse::<u8>().unwrap_or(0);
-                    }
+                if let Some(value) = part
+                    .strip_prefix("SizePrefix")
+                    .and_then(|suffix| suffix.split('=').nth(1))
+                {
+                    current_prefix = parse_u8_decimal(value, "opcode operand size prefix")?;
+                } else if let Some(value) = part
+                    .strip_prefix("Size")
+                    .and_then(|suffix| suffix.split('=').nth(1))
+                {
+                    current_size = parse_u8_decimal(value, "opcode operand size")?;
                 }
             }
             continue;
@@ -142,10 +219,11 @@ fn generate_opcodes(neo_dir: &Path) -> Result<()> {
                 u8::from_str_radix(hex, 16)
                     .with_context(|| format!("invalid opcode hex value for {name}"))?
             } else {
-                value_str
+                let parsed = value_str
                     .parse::<u16>()
-                    .with_context(|| format!("invalid opcode value for {name}"))?
-                    as u8
+                    .with_context(|| format!("invalid opcode value for {name}"))?;
+                u8::try_from(parsed)
+                    .with_context(|| format!("opcode value for {name} exceeds u8 range"))?
             };
 
             entries.push(OpcodeEntry {
@@ -186,12 +264,11 @@ fn generate_opcodes(neo_dir: &Path) -> Result<()> {
 /// from Register() calls. Computes SHA256 hashes for each syscall.
 ///
 /// The generated table is written to $OUT_DIR/syscalls.rs
-fn generate_syscalls(neo_dir: &Path) -> Result<()> {
+fn generate_syscalls(smart_contract_dir: &Path) -> Result<()> {
     let mut names = BTreeSet::new();
     let register_re = Regex::new(r#"Register\(\"([^\"]+)\""#)?;
 
-    let smart_contract_dir = neo_dir.join("src/Neo/SmartContract");
-    for entry in WalkDir::new(&smart_contract_dir)
+    for entry in WalkDir::new(smart_contract_dir)
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| e.path().extension().map(|ext| ext == "cs").unwrap_or(false))

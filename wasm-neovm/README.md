@@ -100,6 +100,23 @@ cargo test --all-features
 cargo bench
 ```
 
+## Neo Source Verification
+
+`build.rs` prefers local canonical sources:
+- Syscalls from `../neo/src/Neo/SmartContract`
+- Opcodes from `../neo-vm/src/Neo.VM/OpCode.cs` (or legacy `../neo/src/Neo.VM/OpCode.cs`)
+
+When those sources are missing, the crate falls back to bundled snapshots in
+`src/generated/`.
+
+For CI or release pipelines that must not use fallback snapshots, set:
+
+```bash
+WASM_NEOVM_REQUIRE_NEO_CHECKOUT=1 cargo build --all-features
+```
+
+This makes the build fail if the required canonical sources are missing or incomplete.
+
 ## License
 
 See the workspace root LICENSE file.

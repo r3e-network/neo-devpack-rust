@@ -31,11 +31,16 @@ fn parse_neovm_opcodes(
                 let part = part.trim();
                 if let Some(value) = part.strip_prefix("SizePrefix") {
                     if let Some(value) = value.split('=').nth(1) {
-                        current_prefix = value.trim().parse::<u16>()? as u8;
+                        let parsed = value.trim().parse::<u16>()?;
+                        current_prefix = u8::try_from(parsed).map_err(|_| {
+                            format!("operand size prefix '{parsed}' exceeds u8 range")
+                        })?;
                     }
                 } else if let Some(value) = part.strip_prefix("Size") {
                     if let Some(value) = value.split('=').nth(1) {
-                        current_size = value.trim().parse::<u16>()? as u8;
+                        let parsed = value.trim().parse::<u16>()?;
+                        current_size = u8::try_from(parsed)
+                            .map_err(|_| format!("operand size '{parsed}' exceeds u8 range"))?;
                     }
                 }
             }
@@ -67,7 +72,9 @@ fn parse_neovm_opcodes(
             {
                 u8::from_str_radix(hex, 16)?
             } else {
-                value.parse::<u16>()? as u8
+                let parsed = value.parse::<u16>()?;
+                u8::try_from(parsed)
+                    .map_err(|_| format!("opcode value '{parsed}' exceeds u8 range"))?
             };
 
             entries.push(OpcodeEntry {
@@ -119,11 +126,16 @@ fn parse_reference_opcodes() -> Result<Vec<OpcodeEntry>, Box<dyn std::error::Err
     let repo_root = manifest_dir
         .parent()
         .expect("wasm-neovm crate should live one level below repo root");
-    let opcodes_path = repo_root.join("neo/src/Neo.VM/OpCode.cs");
-    if opcodes_path.exists() {
-        parse_neovm_opcodes(&opcodes_path)
+    let split_path = repo_root.join("neo-vm/src/Neo.VM/OpCode.cs");
+    if split_path.exists() {
+        parse_neovm_opcodes(&split_path)
     } else {
-        parse_generated_opcodes(&manifest_dir.join("src/generated/opcodes.rs"))
+        let legacy_path = repo_root.join("neo/src/Neo.VM/OpCode.cs");
+        if legacy_path.exists() {
+            parse_neovm_opcodes(&legacy_path)
+        } else {
+            parse_generated_opcodes(&manifest_dir.join("src/generated/opcodes.rs"))
+        }
     }
 }
 
