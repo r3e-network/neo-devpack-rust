@@ -81,11 +81,27 @@ fn test_env_import_mapping() {
 fn test_adapter_recognizes_modules() {
     let adapter = SolanaAdapter;
     assert!(adapter.recognizes_module("neo"));
+    assert!(adapter.recognizes_module("NeO"));
     assert!(adapter.recognizes_module("solana"));
+    assert!(adapter.recognizes_module("SoLaNa"));
     assert!(adapter.recognizes_module("sol"));
     assert!(adapter.recognizes_module("env"));
     assert!(adapter.recognizes_module("spl_token"));
+    assert!(adapter.recognizes_module("SyScAlL"));
     assert!(!adapter.recognizes_module("unknown"));
+}
+
+#[test]
+fn test_adapter_passthroughs_syscall_module_extended_descriptors() {
+    let adapter = SolanaAdapter;
+    assert_eq!(
+        adapter.resolve_syscall("syscall", "Neo.Crypto.VerifyWithECDsa"),
+        Some("Neo.Crypto.VerifyWithECDsa")
+    );
+    assert_eq!(
+        adapter.resolve_syscall("SyScAlL", "Neo.Crypto.VerifyWithECDsa"),
+        Some("Neo.Crypto.VerifyWithECDsa")
+    );
 }
 
 #[test]

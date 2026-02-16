@@ -4,6 +4,21 @@
 
 use wasm_neovm::{translate_with_config, SourceChain, TranslationConfig};
 
+fn assert_emits_syscall_hash(script: &[u8], expected_hash: u32) {
+    let syscall_opcode = wasm_neovm::opcodes::lookup("SYSCALL")
+        .expect("SYSCALL opcode exists")
+        .byte;
+    let expected_hash = expected_hash.to_le_bytes();
+
+    assert!(
+        script
+            .windows(5)
+            .any(|window| window[0] == syscall_opcode && window[1..5] == expected_hash),
+        "expected SYSCALL hash 0x{:08x}",
+        u32::from_le_bytes(expected_hash)
+    );
+}
+
 // ============================================================================
 // Solana Integration Tests
 // ============================================================================
@@ -505,4 +520,54 @@ fn test_storage_operations_compile() {
         .as_object()
         .map(|value| value.is_empty())
         .unwrap_or(false));
+}
+
+#[test]
+fn test_solana_chain_accepts_mixed_case_syscall_module_for_extended_descriptors() {
+    let wasm = wat::parse_str(
+        r#"
+        (module
+            (import "SyScAlL" "Neo.Crypto.VerifyWithECDsa" (func $verify (param i32 i32 i32 i32) (result i32)))
+            (func (export "verify") (result i32)
+                i32.const 0
+                i32.const 0
+                i32.const 0
+                i32.const 1
+                call $verify
+            )
+        )
+        "#,
+    )
+    .expect("failed to parse WAT");
+
+    let config = TranslationConfig::new("solana-mixed-syscall-extended")
+        .with_source_chain(SourceChain::Solana);
+    let translation = translate_with_config(&wasm, config)
+        .expect("solana chain should accept mixed-case syscall module");
+    assert_emits_syscall_hash(&translation.script, 0xcf822a6a);
+}
+
+#[test]
+fn test_move_chain_accepts_mixed_case_syscall_module_for_extended_descriptors() {
+    let wasm = wat::parse_str(
+        r#"
+        (module
+            (import "SyScAlL" "Neo.Crypto.VerifyWithECDsa" (func $verify (param i32 i32 i32 i32) (result i32)))
+            (func (export "verify") (result i32)
+                i32.const 0
+                i32.const 0
+                i32.const 0
+                i32.const 1
+                call $verify
+            )
+        )
+        "#,
+    )
+    .expect("failed to parse WAT");
+
+    let config =
+        TranslationConfig::new("move-mixed-syscall-extended").with_source_chain(SourceChain::Move);
+    let translation = translate_with_config(&wasm, config)
+        .expect("move chain should accept mixed-case syscall module");
+    assert_emits_syscall_hash(&translation.script, 0xcf822a6a);
 }

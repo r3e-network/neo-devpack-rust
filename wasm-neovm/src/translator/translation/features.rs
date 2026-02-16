@@ -56,7 +56,7 @@ pub(super) fn register_import_features(
     let module = import.module.to_ascii_lowercase();
     match module.as_str() {
         "syscall" => {
-            let syscall = syscalls::lookup(&import.name)
+            let syscall = syscalls::lookup_extended(&import.name)
                 .ok_or_else(|| anyhow!("unknown syscall '{}'", import.name))?;
             features.register_syscall(syscall.name);
         }

@@ -104,18 +104,25 @@ impl ChainAdapter for MoveAdapter {
     }
 
     fn resolve_syscall(&self, module: &str, name: &str) -> Option<&'static str> {
+        if module.eq_ignore_ascii_case("syscall") {
+            return syscalls::lookup_extended(name).map(|s| s.name);
+        }
+
         // Handle Move-compatible Neo syscall imports
-        if module == "neo" {
+        if module.eq_ignore_ascii_case("neo") {
             return crate::neo_syscalls::lookup_neo_syscall(name);
         }
 
         // Handle Move stdlib equivalents
-        if module == "move_stdlib" || module == "aptos_stdlib" || module == "sui" {
+        if module.eq_ignore_ascii_case("move_stdlib")
+            || module.eq_ignore_ascii_case("aptos_stdlib")
+            || module.eq_ignore_ascii_case("sui")
+        {
             return map_move_stdlib(name);
         }
 
         // Handle resource operations
-        if module == "move_resource" {
+        if module.eq_ignore_ascii_case("move_resource") {
             return map_move_resource(name);
         }
 
@@ -123,10 +130,13 @@ impl ChainAdapter for MoveAdapter {
     }
 
     fn recognizes_module(&self, module: &str) -> bool {
-        matches!(
-            module,
-            "neo" | "syscall" | "opcode" | "move_stdlib" | "aptos_stdlib" | "sui" | "move_resource"
-        )
+        module.eq_ignore_ascii_case("neo")
+            || module.eq_ignore_ascii_case("syscall")
+            || module.eq_ignore_ascii_case("opcode")
+            || module.eq_ignore_ascii_case("move_stdlib")
+            || module.eq_ignore_ascii_case("aptos_stdlib")
+            || module.eq_ignore_ascii_case("sui")
+            || module.eq_ignore_ascii_case("move_resource")
     }
 }
 

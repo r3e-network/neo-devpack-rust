@@ -33,23 +33,27 @@ impl ChainAdapter for SolanaAdapter {
     }
 
     fn resolve_syscall(&self, module: &str, name: &str) -> Option<&'static str> {
+        if module.eq_ignore_ascii_case("syscall") {
+            return crate::syscalls::lookup_extended(name).map(|s| s.name);
+        }
+
         // Handle neo-solana-compat imports
-        if module == "neo" {
+        if module.eq_ignore_ascii_case("neo") {
             return crate::neo_syscalls::lookup_neo_syscall(name);
         }
 
         // Handle direct Solana syscall names
-        if module == "solana" || module == "sol" {
+        if module.eq_ignore_ascii_case("solana") || module.eq_ignore_ascii_case("sol") {
             return map_solana_syscall(name);
         }
 
         // Handle SPL Token program calls
-        if module == "spl_token" {
+        if module.eq_ignore_ascii_case("spl_token") {
             return map_spl_token_syscall(name);
         }
 
         // Handle env imports that might come from Solana programs
-        if module == "env" {
+        if module.eq_ignore_ascii_case("env") {
             return map_env_import(name);
         }
 
@@ -57,10 +61,13 @@ impl ChainAdapter for SolanaAdapter {
     }
 
     fn recognizes_module(&self, module: &str) -> bool {
-        matches!(
-            module,
-            "neo" | "solana" | "sol" | "env" | "syscall" | "opcode" | "spl_token"
-        )
+        module.eq_ignore_ascii_case("neo")
+            || module.eq_ignore_ascii_case("solana")
+            || module.eq_ignore_ascii_case("sol")
+            || module.eq_ignore_ascii_case("env")
+            || module.eq_ignore_ascii_case("syscall")
+            || module.eq_ignore_ascii_case("opcode")
+            || module.eq_ignore_ascii_case("spl_token")
     }
 }
 
