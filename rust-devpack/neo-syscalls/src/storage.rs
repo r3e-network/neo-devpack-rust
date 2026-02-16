@@ -23,6 +23,10 @@ pub(crate) const DEFAULT_CONTRACT_HASH: [u8; 20] = [0u8; 20];
 pub(crate) type ContractStore = Arc<RwLock<HashMap<Vec<u8>, Vec<u8>>>>;
 
 #[cfg(not(target_arch = "wasm32"))]
+pub(crate) static ACTIVE_CONTRACT_HASH: Lazy<RwLock<[u8; 20]>> =
+    Lazy::new(|| RwLock::new(DEFAULT_CONTRACT_HASH));
+
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Clone)]
 pub(crate) struct ContextHandle {
     pub(crate) read_only: bool,
@@ -104,6 +108,19 @@ impl StorageState {
             .ok_or(NeoError::InvalidState)
     }
 
+    pub(crate) fn reset(&self) -> NeoResult<()> {
+        self.contexts
+            .write()
+            .map_err(|_| NeoError::InvalidState)?
+            .clear();
+        self.contract_stores
+            .write()
+            .map_err(|_| NeoError::InvalidState)?
+            .clear();
+        self.next_context.store(1, Ordering::SeqCst);
+        Ok(())
+    }
+
     fn get_or_create_store(&self, contract: [u8; 20]) -> ContractStore {
         let mut stores = match self.contract_stores.write() {
             Ok(guard) => guard,
@@ -118,6 +135,27 @@ impl StorageState {
 
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) static STORAGE_STATE: Lazy<StorageState> = Lazy::new(StorageState::new);
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn current_contract_hash() -> [u8; 20] {
+    match ACTIVE_CONTRACT_HASH.read() {
+        Ok(hash) => *hash,
+        Err(poisoned) => *poisoned.into_inner(),
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn set_current_contract_hash(hash: [u8; 20]) {
+    match ACTIVE_CONTRACT_HASH.write() {
+        Ok(mut active) => *active = hash,
+        Err(poisoned) => *poisoned.into_inner() = hash,
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn reset_current_contract_hash() {
+    set_current_contract_hash(DEFAULT_CONTRACT_HASH);
+}
 
 #[cfg(target_arch = "wasm32")]
 pub(crate) type StorageEntry = (Vec<u8>, Vec<u8>);

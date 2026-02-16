@@ -88,6 +88,45 @@ pub fn neovm_syscall(hash: u32, args: &[NeoValue]) -> NeoResult<NeoValue> {
 pub struct NeoVMSyscall;
 
 impl NeoVMSyscall {
+    #[cfg(not(target_arch = "wasm32"))]
+    fn parse_hash160(hash: &NeoByteString) -> NeoResult<[u8; 20]> {
+        if hash.len() != 20 {
+            return Err(NeoError::InvalidArgument);
+        }
+        let mut value = [0u8; 20];
+        value.copy_from_slice(hash.as_slice());
+        Ok(value)
+    }
+
+    /// Set the active contract hash used by host-mode storage contexts and script-hash syscalls.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn set_active_contract_hash(hash: &NeoByteString) -> NeoResult<()> {
+        set_current_contract_hash(Self::parse_hash160(hash)?);
+        Ok(())
+    }
+
+    /// Set the active contract hash used by host-mode storage contexts and script-hash syscalls.
+    #[cfg(target_arch = "wasm32")]
+    pub fn set_active_contract_hash(_hash: &NeoByteString) -> NeoResult<()> {
+        Ok(())
+    }
+
+    /// Clear host-mode syscall/storage simulation state.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn reset_host_state() -> NeoResult<()> {
+        STORAGE_STATE.reset()?;
+        reset_current_contract_hash();
+        Ok(())
+    }
+
+    /// Clear host-mode syscall/storage simulation state.
+    #[cfg(target_arch = "wasm32")]
+    pub fn reset_host_state() -> NeoResult<()> {
+        let mut store = STORAGE_ENTRIES.lock().map_err(|_| NeoError::InvalidState)?;
+        store.clear();
+        Ok(())
+    }
+
     fn call_value(name: &str, args: &[NeoValue]) -> NeoResult<NeoValue> {
         neovm_syscall(syscall_hash(name)?, args)
     }
@@ -102,6 +141,7 @@ impl NeoVMSyscall {
         value.as_boolean().ok_or(NeoError::InvalidType)
     }
 
+    #[cfg(target_arch = "wasm32")]
     fn call_bytes(name: &str) -> NeoResult<NeoByteString> {
         let value = Self::call_value(name, &[])?;
         value.as_byte_string().cloned().ok_or(NeoError::InvalidType)
@@ -178,14 +218,32 @@ impl NeoVMSyscall {
         Self::call_integer("System.Runtime.GasLeft")
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn get_calling_script_hash() -> NeoResult<NeoByteString> {
+        Ok(NeoByteString::from_slice(&current_contract_hash()))
+    }
+
+    #[cfg(target_arch = "wasm32")]
     pub fn get_calling_script_hash() -> NeoResult<NeoByteString> {
         Self::call_bytes("System.Runtime.GetCallingScriptHash")
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn get_entry_script_hash() -> NeoResult<NeoByteString> {
+        Ok(NeoByteString::from_slice(&current_contract_hash()))
+    }
+
+    #[cfg(target_arch = "wasm32")]
     pub fn get_entry_script_hash() -> NeoResult<NeoByteString> {
         Self::call_bytes("System.Runtime.GetEntryScriptHash")
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn get_executing_script_hash() -> NeoResult<NeoByteString> {
+        Ok(NeoByteString::from_slice(&current_contract_hash()))
+    }
+
+    #[cfg(target_arch = "wasm32")]
     pub fn get_executing_script_hash() -> NeoResult<NeoByteString> {
         Self::call_bytes("System.Runtime.GetExecutingScriptHash")
     }
@@ -313,7 +371,7 @@ impl NeoVMSyscall {
 
     #[cfg(not(target_arch = "wasm32"))]
     pub fn storage_get_context() -> NeoResult<NeoStorageContext> {
-        STORAGE_STATE.create_context(DEFAULT_CONTRACT_HASH, false)
+        STORAGE_STATE.create_context(current_contract_hash(), false)
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -323,7 +381,7 @@ impl NeoVMSyscall {
 
     #[cfg(not(target_arch = "wasm32"))]
     pub fn storage_get_read_only_context() -> NeoResult<NeoStorageContext> {
-        STORAGE_STATE.create_context(DEFAULT_CONTRACT_HASH, true)
+        STORAGE_STATE.create_context(current_contract_hash(), true)
     }
 
     #[cfg(target_arch = "wasm32")]

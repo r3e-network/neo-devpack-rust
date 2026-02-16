@@ -1,10 +1,26 @@
 // Copyright (c) 2025 R3E Network
 // Licensed under the MIT License
 
-use neo_devpack::prelude::*;
+use neo_devpack::{prelude::*, NeoVMSyscall};
+use std::sync::{Mutex, MutexGuard, OnceLock};
+
+fn runtime_test_lock() -> MutexGuard<'static, ()> {
+    static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    TEST_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .expect("neo_runtime test lock poisoned")
+}
+
+fn setup_runtime_test() -> MutexGuard<'static, ()> {
+    let guard = runtime_test_lock();
+    NeoVMSyscall::reset_host_state().expect("host syscall state should reset");
+    guard
+}
 
 #[test]
 fn runtime_core_syscalls_return_expected_types() {
+    let _guard = setup_runtime_test();
     let timestamp = NeoRuntime::get_time().unwrap();
     assert!(timestamp.as_i32_saturating() >= 0);
 
@@ -23,6 +39,7 @@ fn runtime_core_syscalls_return_expected_types() {
 
 #[test]
 fn runtime_script_hash_helpers_produce_bytes() {
+    let _guard = setup_runtime_test();
     let calling = NeoRuntime::get_calling_script_hash().unwrap();
     let entry = NeoRuntime::get_entry_script_hash().unwrap();
     let executing = NeoRuntime::get_executing_script_hash().unwrap();
@@ -34,6 +51,7 @@ fn runtime_script_hash_helpers_produce_bytes() {
 
 #[test]
 fn runtime_notifications_and_container_are_arrays() {
+    let _guard = setup_runtime_test();
     let notifications = NeoRuntime::get_notifications(None).unwrap();
     assert!(notifications.is_empty());
 
@@ -43,6 +61,7 @@ fn runtime_notifications_and_container_are_arrays() {
 
 #[test]
 fn storage_context_round_trip() {
+    let _guard = setup_runtime_test();
     let ctx = NeoStorage::get_context().unwrap();
     assert!(!ctx.is_read_only());
 
@@ -55,6 +74,7 @@ fn storage_context_round_trip() {
 
 #[test]
 fn storage_operations_succeed_for_writable_context() {
+    let _guard = setup_runtime_test();
     let ctx = NeoStorage::get_context().unwrap();
     let key = NeoByteString::from_slice(b"demo");
     let value = NeoByteString::from_slice(b"value");
@@ -71,6 +91,7 @@ fn storage_operations_succeed_for_writable_context() {
 
 #[test]
 fn storage_find_returns_struct_entries() {
+    let _guard = setup_runtime_test();
     let ctx = NeoStorage::get_context().unwrap();
     let prefix = NeoByteString::from_slice(b"market:");
     let key_a = NeoByteString::from_slice(b"market:alpha");
@@ -112,6 +133,7 @@ fn storage_find_returns_struct_entries() {
 
 #[test]
 fn storage_put_fails_for_read_only_context() {
+    let _guard = setup_runtime_test();
     let ctx = NeoStorage::get_read_only_context().unwrap();
     let key = NeoByteString::from_slice(b"demo");
     let value = NeoByteString::from_slice(b"value");
@@ -122,6 +144,7 @@ fn storage_put_fails_for_read_only_context() {
 
 #[test]
 fn runtime_misc_helpers_work() {
+    let _guard = setup_runtime_test();
     let account = NeoByteString::from_slice(b"account");
     assert!(NeoRuntime::check_witness(&account).unwrap().as_bool());
 
@@ -138,6 +161,7 @@ fn runtime_misc_helpers_work() {
 
 #[test]
 fn crypto_helpers_produce_deterministic_lengths() {
+    let _guard = setup_runtime_test();
     let data = NeoByteString::from_slice(b"neo");
     assert_eq!(NeoCrypto::sha256(&data).unwrap().len(), 32);
     assert_eq!(NeoCrypto::ripemd160(&data).unwrap().len(), 20);
@@ -153,4 +177,34 @@ fn crypto_helpers_produce_deterministic_lengths() {
     assert!(NeoCrypto::verify_signature(&data, &signature, &public_key)
         .unwrap()
         .as_bool());
+}
+
+#[test]
+fn host_active_contract_hash_controls_storage_partitioning() {
+    let _guard = setup_runtime_test();
+
+    let hash_a = NeoByteString::from_slice(&[0x11; 20]);
+    let hash_b = NeoByteString::from_slice(&[0x22; 20]);
+    let key = NeoByteString::from_slice(b"shared:key");
+    let val_a = NeoByteString::from_slice(b"value-a");
+    let val_b = NeoByteString::from_slice(b"value-b");
+
+    NeoVMSyscall::set_active_contract_hash(&hash_a).unwrap();
+    let ctx_a = NeoStorage::get_context().unwrap();
+    NeoStorage::put(&ctx_a, &key, &val_a).unwrap();
+    assert_eq!(NeoRuntime::get_executing_script_hash().unwrap(), hash_a);
+
+    NeoVMSyscall::set_active_contract_hash(&hash_b).unwrap();
+    let ctx_b = NeoStorage::get_context().unwrap();
+    assert_eq!(NeoStorage::get(&ctx_b, &key).unwrap().len(), 0);
+    NeoStorage::put(&ctx_b, &key, &val_b).unwrap();
+    assert_eq!(NeoRuntime::get_executing_script_hash().unwrap(), hash_b);
+
+    NeoVMSyscall::set_active_contract_hash(&hash_a).unwrap();
+    let ctx_a_again = NeoStorage::get_context().unwrap();
+    assert_eq!(NeoStorage::get(&ctx_a_again, &key).unwrap(), val_a);
+
+    NeoVMSyscall::set_active_contract_hash(&hash_b).unwrap();
+    let ctx_b_again = NeoStorage::get_context().unwrap();
+    assert_eq!(NeoStorage::get(&ctx_b_again, &key).unwrap(), val_b);
 }
