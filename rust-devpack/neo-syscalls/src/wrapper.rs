@@ -22,7 +22,8 @@ fn syscall_hash(name: &str) -> NeoResult<u32> {
 fn default_value_for(return_type: &str) -> NeoValue {
     match return_type {
         "Void" => NeoValue::Null,
-        "Boolean" => NeoBoolean::TRUE.into(),
+        // Fail-closed by default for unknown boolean-returning syscalls.
+        "Boolean" => NeoBoolean::FALSE.into(),
         "Integer" => NeoInteger::new(0).into(),
         "Hash160" => NeoByteString::new(vec![0u8; 20]).into(),
         "ByteString" => NeoByteString::new(vec![0u8; 1]).into(),

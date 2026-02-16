@@ -202,7 +202,7 @@ fn syscall_wrapper_supports_extended_system_surface() {
 
     let iterator_values = NeoArray::<NeoValue>::new();
     let has_next = NeoVMSyscall::iterator_next(&iterator_values).expect("iterator next");
-    assert!(has_next.as_bool());
+    assert!(!has_next.as_bool());
     let iterator_value = NeoVMSyscall::iterator_value(&iterator_values).expect("iterator value");
     assert!(iterator_value.as_array().is_some());
 
