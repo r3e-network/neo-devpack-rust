@@ -91,28 +91,22 @@ impl NeoInteger {
         })
     }
 
-    /// Convert to i32.
-    ///
-    /// # Panics
-    /// Panics if the value is outside the i32 range. Use `try_as_i32()` for a safe alternative.
+    /// Deprecated compatibility helper that converts to `i32` using saturating semantics.
     #[deprecated(
         since = "0.4.1",
-        note = "Use try_as_i32() or as_i32_saturating() instead to avoid panics"
+        note = "Use try_as_i32() or as_i32_saturating() explicitly"
     )]
     pub fn as_i32(&self) -> i32 {
-        self.0.to_i32().expect("NeoInteger value exceeds i32 range")
+        self.as_i32_saturating()
     }
 
-    /// Convert to u32.
-    ///
-    /// # Panics
-    /// Panics if the value is outside the u32 range. Use `try_as_u32()` for a safe alternative.
+    /// Deprecated compatibility helper that converts to `u32` using saturating semantics.
     #[deprecated(
         since = "0.4.1",
-        note = "Use try_as_u32() or as_u32_saturating() instead to avoid panics"
+        note = "Use try_as_u32() or as_u32_saturating() explicitly"
     )]
     pub fn as_u32(&self) -> u32 {
-        self.0.to_u32().expect("NeoInteger value exceeds u32 range")
+        self.as_u32_saturating()
     }
 
     pub fn to_i32(&self) -> Option<i32> {

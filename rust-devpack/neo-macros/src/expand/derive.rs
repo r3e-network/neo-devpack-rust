@@ -107,23 +107,32 @@ pub(crate) fn neo_config(input: DeriveInput) -> TokenStream2 {
         }
     };
 
-    let field_inits = fields.iter().map(|field| {
-        let ident = field
-            .ident
-            .as_ref()
-            .expect("#[neo_config] macro only supports named struct fields");
-        let field_name = ident.to_string();
+    let field_inits = match fields
+        .iter()
+        .map(|field| -> Result<TokenStream2, syn::Error> {
+            let ident = field.ident.as_ref().ok_or_else(|| {
+                syn::Error::new_spanned(
+                    field,
+                    "#[neo_config] macro only supports named struct fields",
+                )
+            })?;
+            let field_name = ident.to_string();
 
-        let init_expr = if field_name.contains("max") {
-            quote! { ::neo_devpack::NeoInteger::max_i32() }
-        } else if field_name.contains("min") {
-            quote! { ::neo_devpack::NeoInteger::min_i32() }
-        } else {
-            quote! { ::core::default::Default::default() }
-        };
+            let init_expr = if field_name.contains("max") {
+                quote! { ::neo_devpack::NeoInteger::max_i32() }
+            } else if field_name.contains("min") {
+                quote! { ::neo_devpack::NeoInteger::min_i32() }
+            } else {
+                quote! { ::core::default::Default::default() }
+            };
 
-        quote! { #ident: #init_expr }
-    });
+            Ok(quote! { #ident: #init_expr })
+        })
+        .collect::<Result<Vec<_>, _>>()
+    {
+        Ok(initializers) => initializers,
+        Err(error) => return error.to_compile_error(),
+    };
 
     quote! {
         #input

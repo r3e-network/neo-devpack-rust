@@ -137,7 +137,10 @@ impl TranslationProfile {
 
     /// Round 90: Get opcode histogram for PGO
     pub fn opcode_histogram(&self) -> HashMap<String, u64> {
-        self.opcode_histogram.lock().unwrap().clone()
+        match self.opcode_histogram.lock() {
+            Ok(guard) => guard.clone(),
+            Err(poisoned) => poisoned.into_inner().clone(),
+        }
     }
 
     /// Round 90: Get top opcodes by frequency

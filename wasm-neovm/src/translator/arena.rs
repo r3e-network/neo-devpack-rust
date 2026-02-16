@@ -46,16 +46,46 @@ impl Arena {
         let layout = Layout::new::<T>();
         let size = layout.size();
         let align = layout.align();
-        let old_pos = self.pos.get();
-        let aligned_pos = (old_pos + align - 1) & !(align - 1);
+        let align_mask = align.saturating_sub(1);
+        let mut old_pos = self.pos.get();
+        let mut aligned_pos = old_pos.checked_add(align_mask).map(|pos| pos & !align_mask);
+        let mut end_pos = aligned_pos.and_then(|pos| pos.checked_add(size));
+        let mut capacity_end = old_pos.checked_add(self.remaining.get());
 
-        if aligned_pos + size > self.pos.get() + self.remaining.get() {
+        let fits = matches!(
+            (aligned_pos, end_pos, capacity_end),
+            (Some(aligned), Some(end), Some(limit)) if aligned >= old_pos && end <= limit
+        );
+
+        if !fits {
             self.grow(size.max(DEFAULT_BLOCK_SIZE));
+            old_pos = self.pos.get();
+            aligned_pos = old_pos.checked_add(align_mask).map(|pos| pos & !align_mask);
+            end_pos = aligned_pos.and_then(|pos| pos.checked_add(size));
+            capacity_end = old_pos.checked_add(self.remaining.get());
         }
 
-        let ptr = unsafe { self.current.get().unwrap().as_ptr().add(aligned_pos) };
+        let (aligned_pos, end_pos, _capacity_end) = match (aligned_pos, end_pos, capacity_end) {
+            (Some(aligned), Some(end), Some(limit)) if aligned >= old_pos && end <= limit => {
+                (aligned, end, limit)
+            }
+            _ => std::alloc::handle_alloc_error(layout),
+        };
 
-        self.pos.set(aligned_pos + size);
+        let current = match self.current.get() {
+            Some(block) => block,
+            None => {
+                self.grow(size.max(DEFAULT_BLOCK_SIZE));
+                match self.current.get() {
+                    Some(block) => block,
+                    None => std::alloc::handle_alloc_error(layout),
+                }
+            }
+        };
+
+        let ptr = unsafe { current.as_ptr().add(aligned_pos) };
+
+        self.pos.set(end_pos);
         let consumed = (aligned_pos - old_pos) + size;
         self.remaining
             .set(self.remaining.get().saturating_sub(consumed));
@@ -70,8 +100,14 @@ impl Arena {
 
     #[cold]
     fn grow(&self, min_size: usize) {
-        let size = min_size.next_power_of_two().max(DEFAULT_BLOCK_SIZE);
-        let layout = Layout::from_size_align(size, ARENA_ALIGN).unwrap();
+        let mut size = min_size.max(DEFAULT_BLOCK_SIZE);
+        if !size.is_power_of_two() {
+            size = size.checked_next_power_of_two().unwrap_or(size);
+        }
+        let layout = match Layout::from_size_align(size, ARENA_ALIGN) {
+            Ok(layout) => layout,
+            Err(_) => std::alloc::handle_alloc_error(Layout::new::<u8>()),
+        };
 
         unsafe {
             let ptr = NonNull::new(alloc(layout))

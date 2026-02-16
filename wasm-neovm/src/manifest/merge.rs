@@ -176,15 +176,19 @@ fn merge_permission_methods(target: &mut Value, incoming: &Value) {
             Value::String(existing) => {
                 let existing_value = existing.clone();
                 *target = Value::Array(vec![Value::String(existing_value)]);
-                target
-                    .as_array_mut()
-                    .expect("target was just converted to array")
+                if let Value::Array(array) = target {
+                    array
+                } else {
+                    return;
+                }
             }
             _ => {
                 *target = Value::Array(Vec::new());
-                target
-                    .as_array_mut()
-                    .expect("target was just converted to array")
+                if let Value::Array(array) = target {
+                    array
+                } else {
+                    return;
+                }
             }
         };
 

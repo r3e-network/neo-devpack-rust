@@ -93,16 +93,16 @@ impl RuntimeHelpers {
             layouts
         };
 
-        let table_layouts: Vec<TableLayout<'_>> = self
-            .tables
-            .iter()
-            .map(|table| TableLayout {
-                slot: table
-                    .slot
-                    .expect("table slot should be assigned during finalize"),
+        let mut table_layouts: Vec<TableLayout<'_>> = Vec::with_capacity(self.tables.len());
+        for (idx, table) in self.tables.iter().enumerate() {
+            let slot = table.slot.ok_or_else(|| {
+                anyhow::anyhow!("table {} missing assigned slot during finalize", idx)
+            })?;
+            table_layouts.push(TableLayout {
+                slot,
                 entries: &table.initial_entries,
-            })
-            .collect();
+            });
+        }
 
         let passive_element_layouts: Vec<PassiveElementLayout<'_>> = passive_element_indices
             .iter()
