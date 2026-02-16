@@ -81,6 +81,27 @@ pub fn neovm_syscall(hash: u32, args: &[NeoValue]) -> NeoResult<NeoValue> {
         }
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        if info.name == "System.Runtime.CheckWitness" {
+            let has_witness = args
+                .first()
+                .and_then(NeoValue::as_byte_string)
+                .map(|account| has_active_witness(account.as_slice()))
+                .unwrap_or(false);
+            return Ok(NeoBoolean::new(has_witness).into());
+        }
+
+        if matches!(
+            info.name,
+            "System.Runtime.GetCallingScriptHash"
+                | "System.Runtime.GetEntryScriptHash"
+                | "System.Runtime.GetExecutingScriptHash"
+        ) {
+            return Ok(NeoByteString::from_slice(&current_contract_hash()).into());
+        }
+    }
+
     Ok(default_value_for(info.return_type))
 }
 
@@ -116,6 +137,7 @@ impl NeoVMSyscall {
     pub fn reset_host_state() -> NeoResult<()> {
         STORAGE_STATE.reset()?;
         reset_current_contract_hash();
+        clear_active_witnesses();
         Ok(())
     }
 
@@ -160,6 +182,21 @@ impl NeoVMSyscall {
     fn call_array(name: &str, args: &[NeoValue]) -> NeoResult<NeoArray<NeoValue>> {
         let value = Self::call_value(name, args)?;
         value.as_array().cloned().ok_or(NeoError::InvalidType)
+    }
+
+    /// Replace the active witness set used by host-mode `check_witness`.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn set_active_witnesses(witnesses: &[NeoByteString]) -> NeoResult<()> {
+        crate::storage::set_active_witnesses(
+            witnesses.iter().map(|witness| witness.as_slice().to_vec()),
+        );
+        Ok(())
+    }
+
+    /// Replace the active witness set used by host-mode `check_witness`.
+    #[cfg(target_arch = "wasm32")]
+    pub fn set_active_witnesses(_witnesses: &[NeoByteString]) -> NeoResult<()> {
+        Ok(())
     }
 
     /// Get current timestamp

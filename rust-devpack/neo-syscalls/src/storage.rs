@@ -8,7 +8,7 @@ use once_cell::sync::Lazy;
 #[cfg(not(target_arch = "wasm32"))]
 use neo_types::{NeoError, NeoResult, NeoStorageContext};
 #[cfg(not(target_arch = "wasm32"))]
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::atomic::{AtomicU32, Ordering};
 #[cfg(target_arch = "wasm32")]
@@ -25,6 +25,9 @@ pub(crate) type ContractStore = Arc<RwLock<HashMap<Vec<u8>, Vec<u8>>>>;
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) static ACTIVE_CONTRACT_HASH: Lazy<RwLock<[u8; 20]>> =
     Lazy::new(|| RwLock::new(DEFAULT_CONTRACT_HASH));
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) static ACTIVE_WITNESSES: Lazy<RwLock<HashSet<Vec<u8>>>> =
+    Lazy::new(|| RwLock::new(HashSet::new()));
 
 #[cfg(not(target_arch = "wasm32"))]
 #[derive(Clone)]
@@ -155,6 +158,34 @@ pub(crate) fn set_current_contract_hash(hash: [u8; 20]) {
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn reset_current_contract_hash() {
     set_current_contract_hash(DEFAULT_CONTRACT_HASH);
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn set_active_witnesses<I>(witnesses: I)
+where
+    I: IntoIterator<Item = Vec<u8>>,
+{
+    let updated: HashSet<Vec<u8>> = witnesses.into_iter().collect();
+    match ACTIVE_WITNESSES.write() {
+        Ok(mut active) => *active = updated,
+        Err(poisoned) => *poisoned.into_inner() = updated,
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn has_active_witness(account: &[u8]) -> bool {
+    match ACTIVE_WITNESSES.read() {
+        Ok(active) => active.contains(account),
+        Err(poisoned) => poisoned.into_inner().contains(account),
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn clear_active_witnesses() {
+    match ACTIVE_WITNESSES.write() {
+        Ok(mut active) => active.clear(),
+        Err(poisoned) => poisoned.into_inner().clear(),
+    }
 }
 
 #[cfg(target_arch = "wasm32")]

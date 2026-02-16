@@ -178,3 +178,39 @@ fn syscall_wrapper_supports_extended_system_surface() {
     NeoVMSyscall::load_script(&NeoByteString::new(vec![]), &NeoInteger::new(0), &args)
         .expect("load script");
 }
+
+#[test]
+fn host_overrides_check_witness_and_script_hash_syscalls() {
+    NeoVMSyscall::reset_host_state().expect("reset host state");
+
+    let registry = registry();
+    let check_witness = registry
+        .get_syscall("System.Runtime.CheckWitness")
+        .expect("check witness syscall");
+    let account = NeoByteString::new(vec![9u8; 20]);
+    let witness_args = [NeoValue::from(account.clone())];
+
+    let initial = neovm_syscall(check_witness.hash, &witness_args).expect("check witness call");
+    assert!(!initial.as_boolean().expect("boolean result").as_bool());
+
+    NeoVMSyscall::set_active_witnesses(std::slice::from_ref(&account)).expect("set active witness");
+    let updated = neovm_syscall(check_witness.hash, &witness_args).expect("check witness call");
+    assert!(updated.as_boolean().expect("boolean result").as_bool());
+
+    let active_hash = NeoByteString::new(vec![0xAB; 20]);
+    NeoVMSyscall::set_active_contract_hash(&active_hash).expect("set active contract hash");
+
+    for name in [
+        "System.Runtime.GetCallingScriptHash",
+        "System.Runtime.GetEntryScriptHash",
+        "System.Runtime.GetExecutingScriptHash",
+    ] {
+        let syscall = registry.get_syscall(name).expect("script hash syscall");
+        let result = neovm_syscall(syscall.hash, &[]).expect("script hash call");
+        assert_eq!(
+            result.as_byte_string().expect("bytes result"),
+            &active_hash,
+            "{name} should reflect active host contract hash"
+        );
+    }
+}

@@ -146,6 +146,8 @@ fn storage_put_fails_for_read_only_context() {
 fn runtime_misc_helpers_work() {
     let _guard = setup_runtime_test();
     let account = NeoByteString::from_slice(b"account");
+    assert!(!NeoRuntime::check_witness(&account).unwrap().as_bool());
+    NeoVMSyscall::set_active_witnesses(std::slice::from_ref(&account)).unwrap();
     assert!(NeoRuntime::check_witness(&account).unwrap().as_bool());
 
     let event = NeoString::from_str("event");
@@ -157,6 +159,17 @@ fn runtime_misc_helpers_work() {
 
     let platform = NeoRuntime::platform().unwrap();
     assert!(!platform.as_str().is_empty());
+}
+
+#[test]
+fn reset_host_state_clears_active_witnesses() {
+    let _guard = setup_runtime_test();
+    let account = NeoByteString::from_slice(b"account");
+    NeoVMSyscall::set_active_witnesses(std::slice::from_ref(&account)).unwrap();
+    assert!(NeoRuntime::check_witness(&account).unwrap().as_bool());
+
+    NeoVMSyscall::reset_host_state().unwrap();
+    assert!(!NeoRuntime::check_witness(&account).unwrap().as_bool());
 }
 
 #[test]
