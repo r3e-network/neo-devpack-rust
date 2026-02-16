@@ -282,10 +282,7 @@ impl NeoVMSyscall {
         Ok(())
     }
 
-    pub fn check_sig(
-        pubkey: &NeoByteString,
-        signature: &NeoByteString,
-    ) -> NeoResult<NeoBoolean> {
+    pub fn check_sig(pubkey: &NeoByteString, signature: &NeoByteString) -> NeoResult<NeoBoolean> {
         let values = [
             NeoValue::from(pubkey.clone()),
             NeoValue::from(signature.clone()),

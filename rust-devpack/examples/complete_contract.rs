@@ -88,8 +88,8 @@ impl CompleteContract {
         // Set owner to caller
         self.owner = NeoRuntime::get_calling_script_hash()?;
 
-        // Initialize storage
-        let mut storage = CompleteStorage::load(&NeoRuntime::get_storage_context()?);
+        // Reset storage to a clean deployment state.
+        let mut storage = CompleteStorage::default();
 
         // Set initial metadata
         storage.metadata.insert(
@@ -602,9 +602,19 @@ pub fn destroy_contract() -> NeoResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, MutexGuard, OnceLock};
+
+    fn test_lock() -> MutexGuard<'static, ()> {
+        static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        TEST_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("example test lock poisoned")
+    }
 
     #[test]
     fn test_complete_contract_creation() {
+        let _guard = test_lock();
         let contract = CompleteContract::new(
             NeoString::from_str("TestContract"),
             NeoString::from_str("1.0.0"),
@@ -623,6 +633,7 @@ mod tests {
 
     #[test]
     fn test_complete_contract_operations() {
+        let _guard = test_lock();
         let mut contract = CompleteContract::new(
             NeoString::from_str("TestContract"),
             NeoString::from_str("1.0.0"),
@@ -634,7 +645,7 @@ mod tests {
         contract.initialize().unwrap();
 
         // Test balance operations
-        let account1 = NeoByteString::from_slice(b"account1");
+        let owner = contract.owner().unwrap();
         let account2 = NeoByteString::from_slice(b"account2");
 
         // Test transfer
@@ -642,16 +653,15 @@ mod tests {
         assert_eq!(transfer_result.unwrap().as_bool(), true);
 
         // Test approval
-        let approval_result = contract.approve(&account2, NeoInteger::new(50));
+        let approval_result = contract.approve(&owner, NeoInteger::new(50));
         assert_eq!(approval_result.unwrap().as_bool(), true);
 
         // Test allowance
-        let allowance = contract.allowance(&account1, &account2);
+        let allowance = contract.allowance(&owner, &owner);
         assert_eq!(allowance.unwrap().as_i32_saturating(), 50);
 
         // Test transfer from
-        let transfer_from_result =
-            contract.transfer_from(&account1, &account2, NeoInteger::new(25));
+        let transfer_from_result = contract.transfer_from(&owner, &account2, NeoInteger::new(25));
         assert_eq!(transfer_from_result.unwrap().as_bool(), true);
 
         // Test statistics
@@ -661,6 +671,7 @@ mod tests {
 
     #[test]
     fn test_complete_contract_metadata() {
+        let _guard = test_lock();
         let mut contract = CompleteContract::new(
             NeoString::from_str("TestContract"),
             NeoString::from_str("1.0.0"),
@@ -686,6 +697,7 @@ mod tests {
 
     #[test]
     fn test_complete_contract_emergency() {
+        let _guard = test_lock();
         let mut contract = CompleteContract::new(
             NeoString::from_str("TestContract"),
             NeoString::from_str("1.0.0"),
@@ -714,6 +726,7 @@ mod tests {
 
     #[test]
     fn test_complete_contract_update() {
+        let _guard = test_lock();
         let mut contract = CompleteContract::new(
             NeoString::from_str("TestContract"),
             NeoString::from_str("1.0.0"),

@@ -57,9 +57,9 @@ impl StorageContract {
         self.owner = NeoRuntime::get_calling_script_hash()?;
         self.user_count = NeoInteger::zero();
 
-        // Initialize storage
+        // Reset storage to a clean deployment state.
         let context = NeoRuntime::get_storage_context()?;
-        let mut storage = ContractStorage::load(&context);
+        let mut storage = ContractStorage::default();
         storage
             .counters
             .insert(NeoString::from_str("user_count"), NeoInteger::zero());
@@ -278,15 +278,26 @@ impl Default for StorageContract {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, MutexGuard, OnceLock};
+
+    fn test_lock() -> MutexGuard<'static, ()> {
+        static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        TEST_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("example test lock poisoned")
+    }
 
     #[test]
     fn test_storage_contract_creation() {
+        let _guard = test_lock();
         let contract = StorageContract::new();
         assert_eq!(contract.get_user_count().unwrap().as_i32_saturating(), 0);
     }
 
     #[test]
     fn test_user_operations() {
+        let _guard = test_lock();
         let mut contract = StorageContract::new();
         contract.initialize().unwrap();
 
@@ -314,6 +325,7 @@ mod tests {
 
     #[test]
     fn test_settings_and_counters() {
+        let _guard = test_lock();
         let mut contract = StorageContract::new();
         contract.initialize().unwrap();
 
