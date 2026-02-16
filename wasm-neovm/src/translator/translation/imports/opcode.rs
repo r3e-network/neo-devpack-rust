@@ -73,6 +73,7 @@ pub(super) fn emit_opcode_call(
         2 => script.extend_from_slice(&(immediate as i16).to_le_bytes()),
         4 => script.extend_from_slice(&(immediate as i32).to_le_bytes()),
         8 => script.extend_from_slice(&(immediate as i64).to_le_bytes()),
+        16 => script.extend_from_slice(&immediate.to_le_bytes()),
         other => {
             bail!(
                 "unsupported operand size {} for opcode '{}'; use opcode.raw/raw4",
@@ -145,19 +146,22 @@ fn truncate_literal(param: &StackValue, script: &mut Vec<u8>, max_bytes: usize) 
         .const_value
         .ok_or_else(|| anyhow!("import argument must be a compile-time constant"))?;
     // Treat the literal as signed; validate it fits within the requested bytes.
-    let bits = max_bytes * 8;
-    if bits == 0 || bits > 64 {
+    if max_bytes == 0 || max_bytes > 16 {
         bail!("unsupported immediate width {} bytes", max_bytes);
     }
-    let min = -(1i128 << (bits - 1));
-    let max_signed = (1i128 << (bits - 1)) - 1;
-    let max_unsigned = (1i128 << bits) - 1;
-    if !(min <= value && value <= max_signed || 0 <= value && value <= max_unsigned) {
-        bail!(
-            "literal value {} does not fit in {} byte(s) for opcode immediate",
-            value,
-            max_bytes
-        );
+
+    if max_bytes < 16 {
+        let bits = max_bytes * 8;
+        let min = -(1i128 << (bits - 1));
+        let max_signed = (1i128 << (bits - 1)) - 1;
+        let max_unsigned = (1i128 << bits) - 1;
+        if !(min <= value && value <= max_signed || 0 <= value && value <= max_unsigned) {
+            bail!(
+                "literal value {} does not fit in {} byte(s) for opcode immediate",
+                value,
+                max_bytes
+            );
+        }
     }
 
     let Some(start) = param.bytecode_start else {

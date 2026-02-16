@@ -86,6 +86,26 @@ fn translate_opcode_immediate_and_raw() {
 }
 
 #[test]
+fn translate_opcode_pushint128_immediate() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (import "opcode" "PUSHINT128" (func $push128 (param i64)))
+              (func (export "emit")
+                i64.const 123456789
+                call $push128)
+            )"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "Emit128").expect("translation succeeds");
+
+    assert_eq!(translation.script.len(), 18);
+    assert_eq!(translation.script[0], 0x04); // PUSHINT128
+    assert_eq!(&translation.script[1..17], &123456789i128.to_le_bytes());
+    assert_eq!(translation.script[17], 0x40); // RET
+}
+
+#[test]
 fn translate_internal_function_call() {
     let wasm = wat::parse_str(
         r#"(module
