@@ -76,15 +76,22 @@ impl ChainAdapter for NeoAdapter {
     }
 
     fn resolve_syscall(&self, module: &str, name: &str) -> Option<&'static str> {
-        match module {
-            "syscall" => syscalls::lookup(name).map(|s| s.name),
-            "neo" => neo_syscalls::lookup_neo_syscall(name),
-            _ => None,
+        if module.eq_ignore_ascii_case("syscall") {
+            return syscalls::lookup_extended(name).map(|s| s.name);
         }
+
+        if module.eq_ignore_ascii_case("neo") {
+            return neo_syscalls::lookup_neo_syscall(name);
+        }
+
+        None
     }
 
     fn recognizes_module(&self, module: &str) -> bool {
-        matches!(module, "syscall" | "neo" | "opcode" | "env")
+        module.eq_ignore_ascii_case("syscall")
+            || module.eq_ignore_ascii_case("neo")
+            || module.eq_ignore_ascii_case("opcode")
+            || module.eq_ignore_ascii_case("env")
     }
 }
 

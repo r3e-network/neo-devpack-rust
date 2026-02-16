@@ -45,8 +45,8 @@ fn critical_syscall_descriptors_match_reference_vectors() {
         ("syscall", "System.Runtime.GetTime", 0x0388c3b7),
         ("syscall", "System.Storage.Get", 0x31e85d92),
         ("syscall", "System.Storage.Put", 0x84183fe6),
-        ("neo", "Neo.Crypto.Hash160", 0xac67b840),
-        ("neo", "Neo.Crypto.VerifyWithECDsa", 0xcf822a6a),
+        ("syscall", "Neo.Crypto.Hash160", 0xac67b840),
+        ("syscall", "Neo.Crypto.VerifyWithECDsa", 0xcf822a6a),
     ];
 
     for (idx, (module, descriptor, expected_hash)) in vectors.iter().enumerate() {
@@ -95,4 +95,14 @@ fn critical_neo_aliases_lower_to_reference_vectors() {
         let translation = translate_import("neo", alias, &contract_name);
         assert_emits_syscall_hash(&translation, *expected_hash);
     }
+}
+
+#[test]
+fn syscall_module_name_is_case_insensitive_for_extended_descriptors() {
+    let translation = translate_import(
+        "SyScAlL",
+        "Neo.Crypto.VerifyWithECDsa",
+        "CaseInsensitiveSyscallModule",
+    );
+    assert_emits_syscall_hash(&translation, 0xcf822a6a);
 }
