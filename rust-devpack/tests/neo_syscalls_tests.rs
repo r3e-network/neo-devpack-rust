@@ -95,6 +95,23 @@ fn neovm_syscall_returns_placeholder_for_known_entries() {
 }
 
 #[test]
+fn boolean_syscalls_fail_closed_without_overrides() {
+    let _guard = setup_syscall_test();
+    let registry = registry();
+
+    for info in registry.iter().filter(|info| info.return_type == "Boolean") {
+        let args: Vec<NeoValue> = info.parameters.iter().map(|p| placeholder_arg(p)).collect();
+        let result = neovm_syscall(info.hash, &args).expect("syscall invocation failed");
+        let value = result.as_boolean().expect("boolean result");
+        assert!(
+            !value.as_bool(),
+            "{} should fail closed in host mode",
+            info.name
+        );
+    }
+}
+
+#[test]
 fn neovm_syscall_handles_unknown_hash() {
     let _guard = setup_syscall_test();
     let result = neovm_syscall(0xDEADBEEF, &[]);
