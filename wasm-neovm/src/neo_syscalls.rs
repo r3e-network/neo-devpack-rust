@@ -26,24 +26,32 @@ fn camel_to_snake(input: &str) -> String {
     output
 }
 
-fn canonical_alias(descriptor: &str) -> Option<String> {
+fn canonical_aliases(descriptor: &str) -> Vec<String> {
     let mut parts = descriptor.split('.');
-    let root = parts.next()?;
-    if root != "System" {
-        return None;
-    }
+    let root = match parts.next() {
+        Some(value) => value,
+        None => return Vec::new(),
+    };
 
-    let category = parts.next()?;
-    let method = parts.next()?;
+    let category = match parts.next() {
+        Some(value) => value,
+        None => return Vec::new(),
+    };
+    let method = match parts.next() {
+        Some(value) => value,
+        None => return Vec::new(),
+    };
     if parts.next().is_some() {
-        return None;
+        return Vec::new();
     }
 
-    Some(format!(
-        "{}_{}",
-        category.to_ascii_lowercase(),
-        camel_to_snake(method)
-    ))
+    let category = category.to_ascii_lowercase();
+    let method = camel_to_snake(method);
+
+    match root {
+        "System" | "Neo" => vec![format!("{category}_{method}")],
+        _ => Vec::new(),
+    }
 }
 
 /// Mapping from WASM import names to Neo syscall names
@@ -150,11 +158,11 @@ pub static NEO_SYSCALL_MAP: Lazy<HashMap<String, &'static str>> = Lazy::new(|| {
     alias("Neo.Crypto.Hash256", "Neo.Crypto.Hash256");
     alias("Neo.Crypto.VerifyWithECDsa", "Neo.Crypto.VerifyWithECDsa");
 
-    // Canonical coverage for all Neo N3 engine syscalls
-    for syscall in syscalls::all() {
+    // Canonical coverage for all Neo N3 engine syscalls and extended descriptors.
+    for syscall in syscalls::all().iter().chain(syscalls::extended().iter()) {
         let descriptor = syscall.name;
         map.entry(descriptor.to_string()).or_insert(descriptor);
-        if let Some(generated_alias) = canonical_alias(descriptor) {
+        for generated_alias in canonical_aliases(descriptor) {
             map.entry(generated_alias).or_insert(descriptor);
         }
     }
@@ -256,7 +264,17 @@ mod tests {
     fn canonical_system_syscalls_have_aliases() {
         for syscall in syscalls::all() {
             assert_eq!(lookup_neo_syscall(syscall.name), Some(syscall.name));
-            if let Some(alias) = canonical_alias(syscall.name) {
+            for alias in canonical_aliases(syscall.name) {
+                assert_eq!(lookup_neo_syscall(&alias), Some(syscall.name));
+            }
+        }
+    }
+
+    #[test]
+    fn canonical_extended_syscalls_have_aliases() {
+        for syscall in syscalls::extended() {
+            assert_eq!(lookup_neo_syscall(syscall.name), Some(syscall.name));
+            for alias in canonical_aliases(syscall.name) {
                 assert_eq!(lookup_neo_syscall(&alias), Some(syscall.name));
             }
         }

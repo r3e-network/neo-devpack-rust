@@ -50,6 +50,10 @@ pub fn all() -> &'static [SyscallInfo] {
     generated::SYSCALLS
 }
 
+pub fn extended() -> &'static [SyscallInfo] {
+    EXTENDED_SYSCALLS
+}
+
 pub fn lookup(name: &str) -> Option<&'static SyscallInfo> {
     generated::SYSCALLS
         .iter()
