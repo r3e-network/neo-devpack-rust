@@ -1,0 +1,363 @@
+---
+title: JSON
+description: On-chain JSON serialization and deserialization for Neo N3 smart contracts.
+draft: false
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+`NeoJSON` provides on-chain JSON serialization and deserialization via the `System.Json.*` syscall family. This is primarily used for encoding structured data for off-chain consumption and for parsing responses from the Neo Oracle service.
+
+```rust
+use neo_devpack::prelude::*;
+
+#[neo_method(safe)]
+pub fn token_metadata(token_id: &[u8]) -> NeoString {
+    let ctx = NeoStorage::get_read_only_context();
+    let key = storage_key(b"meta:", token_id);
+    let raw = NeoStorage::get(&ctx, &key);
+
+    // Return stored metadata as-is (already JSON)
+    NeoString::from_bytes(&raw)
+}
+```
+
+## serialize
+
+Converts a `NeoValue` into its JSON string representation. Supports integers, strings, booleans, null, arrays, and maps.
+
+**Syscall:** `System.Json.Serialize`
+
+```rust
+use neo_devpack::prelude::*;
+
+#[neo_method(safe)]
+pub fn build_token_info(symbol: &str, decimals: i64) -> NeoString {
+    let mut info = NeoMap::new();
+    info.insert(
+        NeoValue::String(NeoString::from_str("symbol")),
+        NeoValue::String(NeoString::from_str(symbol)),
+    );
+    info.insert(
+        NeoValue::String(NeoString::from_str("decimals")),
+        NeoValue::Integer(NeoInteger::new(decimals)),
+    );
+
+    NeoJSON::serialize(NeoValue::Map(info))
+}
+// Returns: {"symbol":"GAS","decimals":8}
+```
+
+| Item | Detail |
+|------|--------|
+| Parameter | `value: NeoValue` — the value to serialize |
+| Returns | `NeoString` — JSON-encoded string |
+| GAS cost | Scales with value complexity |
+
+### Type mapping
+
+| NeoValue variant | JSON output |
+|-----------------|-------------|
+| `Integer(n)` | `42` |
+| `String(s)` | `"hello"` |
+| `Boolean(b)` | `true` / `false` |
+| `Null` | `null` |
+| `Array(arr)` | `[1, "two", true]` |
+| `Map(map)` | `{"key": "value"}` |
+| `ByteArray(bytes)` | Base64-encoded string |
+
+```rust
+use neo_devpack::prelude::*;
+
+fn serialize_examples() {
+    // Primitive values
+    let n = NeoJSON::serialize(NeoValue::Integer(NeoInteger::new(42)));
+    // → "42"
+
+    let s = NeoJSON::serialize(NeoValue::String(NeoString::from_str("hello")));
+    // → "\"hello\""
+
+    let b = NeoJSON::serialize(NeoValue::Boolean(NeoBoolean::TRUE));
+    // → "true"
+
+    // Array
+    let mut arr = NeoArray::new();
+    arr.push(NeoValue::Integer(NeoInteger::new(1)));
+    arr.push(NeoValue::String(NeoString::from_str("two")));
+    let a = NeoJSON::serialize(NeoValue::Array(arr));
+    // → "[1,\"two\"]"
+}
+```
+
+<Aside type="caution">
+  `ByteArray` values are serialized as Base64 strings, not as hex. If you need hex encoding, convert the bytes to a hex string manually before serializing.
+</Aside>
+
+---
+
+## deserialize
+
+Parses a JSON string into a `NeoValue`. The resulting value can be inspected and destructured using the standard `NeoValue` methods.
+
+**Syscall:** `System.Json.Deserialize`
+
+```rust
+use neo_devpack::prelude::*;
+
+#[neo_method(safe)]
+pub fn parse_config(json: &str) -> i64 {
+    let value = NeoJSON::deserialize(json);
+
+    // Access as a map
+    let map = value.as_map();
+    match map.get(&NeoValue::String(NeoString::from_str("max_supply"))) {
+        Some(v) => v.as_integer(),
+        None => 0,
+    }
+}
+```
+
+| Item | Detail |
+|------|--------|
+| Parameter | `json: &str` — a valid JSON string |
+| Returns | `NeoValue` — the parsed value |
+| GAS cost | Scales with JSON string length |
+
+### Parsing structured responses
+
+```rust
+use neo_devpack::prelude::*;
+
+/// Parse a JSON object and extract typed fields.
+fn parse_price_data(json: &str) -> (NeoString, i64, i64) {
+    let value = NeoJSON::deserialize(json);
+    let map = value.as_map();
+
+    let symbol = map
+        .get(&NeoValue::String(NeoString::from_str("symbol")))
+        .map(|v| v.as_string())
+        .unwrap_or_default();
+
+    let price = map
+        .get(&NeoValue::String(NeoString::from_str("price")))
+        .map(|v| v.as_integer())
+        .unwrap_or(0);
+
+    let timestamp = map
+        .get(&NeoValue::String(NeoString::from_str("timestamp")))
+        .map(|v| v.as_integer())
+        .unwrap_or(0);
+
+    (symbol, price, timestamp)
+}
+```
+
+### Parsing arrays
+
+```rust
+use neo_devpack::prelude::*;
+
+/// Parse a JSON array of integers.
+fn parse_scores(json: &str) -> NeoArray<i64> {
+    let value = NeoJSON::deserialize(json);
+    let arr = value.as_array();
+    let mut scores = NeoArray::new();
+
+    for item in arr.iter() {
+        scores.push(item.as_integer());
+    }
+
+    scores
+}
+// Input:  "[95, 87, 92, 78]"
+// Output: NeoArray containing [95, 87, 92, 78]
+```
+
+<Aside type="note">
+  `NeoJSON::deserialize` will cause the NeoVM to fault if the input is not valid JSON. Always validate JSON input at the contract boundary if it comes from an untrusted source, or handle the fault at the transaction level.
+</Aside>
+
+---
+
+## Integration with Neo Oracle responses
+
+The Neo Oracle service returns HTTP response bodies as byte arrays. When the response is JSON, use `NeoJSON::deserialize` to parse it in your callback method.
+
+### Oracle request flow
+
+1. Your contract calls the Oracle native contract to request a URL.
+2. The Oracle nodes fetch the URL off-chain and reach consensus on the response.
+3. The Oracle contract calls your callback method with the response data.
+4. You parse the JSON response and update contract state.
+
+```rust
+use neo_devpack::prelude::*;
+
+const ORACLE_HASH: ScriptHash = /* Oracle native contract hash */;
+
+#[neo_contract]
+pub struct PriceFeed;
+
+#[neo_contract]
+impl PriceFeed {
+    pub fn new() -> Self { Self }
+
+    /// Request a price update from an external API via the Oracle.
+    #[neo_method]
+    pub fn request_price(symbol: &str) {
+        let url = format!("https://api.example.com/price?symbol={}", symbol);
+        let callback = "on_price_response";
+        let filter = "$.price"; // JSONPath filter applied by the Oracle
+        let gas_for_response = 100_000_000; // 1 GAS
+
+        NeoContractRuntime::call(
+            ORACLE_HASH,
+            "request",
+            CallFlags::All,
+            &[
+                NeoValue::String(NeoString::from_str(&url)),
+                NeoValue::String(NeoString::from_str(filter)),
+                NeoValue::String(NeoString::from_str(callback)),
+                NeoValue::Null,       // user data
+                NeoValue::Integer(NeoInteger::new(gas_for_response)),
+            ],
+        );
+    }
+
+    /// Callback invoked by the Oracle contract with the response.
+    #[neo_method]
+    pub fn on_price_response(url: &str, user_data: &[u8], code: i64, result: &[u8]) {
+        // Verify the caller is the Oracle contract
+        let caller = NeoRuntimeContext::get_calling_script_hash();
+        if caller != ORACLE_HASH {
+            NeoRuntime::log("unauthorized oracle callback");
+            return;
+        }
+
+        // code 0x14 = Success
+        if code != 0x14 {
+            NeoRuntime::log("oracle request failed");
+            return;
+        }
+
+        // Parse the JSON response
+        let json_str = NeoString::from_bytes(result);
+        let value = NeoJSON::deserialize(json_str.as_str());
+        let price = value.as_integer();
+
+        // Store the price
+        let ctx = NeoStorage::get_context();
+        NeoStorage::put_integer(&ctx, b"latest_price", price);
+        NeoStorage::put_integer(&ctx, b"price_timestamp", NeoRuntime::get_time());
+
+        NeoRuntime::log("price updated from oracle");
+    }
+
+    /// Read the latest stored price.
+    #[neo_method(safe)]
+    pub fn get_latest_price() -> i64 {
+        let ctx = NeoStorage::get_read_only_context();
+        NeoStorage::get_integer(&ctx, b"latest_price")
+    }
+}
+```
+
+### JSONPath filtering
+
+The Oracle service supports JSONPath expressions to extract specific fields from the response before delivering it to your contract. This reduces on-chain parsing costs:
+
+| JSONPath | Input | Result |
+|----------|-------|--------|
+| `$.price` | `{"price": 42000, "volume": 100}` | `42000` |
+| `$.data[0].value` | `{"data": [{"value": 99}]}` | `99` |
+| `$` | `{"a": 1}` | `{"a": 1}` (entire object) |
+
+<Aside type="tip">
+  Use JSONPath filters in your Oracle request to extract only the fields you need. This minimizes the data delivered on-chain and reduces the GAS cost of parsing.
+</Aside>
+
+---
+
+## Complete example
+
+A contract that stores and retrieves JSON-encoded metadata for NFT tokens:
+
+```rust
+use neo_devpack::prelude::*;
+
+neo_manifest_overlay!(r#"{
+    "name": "NFTMetadata",
+    "features": { "storage": true }
+}"#);
+
+#[neo_contract]
+pub struct NFTMetadata;
+
+#[neo_contract]
+impl NFTMetadata {
+    pub fn new() -> Self { Self }
+
+    /// Store JSON metadata for a token ID.
+    #[neo_method]
+    pub fn set_metadata(
+        token_id: &[u8],
+        name: &str,
+        description: &str,
+        image_url: &str,
+    ) -> bool {
+        if !NeoRuntime::check_witness(NeoRuntimeContext::get_sender()) {
+            return false;
+        }
+
+        // Build a JSON object
+        let mut meta = NeoMap::new();
+        meta.insert(
+            NeoValue::String(NeoString::from_str("name")),
+            NeoValue::String(NeoString::from_str(name)),
+        );
+        meta.insert(
+            NeoValue::String(NeoString::from_str("description")),
+            NeoValue::String(NeoString::from_str(description)),
+        );
+        meta.insert(
+            NeoValue::String(NeoString::from_str("image")),
+            NeoValue::String(NeoString::from_str(image_url)),
+        );
+
+        let json = NeoJSON::serialize(NeoValue::Map(meta));
+
+        let ctx = NeoStorage::get_context();
+        let key = storage_key(b"meta:", token_id);
+        NeoStorage::put_string(&ctx, &key, json.as_str());
+
+        true
+    }
+
+    /// Retrieve and parse metadata for a token ID.
+    #[neo_method(safe)]
+    pub fn get_metadata(token_id: &[u8]) -> NeoValue {
+        let ctx = NeoStorage::get_read_only_context();
+        let key = storage_key(b"meta:", token_id);
+        let json = NeoStorage::get_string(&ctx, &key);
+
+        if json.is_empty() {
+            return NeoValue::Null;
+        }
+
+        NeoJSON::deserialize(json.as_str())
+    }
+
+    /// Get just the name field from a token's metadata.
+    #[neo_method(safe)]
+    pub fn get_name(token_id: &[u8]) -> NeoString {
+        let value = Self::get_metadata(token_id);
+        if let NeoValue::Map(map) = value {
+            map.get(&NeoValue::String(NeoString::from_str("name")))
+                .map(|v| v.as_string())
+                .unwrap_or_default()
+        } else {
+            NeoString::default()
+        }
+    }
+}
+```

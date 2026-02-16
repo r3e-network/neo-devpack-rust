@@ -1,0 +1,126 @@
+---
+title: Value
+description: Tagged union representing any Neo stack item, with type-safe pattern matching and conversions.
+draft: false
+---
+
+## NeoValue
+
+`NeoValue` is an enum that represents any value on the NeoVM evaluation stack. It is the type-safe Rust equivalent of a dynamically-typed Neo stack item.
+
+```rust
+use neo_types::{NeoValue, NeoInteger, NeoString};
+
+let num = NeoValue::Integer(NeoInteger::new(42));
+let text = NeoValue::String(NeoString::from_str("hello"));
+let nothing = NeoValue::Null;
+```
+
+### Variants
+
+| Variant | Inner Type | NeoVM Stack Item |
+|---------|-----------|------------------|
+| `Integer(NeoInteger)` | Arbitrary-precision integer | Integer |
+| `Boolean(NeoBoolean)` | Boolean value | Boolean |
+| `ByteString(NeoByteString)` | Raw byte array | ByteString |
+| `String(NeoString)` | UTF-8 text | ByteString (text) |
+| `Array(NeoArray<NeoValue>)` | Dynamic array | Array |
+| `Map(NeoMap<NeoValue, NeoValue>)` | Key-value map | Map |
+| `Struct(NeoStruct)` | Named-field structure | Struct |
+| `Null` | No value | Null |
+
+### Type-checking methods
+
+Each variant has a corresponding accessor that returns `Option`:
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `is_null()` | `bool` | `true` if `Null` |
+| `as_integer()` | `Option<NeoInteger>` | Clone the inner integer |
+| `as_boolean()` | `Option<NeoBoolean>` | Copy the inner boolean |
+| `as_byte_string()` | `Option<&NeoByteString>` | Borrow the inner byte string |
+| `as_string()` | `Option<&NeoString>` | Borrow the inner string |
+| `as_array()` | `Option<&NeoArray<NeoValue>>` | Borrow the inner array |
+| `as_map()` | `Option<&NeoMap<NeoValue, NeoValue>>` | Borrow the inner map |
+| `as_struct()` | `Option<&NeoStruct>` | Borrow the inner struct |
+
+```rust
+use neo_types::{NeoValue, NeoInteger};
+
+let val = NeoValue::Integer(NeoInteger::new(100));
+
+if let Some(n) = val.as_integer() {
+    assert_eq!(n.try_as_i64(), Some(100));
+}
+
+assert!(val.as_string().is_none());
+assert!(!val.is_null());
+```
+
+### Pattern matching
+
+For complex dispatch logic, use Rust's `match` directly on the enum:
+
+```rust
+use neo_types::*;
+
+fn describe(val: &NeoValue) -> String {
+    match val {
+        NeoValue::Integer(n) => format!("int({})", n.as_i64_saturating()),
+        NeoValue::Boolean(b) => format!("bool({})", b.as_bool()),
+        NeoValue::ByteString(bs) => format!("bytes(len={})", bs.len()),
+        NeoValue::String(s) => format!("str({})", s.as_str()),
+        NeoValue::Array(a) => format!("array(len={})", a.len()),
+        NeoValue::Map(m) => format!("map(len={})", m.len()),
+        NeoValue::Struct(s) => format!("struct(fields={})", s.len()),
+        NeoValue::Null => "null".to_string(),
+    }
+}
+```
+
+### From conversions
+
+Every inner type implements `From<T> for NeoValue`, so you can use `.into()` for ergonomic construction:
+
+```rust
+use neo_types::*;
+
+let values: Vec<NeoValue> = vec![
+    NeoInteger::new(1).into(),
+    NeoBoolean::TRUE.into(),
+    NeoString::from_str("hello").into(),
+    NeoByteString::from_slice(&[0xff]).into(),
+];
+```
+
+The full list of `From` implementations:
+
+| From Type | Resulting Variant |
+|-----------|-------------------|
+| `NeoInteger` | `NeoValue::Integer` |
+| `NeoBoolean` | `NeoValue::Boolean` |
+| `NeoByteString` | `NeoValue::ByteString` |
+| `NeoString` | `NeoValue::String` |
+| `NeoArray<NeoValue>` | `NeoValue::Array` |
+| `NeoMap<NeoValue, NeoValue>` | `NeoValue::Map` |
+| `NeoStruct` | `NeoValue::Struct` |
+
+### Working with nested values
+
+`NeoValue` is recursive — arrays and maps contain `NeoValue` elements, enabling arbitrarily nested data:
+
+```rust
+use neo_types::*;
+
+let mut inner = NeoArray::new();
+inner.push(NeoValue::Integer(NeoInteger::new(1)));
+inner.push(NeoValue::Integer(NeoInteger::new(2)));
+
+let outer = NeoValue::Array(inner);
+
+if let Some(arr) = outer.as_array() {
+    if let Some(NeoValue::Integer(n)) = arr.get(0) {
+        assert_eq!(n.try_as_i64(), Some(1));
+    }
+}
+```

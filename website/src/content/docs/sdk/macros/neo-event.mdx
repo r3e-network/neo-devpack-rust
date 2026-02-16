@@ -1,0 +1,210 @@
+---
+title: "#[neo_event]"
+description: "Attribute macro that defines a contract event struct with automatic emit() generation and manifest metadata."
+draft: false
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+`#[neo_event]` transforms a Rust struct into a contract event. The macro generates an `emit()` method that sends a runtime notification and embeds ABI metadata into a Wasm custom section so the translator can populate the manifest's `abi.events` array.
+
+## Basic Usage
+
+```rust
+use neo_devpack::prelude::*;
+
+#[neo_event]
+pub struct Transfer {
+    pub from: NeoByteString,
+    pub to: NeoByteString,
+    pub amount: NeoInteger,
+}
+```
+
+This generates:
+
+1. An `impl Transfer` block with an `emit(&self) -> NeoResult<()>` method.
+2. A Wasm custom section containing the event's ABI metadata (name, parameter names, parameter types).
+
+## Emitting Events
+
+Construct the event struct and call `emit()`:
+
+```rust
+let event = Transfer {
+    from: sender_hash,
+    to: receiver_hash,
+    amount: NeoInteger::new(1000),
+};
+event.emit()?;
+```
+
+Under the hood, `emit()` does the following:
+
+1. Creates a `NeoArray` and pushes each field as a `NeoValue`.
+2. Calls `NeoRuntime::notify()` with the struct name as the event label and the array as the notification state.
+
+The event name in the manifest matches the struct name exactly. `Transfer` produces `"name": "Transfer"` in the ABI.
+
+## Field Requirements
+
+The macro requires a struct with **named fields**. Unit structs and tuple structs are rejected at compile time:
+
+```rust
+// Works
+#[neo_event]
+pub struct Transfer {
+    pub from: NeoByteString,
+    pub to: NeoByteString,
+    pub amount: NeoInteger,
+}
+
+// Compile error: #[neo_event] requires a struct with named fields
+#[neo_event]
+pub struct BadEvent(i64, i64);
+
+// Compile error: #[neo_event] requires a struct with named fields
+#[neo_event]
+pub struct EmptyEvent;
+```
+
+Each field becomes a parameter in the manifest's event entry. The field name maps to the parameter name, and the field type maps to the parameter type using the SDK's type mapping rules.
+
+## Type Mapping
+
+Field types are mapped to Neo manifest types during code generation:
+
+| Rust type | Manifest type |
+|---|---|
+| `NeoInteger` / `i64` / `i32` | `Integer` |
+| `NeoBoolean` / `bool` | `Boolean` |
+| `NeoString` | `String` |
+| `NeoByteString` | `ByteArray` |
+| `NeoArray` | `Array` |
+| `NeoMap` | `Map` |
+| Other | `Any` |
+
+## Generated Manifest Metadata
+
+For the `Transfer` event above, the macro embeds this ABI fragment:
+
+```json
+{
+  "abi": {
+    "events": [
+      {
+        "name": "Transfer",
+        "parameters": [
+          { "name": "from", "type": "ByteArray" },
+          { "name": "to", "type": "ByteArray" },
+          { "name": "amount", "type": "Integer" }
+        ]
+      }
+    ]
+  }
+}
+```
+
+The translator merges this into the final manifest alongside method metadata and overlay data.
+
+## Multiple Events
+
+A contract can define as many events as needed. Each `#[neo_event]` struct generates its own ABI entry:
+
+```rust
+#[neo_event]
+pub struct Transfer {
+    pub from: NeoByteString,
+    pub to: NeoByteString,
+    pub amount: NeoInteger,
+}
+
+#[neo_event]
+pub struct Approval {
+    pub owner: NeoByteString,
+    pub spender: NeoByteString,
+    pub amount: NeoInteger,
+}
+
+#[neo_event]
+pub struct ContractUpdate {
+    pub old_version: NeoString,
+    pub new_version: NeoString,
+    pub updated_by: NeoByteString,
+}
+```
+
+## Complete Example
+
+A token contract that emits a `Transfer` event on every successful transfer:
+
+```rust
+use neo_devpack::prelude::*;
+
+neo_manifest_overlay!(
+    r#"{
+    "name": "EventExample",
+    "supportedstandards": ["NEP-17"]
+}"#
+);
+
+#[neo_event]
+pub struct Transfer {
+    pub from: NeoByteString,
+    pub to: NeoByteString,
+    pub amount: NeoInteger,
+}
+
+#[neo_contract]
+pub struct TokenContract;
+
+#[neo_contract]
+impl TokenContract {
+    pub fn new() -> Self {
+        Self
+    }
+
+    #[neo_method]
+    pub fn transfer(from: i64, to: i64, amount: i64) -> bool {
+        if from <= 0 || to <= 0 || amount <= 0 || from == to {
+            return false;
+        }
+
+        // In production: update storage balances here
+
+        // Emit the transfer event
+        let event = Transfer {
+            from: NeoByteString::from_slice(&from.to_le_bytes()),
+            to: NeoByteString::from_slice(&to.to_le_bytes()),
+            amount: NeoInteger::new(amount),
+        };
+        let _ = event.emit();
+
+        true
+    }
+}
+```
+
+<Aside type="note">
+  The NEP-17 standard requires a `Transfer` event on every successful transfer, including mints (where `from` is null) and burns (where `to` is null). Omitting the event makes the contract non-compliant.
+</Aside>
+
+## Error Handling
+
+`emit()` returns `NeoResult<()>`. The call can fail if the runtime notification syscall fails. In practice this is rare, but production contracts should handle the error:
+
+```rust
+// Propagate the error
+event.emit()?;
+
+// Or handle it explicitly
+if let Err(e) = event.emit() {
+    // log or handle the failure
+}
+```
+
+## See Also
+
+- [#[neo_contract]](/sdk/macros/neo-contract/) -- the contract macro that provides the runtime context
+- [Manifest Overlays](/concepts/manifest-overlays/) -- how event metadata merges into the manifest
+- [NEP-17 Fungible Token](/standards/nep17/) -- standard that requires the `Transfer` event

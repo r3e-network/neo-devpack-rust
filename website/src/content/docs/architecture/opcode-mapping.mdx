@@ -1,0 +1,151 @@
+---
+title: "Opcode Mapping"
+description: "Complete reference for how each WebAssembly instruction translates to NeoVM opcodes in the wasm-neovm translator."
+draft: false
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+This page documents the complete Wasm to NeoVM opcode mapping implemented by the `wasm-neovm` translator. Each Wasm instruction is lowered to one or more NeoVM opcodes, with optimizations applied where the translator can track literal values.
+
+## Constants
+
+| Wasm | NeoVM | Notes |
+|------|-------|-------|
+| `i32.const n` | `PUSHINT8`..`PUSHINT256` | Smallest encoding that fits the value |
+| `i64.const n` | `PUSHINT8`..`PUSHINT256` | Same strategy; NeoVM integers are arbitrary-precision |
+
+The translator always selects the most compact `PUSHINT*` variant. Values 0-16 use dedicated `PUSH0`..`PUSH16` opcodes. Negative values and large constants use the appropriately sized encoding.
+
+## Local Variables
+
+| Wasm | NeoVM | Notes |
+|------|-------|-------|
+| `local.get x` | `LDARG0`..`LDARG6` / `LDARG` / `LDLOC0`..`LDLOC6` / `LDLOC` | Parameters map to `LDARG*`, locals to `LDLOC*`. Indices 0-6 use compact opcodes; higher indices use the generic form with an immediate. |
+| `local.set x` | `STARG0`..`STARG6` / `STARG` / `STLOC0`..`STLOC6` / `STLOC` | Mirror of `local.get`. Updates the cached literal value when the operand is a known constant. |
+| `local.tee x` | `ST*` + `LD*` | Store then immediately reload, preserving the value on the stack and updating literal knowledge. |
+
+## Arithmetic
+
+| Wasm | NeoVM | Notes |
+|------|-------|-------|
+| `add` | `ADD` | |
+| `sub` | `SUB` | |
+| `mul` | `MUL` | |
+| `div_s` | `DIV` | Signed division; NeoVM `DIV` is signed by default |
+| `div_u` | mask + `DIV` | Both operands masked to bit-width for unsigned semantics |
+| `rem_s` | `MOD` | |
+| `rem_u` | mask + `MOD` | Both operands masked for unsigned semantics |
+
+All arithmetic instructions apply to both `i32` and `i64` variants. Unsigned division and remainder mask operands with `AND` before the operation to ensure NeoVM's signed arithmetic produces the correct unsigned result.
+
+## Bitwise Operations
+
+| Wasm | NeoVM | Notes |
+|------|-------|-------|
+| `and` | `AND` | |
+| `or` | `OR` | |
+| `xor` | `XOR` | |
+| `shl` | `SHL` | Shift count masked to bit-width (31 for i32, 63 for i64) |
+| `shr_s` | `SHR` | Signed right shift |
+| `shr_u` | mask + `SHR` | Operand masked before shift for logical (unsigned) behaviour |
+| `rotl` | fold / `PICK`+`SWAP` sequence | Literal pairs fold at compile time; dynamic operands emit a reuse sequence |
+| `rotr` | fold / `PICK`+`SWAP` sequence | Same strategy as `rotl` |
+| `clz` | fold / helper call | Known constants fold to immediates; dynamic values call a compact helper |
+| `ctz` | fold / helper call | Same as `clz` |
+| `popcnt` | fold / helper call | Same as `clz` |
+
+<Aside type="note">
+  The bit-counting operators (`clz`, `ctz`, `popcnt`) have no native NeoVM equivalents. When the operand is a compile-time constant, the translator folds the result directly. For dynamic operands, compact helper routines are emitted once per translation and invoked via `CALL_L`.
+</Aside>
+
+## Comparisons
+
+| Wasm | NeoVM | Notes |
+|------|-------|-------|
+| `eq` | `EQUAL` | |
+| `ne` | `NOTEQUAL` | |
+| `eqz` | `PUSH0` + `EQUAL` | Compare against zero |
+| `lt_s` | `LT` | |
+| `le_s` | `LE` | |
+| `gt_s` | `GT` | |
+| `ge_s` | `GE` | |
+| `lt_u` | mask + `LT` | Operands masked for unsigned comparison |
+| `le_u` | mask + `LE` | |
+| `gt_u` | mask + `GT` | |
+| `ge_u` | mask + `GE` | |
+
+## Control Flow
+
+| Wasm | NeoVM | Notes |
+|------|-------|-------|
+| `block` | `JMP*_L` placeholder | Forward jump patched when `end` is reached |
+| `loop` | label at header | Backward branches jump to the recorded header offset |
+| `if` | `JMPIFNOT_L` placeholder | Condition consumed; patched at `else` or `end` |
+| `else` | `JMP_L` + patch | Unconditional jump past the else arm; patches the if placeholder |
+| `br` | `JMP_L` | Unconditional branch to the target label |
+| `br_if` | `JMPIF_L` | Conditional branch; condition consumed from stack |
+| `br_table` | chained `JMPIF_L` | Selector duplicated for each case comparison; falls through to default |
+| `return` | `RET` | Ensures result value (if any) is on the stack |
+| `unreachable` | `ABORT` | Terminates execution immediately |
+| `call` | `CALL_L` | Direct function call with computed offset |
+| `call_indirect` | bounds-checked dispatch | Table lookup via runtime helper; traps on null or out-of-range entries |
+
+Block and `if`/`loop` result types are limited to a single integer value. The translator validates stack layouts at branch targets and block ends, surfacing mismatched arities as translation errors.
+
+## Memory Operations
+
+| Wasm | NeoVM | Notes |
+|------|-------|-------|
+| `memory.size` | helper call | Returns current page count from bookkeeping slot |
+| `memory.grow` | helper call | Allocates new buffer via `NEWBUFFER` + `MEMCPY`, returns previous page count or -1 |
+| `i32.load` / `i64.load` | helper call | Bounds check + `SUBSTR` byte slicing from the linear-memory buffer |
+| `i32.store` / `i64.store` | helper call | Bounds check + staged `SETITEM` writes |
+| `load8_s` / `load8_u` | helper + sign extension | Unsigned load with optional `SHL`/`SHR` sign extension |
+| `load16_s` / `load16_u` | helper + sign extension | Same pattern for 16-bit loads |
+| `memory.fill` | helper call | Bounded fill operation |
+| `memory.copy` | helper call | Memmove-style overlap-safe copy via `MEMCPY` |
+| `memory.init` | helper call | Copies from passive data segment into linear memory |
+| `data.drop` | helper call | Marks a passive segment as dropped |
+
+All memory helpers perform explicit bounds checks before every access. Out-of-bounds accesses trap immediately.
+
+## Table Operations
+
+| Wasm | NeoVM | Notes |
+|------|-------|-------|
+| `table.get` | helper call | Index validation + `PICKITEM` from the backing array |
+| `table.set` | helper call | Index validation + `SETITEM` into the backing array |
+| `table.size` | helper call | Returns array length via `SIZE` |
+| `table.grow` | helper call | Appends entries, enforces declared maximum, returns previous size or -1 |
+| `table.fill` | helper call | Range fill with bounds validation |
+| `table.copy` | helper call | Inter-table copy with overlap handling |
+| `table.init` | helper call | Copies from passive element segment |
+| `elem.drop` | helper call | Clears cached segment and sets drop flag |
+
+## Conversions
+
+| Wasm | NeoVM | Notes |
+|------|-------|-------|
+| `i32.wrap_i64` | `AND` mask | Mask to 32-bit range |
+| `i64.extend_i32_s` | `SHL` + `SHR` | Sign-extend from 32 to 64 bits |
+| `i64.extend_i32_u` | `AND` mask | Zero-extend to 64 bits |
+| `i32.extend8_s` / `i32.extend16_s` | `SHL` + `SHR` | Sign-extend from 8/16 bits |
+| `i64.extend8_s` / `i64.extend16_s` / `i64.extend32_s` | `SHL` + `SHR` | Sign-extend from 8/16/32 bits |
+
+## Special Instructions
+
+| Wasm | NeoVM | Notes |
+|------|-------|-------|
+| `drop` | `DROP` or elided | If the top-of-stack is a tracked literal push, the push is elided entirely |
+| `select` | `JMPIFNOT_L` + `DROP` / `JMP_L` + `NIP` | Conditional selection pattern; typed `select` restricted to `i32`/`i64` |
+| `nop` | (nothing) | Silently ignored |
+
+## Literal Tracking
+
+The translator maintains a shadow of the NeoVM operand stack, tracking which positions hold known constant values. This enables several optimizations:
+
+- **Push elision** -- When `drop` follows a constant push, both are removed entirely.
+- **Compile-time folding** -- `clz`, `ctz`, `popcnt`, and rotations on known constants are evaluated during translation.
+- **Optimal encoding** -- `local.get` on a slot with a known literal re-emits the constant directly instead of loading from the slot, when this produces shorter bytecode.
+- **Constant propagation** -- `local.set` and `local.tee` update the cached literal for the target slot, enabling downstream reads to benefit from folding.

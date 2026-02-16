@@ -1,0 +1,93 @@
+---
+title: Write Neo N3 Smart Contracts in Rust
+description: Production-ready Rust toolchain for compiling Neo N3 smart contracts. Rust → Wasm → NeoVM → NEF + manifest.
+template: splash
+hero:
+  tagline: Compile Rust smart contracts to NeoVM bytecode through a WebAssembly pipeline. Production-ready with 500+ tests, 17 example contracts, and cross-chain support.
+  image:
+    file: ../../assets/logo.svg
+  actions:
+    - text: Get Started
+      link: /quickstart/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/r3e-network/neo-llvm
+      icon: external
+      variant: minimal
+draft: false
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+<div class="pipeline">
+  <span class="stage">Rust Contract</span>
+  <span class="arrow">→</span>
+  <span class="stage">cargo build (wasm32)</span>
+  <span class="arrow">→</span>
+  <span class="stage">Wasm Module</span>
+  <span class="arrow">→</span>
+  <span class="stage">wasm-neovm</span>
+  <span class="arrow">→</span>
+  <span class="stage">NEF + Manifest</span>
+</div>
+
+<CardGrid stagger>
+  <Card title="Rust-Native SDK" icon="seti:rust">
+    Write contracts using familiar Rust syntax with `#[neo_contract]`, `#[neo_method]`, and `#[neo_event]` macros. Full type system with `NeoInteger`, `NeoByteString`, `NeoStorage`, and more. [Explore the SDK →](/sdk/overview/)
+  </Card>
+  <Card title="17 Production Examples" icon="open-book">
+    From hello-world to Uniswap V2 AMMs, flashloan pools, and NFT marketplaces. Every contract compiles, tests, and deploys to Neo N3. [Browse examples →](/examples/overview/)
+  </Card>
+  <Card title="Cross-Chain Ready" icon="random">
+    Compile Solana programs and Move contracts to NeoVM. Drop-in compatibility layers map familiar APIs to Neo syscalls. [Learn more →](/cross-chain/overview/)
+  </Card>
+</CardGrid>
+
+## Write a Contract in Rust
+
+```rust
+use neo_devpack::prelude::*;
+
+neo_manifest_overlay!(r#"{
+    "name": "HelloWorld"
+}"#);
+
+const HELLO_RESULT: i64 = 42;
+
+#[neo_contract]
+pub struct HelloWorldContract;
+
+#[neo_contract]
+impl HelloWorldContract {
+    pub fn new() -> Self { Self }
+
+    #[neo_method(safe)]
+    pub fn hello() -> i64 {
+        HELLO_RESULT
+    }
+}
+```
+
+Build and deploy in two commands:
+
+```bash
+# Compile to Wasm
+cargo build --manifest-path contracts/hello-world/Cargo.toml \
+  --release --target wasm32-unknown-unknown
+
+# Translate to NEF + manifest
+cargo run --manifest-path wasm-neovm/Cargo.toml -- \
+  --input contracts/hello-world/target/wasm32-unknown-unknown/release/hello_world_neo.wasm \
+  --nef build/HelloWorld.nef \
+  --manifest build/HelloWorld.manifest.json \
+  --name HelloWorld
+```
+
+<div class="badges">
+  <span class="badge"><span class="dot"></span> Neo N3 3.9.1</span>
+  <span class="badge"><span class="dot"></span> 500+ Tests</span>
+  <span class="badge"><span class="dot"></span> NEP-17 / NEP-11</span>
+  <span class="badge"><span class="dot"></span> Solana Compatible</span>
+  <span class="badge"><span class="dot"></span> MIT License</span>
+</div>

@@ -1,0 +1,95 @@
+---
+title: "Cross-Chain Overview"
+description: "Compile smart contracts from Solana and Move-based chains to NeoVM through the cross-chain compilation pipeline."
+draft: false
+---
+
+import { Card, CardGrid, Aside } from '@astrojs/starlight/components';
+
+The neo-llvm cross-chain pipeline translates smart contracts written for other blockchain ecosystems into Neo N3 NEF + Manifest format. Contracts from Solana (Rust) and Move-based chains (Aptos, Sui) pass through an intermediate WASM stage before final NeoVM emission.
+
+## Architecture
+
+```
+Solana Path:
+  Rust Contract → solana-compat (API shimming) → WASM → wasm-neovm → NEF + Manifest
+
+Move Path:
+  Move Bytecode → move-neovm (translator) → WASM → wasm-neovm → NEF + Manifest
+```
+
+Both paths converge at the existing `wasm-neovm` backend. Chain-specific adapters handle syscall translation and semantic mapping during the WASM-to-NeoVM stage.
+
+## ChainAdapter Trait
+
+Every supported source chain implements the `ChainAdapter` trait. The adapter resolves foreign syscalls to Neo interop services and identifies chain-specific import modules.
+
+```rust
+pub trait ChainAdapter {
+    /// Which source chain this adapter handles.
+    fn source_chain(&self) -> SourceChain;
+
+    /// Map a foreign syscall (module + name) to a Neo interop service string.
+    fn resolve_syscall(&self, module: &str, name: &str) -> Option<&'static str>;
+
+    /// Return true if the given WASM import module belongs to this chain.
+    fn recognizes_module(&self, module: &str) -> bool;
+}
+```
+
+The adapter is selected automatically when you pass `--source-chain` to the CLI, or you can invoke it programmatically through the `wasm-neovm` library API.
+
+## Supported Chains
+
+| Chain | Identifier | Status | Component |
+|-------|------------|--------|-----------|
+| Neo (native) | `neo`, `native` | Production | `wasm-neovm/` |
+| Solana | `solana`, `sol` | Production | `solana-compat/`, `wasm-neovm/src/adapters/solana/mod.rs` |
+| Move (Aptos/Sui) | `move`, `aptos`, `sui` | Experimental | `move-neovm/` |
+
+<Aside type="caution">
+  Move support covers control flow and storage-backed resource operations with ability checks, but richer semantics like full struct layouts and generics remain incomplete.
+</Aside>
+
+## CLI Usage
+
+Select the source chain with the `--source-chain` flag:
+
+```bash
+cargo run --manifest-path wasm-neovm/Cargo.toml -- \
+  --input contract.wasm \
+  --nef build/contract.nef \
+  --manifest build/contract.manifest.json \
+  --name my-contract \
+  --source-chain solana|move
+```
+
+## Testing
+
+```bash
+# Run all cross-chain tests
+make test-cross-chain
+
+# Solana compat tests (26 tests)
+cargo test --manifest-path solana-compat/Cargo.toml
+
+# Cross-chain integration tests
+cargo test --manifest-path wasm-neovm/Cargo.toml cross_chain
+```
+
+## What's Next
+
+<CardGrid>
+  <Card title="Solana Compatibility" icon="rocket">
+    Drop-in `solana_program` replacement, API mapping, and build instructions.
+    [Read more →](/cross-chain/solana/)
+  </Card>
+  <Card title="Move Support" icon="puzzle">
+    Move bytecode translation pipeline, opcode mapping, and resource semantics.
+    [Read more →](/cross-chain/move/)
+  </Card>
+  <Card title="Syscall Mapping Reference" icon="list-format">
+    Complete syscall translation tables for all supported chains.
+    [Read more →](/cross-chain/syscall-mapping/)
+  </Card>
+</CardGrid>

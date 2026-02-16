@@ -1,0 +1,109 @@
+---
+title: Project Structure
+description: Repository layout and the role of each crate, directory, and configuration file in the neo-llvm toolchain.
+draft: false
+---
+
+import { FileTree } from '@astrojs/starlight/components';
+
+## Repository Layout
+
+<FileTree>
+- neo-llvm/
+  - wasm-neovm/ Core Wasm-to-NeoVM translator
+  - rust-devpack/ Rust SDK for contract development
+    - neo-macros/ Procedural macros (#[neo_contract], #[neo_method], etc.)
+    - neo-runtime/ Runtime bindings and storage API
+    - neo-syscalls/ NeoVM syscall wrappers
+    - neo-types/ Contract types (NeoInteger, NeoByteString, etc.)
+    - neo-test/ Contract testing framework
+  - solana-compat/ Solana compatibility layer
+  - move-neovm/ Move bytecode translator (experimental)
+  - contracts/ 17 example contracts
+  - integration-tests/ Neo Express integration tests
+  - scripts/ Build helpers
+    - build_contract.sh Build a single Rust contract
+    - build_c_contract.sh Build a C contract (experimental)
+    - neoexpress_deploy.sh Deploy to local Neo Express
+  - docs/ Technical documentation
+  - spec/ Formal LaTeX specification
+  - website/ This documentation site (Astro + Starlight)
+  - Makefile Build automation
+  - CHANGELOG.md Release history
+  - CONTRIBUTING.md Contribution guidelines
+  - SECURITY.md Security policy
+</FileTree>
+
+## Component Overview
+
+### wasm-neovm
+
+The core translator. It parses a `.wasm` binary, walks the Wasm instruction stream, and emits equivalent NeoVM opcodes. The output is a NEF binary and a manifest JSON file.
+
+Key responsibilities:
+- Wasm function and type section parsing.
+- Opcode-level translation (Wasm → NeoVM).
+- Memory model mapping (linear memory → NeoVM slots).
+- Table and indirect call handling.
+- NEF serialization with checksum and header generation.
+- Manifest generation from exported functions and embedded overlays.
+
+### rust-devpack
+
+The Rust SDK that contract authors depend on. It is split into focused sub-crates:
+
+| Crate | Purpose |
+|---|---|
+| `neo-macros` | Procedural macros that generate boilerplate: `#[neo_contract]`, `#[neo_method]`, `#[neo_event]`, `#[neo_safe]`, `#[neo_entry]`, `#[neo_storage]`, and `neo_manifest_overlay!`. |
+| `neo-runtime` | High-level runtime API — `NeoRuntime` (triggers, calling script, time), `NeoStorage` (get/put/delete/find), and contract call helpers. |
+| `neo-syscalls` | Low-level wrappers around NeoVM system calls. Maps Rust function signatures to the syscall interface the VM expects. |
+| `neo-types` | Contract-oriented types: `NeoInteger`, `NeoByteString`, `NeoString`, `NeoMap`, `NeoArray`, `NeoIterator`, `NeoValue`, and error types. |
+| `neo-test` | Testing framework for running contract logic in a simulated environment without deploying to a chain. |
+
+### solana-compat
+
+An experimental compatibility layer that maps Solana program concepts (accounts, program IDs, instruction data) to Neo N3 equivalents. Allows developers familiar with Solana to write contracts using a Solana-like API that compiles to NeoVM.
+
+### move-neovm
+
+An experimental translator that reads Move bytecode and emits NeoVM instructions. This is a separate pipeline from the Rust/Wasm path and is at an early stage.
+
+### contracts/
+
+Seventeen example contracts demonstrating progressively complex patterns:
+
+- **hello-world** — minimal contract, single method.
+- **nep17-token** — fungible token (NEP-17 standard).
+- **nep11-nft** — non-fungible token (NEP-11 standard).
+- **multisig-wallet** — multi-signature authorization.
+- **escrow** — conditional fund release.
+- **staking-rewards** — time-based reward distribution.
+- **governance-dao** — proposal and voting system.
+- **crowdfunding** — goal-based fundraising with refunds.
+- **timelock-vault** — time-locked asset storage.
+- **oracle-consumer** — off-chain data via Neo Oracle.
+- **nft-marketplace** — listing, bidding, and settlement.
+- **flashloan-pool** — uncollateralized single-transaction loans.
+- And more.
+
+Each contract has its own `Cargo.toml` and can be built independently.
+
+### Workspace Structure
+
+neo-llvm does **not** use a Cargo workspace. Each crate has an independent `Cargo.toml` and is built with an explicit `--manifest-path` flag. This keeps crate boundaries strict and avoids unintended dependency coupling.
+
+```bash
+# Build a specific crate
+cargo build --manifest-path wasm-neovm/Cargo.toml
+
+# Test a specific crate
+cargo test --manifest-path rust-devpack/Cargo.toml
+```
+
+The `Makefile` at the repository root provides convenience targets that orchestrate builds across crates.
+
+## Next Steps
+
+- [Compilation Pipeline](/concepts/pipeline/) — detailed walkthrough of each translation stage.
+- [Translator Internals](/architecture/translator/) — how `wasm-neovm` works under the hood.
+- [SDK Overview](/sdk/overview/) — full reference for the `rust-devpack` API.

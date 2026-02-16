@@ -1,0 +1,130 @@
+---
+title: "Table Handling"
+description: "How WebAssembly funcref tables, call_indirect dispatch, element segments, and reference type instructions are implemented on NeoVM."
+draft: false
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+WebAssembly tables provide indirect function dispatch through `call_indirect` and support dynamic mutation via table instructions. The `wasm-neovm` translator maps tables to NeoVM arrays stored in static slots, with runtime helpers that enforce bounds checking and null-reference trapping.
+
+## Table Representation
+
+Each declared table occupies two static slots:
+
+| Slot | Purpose |
+|------|---------|
+| Table slot | NeoVM array holding funcref values |
+| Maximum slot | Declared maximum size, or `-1` if unbounded |
+
+Array elements use a sentinel encoding: `-1` represents `ref.null` (a null function reference), and non-negative values encode translated function indices. This matches the `call_indirect` dispatcher, which operates on function indices directly.
+
+## Funcref Values
+
+Function references are represented as 32-bit signed integers:
+
+| Value | Meaning |
+|-------|---------|
+| `-1` | `ref.null funcref` (null sentinel) |
+| `>= 0` | Valid function index in the translated module |
+
+This encoding keeps comparisons trivial (`ref.is_null` is a check against `-1`) and avoids the need for a separate reference type system on NeoVM.
+
+## Validation Constraints
+
+The translator enforces these constraints at translation time:
+
+- Tables must use `funcref` element type
+- `table64` (64-bit table indices) is rejected
+- Shared tables are rejected
+- Reference types beyond `funcref` (e.g., `externref`) produce a descriptive error
+
+## `call_indirect` Dispatch
+
+Indirect calls follow this sequence:
+
+1. Duplicate the selector index from the stack
+2. Call `neo_wasm_table_get` to retrieve the funcref at that index
+3. If the retrieved value is `-1` (null), trap
+4. Dispatch to the target function based on the retrieved index
+
+The dispatch honours dynamic table mutations -- if `table.set` modifies an entry between two `call_indirect` calls, the second call sees the updated value.
+
+## Table Instructions
+
+Each table instruction dispatches to a per-table runtime helper:
+
+### `table.get` / `table.set`
+
+- Validates the index against the current array length
+- `table.get` returns the funcref via `PICKITEM`
+- `table.set` writes the funcref via `SETITEM`
+- Out-of-bounds indices trap immediately
+
+### `table.size`
+
+Returns the current length of the backing array via `SIZE`.
+
+### `table.grow`
+
+Grows the table by appending `delta` copies of the provided funcref value:
+
+1. Check that `current_size + delta` does not exceed the declared maximum
+2. Append entries using `APPEND`
+3. Return the previous size
+4. Return `-1` on failure (maximum exceeded)
+
+### `table.fill`
+
+Fills a range of table entries with a given funcref value. Validates that the target range falls within bounds before writing.
+
+### `table.copy`
+
+Copies elements between tables (or within the same table) with overlap handling and bounds checks. The implementation mirrors the memmove-style approach used for `memory.copy`.
+
+## Element Segments
+
+### Active Segments
+
+Active element segments specify a table index and a constant offset expression. During runtime initialisation, the translator applies these segments by writing their function indices into the target table at the declared offset.
+
+### Passive Segments
+
+Passive element segments are cached in static slots as arrays, with a companion drop-flag slot:
+
+| Slot | Purpose |
+|------|---------|
+| Segment slot | Array of funcref values from the element section |
+| Drop-flag slot | Boolean indicating whether the segment has been dropped |
+
+### `table.init`
+
+Copies entries from a passive element segment into a table:
+
+1. Checks that the segment has not been dropped
+2. Validates source and destination bounds
+3. Copies the requested range into the target table
+
+### `elem.drop`
+
+Clears the cached passive segment and sets its drop flag. Subsequent `table.init` calls referencing the dropped segment will trap.
+
+## Reference Type Instructions
+
+| Wasm | NeoVM | Notes |
+|------|-------|-------|
+| `ref.null funcref` | `PUSHM1` | Emits the `-1` sentinel |
+| `ref.func idx` | `PUSHINT*` | Emits the function index as a literal |
+| `ref.is_null` | compare against `-1` | Produces an `i32` boolean (1 if null, 0 otherwise) |
+| `ref.eq` | `EQUAL` | Compares two funcref values |
+| `ref.as_non_null` | null check + trap | Traps if the value is `-1`, otherwise passes through |
+
+The sentinel value participates in the translator's literal tracking, so `ref.null` followed by `ref.is_null` can be folded at compile time.
+
+## ABI Constraint
+
+Reference types cannot cross the module boundary. Exported function signatures must use `i32`/`i64` parameter and return types only. Funcref values are internal to the module's table machinery and are not exposed in the contract ABI.
+
+<Aside type="note">
+  The translator specialises helpers per table (e.g., `neo_wasm_table_get_0`, `neo_wasm_table_set_0`) so that static-slot loads can be baked as immediates. This avoids indirect slot lookups at runtime but may increase bytecode size if a module declares many tables.
+</Aside>

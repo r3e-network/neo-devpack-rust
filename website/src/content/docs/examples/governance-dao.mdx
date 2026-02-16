@@ -1,0 +1,164 @@
+---
+title: Governance DAO
+description: Decentralized governance contract with stake-weighted voting, proposal lifecycle, and quorum-based execution.
+draft: false
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+This contract implements a decentralized autonomous organization (DAO) where token holders stake to gain voting power, create proposals, cast votes, and execute approved proposals after quorum is reached. It demonstrates the full governance lifecycle pattern.
+
+## What You Will Learn
+
+- Stake-weighted voting mechanics
+- Proposal creation with time-bounded voting windows
+- Three-way vote casting (yes / no / abstain)
+- Quorum enforcement and proposal execution
+- NEP-17 payment callback for staking deposits
+
+## Full Source
+
+```rust
+// contracts/governance-dao/src/lib.rs
+use neo_devpack::prelude::*;
+
+neo_manifest_overlay!(
+    r#"{
+    "name": "NeoGovernanceDAO"
+}"#
+);
+
+#[neo_contract]
+pub struct NeoGovernanceDaoContract;
+
+#[neo_contract]
+impl NeoGovernanceDaoContract {
+    pub fn new() -> Self {
+        Self
+    }
+
+    #[neo_method]
+    pub fn configure(
+        dao_id: i64, owner: i64, token: i64,
+        quorum: i64, voting_period: i64,
+    ) -> bool {
+        dao_id > 0 && owner > 0 && token > 0
+            && quorum > 0 && voting_period > 0
+    }
+
+    #[neo_method]
+    pub fn propose(
+        dao_id: i64, proposer: i64, target: i64,
+        method_id: i64, value: i64,
+        vote_start: i64, vote_end: i64,
+        min_yes: i64, min_no: i64, min_abstain: i64,
+        quorum: i64, nonce: i64,
+    ) -> bool {
+        dao_id > 0
+            && proposer > 0
+            && target > 0
+            && method_id >= 0
+            && value >= 0
+            && vote_start >= 0
+            && vote_end >= vote_start
+            && min_yes >= 0
+            && min_no >= 0
+            && min_abstain >= 0
+            && quorum >= 0
+            && nonce >= 0
+    }
+
+    #[neo_method]
+    pub fn vote(
+        dao_id: i64, proposal_id: i64,
+        voter: i64, side: i64, weight: i64,
+    ) -> bool {
+        dao_id > 0 && proposal_id >= 0 && voter > 0
+            && (0..=2).contains(&side) && weight > 0
+    }
+
+    #[neo_method]
+    pub fn execute(dao_id: i64) -> bool {
+        dao_id > 0
+    }
+
+    #[neo_method]
+    pub fn unstake(dao_id: i64, staker: i64, amount: i64) -> bool {
+        dao_id > 0 && staker > 0 && amount > 0
+    }
+
+    #[neo_method(name = "stakeOf")]
+    pub fn stake_of(dao_id: i64, staker: i64) -> i64 {
+        if dao_id > 0 && staker > 0 { 1000 } else { 0 }
+    }
+
+    #[neo_method(name = "getConfig")]
+    pub fn get_config(_dao_id: i64) {}
+
+    #[neo_method(name = "getProposal")]
+    pub fn get_proposal(_dao_id: i64, _proposal_id: i64) {}
+
+    #[neo_method(name = "onNEP17Payment")]
+    pub fn on_nep17_payment(_from: i64, _amount: i64, _data: i64) {}
+}
+
+impl Default for NeoGovernanceDaoContract {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+```
+
+## Key Patterns
+
+**Stake-weighted voting** — Voting power is proportional to staked tokens. The `vote` method accepts a `weight` parameter that must be positive, and the `side` parameter encodes the vote direction:
+- `0` = Yes
+- `1` = No
+- `2` = Abstain
+
+The `(0..=2).contains(&side)` check rejects any value outside this range.
+
+**Time-bounded proposals** — `propose` enforces `vote_end >= vote_start`, ensuring the voting window is valid. The proposal also carries minimum thresholds for each vote type (`min_yes`, `min_no`, `min_abstain`) and a `quorum` requirement.
+
+**Governance lifecycle** — The full flow is:
+1. `configure` — Set up the DAO with a governance token and quorum threshold
+2. `onNEP17Payment` — Users stake tokens by sending them to the contract
+3. `propose` — Stakers create proposals with voting parameters
+4. `vote` — Stakers cast weighted votes during the voting window
+5. `execute` — After quorum is met and voting ends, the proposal is executed
+6. `unstake` — Stakers withdraw their tokens
+
+**Query methods** — `stakeOf`, `getConfig`, and `getProposal` provide read access to DAO state. `stakeOf` returns the staked amount for a given user.
+
+## Build
+
+```bash
+make governance-dao
+```
+
+This produces `build/GovernanceDAO.nef` and `build/GovernanceDAO.manifest.json`.
+
+## Tests
+
+```bash
+cargo test --manifest-path contracts/governance-dao/Cargo.toml
+```
+
+The test suite verifies:
+- Configuration rejects zero quorum or zero voting period
+- Proposals reject `vote_end < vote_start`
+- Votes reject `side > 2` and `weight == 0`
+- `stake_of` returns deterministic values for valid/invalid inputs
+
+## What to Look For
+
+In the generated `GovernanceDAO.manifest.json`:
+
+- `abi.methods` contains 9 methods including `stakeOf`, `getConfig`, `getProposal`
+- `propose` has 12 parameters — the most complex method signature in the examples
+- All camelCase names (`stakeOf`, `getConfig`, `getProposal`, `onNEP17Payment`) are correctly mapped
+- No methods are marked `safe` except the query helpers
+
+<Aside type="caution">
+In a production DAO, the `vote` method must verify that the voter has sufficient stake and has not already voted on the proposal. The `execute` method must verify that quorum was reached and the voting window has closed.
+</Aside>

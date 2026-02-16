@@ -1,0 +1,125 @@
+---
+title: Examples Overview
+description: Categorized reference of all example smart contracts included in the neo-llvm repository, from beginner to advanced.
+draft: false
+---
+
+import { Card, CardGrid, Aside } from '@astrojs/starlight/components';
+
+The `contracts/` directory ships 17 ready-to-build example contracts that cover the full spectrum of Neo N3 smart contract development in Rust. Each contract compiles through the standard pipeline: Rust source → Wasm → NeoVM bytecode (`.nef` + manifest).
+
+## Contract Catalog
+
+### Beginner
+
+| Contract | Description | LOC | Page |
+|----------|-------------|-----|------|
+| [hello-world](/examples/hello-world/) | Minimal contract returning a constant | 38 | `#[neo_method(safe)]` basics |
+| [nep17-token](/examples/nep17-token/) | Fungible token (NEP-17 standard) | 96 | Token init, transfer, balances |
+| [nep11-nft](/examples/nep11-nft/) | Non-fungible token (NEP-11 standard) | 98 | Minting, ownership, transfers |
+
+### Intermediate
+
+| Contract | Description | LOC | Page |
+|----------|-------------|-----|------|
+| [multisig-wallet](/examples/multisig-wallet/) | Multi-signature approval wallet | 84 | Threshold-based authorization |
+| [escrow](/examples/escrow/) | Three-party escrow with state machine | 82 | Payer/payee/arbiter pattern |
+| [crowdfunding](/examples/crowdfunding/) | Goal-based fundraising with deadline | 92 | Campaign lifecycle |
+| [staking-rewards](/examples/staking-rewards/) | APR-based staking and reward claims | 86 | Time-weighted rewards |
+| [timelock-vault](/examples/timelock-vault/) | Time-locked token release | 59 | Maturity checks |
+| [oracle-consumer](/examples/oracle-consumer/) | Neo Oracle service integration | 96 | External data requests |
+
+### Advanced
+
+| Contract | Description | LOC | Page |
+|----------|-------------|-----|------|
+| [governance-dao](/examples/governance-dao/) | Stake-weighted DAO governance | 122 | Proposals, voting, execution |
+| [nft-marketplace](/examples/nft-marketplace/) | NFT listing and trading platform | 93 | NEP-11 + NEP-17 integration |
+| [flashloan-pool](/examples/flashloan-pool/) | Flash loan liquidity pool | 92 | Borrow-repay-in-one-tx pattern |
+| constant-product | Constant-product AMM (x * y = k) | 107 | Automated market maker |
+| uniswap-v2 | Uniswap V2-style router | 110 | Liquidity + swap routing |
+
+### Cross-Chain
+
+| Contract | Description | LOC | Page |
+|----------|-------------|-----|------|
+| [solana-hello](/cross-chain/solana/) | Solana-style contract on NeoVM | 149 | `neo-solana-compat` layer |
+| [move-coin](/cross-chain/move/) | Move-style coin on NeoVM | 88 | `neo_devpack` with Move semantics |
+
+## Building Examples
+
+Every example follows the same two-step build process: compile to Wasm, then translate to NeoVM.
+
+### Single contract
+
+```bash
+# Step 1: Compile Rust → Wasm
+cargo build --manifest-path contracts/<name>/Cargo.toml \
+  --release --target wasm32-unknown-unknown
+
+# Step 2: Translate Wasm → NeoVM (.nef + manifest)
+cargo run --manifest-path wasm-neovm/Cargo.toml --quiet -- \
+  contracts/<name>/target/wasm32-unknown-unknown/release/<crate_name>.wasm \
+  --output build/
+```
+
+### Using the Makefile
+
+The top-level `Makefile` wraps both steps for every contract:
+
+```bash
+# Build a single example
+make hello-world
+make nep17-token
+make governance-dao
+
+# Build all examples at once
+make examples
+```
+
+Each target produces a `.nef` file and a `.manifest.json` file in the `build/` directory.
+
+### Running tests
+
+Every contract includes unit tests that run natively (no Wasm target needed):
+
+```bash
+# Test a single contract
+cargo test --manifest-path contracts/<name>/Cargo.toml
+
+# Test all contracts
+cargo test --workspace
+```
+
+## Common Patterns
+
+All example contracts share a consistent structure:
+
+```rust
+use neo_devpack::prelude::*;
+
+neo_manifest_overlay!(r#"{
+    "name": "ContractName"
+}"#);
+
+#[neo_contract]
+pub struct MyContract;
+
+#[neo_contract]
+impl MyContract {
+    pub fn new() -> Self { Self }
+
+    #[neo_method(safe)]   // read-only, no state changes
+    pub fn query() -> i64 { 42 }
+
+    #[neo_method]          // state-mutating
+    pub fn mutate(x: i64) -> bool { x > 0 }
+
+    #[neo_method(name = "onNEP17Payment")]  // custom ABI name
+    pub fn on_nep17_payment(_from: i64, _amount: i64, _data: i64) {}
+}
+```
+
+<Aside type="tip">
+Start with [Hello World](/examples/hello-world/) to understand the minimal contract structure, then progress through the NEP-17 and NEP-11 token examples before tackling the intermediate and advanced contracts.
+</Aside>

@@ -1,0 +1,130 @@
+---
+title: Multisig Wallet
+description: Multi-signature wallet contract with proposal creation, threshold-based approval, and guarded execution.
+draft: false
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+This contract implements a multi-signature wallet where transactions require approval from a configurable threshold of signers before execution. It demonstrates the propose-approve-execute pattern common in on-chain governance and treasury management.
+
+## What You Will Learn
+
+- Threshold-based authorization logic
+- The propose → approve → execute lifecycle
+- Parameter validation for complex multi-field operations
+- Custom ABI naming with `#[neo_method(name = ...)]`
+
+## Full Source
+
+```rust
+// contracts/multisig-wallet/src/lib.rs
+use neo_devpack::prelude::*;
+
+neo_manifest_overlay!(
+    r#"{
+    "name": "SampleMultisig"
+}"#
+);
+
+#[neo_contract]
+pub struct SampleMultisigContract;
+
+#[neo_contract]
+impl SampleMultisigContract {
+    pub fn new() -> Self {
+        Self
+    }
+
+    #[neo_method]
+    pub fn configure(owner: i64, signer_count: i64, threshold: i64) -> bool {
+        owner > 0 && signer_count > 0 && threshold > 0 && signer_count >= threshold
+    }
+
+    #[neo_method]
+    pub fn propose(
+        wallet_id: i64,
+        proposer: i64,
+        target: i64,
+        method_id: i64,
+        amount: i64,
+        gas_limit: i64,
+        expires_at: i64,
+        nonce: i64,
+    ) -> bool {
+        wallet_id > 0
+            && proposer > 0
+            && target > 0
+            && method_id >= 0
+            && amount >= 0
+            && gas_limit >= 0
+            && expires_at > 0
+            && nonce >= 0
+    }
+
+    #[neo_method]
+    pub fn approve(wallet_id: i64, proposal_id: i64, signer: i64) -> bool {
+        wallet_id > 0 && proposal_id >= 0 && signer > 0
+    }
+
+    #[neo_method]
+    pub fn execute(wallet_id: i64, proposal_id: i64, executor: i64) -> bool {
+        wallet_id > 0 && proposal_id >= 0 && executor > 0
+    }
+
+    #[neo_method(name = "getConfig")]
+    pub fn get_config(_wallet_id: i64) {}
+}
+
+impl Default for SampleMultisigContract {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+```
+
+## Key Patterns
+
+**Threshold validation** — `configure` enforces that `signer_count >= threshold`. A 2-of-3 multisig passes (`configure(1, 3, 2)` returns `true`), but a 3-of-2 configuration is rejected because you cannot require more approvals than there are signers.
+
+**Proposal lifecycle** — The contract follows a three-phase pattern:
+1. `propose` — A signer creates a proposal specifying the target contract, method, amount, gas limit, and expiry
+2. `approve` — Individual signers approve the proposal by ID
+3. `execute` — Once the threshold is met, any signer can trigger execution
+
+**Nonce and expiry** — Proposals include a `nonce` (replay protection) and `expires_at` (time-bounded validity). Both must be non-negative.
+
+**Custom getter name** — `get_config` is exposed as `getConfig` in the ABI via `#[neo_method(name = "getConfig")]`, following the camelCase convention expected by Neo tooling.
+
+## Build
+
+```bash
+make multisig-wallet
+```
+
+This produces `build/MultisigWallet.nef` and `build/MultisigWallet.manifest.json`.
+
+## Tests
+
+```bash
+cargo test --manifest-path contracts/multisig-wallet/Cargo.toml
+```
+
+The test suite verifies:
+- Configuration rejects threshold exceeding signer count
+- Configuration rejects zero-value owner
+- Proposal validation requires all fields to be in valid ranges
+- Approve and execute require valid wallet ID and signer
+
+## What to Look For
+
+In the generated `MultisigWallet.manifest.json`:
+
+- `abi.methods` contains `configure`, `propose`, `approve`, `execute`, and `getConfig`
+- All methods have `"safe": false` (every operation is state-mutating)
+- `getConfig` appears with the camelCase name, not `get_config`
+- The `propose` method has 8 parameters in its ABI definition
+
+<Aside type="caution">
+In a production multisig, each `approve` call must verify the caller's witness to prevent unauthorized approvals. The threshold check should happen in `execute` by counting stored approvals against the configured threshold.
+</Aside>

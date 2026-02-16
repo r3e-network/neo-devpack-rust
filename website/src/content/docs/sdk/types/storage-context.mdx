@@ -1,0 +1,129 @@
+---
+title: Storage Context
+description: Handle to a contract's persistent storage area with read-only and read-write access modes.
+draft: false
+---
+
+## NeoStorageContext
+
+`NeoStorageContext` is an opaque handle to a contract's persistent storage area on the Neo N3 blockchain. All storage read/write operations require a context to identify which contract's storage is being accessed and whether writes are permitted.
+
+```rust
+use neo_types::NeoStorageContext;
+
+// Read-write context (from System.Storage.GetContext)
+let ctx = NeoStorageContext::new(1);
+
+// Read-only context (from System.Storage.GetReadOnlyContext)
+let ro_ctx = NeoStorageContext::read_only(1);
+```
+
+### Construction
+
+| Method | Description |
+|--------|-------------|
+| `NeoStorageContext::new(id)` | Read-write context with the given ID |
+| `NeoStorageContext::read_only(id)` | Read-only context with the given ID |
+| `NeoStorageContext::with_read_only(id, bool)` | Context with explicit read-only flag |
+
+### Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `id()` | `u32` | The internal context identifier |
+| `is_read_only()` | `bool` | `true` if this context only permits reads |
+| `as_read_only()` | `NeoStorageContext` | Return a read-only copy of this context |
+
+---
+
+## Read-write vs read-only
+
+Neo N3 provides two syscalls for obtaining a storage context:
+
+| Syscall | Rust Equivalent | Permissions |
+|---------|----------------|-------------|
+| `System.Storage.GetContext` | `NeoStorageContext::new(id)` | Read + Write |
+| `System.Storage.GetReadOnlyContext` | `NeoStorageContext::read_only(id)` | Read only |
+
+A read-only context prevents accidental writes. If you pass a read-only context to a write operation, the NeoVM will fault.
+
+```rust
+use neo_types::NeoStorageContext;
+
+let ctx = NeoStorageContext::new(1);
+assert!(!ctx.is_read_only());
+
+// Downgrade to read-only for safe passing to untrusted code
+let ro = ctx.as_read_only();
+assert!(ro.is_read_only());
+assert_eq!(ro.id(), ctx.id()); // same storage area
+```
+
+---
+
+## Lifetime and scope
+
+A `NeoStorageContext` is valid for the duration of the contract invocation that created it. Key rules:
+
+- Each contract has exactly one storage area, identified by the context ID
+- The context is obtained at the start of a method and passed to storage operations
+- A read-write context can be downgraded to read-only via `as_read_only()`, but a read-only context cannot be upgraded
+- Contexts should not be persisted to storage — they are transient handles
+
+---
+
+## Usage with storage operations
+
+`NeoStorageContext` is passed as the first argument to all storage operations:
+
+```rust
+use neo_types::NeoStorageContext;
+
+fn example_storage_usage(ctx: &NeoStorageContext) {
+    // NeoStorage::get(ctx, key)   — read a value
+    // NeoStorage::put(ctx, key, value) — write a value
+    // NeoStorage::delete(ctx, key)     — remove a value
+    // NeoStorage::find(ctx, prefix)    — enumerate by prefix
+}
+```
+
+### Passing read-only contexts to other contracts
+
+When calling another contract and providing access to your storage for reads only, downgrade the context first:
+
+```rust
+use neo_types::NeoStorageContext;
+
+fn call_external_reader(ctx: &NeoStorageContext) {
+    let safe_ctx = ctx.as_read_only();
+    // Pass safe_ctx to the external contract
+    // It can read but cannot modify your storage
+}
+```
+
+### Typical contract pattern
+
+```rust
+use neo_types::NeoStorageContext;
+
+struct TokenContract;
+
+impl TokenContract {
+    fn get_context() -> NeoStorageContext {
+        // In a real contract, this calls System.Storage.GetContext
+        NeoStorageContext::new(0)
+    }
+
+    fn balance_of(ctx: &NeoStorageContext, account: &[u8]) -> i64 {
+        // Read balance from storage using the context
+        // NeoStorage::get(ctx, account)
+        0
+    }
+
+    fn transfer(ctx: &NeoStorageContext, from: &[u8], to: &[u8], amount: i64) {
+        assert!(!ctx.is_read_only(), "need write access");
+        // NeoStorage::put(ctx, from, new_from_balance)
+        // NeoStorage::put(ctx, to, new_to_balance)
+    }
+}
+```

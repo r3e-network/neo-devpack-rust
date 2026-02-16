@@ -1,0 +1,195 @@
+---
+title: Error Handling
+description: Handle errors in Neo N3 smart contracts using NeoResult, NeoError, and per-method status slots for deterministic error signaling.
+draft: false
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+NeoVM does not support exceptions in the traditional sense. When a contract hits an unrecoverable error, the entire transaction FAULTs. neo-llvm provides structured error handling that avoids panics and gives callers deterministic feedback.
+
+## NeoResult
+
+`NeoResult<T>` is the primary error type for fallible contract methods:
+
+```rust
+use neo_devpack::prelude::*;
+
+#[neo_contract]
+impl MyContract {
+    #[neo_method]
+    pub fn withdraw(amount: i64) -> NeoResult<NeoBoolean> {
+        if amount <= 0 {
+            return Err(NeoError::new("amount must be positive"));
+        }
+
+        let balance = NeoStorage::get("balance")
+            .unwrap_or(0);
+
+        if balance < amount {
+            return Err(NeoError::new("insufficient balance"));
+        }
+
+        NeoStorage::put("balance", balance - amount);
+        Ok(NeoBoolean::from(true))
+    }
+}
+```
+
+Supported return types with `NeoResult`:
+
+| Return Type | Use Case |
+|---|---|
+| `NeoResult<NeoInteger>` | Methods returning numeric values |
+| `NeoResult<NeoBoolean>` | Methods returning success/failure |
+| `NeoResult<()>` | Methods with no return value |
+
+## Per-Method Error Status Slots
+
+When a `#[neo_method]` returns `NeoResult`, the `#[neo_contract]` macro generates a companion `<MethodName>LastError` status slot in the contract's static fields. This provides deterministic error signaling without panic-based paths.
+
+```rust
+#[neo_contract]
+impl TokenContract {
+    #[neo_method]
+    pub fn transfer(from: i64, to: i64, amount: i64) -> NeoResult<NeoBoolean> {
+        if amount <= 0 {
+            return Err(NeoError::new("invalid amount"));
+        }
+        // ...
+        Ok(NeoBoolean::from(true))
+    }
+}
+```
+
+The generated export shim:
+
+1. Calls `transfer()` internally
+2. On `Ok(value)` — clears `TransferLastError` and returns the value
+3. On `Err(e)` — stores the error message in `TransferLastError` and returns a default value
+
+Callers can then check the error slot:
+
+```rust
+// After calling transfer, check if it succeeded
+let error = NeoStorage::get("TransferLastError");
+if error.is_some() {
+    // Handle the error
+}
+```
+
+<Aside type="tip">
+This pattern avoids FAULT-ing the entire transaction on recoverable errors. The caller decides how to handle the failure.
+</Aside>
+
+## NeoError
+
+`NeoError` wraps an error message string:
+
+```rust
+// Simple construction
+let err = NeoError::new("something went wrong");
+
+// From a formatted message
+let err = NeoError::new(&format!("balance {} below minimum", balance));
+```
+
+## No-Panic Contract Design
+
+<Aside type="caution">
+Panics in NeoVM cause the entire transaction to FAULT, consuming all GAS with no state changes. Avoid `unwrap()`, `expect()`, and array index panics in production contracts.
+</Aside>
+
+### Patterns to Avoid
+
+```rust
+// BAD: panics if key doesn't exist
+let balance = NeoStorage::get("balance").unwrap();
+
+// BAD: panics on out-of-bounds
+let first = items[0];
+
+// BAD: panics on overflow
+let total = a + b;
+```
+
+### Safe Alternatives
+
+```rust
+// GOOD: default value
+let balance = NeoStorage::get("balance").unwrap_or(0);
+
+// GOOD: bounds check
+let first = if !items.is_empty() { items[0] } else { return Err(...) };
+
+// GOOD: checked arithmetic
+let total = a.checked_add(b)
+    .ok_or_else(|| NeoError::new("overflow"))?;
+```
+
+## Validation Pattern
+
+A common pattern for contract methods is to validate all inputs before performing any state changes:
+
+```rust
+#[neo_method]
+pub fn transfer(from: i64, to: i64, amount: i64) -> NeoResult<NeoBoolean> {
+    // 1. Validate inputs
+    if from <= 0 || to <= 0 {
+        return Err(NeoError::new("invalid address"));
+    }
+    if from == to {
+        return Err(NeoError::new("self-transfer not allowed"));
+    }
+    if amount <= 0 {
+        return Err(NeoError::new("amount must be positive"));
+    }
+
+    // 2. Check preconditions
+    let from_balance = NeoStorage::get(&format!("balance:{}", from))
+        .unwrap_or(0);
+    if from_balance < amount {
+        return Err(NeoError::new("insufficient balance"));
+    }
+
+    // 3. Perform state changes (only after all checks pass)
+    let to_balance = NeoStorage::get(&format!("balance:{}", to))
+        .unwrap_or(0);
+    NeoStorage::put(&format!("balance:{}", from), from_balance - amount);
+    NeoStorage::put(&format!("balance:{}", to), to_balance.checked_add(amount)
+        .ok_or_else(|| NeoError::new("balance overflow"))?);
+
+    Ok(NeoBoolean::from(true))
+}
+```
+
+This validate-then-execute pattern ensures that if any check fails, no storage mutations have occurred.
+
+## Error Handling in Tests
+
+Test both success and failure paths:
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn transfer_rejects_zero_amount() {
+        let result = MyContract::transfer(1, 2, 0);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn transfer_rejects_self_transfer() {
+        let result = MyContract::transfer(1, 1, 100);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn transfer_succeeds_with_valid_inputs() {
+        let result = MyContract::transfer(1, 2, 100);
+        assert!(result.is_ok());
+    }
+}
+```

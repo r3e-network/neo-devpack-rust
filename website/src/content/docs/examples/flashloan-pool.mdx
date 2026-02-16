@@ -1,0 +1,155 @@
+---
+title: Flashloan Pool
+description: Flash loan liquidity pool with borrow-repay-in-one-transaction semantics, fee calculation, and repayment verification.
+draft: false
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+This contract implements a flash loan pool where borrowers can take uncollateralized loans that must be repaid (with a fee) within the same transaction. If repayment fails, the entire transaction reverts. It demonstrates the borrow-use-repay pattern, basis-point fee math, and overflow-safe arithmetic.
+
+## What You Will Learn
+
+- Flash loan mechanics (borrow and repay in a single transaction)
+- Basis-point fee calculation with `checked_add` overflow protection
+- Liquidity cap enforcement
+- Separating fee preview (safe) from loan execution (mutating)
+- Repayment verification logic
+
+## Full Source
+
+```rust
+// contracts/flashloan-pool/src/lib.rs
+use neo_devpack::prelude::*;
+
+neo_manifest_overlay!(
+    r#"{
+    "name": "FlashLoanPool"
+}"#
+);
+
+const AVAILABLE_LIQUIDITY: i64 = 1_000_000;
+const FEE_BPS: i64 = 9;              // 0.09% fee
+const BPS_DENOMINATOR: i64 = 10_000;
+
+#[neo_contract]
+pub struct FlashLoanPoolContract;
+
+#[neo_contract]
+impl FlashLoanPoolContract {
+    pub fn new() -> Self {
+        Self
+    }
+
+    fn flash_fee_internal(amount: i64) -> i64 {
+        if amount <= 0 {
+            return 0;
+        }
+        (amount * FEE_BPS) / BPS_DENOMINATOR
+    }
+
+    #[neo_method(safe)]
+    pub fn max_flash_loan() -> i64 {
+        AVAILABLE_LIQUIDITY
+    }
+
+    #[neo_method(safe)]
+    pub fn flash_fee(amount: i64) -> i64 {
+        Self::flash_fee_internal(amount)
+    }
+
+    #[neo_method]
+    pub fn flash_loan(borrower: i64, amount: i64) -> i64 {
+        if borrower <= 0 || amount <= 0
+            || amount > AVAILABLE_LIQUIDITY
+        {
+            return 0;
+        }
+        Self::flash_fee_internal(amount)
+    }
+
+    #[neo_method]
+    pub fn repay(amount: i64, repaid_amount: i64) -> bool {
+        if amount <= 0 || amount > AVAILABLE_LIQUIDITY {
+            return false;
+        }
+        let required = match amount
+            .checked_add(Self::flash_fee_internal(amount))
+        {
+            Some(value) => value,
+            None => return false,
+        };
+        repaid_amount >= required
+    }
+}
+
+impl Default for FlashLoanPoolContract {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+```
+
+## Key Patterns
+
+**Flash loan lifecycle** — A flash loan executes entirely within one transaction:
+1. `flash_loan` — The pool lends `amount` tokens to the borrower and returns the fee owed
+2. The borrower uses the tokens (arbitrage, liquidation, etc.)
+3. `repay` — The borrower returns `amount + fee`; if `repaid_amount < required`, the call returns `false` and the transaction reverts
+
+**Basis-point fee** — The fee is 9 BPS (0.09%). For a 10,000-token loan:
+```
+fee = (10_000 * 9) / 10_000 = 9 tokens
+```
+The borrower must repay 10,009 tokens. Repaying 10,008 is rejected.
+
+**Overflow protection** — `repay` uses `checked_add` to compute `amount + fee`. If the addition overflows `i64`, the method returns `false` instead of wrapping around. This prevents an attacker from crafting an amount that overflows to a small required repayment.
+
+```rust
+let required = match amount.checked_add(Self::flash_fee_internal(amount)) {
+    Some(value) => value,
+    None => return false,  // overflow → reject
+};
+```
+
+**Liquidity cap** — `flash_loan` rejects any `amount > AVAILABLE_LIQUIDITY`. The pool cannot lend more than it holds. `max_flash_loan` exposes this cap as a safe (GAS-free) query.
+
+**Safe preview methods** — Both `max_flash_loan` and `flash_fee` are marked `#[neo_method(safe)]`, allowing borrowers to check pool capacity and calculate fees before committing to a loan.
+
+**Shared fee logic** — `flash_fee_internal` is used by both the preview method and the actual loan/repay methods, ensuring the quoted fee always matches the required repayment.
+
+## Build
+
+```bash
+make flashloan-pool
+```
+
+This produces `build/FlashLoanPool.nef` and `build/FlashLoanPool.manifest.json`.
+
+## Tests
+
+```bash
+cargo test --manifest-path contracts/flashloan-pool/Cargo.toml
+```
+
+The test suite verifies:
+- `max_flash_loan` returns 1,000,000
+- `flash_fee(0)` returns 0; `flash_fee(10_000)` returns 9
+- `flash_loan` rejects zero borrower and amounts exceeding liquidity
+- `flash_loan(1, 10_000)` returns the fee (9)
+- `repay(10_000, 10_009)` succeeds (exact fee coverage)
+- `repay(10_000, 10_008)` fails (underpayment by 1 token)
+- `repay(0, 0)` fails (zero-amount guard)
+
+## What to Look For
+
+In the generated `FlashLoanPool.manifest.json`:
+
+- `abi.methods` contains `max_flash_loan`, `flash_fee`, `flash_loan`, and `repay`
+- `max_flash_loan` and `flash_fee` have `"safe": true`
+- `flash_loan` returns `Integer` (the fee amount), not `Boolean`
+- `repay` returns `Boolean` (success/failure of repayment verification)
+
+<Aside type="caution">
+In a production flash loan pool, the `repay` check must happen atomically within the same transaction as the loan. If the borrower's callback fails to repay, the entire transaction must revert. The Neo runtime's transaction model ensures this atomicity.
+</Aside>

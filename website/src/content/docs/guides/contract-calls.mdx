@@ -1,0 +1,342 @@
+---
+title: Cross-Contract Calls
+description: Invoke methods on other Neo N3 contracts using System.Contract.Call, method tokens, and dynamic invocation patterns.
+draft: false
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Neo N3 contracts can call methods on other deployed contracts. This is the foundation for composability -- tokens calling DEX routers, DAOs calling governance targets, oracles feeding data to consumers. This page covers the mechanics, patterns, and GAS implications.
+
+## How Cross-Contract Calls Work
+
+When your contract calls another contract's method, the Neo runtime:
+
+1. Checks your manifest's `permissions` array to verify the call is authorized.
+2. Loads the target contract's NEF and manifest.
+3. Pushes a new execution context onto the NeoVM invocation stack.
+4. Executes the target method with the provided arguments.
+5. Returns the result to your contract's execution context.
+
+The underlying syscall is `System.Contract.Call`.
+
+## Static Invocation
+
+The most common pattern is calling a known contract at a known script hash. The translator emits a `System.Contract.Call` instruction with the target hash, method name, and call flags.
+
+```rust
+use neo_devpack::prelude::*;
+
+/// Call the NEO native contract's `balanceOf` method
+fn get_neo_balance(account: &NeoByteString) -> NeoResult<NeoInteger> {
+    // NEO native contract hash
+    let neo_hash = NeoByteString::from_slice(
+        &hex::decode("ef4073a0f2b305a38ec4050e4d3d28bc40ea63f5").unwrap()
+    );
+
+    let result = NeoContractRuntime::call_contract(
+        &neo_hash,
+        "balanceOf",
+        &[NeoValue::from(account.clone())],
+    )?;
+
+    result.as_integer().ok_or(NeoError::InvalidType)
+}
+```
+
+### Required Permission
+
+Your contract must declare permission to make this call:
+
+```rust
+use neo_devpack::prelude::*;
+
+neo_permission!(
+    "0xef4073a0f2b305a38ec4050e4d3d28bc40ea63f5",
+    ["balanceOf"]
+);
+```
+
+Without this permission entry, the runtime rejects the call before it executes.
+
+## Method Tokens in NEF
+
+The `wasm-neovm` translator can emit method tokens in the NEF binary for frequently called contracts. Method tokens are an optimization -- they encode the target contract hash and method name directly in the bytecode, avoiding repeated stack manipulation.
+
+The translator generates method tokens automatically when it detects `NeoContractRuntime::call_contract` calls with constant arguments. No special annotation is needed.
+
+```
+NEF Method Token:
+  hash: 0xef4073a0f2b305a38ec4050e4d3d28bc40ea63f5
+  method: "balanceOf"
+  parameters: 1
+  return_type: Integer
+  call_flags: ReadOnly
+```
+
+<Aside type="note">
+  Method tokens are a NEF-level optimization. They do not change the contract's behavior -- only the bytecode encoding. The translator handles this transparently.
+</Aside>
+
+## Dynamic Invocation
+
+When the target contract hash or method name is determined at runtime, use dynamic invocation:
+
+```rust
+use neo_devpack::prelude::*;
+
+fn call_arbitrary_contract(
+    contract_hash: &NeoByteString,
+    method: &str,
+    args: &[NeoValue],
+) -> NeoResult<NeoValue> {
+    NeoContractRuntime::call_contract(contract_hash, method, args)
+}
+```
+
+Dynamic invocation requires a wildcard permission or a permission that covers the target:
+
+```rust
+use neo_devpack::prelude::*;
+
+// Required for dynamic calls to unknown contracts
+neo_permission!("*", ["*"]);
+```
+
+<Aside type="caution">
+  Wildcard permissions (`"*", ["*"]`) are necessary for fully dynamic invocation but weaken your contract's security posture. Prefer scoped permissions whenever the target contracts are known at compile time.
+</Aside>
+
+## Call Flags
+
+Neo N3 supports call flags that restrict what the called contract can do during the invocation:
+
+| Flag | Description |
+|---|---|
+| `None` | No restrictions (default) |
+| `ReadStates` | Target can read storage but not write |
+| `WriteStates` | Target can read and write storage |
+| `AllowCall` | Target can make further cross-contract calls |
+| `AllowNotify` | Target can emit notifications |
+| `ReadOnly` | Shorthand for `ReadStates + AllowCall` |
+| `All` | No restrictions (equivalent to `None`) |
+
+When calling a contract you know is read-only (like `balanceOf`), use `ReadOnly` flags to prevent the target from unexpectedly modifying state:
+
+```rust
+use neo_devpack::prelude::*;
+
+fn safe_balance_check(
+    token_hash: &NeoByteString,
+    account: &NeoByteString,
+) -> NeoResult<NeoInteger> {
+    let result = NeoContractRuntime::call_contract_with_flags(
+        token_hash,
+        "balanceOf",
+        &[NeoValue::from(account.clone())],
+        CallFlags::ReadOnly,
+    )?;
+
+    result.as_integer().ok_or(NeoError::InvalidType)
+}
+```
+
+## Return Value Handling
+
+Cross-contract calls return a `NeoValue` -- a dynamically typed value that you must cast to the expected type.
+
+```rust
+use neo_devpack::prelude::*;
+
+fn get_token_symbol(token_hash: &NeoByteString) -> NeoResult<NeoString> {
+    let result = NeoContractRuntime::call_contract(
+        token_hash,
+        "symbol",
+        &[],
+    )?;
+
+    // Cast the dynamic return value to the expected type
+    result.as_string().ok_or(NeoError::InvalidType)
+}
+
+fn get_token_decimals(token_hash: &NeoByteString) -> NeoResult<i64> {
+    let result = NeoContractRuntime::call_contract(
+        token_hash,
+        "decimals",
+        &[],
+    )?;
+
+    let integer = result.as_integer().ok_or(NeoError::InvalidType)?;
+    integer.try_as_i64().ok_or(NeoError::Overflow)
+}
+```
+
+### Handling Void Returns
+
+Some methods return nothing (like `onNEP17Payment`). The return value is a `Null` NeoValue:
+
+```rust
+use neo_devpack::prelude::*;
+
+fn notify_receiver(
+    receiver_hash: &NeoByteString,
+    from: &NeoByteString,
+    amount: i64,
+    data: &NeoValue,
+) -> NeoResult<()> {
+    let _ = NeoContractRuntime::call_contract(
+        receiver_hash,
+        "onNEP17Payment",
+        &[
+            NeoValue::from(from.clone()),
+            NeoValue::from(NeoInteger::new(amount)),
+            data.clone(),
+        ],
+    )?;
+
+    Ok(())
+}
+```
+
+## GAS Considerations
+
+Cross-contract calls are among the most expensive operations in Neo N3. Each call incurs:
+
+| Cost Component | Description |
+|---|---|
+| Base syscall fee | Fixed cost for `System.Contract.Call` |
+| Contract loading | Loading the target contract's NEF and manifest |
+| Execution cost | GAS consumed by the target method's opcodes |
+| Storage access | Any storage reads/writes the target performs |
+| Nested calls | If the target makes further cross-contract calls |
+
+### Minimizing GAS Usage
+
+- **Batch reads**: If you need multiple values from the same contract, consider whether the target offers a batch method rather than making N separate calls.
+- **Cache results**: If you call the same method with the same arguments multiple times in one invocation, store the result in a local variable.
+- **Avoid deep call chains**: Each level of nesting adds overhead. A calls B calls C is significantly more expensive than A calling B and C directly.
+
+```rust
+use neo_devpack::prelude::*;
+
+// Bad: two separate cross-contract calls for the same data
+fn expensive_check(token: &NeoByteString, account: &NeoByteString) -> NeoResult<bool> {
+    let balance1 = get_balance(token, account)?;
+    let balance2 = get_balance(token, account)?; // redundant call
+    Ok(balance1 == balance2)
+}
+
+// Good: call once, reuse the result
+fn efficient_check(token: &NeoByteString, account: &NeoByteString) -> NeoResult<bool> {
+    let balance = get_balance(token, account)?;
+    // Use `balance` for all subsequent logic
+    Ok(balance > NeoInteger::new(0))
+}
+# fn get_balance(_t: &NeoByteString, _a: &NeoByteString) -> NeoResult<NeoInteger> {
+#     Ok(NeoInteger::new(100))
+# }
+```
+
+## Common Patterns
+
+### Token Transfer via Cross-Contract Call
+
+```rust
+use neo_devpack::prelude::*;
+
+fn transfer_gas(
+    from: &NeoByteString,
+    to: &NeoByteString,
+    amount: i64,
+) -> NeoResult<bool> {
+    let gas_hash = NeoByteString::from_slice(
+        &hex::decode("d2a4cff31913016155e38e474a2c06d08be276cf").unwrap()
+    );
+
+    let result = NeoContractRuntime::call_contract(
+        &gas_hash,
+        "transfer",
+        &[
+            NeoValue::from(from.clone()),
+            NeoValue::from(to.clone()),
+            NeoValue::from(NeoInteger::new(amount)),
+            NeoValue::Null,
+        ],
+    )?;
+
+    result.as_bool().ok_or(NeoError::InvalidType)
+}
+```
+
+### Oracle Request
+
+```rust
+use neo_devpack::prelude::*;
+
+fn request_oracle_price(
+    url: &NeoString,
+    filter: &NeoString,
+    callback: &NeoString,
+    gas_for_response: i64,
+) -> NeoResult<()> {
+    let oracle_hash = NeoByteString::from_slice(
+        &hex::decode("fe924b7cfe89ddd271abaf7210a80a7e11178758").unwrap()
+    );
+
+    let _ = NeoContractRuntime::call_contract(
+        &oracle_hash,
+        "request",
+        &[
+            NeoValue::from(url.clone()),
+            NeoValue::from(filter.clone()),
+            NeoValue::from(callback.clone()),
+            NeoValue::Null,
+            NeoValue::from(NeoInteger::new(gas_for_response)),
+        ],
+    )?;
+
+    Ok(())
+}
+```
+
+## Error Handling
+
+If a cross-contract call fails (permission denied, target method aborts, GAS exhaustion), the entire transaction reverts unless the error is caught. Use `NeoResult` to propagate errors gracefully:
+
+```rust
+use neo_devpack::prelude::*;
+
+fn safe_transfer(
+    token: &NeoByteString,
+    from: &NeoByteString,
+    to: &NeoByteString,
+    amount: i64,
+) -> NeoResult<bool> {
+    match NeoContractRuntime::call_contract(
+        token,
+        "transfer",
+        &[
+            NeoValue::from(from.clone()),
+            NeoValue::from(to.clone()),
+            NeoValue::from(NeoInteger::new(amount)),
+            NeoValue::Null,
+        ],
+    ) {
+        Ok(result) => result.as_bool().ok_or(NeoError::InvalidType),
+        Err(e) => {
+            // Log or handle the failure
+            Err(e)
+        }
+    }
+}
+```
+
+<Aside type="caution">
+  If the target contract's method calls `ABORT` or `FAULT`, the entire invocation stack unwinds. There is no way to catch an abort from a cross-contract call -- the transaction reverts.
+</Aside>
+
+## What's Next
+
+- [Permissions & Trust](/guides/permissions/) -- declare the permissions your cross-contract calls require.
+- [Gas Optimization](/guides/gas-optimization/) -- reduce the GAS cost of cross-contract interactions.
+- [Error Handling](/guides/error-handling/) -- handle failures from cross-contract calls gracefully.

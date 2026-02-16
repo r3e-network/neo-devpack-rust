@@ -1,0 +1,103 @@
+---
+title: "Solana Compatibility"
+description: "Drop-in solana_program replacement crate that compiles Solana contracts to WASM for NeoVM translation."
+draft: false
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+The `neo-solana-compat` crate (located in `solana-compat/`) provides a drop-in replacement for the `solana_program` crate. Solana contracts built against this shim compile to `wasm32-unknown-unknown` and pass through the standard `wasm-neovm` pipeline to produce NEF + Manifest output.
+
+## API Compatibility
+
+| Solana API | Neo-Solana-Compat | Notes |
+|------------|-------------------|-------|
+| `Pubkey` | Supported | 32-byte key, converts to UInt160 |
+| `AccountInfo` | Supported | Maps to storage operations |
+| `ProgramError` | Supported | Full enum support |
+| `entrypoint!` | Supported | WASM export generation |
+| `invoke()` | Supported | Maps to `System.Contract.Call` |
+
+## Usage
+
+Replace your `solana_program` import with `neo_solana_compat` and keep the same entrypoint signature:
+
+```rust
+use neo_solana_compat::prelude::*;
+
+entrypoint!(process_instruction);
+
+fn process_instruction(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    instruction_data: &[u8],
+) -> ProgramResult {
+    // Existing Solana logic works here unchanged.
+    Ok(())
+}
+```
+
+No changes to your business logic are required. The shim translates Solana primitives to Neo equivalents at compile time and through runtime syscall mapping.
+
+## Semantic Differences
+
+### Account Model
+
+Solana uses an account-based model where programs own accounts containing arbitrary data. Neo uses contract-scoped storage slots.
+
+The compatibility layer maps account data to Neo storage keys prefixed by the account's public key. Reads and writes to `AccountInfo.data` become `System.Storage.Get` and `System.Storage.Put` calls.
+
+### Signatures
+
+| Solana | Neo |
+|--------|-----|
+| Ed25519 | secp256r1 (primary), secp256k1, Ed25519 |
+
+Authorization checks use `System.Runtime.CheckWitness` instead of direct Ed25519 verification. The signature scheme difference means on-chain verification produces equivalent authorization semantics but uses a different cryptographic primitive.
+
+### Rent
+
+Solana requires accounts to maintain a rent-exempt balance. Neo has no rent model — contracts pay GAS fees for execution. The rent concept is a no-op in the compatibility layer.
+
+## Building a Solana Contract
+
+<Steps>
+1. **Build the contract to WASM**
+
+   ```bash
+   cargo build --manifest-path contracts/solana-hello/Cargo.toml \
+     --target wasm32-unknown-unknown --release
+   ```
+
+2. **Translate WASM to NEF**
+
+   ```bash
+   cargo run --manifest-path wasm-neovm/Cargo.toml -- \
+     --input contracts/solana-hello/target/wasm32-unknown-unknown/release/solana_hello_neo.wasm \
+     --nef build/solana_hello.nef \
+     --manifest build/solana_hello.manifest.json \
+     --name solana-hello \
+     --source-chain solana
+   ```
+</Steps>
+
+The `--source-chain solana` flag activates the Solana adapter, which resolves Solana-specific WASM imports to Neo interop services during translation.
+
+## Testing
+
+The `solana-compat` crate includes 26 unit tests covering API surface compatibility:
+
+```bash
+cargo test --manifest-path solana-compat/Cargo.toml
+```
+
+## Limitations
+
+<Aside type="caution">
+  These are fundamental platform differences that cannot be fully bridged by a compatibility layer.
+</Aside>
+
+- **Parallel execution** — Solana's parallel transaction execution model is not replicated. Neo processes transactions sequentially.
+- **PDA derivation** — Program Derived Addresses use a different derivation algorithm. PDAs are mapped to contract hash equivalents but are not byte-compatible with Solana PDAs.
+- **Ed25519 signatures** — Direct Ed25519 verification is replaced by `CheckWitness`. Contracts that depend on raw Ed25519 signature bytes will need adaptation.
+- **Gas/fee model** — Solana's compute unit model differs from Neo's GAS fee structure. Fee-sensitive logic may behave differently.

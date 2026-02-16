@@ -1,0 +1,593 @@
+---
+title: Testing
+description: The neo-test crate — unit testing, mock storage, mock runtime, and a 3-tier testing strategy for Neo N3 smart contracts.
+draft: false
+---
+
+import { Aside, Tabs, TabItem, Steps } from '@astrojs/starlight/components';
+
+`neo-test` is the companion testing crate for contracts built with `neo-devpack`. It provides a `TestEnvironment` that simulates the Neo N3 runtime — mock storage, mock runtime services, and mock blockchain state — so you can test contract logic with standard `#[test]` functions without deploying to a network.
+
+```rust
+#[cfg(test)]
+mod tests {
+    use neo_test::prelude::*;
+    use super::MyContract;
+
+    #[test]
+    fn owner_is_set_on_init() {
+        let env = TestEnvironment::new();
+        let owner = env.new_account();
+
+        env.set_sender(owner);
+        assert!(MyContract::initialize(owner));
+
+        assert_eq!(MyContract::get_owner(), owner);
+    }
+}
+```
+
+## TestEnvironment
+
+The central fixture for all contract tests. `TestEnvironment::new()` creates an isolated simulated blockchain with empty storage, a default sender, and a genesis block timestamp. All mock state is scoped to the environment instance — tests do not interfere with each other.
+
+```rust
+use neo_test::prelude::*;
+
+let env = TestEnvironment::new();
+```
+
+### Configuration
+
+| Method | Description |
+|--------|-------------|
+| `TestEnvironment::new()` | Default environment (empty storage, timestamp = 0, sender = zero hash) |
+| `env.with_timestamp(ms)` | Set the initial block timestamp |
+| `env.with_sender(hash)` | Set the default transaction sender |
+| `env.with_storage(pairs)` | Pre-populate storage with key-value pairs |
+
+```rust
+use neo_test::prelude::*;
+
+let owner = ScriptHash::from_hex("0x0102030405060708091011121314151617181920");
+
+let env = TestEnvironment::new()
+    .with_timestamp(1_700_000_000_000)
+    .with_sender(owner)
+    .with_storage(vec![
+        (b"owner".to_vec(), owner.as_bytes().to_vec()),
+        (b"config:decimals".to_vec(), 8_i64.to_le_bytes().to_vec()),
+    ]);
+```
+
+---
+
+## Mock storage
+
+`TestEnvironment` provides a full in-memory implementation of the `System.Storage.*` syscalls. Storage operations in your contract code transparently use the mock when running under `#[test]`.
+
+### Reading and writing
+
+```rust
+#[cfg(test)]
+mod tests {
+    use neo_test::prelude::*;
+    use super::KeyValueStore;
+
+    #[test]
+    fn set_and_get_round_trip() {
+        let env = TestEnvironment::new();
+
+        KeyValueStore::set(b"name", b"Alice");
+        let value = KeyValueStore::get(b"name");
+
+        assert_eq!(value, b"Alice");
+    }
+
+    #[test]
+    fn delete_removes_key() {
+        let env = TestEnvironment::new();
+
+        KeyValueStore::set(b"temp", b"data");
+        assert!(!KeyValueStore::get(b"temp").is_empty());
+
+        KeyValueStore::remove(b"temp");
+        assert!(KeyValueStore::get(b"temp").is_empty());
+    }
+}
+```
+
+### Inspecting storage directly
+
+For assertions that need to bypass the contract API and inspect raw storage:
+
+```rust
+#[cfg(test)]
+mod tests {
+    use neo_test::prelude::*;
+
+    #[test]
+    fn storage_key_format_is_correct() {
+        let env = TestEnvironment::new();
+        let account = env.new_account();
+
+        // Call the contract method that writes storage
+        MyToken::mint(account, 1000);
+
+        // Inspect raw storage to verify key format
+        let expected_key = format!("balance:{}", hex::encode(account.as_bytes()));
+        let raw_value = env.storage_get(expected_key.as_bytes());
+        assert_eq!(i64::from_le_bytes(raw_value.try_into().unwrap()), 1000);
+    }
+}
+```
+
+### Storage inspection API
+
+| Method | Description |
+|--------|-------------|
+| `env.storage_get(key)` | Read raw bytes from mock storage |
+| `env.storage_put(key, value)` | Write raw bytes to mock storage |
+| `env.storage_delete(key)` | Remove a key from mock storage |
+| `env.storage_keys()` | List all keys in mock storage |
+| `env.storage_dump()` | Return all key-value pairs (useful for debugging) |
+| `env.storage_clear()` | Wipe all storage (reset between sub-tests) |
+
+---
+
+## Mock runtime
+
+The test environment mocks all `System.Runtime.*` syscalls so your contract's runtime calls work without a real blockchain.
+
+### Controlling time
+
+```rust
+#[cfg(test)]
+mod tests {
+    use neo_test::prelude::*;
+    use super::TokenSale;
+
+    #[test]
+    fn sale_respects_time_window() {
+        let env = TestEnvironment::new();
+        let buyer = env.new_account();
+        env.set_sender(buyer);
+        env.add_witness(buyer);
+
+        // Before sale starts
+        env.set_timestamp(1_699_999_999_999);
+        assert!(!TokenSale::buy_tokens(buyer, 100));
+
+        // During sale
+        env.set_timestamp(1_700_500_000_000);
+        assert!(TokenSale::buy_tokens(buyer, 100));
+
+        // After sale ends
+        env.set_timestamp(1_703_000_000_001);
+        assert!(!TokenSale::buy_tokens(buyer, 100));
+    }
+}
+```
+
+### Controlling witnesses
+
+```rust
+#[cfg(test)]
+mod tests {
+    use neo_test::prelude::*;
+    use super::AdminContract;
+
+    #[test]
+    fn only_owner_can_call_admin() {
+        let env = TestEnvironment::new();
+        let owner = env.new_account();
+        let stranger = env.new_account();
+
+        AdminContract::initialize(owner);
+
+        // Owner has witness — should succeed
+        env.add_witness(owner);
+        assert!(AdminContract::admin_action());
+
+        // Stranger does not have witness — should fail
+        env.clear_witnesses();
+        env.add_witness(stranger);
+        assert!(!AdminContract::admin_action());
+    }
+}
+```
+
+### Runtime mock API
+
+| Method | Description |
+|--------|-------------|
+| `env.set_timestamp(ms)` | Set `NeoRuntime::get_time()` return value |
+| `env.advance_time(ms)` | Increment the current timestamp |
+| `env.set_sender(hash)` | Set `NeoRuntimeContext::get_sender()` return value |
+| `env.add_witness(hash)` | Make `NeoRuntime::check_witness(hash)` return `true` |
+| `env.clear_witnesses()` | Remove all witnesses |
+| `env.set_trigger(trigger)` | Set `NeoRuntime::get_trigger()` return value |
+| `env.set_calling_script(hash)` | Set `NeoRuntimeContext::get_calling_script_hash()` |
+| `env.set_executing_script(hash)` | Set `NeoRuntimeContext::get_executing_script_hash()` |
+| `env.set_gas_left(amount)` | Set `NeoRuntimeContext::get_gas_left()` return value |
+| `env.get_logs()` | Retrieve all messages passed to `NeoRuntime::log()` |
+| `env.get_notifications()` | Retrieve all emitted notifications |
+| `env.new_account()` | Generate a fresh random `ScriptHash` for testing |
+
+---
+
+## Testing contract methods
+
+Contract methods decorated with `#[neo_method]` are regular Rust functions at the source level. In test mode, the procedural macros ensure they can be called directly without Wasm compilation.
+
+### Basic pattern
+
+```rust
+use neo_devpack::prelude::*;
+
+#[neo_contract]
+pub struct Counter;
+
+#[neo_contract]
+impl Counter {
+    pub fn new() -> Self { Self }
+
+    #[neo_method]
+    pub fn increment() -> i64 {
+        let ctx = NeoStorage::get_context();
+        let current = NeoStorage::get_integer(&ctx, b"count");
+        let next = current + 1;
+        NeoStorage::put_integer(&ctx, b"count", next);
+        next
+    }
+
+    #[neo_method(safe)]
+    pub fn get_count() -> i64 {
+        let ctx = NeoStorage::get_read_only_context();
+        NeoStorage::get_integer(&ctx, b"count")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use neo_test::prelude::*;
+    use super::Counter;
+
+    #[test]
+    fn increment_increases_count() {
+        let env = TestEnvironment::new();
+
+        assert_eq!(Counter::get_count(), 0);
+        assert_eq!(Counter::increment(), 1);
+        assert_eq!(Counter::increment(), 2);
+        assert_eq!(Counter::get_count(), 2);
+    }
+}
+```
+
+### Testing events
+
+```rust
+#[cfg(test)]
+mod tests {
+    use neo_test::prelude::*;
+    use super::MyToken;
+
+    #[test]
+    fn transfer_emits_event() {
+        let env = TestEnvironment::new();
+        let alice = env.new_account();
+        let bob = env.new_account();
+
+        env.add_witness(alice);
+        MyToken::transfer(alice, bob, 500);
+
+        let notifications = env.get_notifications();
+        assert_eq!(notifications.len(), 1);
+        assert_eq!(notifications[0].event_name, "Transfer");
+        assert_eq!(notifications[0].state.len(), 3); // from, to, amount
+    }
+}
+```
+
+### Testing access control
+
+```rust
+#[cfg(test)]
+mod tests {
+    use neo_test::prelude::*;
+    use super::Vault;
+
+    #[test]
+    fn withdraw_requires_owner_witness() {
+        let env = TestEnvironment::new();
+        let owner = env.new_account();
+        let attacker = env.new_account();
+
+        // Initialize with owner
+        env.add_witness(owner);
+        Vault::initialize(owner);
+
+        // Owner can withdraw
+        assert!(Vault::withdraw(100));
+
+        // Attacker cannot
+        env.clear_witnesses();
+        env.add_witness(attacker);
+        assert!(!Vault::withdraw(100));
+    }
+
+    #[test]
+    fn reentrancy_is_blocked() {
+        let env = TestEnvironment::new();
+
+        // Simulate a re-entrant call by setting invocation counter > 1
+        env.set_invocation_counter(2);
+        assert!(!Vault::sensitive_operation());
+    }
+}
+```
+
+---
+
+## 3-tier testing strategy
+
+The neo-llvm toolchain supports three tiers of testing, each catching different classes of bugs:
+
+### Tier 1: Unit tests (native Rust)
+
+Run with `cargo test`. Contract logic executes as native Rust code against the mock environment. This is the fastest feedback loop and catches logic errors, off-by-one bugs, and access control mistakes.
+
+```bash
+cargo test --manifest-path contracts/my-contract/Cargo.toml
+```
+
+| Aspect | Detail |
+|--------|--------|
+| Speed | Milliseconds |
+| Coverage | Business logic, state transitions, access control |
+| Limitations | Does not test Wasm compilation or NeoVM translation |
+
+### Tier 2: Integration tests (Wasm translation)
+
+Compile the contract to Wasm, translate to NeoVM bytecode, and verify the output. This catches issues in the compilation pipeline — incorrect ABI encoding, missing exports, manifest generation errors.
+
+```bash
+# Build the contract
+cargo build --manifest-path contracts/my-contract/Cargo.toml \
+  --release --target wasm32-unknown-unknown
+
+# Translate and verify
+cargo run --manifest-path wasm-neovm/Cargo.toml -- \
+  --input contracts/my-contract/target/wasm32-unknown-unknown/release/my_contract.wasm \
+  --nef build/MyContract.nef \
+  --manifest build/MyContract.manifest.json \
+  --name MyContract \
+  --compare-manifest contracts/my-contract/expected.manifest.json
+```
+
+| Aspect | Detail |
+|--------|--------|
+| Speed | Seconds |
+| Coverage | Wasm compilation, NeoVM translation, manifest correctness, ABI compatibility |
+| Limitations | Does not execute on a real NeoVM |
+
+<Aside type="tip">
+  Use `--compare-manifest` in CI to catch unintended ABI changes. Store the expected manifest in version control and update it deliberately when the contract interface changes.
+</Aside>
+
+### Tier 3: Smoke tests (Neo Express)
+
+Deploy the compiled contract to a local Neo Express private network and invoke methods via RPC. This is the closest to production and catches issues that only manifest on a real NeoVM — gas metering, storage serialization edge cases, and cross-contract interaction bugs.
+
+<Steps>
+
+1. Start a local Neo Express network
+
+   ```bash
+   neoxp create -c 1 my-network
+   neoxp run -s my-network
+   ```
+
+2. Deploy the contract
+
+   ```bash
+   neoxp contract deploy build/MyContract.nef \
+     --account genesis \
+     --network my-network
+   ```
+
+3. Invoke a method
+
+   ```bash
+   neoxp contract invoke build/MyContract.manifest.json \
+     get_count \
+     --account genesis \
+     --network my-network
+   ```
+
+4. Assert on the result
+
+   ```bash
+   # In a CI script, parse the JSON output and check the return value
+   RESULT=$(neoxp contract invoke build/MyContract.manifest.json \
+     get_count --account genesis --network my-network --json)
+   echo "$RESULT" | jq -e '.stack[0].value == "0"'
+   ```
+
+</Steps>
+
+| Aspect | Detail |
+|--------|--------|
+| Speed | Seconds to minutes |
+| Coverage | Full NeoVM execution, gas costs, storage persistence, cross-contract calls |
+| Limitations | Requires Neo Express tooling; slower feedback loop |
+
+---
+
+## Cargo.toml setup
+
+Add `neo-test` as a dev dependency in your contract's `Cargo.toml`:
+
+```toml
+[package]
+name = "my-contract"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+neo-devpack = { path = "../../neo-devpack" }
+
+[dev-dependencies]
+neo-test = { path = "../../neo-test" }
+```
+
+---
+
+## Complete example
+
+A full token contract with comprehensive tests:
+
+```rust
+use neo_devpack::prelude::*;
+
+neo_manifest_overlay!(r#"{
+    "name": "TestableToken",
+    "supportedstandards": ["NEP-17"],
+    "features": { "storage": true }
+}"#);
+
+#[neo_contract]
+pub struct TestableToken;
+
+#[neo_contract]
+impl TestableToken {
+    pub fn new() -> Self { Self }
+
+    #[neo_method]
+    pub fn initialize(owner: ScriptHash, total_supply: i64) -> bool {
+        let ctx = NeoStorage::get_context();
+
+        // Prevent re-initialization
+        if !NeoStorage::get(&ctx, b"initialized").is_empty() {
+            return false;
+        }
+
+        NeoStorage::put(&ctx, b"owner", owner.as_bytes());
+        NeoStorage::put_integer(&ctx, b"total_supply", total_supply);
+        let key = storage_key(b"balance:", &owner);
+        NeoStorage::put_integer(&ctx, &key, total_supply);
+        NeoStorage::put_bool(&ctx, b"initialized", true);
+        true
+    }
+
+    #[neo_method(safe)]
+    pub fn balance_of(account: ScriptHash) -> i64 {
+        let ctx = NeoStorage::get_read_only_context();
+        let key = storage_key(b"balance:", &account);
+        NeoStorage::get_integer(&ctx, &key)
+    }
+
+    #[neo_method]
+    pub fn transfer(from: ScriptHash, to: ScriptHash, amount: i64) -> bool {
+        if amount <= 0 { return false; }
+        if from == to { return false; }
+        if !NeoRuntime::check_witness(from) { return false; }
+
+        let ctx = NeoStorage::get_context();
+        let from_key = storage_key(b"balance:", &from);
+        let to_key = storage_key(b"balance:", &to);
+
+        let from_balance = NeoStorage::get_integer(&ctx, &from_key);
+        if from_balance < amount { return false; }
+
+        NeoStorage::put_integer(&ctx, &from_key, from_balance - amount);
+        let to_balance = NeoStorage::get_integer(&ctx, &to_key);
+        NeoStorage::put_integer(&ctx, &to_key, to_balance + amount);
+
+        true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use neo_test::prelude::*;
+    use super::TestableToken;
+
+    fn setup() -> (TestEnvironment, ScriptHash, ScriptHash) {
+        let env = TestEnvironment::new();
+        let owner = env.new_account();
+        let user = env.new_account();
+        env.add_witness(owner);
+        TestableToken::initialize(owner, 1_000_000);
+        (env, owner, user)
+    }
+
+    #[test]
+    fn initialization_sets_supply() {
+        let (_, owner, _) = setup();
+        assert_eq!(TestableToken::balance_of(owner), 1_000_000);
+    }
+
+    #[test]
+    fn cannot_reinitialize() {
+        let (_, owner, _) = setup();
+        assert!(!TestableToken::initialize(owner, 999));
+    }
+
+    #[test]
+    fn transfer_moves_balance() {
+        let (env, owner, user) = setup();
+        env.add_witness(owner);
+
+        assert!(TestableToken::transfer(owner, user, 300_000));
+        assert_eq!(TestableToken::balance_of(owner), 700_000);
+        assert_eq!(TestableToken::balance_of(user), 300_000);
+    }
+
+    #[test]
+    fn transfer_rejects_insufficient_balance() {
+        let (env, owner, user) = setup();
+        env.add_witness(owner);
+
+        assert!(!TestableToken::transfer(owner, user, 2_000_000));
+        assert_eq!(TestableToken::balance_of(owner), 1_000_000);
+    }
+
+    #[test]
+    fn transfer_rejects_without_witness() {
+        let (env, owner, user) = setup();
+        env.clear_witnesses(); // no witness for owner
+
+        assert!(!TestableToken::transfer(owner, user, 100));
+        assert_eq!(TestableToken::balance_of(owner), 1_000_000);
+    }
+
+    #[test]
+    fn transfer_rejects_zero_amount() {
+        let (env, owner, user) = setup();
+        env.add_witness(owner);
+
+        assert!(!TestableToken::transfer(owner, user, 0));
+    }
+
+    #[test]
+    fn transfer_rejects_self_transfer() {
+        let (env, owner, _) = setup();
+        env.add_witness(owner);
+
+        assert!(!TestableToken::transfer(owner, owner, 100));
+    }
+
+    #[test]
+    fn transfer_rejects_negative_amount() {
+        let (env, owner, user) = setup();
+        env.add_witness(owner);
+
+        assert!(!TestableToken::transfer(owner, user, -1));
+    }
+}
+```

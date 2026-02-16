@@ -1,0 +1,136 @@
+---
+title: Strings
+description: UTF-8 string and raw byte array types for Neo N3 smart contracts in Rust.
+draft: false
+---
+
+The `neo-types` crate provides two string-like types: `NeoString` for human-readable UTF-8 text and `NeoByteString` for raw binary data such as addresses, token IDs, and storage keys.
+
+## NeoString
+
+A UTF-8 string type that maps to the NeoVM `ByteString` stack item (interpreted as text). Used for contract names, symbol tickers, event parameters, and any human-readable data.
+
+```rust
+use neo_types::NeoString;
+
+let name = NeoString::from_str("NeoToken");
+let ticker = NeoString::new(String::from("NEO"));
+```
+
+### Construction
+
+| Method | Description |
+|--------|-------------|
+| `NeoString::new(String)` | Wrap an owned `String` |
+| `NeoString::from_str(&str)` | Create from a string slice |
+| `NeoString::default()` | Empty string |
+
+### From conversions
+
+```rust
+let a: NeoString = "hello".into();       // From<&str>
+let b: NeoString = String::from("world").into(); // From<String>
+```
+
+### Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `as_str()` | `&str` | Borrow as a native string slice |
+| `len()` | `usize` | Byte length of the string |
+| `is_empty()` | `bool` | `true` if the string has zero length |
+
+```rust
+let s = NeoString::from_str("GAS");
+assert_eq!(s.as_str(), "GAS");
+assert_eq!(s.len(), 3);
+assert!(!s.is_empty());
+```
+
+---
+
+## NeoByteString
+
+A raw byte array type backed by `Vec<u8>`. Maps to the NeoVM `ByteString` stack item. Used for Hash160 addresses, token IDs, script hashes, storage keys, and arbitrary binary data.
+
+```rust
+use neo_types::NeoByteString;
+
+// 20-byte Hash160 address
+let addr = NeoByteString::from_slice(&[0xab; 20]);
+
+// From a vector
+let data = NeoByteString::new(vec![0x01, 0x02, 0x03]);
+```
+
+### Construction
+
+| Method | Description |
+|--------|-------------|
+| `NeoByteString::new(Vec<u8>)` | Wrap an owned byte vector |
+| `NeoByteString::from_slice(&[u8])` | Copy from a byte slice |
+| `NeoByteString::default()` | Empty byte string |
+
+### From conversions
+
+```rust
+let a: NeoByteString = vec![1, 2, 3].into();        // From<Vec<u8>>
+let b: NeoByteString = [4, 5, 6].as_slice().into();  // From<&[u8]>
+```
+
+### Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `as_slice()` | `&[u8]` | Borrow as a byte slice |
+| `len()` | `usize` | Number of bytes |
+| `is_empty()` | `bool` | `true` if zero bytes |
+| `push(u8)` | `()` | Append a single byte |
+| `extend_from_slice(&[u8])` | `()` | Append a byte slice |
+
+### Iterator support
+
+`NeoByteString` implements `Extend<u8>`, `FromIterator<u8>`, and `AsRef<[u8]>`:
+
+```rust
+// Build from an iterator
+let bs: NeoByteString = (0u8..10).collect();
+assert_eq!(bs.len(), 10);
+
+// Use as a byte slice reference
+fn hash(data: &[u8]) -> u32 { data.len() as u32 }
+let h = hash(bs.as_ref());
+```
+
+---
+
+## Converting between NeoString and NeoByteString
+
+The two types serve different purposes but you can convert between them when needed:
+
+```rust
+use neo_types::{NeoString, NeoByteString};
+
+// String to bytes
+let s = NeoString::from_str("hello");
+let bytes = NeoByteString::from_slice(s.as_str().as_bytes());
+
+// Bytes to string (when you know the content is valid UTF-8)
+let bs = NeoByteString::from_slice(b"world");
+let text = std::str::from_utf8(bs.as_slice())
+    .map(NeoString::from_str);
+```
+
+## Usage in events and storage keys
+
+Both types are commonly used as storage key prefixes and event parameters:
+
+```rust
+use neo_types::{NeoString, NeoByteString};
+
+// Storage key prefix as bytes
+let prefix = NeoByteString::from_slice(b"balance:");
+
+// Event parameter as string
+let event_name = NeoString::from_str("Transfer");
+```

@@ -1,0 +1,247 @@
+/* Neo-LLVM Documentation — Custom Theme */
+
+:root {
+  /* Neo green palette */
+  --sl-color-accent-low: #0a3d2a;
+  --sl-color-accent: #00e599;
+  --sl-color-accent-high: #b3ffe0;
+
+  /* Dark background palette */
+  --sl-color-black: #0d1117;
+  --sl-color-gray-1: #c9d1d9;
+  --sl-color-gray-2: #8b949e;
+  --sl-color-gray-3: #484f58;
+  --sl-color-gray-4: #30363d;
+  --sl-color-gray-5: #21262d;
+  --sl-color-gray-6: #161b22;
+  --sl-color-white: #f0f6fc;
+
+  /* Font stack */
+  --sl-font:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Fira Sans", "Droid Sans",
+    "Helvetica Neue", sans-serif;
+  --sl-font-mono:
+    "JetBrains Mono", "Fira Code", "Cascadia Code", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+}
+
+/* Light mode overrides */
+:root[data-theme="light"] {
+  --sl-color-accent-low: #d1fae5;
+  --sl-color-accent: #059669;
+  --sl-color-accent-high: #064e3b;
+}
+
+/* ── Landing page hero ── */
+.hero {
+  background: linear-gradient(
+    135deg,
+    var(--sl-color-black) 0%,
+    var(--sl-color-accent-low) 50%,
+    var(--sl-color-black) 100%
+  );
+  padding: 4rem 2rem;
+  text-align: center;
+  border-bottom: 1px solid var(--sl-color-gray-5);
+}
+
+.hero h1 {
+  font-size: 3rem;
+  font-weight: 800;
+  background: linear-gradient(90deg, var(--sl-color-accent), #00ccff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 1rem;
+}
+
+.hero .tagline {
+  font-size: 1.25rem;
+  color: var(--sl-color-gray-2);
+  max-width: 640px;
+  margin: 0 auto 2rem;
+}
+
+/* ── CTA buttons ── */
+.cta-group {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-bottom: 3rem;
+}
+
+.cta-primary,
+.cta-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 1rem;
+  text-decoration: none;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.cta-primary {
+  background: var(--sl-color-accent);
+  color: var(--sl-color-black);
+}
+
+.cta-secondary {
+  background: var(--sl-color-gray-5);
+  color: var(--sl-color-gray-1);
+  border: 1px solid var(--sl-color-gray-4);
+}
+
+.cta-primary:hover,
+.cta-secondary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 229, 153, 0.25);
+}
+
+.cta-primary:focus-visible,
+.cta-secondary:focus-visible {
+  outline: 2px solid var(--sl-color-accent);
+  outline-offset: 2px;
+}
+
+/* ── Feature cards ── */
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.5rem;
+  max-width: 960px;
+  margin: 3rem auto;
+  padding: 0 1rem;
+}
+
+.feature-card {
+  background: var(--sl-color-gray-6);
+  border: 1px solid var(--sl-color-gray-5);
+  border-radius: 12px;
+  padding: 1.5rem;
+  transition: border-color 0.2s ease;
+}
+
+.feature-card:hover {
+  border-color: var(--sl-color-accent);
+}
+
+.feature-card .icon {
+  font-size: 2rem;
+  margin-bottom: 0.75rem;
+}
+
+.feature-card h3 {
+  font-size: 1.1rem;
+  margin-bottom: 0.5rem;
+  color: var(--sl-color-white);
+}
+
+.feature-card p {
+  font-size: 0.9rem;
+  color: var(--sl-color-gray-2);
+  line-height: 1.5;
+}
+
+/* ── Pipeline diagram ── */
+.pipeline {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin: 2rem auto;
+  max-width: 720px;
+  font-family: var(--sl-font-mono);
+  font-size: 0.85rem;
+}
+
+.pipeline .stage {
+  background: var(--sl-color-gray-5);
+  border: 1px solid var(--sl-color-gray-4);
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+  color: var(--sl-color-accent);
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 0 8px rgba(0, 229, 153, 0.15);
+}
+
+.pipeline .arrow {
+  color: var(--sl-color-gray-3);
+  font-size: 1.2rem;
+}
+
+/* ── Code preview section ── */
+.code-preview {
+  max-width: 720px;
+  margin: 3rem auto;
+  padding: 0 1rem;
+}
+
+.code-preview h2 {
+  text-align: center;
+  margin-bottom: 1.5rem;
+}
+
+/* ── Badges row ── */
+.badges {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin: 2rem auto;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: var(--sl-color-gray-5);
+  border: 1px solid var(--sl-color-gray-4);
+  border-radius: 999px;
+  padding: 0.35rem 0.85rem;
+  font-size: 0.8rem;
+  color: var(--sl-color-gray-1);
+  font-weight: 500;
+}
+
+.badge .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--sl-color-accent);
+}
+
+.badge:hover {
+  transform: scale(1.03);
+}
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .hero h1 {
+    font-size: 2.5rem;
+  }
+  .feature-grid {
+    grid-template-columns: 1fr;
+    max-width: 480px;
+  }
+}
+
+@media (max-width: 600px) {
+  .hero h1 {
+    font-size: 2rem;
+  }
+
+  .pipeline {
+    flex-direction: column;
+  }
+
+  .pipeline .arrow {
+    transform: rotate(90deg);
+  }
+}

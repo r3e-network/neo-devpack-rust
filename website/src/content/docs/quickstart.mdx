@@ -1,0 +1,118 @@
+---
+title: Quick Start
+description: Compile and translate a hello-world Rust smart contract to NeoVM bytecode in under five minutes.
+draft: false
+---
+
+import { Steps, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+This guide walks through the full cycle: write a minimal contract, compile it to Wasm, translate it to NeoVM, and inspect the output.
+
+## The Contract
+
+Create a simple contract that exposes a single method returning `42`:
+
+```rust
+// contracts/hello-world/src/lib.rs
+use neo_devpack::prelude::*;
+
+neo_manifest_overlay!(r#"{
+    "name": "HelloWorld"
+}"#);
+
+const HELLO_RESULT: i64 = 42;
+
+#[neo_contract]
+pub struct HelloWorldContract;
+
+#[neo_contract]
+impl HelloWorldContract {
+    pub fn new() -> Self { Self }
+
+    #[neo_method(safe)]
+    pub fn hello() -> i64 {
+        HELLO_RESULT
+    }
+}
+```
+
+- `neo_manifest_overlay!` embeds contract metadata (name, features) that the translator merges into the final manifest.
+- `#[neo_contract]` on the struct and impl block marks this as a Neo contract and auto-generates the exported entry shims.
+- `#[neo_method(safe)]` marks the method as read-only — safe to call without modifying blockchain state.
+
+## Build and Translate
+
+<Steps>
+
+1. **Compile to Wasm**
+
+   ```bash
+   cargo build --manifest-path contracts/hello-world/Cargo.toml \
+     --release --target wasm32-unknown-unknown
+   ```
+
+   This produces a `.wasm` binary at:
+   ```
+   contracts/hello-world/target/wasm32-unknown-unknown/release/hello_world_neo.wasm
+   ```
+
+2. **Translate to NeoVM**
+
+   ```bash
+   cargo run --manifest-path wasm-neovm/Cargo.toml -- \
+     --input contracts/hello-world/target/wasm32-unknown-unknown/release/hello_world_neo.wasm \
+     --nef build/HelloWorld.nef \
+     --manifest build/HelloWorld.manifest.json \
+     --name HelloWorld
+   ```
+
+   This reads the Wasm module and writes two files:
+   - `build/HelloWorld.nef` — the NeoVM bytecode binary, ready for deployment.
+   - `build/HelloWorld.manifest.json` — the contract manifest describing methods, permissions, and features.
+
+</Steps>
+
+## Shortcut: Helper Scripts
+
+Instead of running the two commands manually, you can use the provided build helpers:
+
+<Tabs>
+  <TabItem label="Shell script">
+    ```bash
+    scripts/build_contract.sh contracts/hello-world
+    ```
+  </TabItem>
+  <TabItem label="Makefile">
+    ```bash
+    make examples
+    ```
+    This builds all 17 example contracts at once.
+  </TabItem>
+</Tabs>
+
+## Output Files
+
+### NEF Binary (`.nef`)
+
+The [NEF (Neo Executable Format)](/concepts/nef-manifest/) is the on-chain bytecode container. It includes:
+- A magic number and compiler metadata header.
+- The NeoVM script (opcodes) that nodes execute.
+- A checksum for integrity verification.
+
+### Manifest (`.manifest.json`)
+
+The manifest is a JSON file describing the contract's public interface:
+- **methods** — name, parameters, return type, and `safe` flag for each entry point.
+- **permissions** — which other contracts and methods this contract may call.
+- **trusts** — which contract hashes are trusted callers.
+- **features** — whether the contract uses storage or is payable.
+
+<Aside type="tip">
+  Use `--compare-manifest` during CI to validate that the generated manifest matches an expected baseline. This catches unintended ABI changes before deployment.
+</Aside>
+
+## What's Next
+
+- [Project Structure](/project-structure/) — understand how the repository is organized.
+- [Contract Anatomy](/concepts/contract-anatomy/) — learn the full set of macros and attributes available.
+- [Deployment](/guides/deployment/) — deploy your contract to a local Neo Express network.

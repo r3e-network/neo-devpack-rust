@@ -1,0 +1,352 @@
+---
+title: "Manifest Macros"
+description: "Reference for manifest configuration macros: neo_manifest_overlay!, neo_permission!, neo_trusts!, neo_supported_standards!, and neo_safe_methods!."
+draft: false
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+The SDK provides a family of declarative macros for injecting metadata into the contract manifest at compile time. Each macro embeds a JSON fragment into a Wasm custom section. The translator extracts these fragments during translation and merges them into the generated manifest.
+
+## `neo_manifest_overlay!`
+
+The general-purpose overlay macro. Accepts a raw JSON string and embeds it verbatim as a custom section.
+
+```rust
+use neo_devpack::prelude::*;
+
+neo_manifest_overlay!(
+    r#"{
+    "name": "MyToken",
+    "supportedstandards": ["NEP-17"],
+    "permissions": [
+        { "contract": "*", "methods": "*" }
+    ],
+    "extra": {
+        "author": "My Team",
+        "description": "A sample NEP-17 token"
+    }
+}"#
+);
+```
+
+The JSON is validated at compile time. If the string is not valid JSON, the macro emits a compile error with the parse failure details.
+
+### Supported Fields
+
+| Field | Type | Description |
+|---|---|---|
+| `name` | String | Human-readable contract name |
+| `supportedstandards` | String array | NEP standards the contract implements |
+| `permissions` | Object array | Contract call permissions |
+| `trusts` | String array | Trusted contract hashes |
+| `abi.methods` | Object array | Method metadata overrides |
+| `abi.events` | Object array | Event metadata overrides |
+| `extra` | Object | Arbitrary metadata (author, description, etc.) |
+
+### Merge Semantics
+
+Overlays are merged into the base manifest before safe flags and method tokens are propagated:
+
+- **Scalar fields** (`name`, `extra`) -- overlay replaces the base value.
+- **`permissions`** -- entries are appended and deduplicated by `(contract, methods)` pair.
+- **`supportedstandards`** -- values are appended and deduplicated.
+- **`trusts`** -- values are appended and deduplicated.
+- **`abi.methods`** -- matched by name; overlay fields win on matched entries.
+- **`abi.events`** -- same matching logic as methods.
+
+<Aside type="caution">
+  Overlay method names must reference real exported functions. If an overlay declares a method that does not exist in the Wasm module, the translator aborts with an error. This prevents stale overlays from producing invalid manifests.
+</Aside>
+
+## `neo_permission!`
+
+Declares a single permission entry for the manifest. Permissions control which contracts and methods this contract is allowed to call.
+
+```rust
+use neo_devpack::prelude::*;
+
+// Allow calling all methods on all contracts
+neo_permission!("*", ["*"]);
+
+// Allow calling specific methods on a specific contract
+neo_permission!("0xef4073a0f2b305a38ec4050e4d3d28bc40ea63f5", ["transfer", "balanceOf"]);
+```
+
+### Syntax
+
+```
+neo_permission!(contract_expr, [method1, method2, ...]);
+```
+
+- `contract_expr` -- a string literal. Use `"*"` for wildcard (any contract) or a contract hash.
+- `[method1, method2, ...]` -- an array of string literals. Use `["*"]` for wildcard (any method).
+
+### Generated Overlay
+
+```rust
+neo_permission!("*", ["transfer", "balanceOf"]);
+```
+
+Produces:
+
+```json
+{
+  "permissions": [
+    {
+      "contract": "*",
+      "methods": ["transfer", "balanceOf"]
+    }
+  ]
+}
+```
+
+### Common Permission Patterns
+
+```rust
+// Unrestricted -- call anything on any contract
+neo_permission!("*", ["*"]);
+
+// Call only NEP-17 methods on any contract
+neo_permission!("*", ["transfer", "balanceOf", "totalSupply", "symbol", "decimals"]);
+
+// Call any method on a specific contract (e.g., GAS token)
+neo_permission!("0xd2a4cff31913016155e38e474a2c06d08be276cf", ["*"]);
+```
+
+<Aside type="tip">
+  Start with the most restrictive permissions your contract needs. Wildcard permissions (`"*"`) are convenient during development but should be narrowed for production deployments.
+</Aside>
+
+## `neo_trusts!`
+
+Declares trusted contract hashes. Trusted contracts are allowed to call this contract without permission checks.
+
+```rust
+use neo_devpack::prelude::*;
+
+neo_trusts!(["0xef4073a0f2b305a38ec4050e4d3d28bc40ea63f5", "0xd2a4cff31913016155e38e474a2c06d08be276cf"]);
+```
+
+### Syntax
+
+```
+neo_trusts!([hash1, hash2, ...]);
+```
+
+Each element is a string literal containing a contract hash.
+
+### Generated Overlay
+
+```json
+{
+  "trusts": [
+    "0xef4073a0f2b305a38ec4050e4d3d28bc40ea63f5",
+    "0xd2a4cff31913016155e38e474a2c06d08be276cf"
+  ]
+}
+```
+
+An empty trust list is the default and means no contracts are explicitly trusted:
+
+```rust
+neo_trusts!([]);
+```
+
+## `neo_supported_standards!`
+
+Declares which NEP standards the contract implements. Wallets and block explorers use this field to detect token contracts and enable standard-specific UI.
+
+```rust
+use neo_devpack::prelude::*;
+
+// Single standard
+neo_supported_standards!(["NEP-17"]);
+
+// Multiple standards
+neo_supported_standards!(["NEP-17", "NEP-11"]);
+```
+
+### Syntax
+
+```
+neo_supported_standards!([standard1, standard2, ...]);
+```
+
+Each element is a string literal with the standard identifier.
+
+### Generated Overlay
+
+```json
+{
+  "supportedstandards": ["NEP-17"]
+}
+```
+
+### Common Standards
+
+| Standard | Description |
+|---|---|
+| `NEP-17` | Fungible token (like ERC-20) |
+| `NEP-11` | Non-fungible token (like ERC-721) |
+
+<Aside type="note">
+  Declaring a standard in the manifest does not enforce compliance. The contract must still implement all required methods and events. The declaration is a signal to tooling and clients.
+</Aside>
+
+## `neo_safe_methods!`
+
+Batch-declares multiple methods as safe (read-only) in the manifest. This is an alternative to annotating each method individually with `#[neo_method(safe)]` or `#[neo_safe]`.
+
+```rust
+use neo_devpack::prelude::*;
+
+neo_safe_methods!(["totalSupply", "symbol", "decimals", "balanceOf"]);
+```
+
+### Syntax
+
+```
+neo_safe_methods!([method1, method2, ...]);
+```
+
+Each element is a string literal matching the **export name** (not the Rust function name). For methods inside a `#[neo_contract] impl` block, this is the camelCase name.
+
+### Generated Overlay
+
+```json
+{
+  "abi": {
+    "methods": [
+      { "name": "totalSupply", "safe": true },
+      { "name": "symbol", "safe": true },
+      { "name": "decimals", "safe": true },
+      { "name": "balanceOf", "safe": true }
+    ]
+  }
+}
+```
+
+<Aside type="caution">
+  Method names in `neo_safe_methods!` must match real exports. If a name does not correspond to an exported function, the translator aborts. Use the export name (camelCase), not the Rust function name (snake_case).
+</Aside>
+
+## Combining Macros
+
+All manifest macros can be used together. Their overlays are merged in source order:
+
+```rust
+use neo_devpack::prelude::*;
+
+neo_manifest_overlay!(
+    r#"{
+    "name": "FullExample",
+    "extra": {
+        "author": "Neo Team",
+        "description": "A fully configured contract"
+    }
+}"#
+);
+
+neo_supported_standards!(["NEP-17"]);
+
+neo_permission!("*", ["*"]);
+
+neo_trusts!([]);
+
+neo_safe_methods!(["totalSupply", "symbol", "decimals", "balanceOf"]);
+```
+
+This is equivalent to a single `neo_manifest_overlay!` with all fields combined, but the individual macros are more readable and composable.
+
+### Precedence
+
+When the same field appears in multiple overlays, later overlays take precedence for scalar fields. Array fields (`permissions`, `supportedstandards`, `trusts`) are appended and deduplicated. Method entries in `abi.methods` are matched by name -- later entries override earlier ones.
+
+## Overlay vs. Attribute Macros
+
+The manifest macros and the attribute macros (`#[neo_method(safe)]`, `#[neo_event]`) produce the same manifest output. Choose based on context:
+
+| Approach | Best for |
+|---|---|
+| `#[neo_method(safe)]` | Marking individual methods as safe inline |
+| `#[neo_event]` | Defining events with automatic `emit()` generation |
+| `neo_safe_methods!` | Batch-declaring safe methods in one place |
+| `neo_manifest_overlay!` | Setting contract name, extra metadata, complex permissions |
+| `neo_permission!` | Declaring permissions with clear syntax |
+| `neo_supported_standards!` | Declaring NEP compliance |
+
+## Complete Example
+
+A NEP-17 token contract using multiple manifest macros:
+
+```rust
+use neo_devpack::prelude::*;
+
+neo_manifest_overlay!(
+    r#"{
+    "name": "ConfiguredToken",
+    "extra": {
+        "author": "Neo Team",
+        "version": "1.0.0"
+    }
+}"#
+);
+
+neo_supported_standards!(["NEP-17"]);
+neo_permission!("*", ["*"]);
+neo_trusts!([]);
+
+#[neo_event]
+pub struct Transfer {
+    pub from: NeoByteString,
+    pub to: NeoByteString,
+    pub amount: NeoInteger,
+}
+
+#[neo_contract]
+pub struct ConfiguredToken;
+
+#[neo_contract]
+impl ConfiguredToken {
+    pub fn new() -> Self {
+        Self
+    }
+
+    #[neo_method(safe)]
+    pub fn total_supply() -> i64 {
+        1_000_000
+    }
+
+    #[neo_method(safe)]
+    pub fn symbol() -> i64 {
+        0
+    }
+
+    #[neo_method(safe)]
+    pub fn decimals() -> i64 {
+        8
+    }
+
+    #[neo_method(safe)]
+    pub fn balance_of(account: i64) -> i64 {
+        0
+    }
+
+    #[neo_method]
+    pub fn transfer(from: i64, to: i64, amount: i64) -> bool {
+        from > 0 && to > 0 && amount > 0
+    }
+
+    #[neo_method(name = "onNEP17Payment")]
+    pub fn on_nep17_payment(_from: i64, _amount: i64, _data: i64) {}
+}
+```
+
+## See Also
+
+- [Manifest Overlays](/concepts/manifest-overlays/) -- full merge semantics and external overlay files
+- [#[neo_safe]](/sdk/macros/neo-safe/) -- per-function safe attribute
+- [#[neo_method]](/sdk/macros/neo-method/) -- inline `safe` and `name` flags
+- [#[neo_event]](/sdk/macros/neo-event/) -- event definitions that also generate manifest metadata
+- [NEF and Manifest](/concepts/nef-manifest/) -- the output format these macros feed into

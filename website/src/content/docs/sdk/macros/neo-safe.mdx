@@ -1,0 +1,166 @@
+---
+title: "#[neo_safe]"
+description: "Attribute macro that marks a standalone exported function as read-only (safe) in the contract manifest."
+draft: false
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+`#[neo_safe]` marks a standalone exported function as safe (read-only) in the generated manifest. It is the free-function counterpart to `#[neo_method(safe)]`, which works inside `#[neo_contract] impl` blocks.
+
+## Basic Usage
+
+```rust
+use neo_devpack::prelude::*;
+
+#[neo_safe]
+#[no_mangle]
+pub extern "C" fn get_name() -> i64 {
+    // return name string pointer
+    0
+}
+```
+
+The macro wraps the function and emits a Wasm custom section containing:
+
+```json
+{
+  "abi": {
+    "methods": [
+      { "name": "get_name", "safe": true }
+    ]
+  }
+}
+```
+
+The translator reads this metadata and sets `"safe": true` on the matching method in the manifest.
+
+## When to Use
+
+Use `#[neo_safe]` when you have standalone `extern "C"` functions that are not part of a `#[neo_contract] impl` block. This is common in two scenarios:
+
+### 1. Contracts Without the Struct Pattern
+
+Some contracts are written as flat modules with free functions instead of using the struct + impl pattern:
+
+```rust
+use neo_devpack::prelude::*;
+
+#[neo_safe]
+#[no_mangle]
+pub extern "C" fn total_supply() -> i64 {
+    1_000_000
+}
+
+#[neo_safe]
+#[no_mangle]
+pub extern "C" fn symbol() -> i64 {
+    // return string pointer
+    0
+}
+
+#[no_mangle]
+pub extern "C" fn transfer(from: i64, to: i64, amount: i64) -> i64 {
+    // state-mutating -- no #[neo_safe]
+    if from > 0 && to > 0 && amount > 0 { 1 } else { 0 }
+}
+```
+
+### 2. Utility Exports Alongside a Contract Struct
+
+Sometimes a contract needs additional exports that do not belong to the main impl block:
+
+```rust
+#[neo_contract]
+pub struct MyToken;
+
+#[neo_contract]
+impl MyToken {
+    #[neo_method(safe)]
+    pub fn balance_of(account: i64) -> i64 { 0 }
+
+    #[neo_method]
+    pub fn transfer(from: i64, to: i64, amount: i64) -> bool { true }
+}
+
+// Additional utility export outside the impl block
+#[neo_safe]
+#[no_mangle]
+pub extern "C" fn contract_version() -> i64 {
+    1
+}
+```
+
+## Comparison with `#[neo_method(safe)]`
+
+| Feature | `#[neo_method(safe)]` | `#[neo_safe]` |
+|---|---|---|
+| Placement | Inside `#[neo_contract] impl` | Any `fn` item |
+| Export shim generation | Automatic (from `#[neo_contract]`) | Manual (`#[no_mangle] pub extern "C"`) |
+| Parameter marshalling | Automatic | Manual |
+| Manifest safe flag | Yes | Yes |
+| Name conversion | Automatic `snake_case` to `camelCase` | Uses the function name as-is |
+
+<Aside type="tip">
+  Prefer `#[neo_method(safe)]` inside a `#[neo_contract] impl` block whenever possible. It handles export naming, parameter marshalling, and ABI metadata automatically. Use `#[neo_safe]` only for standalone functions that need to be exported outside the contract struct pattern.
+</Aside>
+
+## How It Works
+
+The macro does two things:
+
+1. Preserves the original function unchanged.
+2. Emits a manifest overlay custom section that marks the function name as safe.
+
+The function name used in the overlay is taken from the `fn` identifier. If you use `#[no_mangle]`, the Wasm export name matches the Rust function name exactly.
+
+```rust
+#[neo_safe]
+#[no_mangle]
+pub extern "C" fn get_balance() -> i64 { 0 }
+// Overlay: { "abi": { "methods": [{ "name": "get_balance", "safe": true }] } }
+```
+
+## Complete Example
+
+A minimal contract using only free functions and `#[neo_safe]`:
+
+```rust
+use neo_devpack::prelude::*;
+
+neo_manifest_overlay!(
+    r#"{
+    "name": "SimpleQuery",
+    "supportedstandards": []
+}"#
+);
+
+const OWNER: i64 = 1;
+const TOTAL: i64 = 500_000;
+
+#[neo_safe]
+#[no_mangle]
+pub extern "C" fn get_owner() -> i64 {
+    OWNER
+}
+
+#[neo_safe]
+#[no_mangle]
+pub extern "C" fn get_total() -> i64 {
+    TOTAL
+}
+
+#[no_mangle]
+pub extern "C" fn set_total(new_total: i64) -> i64 {
+    // state-mutating, not marked safe
+    if new_total > 0 { 1 } else { 0 }
+}
+```
+
+The generated manifest will have `get_owner` and `get_total` marked as `"safe": true`, while `set_total` defaults to `"safe": false`.
+
+## See Also
+
+- [#[neo_method]](/sdk/macros/neo-method/) -- the preferred way to mark methods as safe inside impl blocks
+- [Manifest Macros](/sdk/macros/manifest-macros/) -- `neo_safe_methods!` for batch-declaring safe methods
+- [Manifest Overlays](/concepts/manifest-overlays/) -- how safe flags merge into the manifest

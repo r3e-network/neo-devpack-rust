@@ -1,0 +1,276 @@
+---
+title: Storage Patterns
+description: Key design, CRUD operations, prefix iteration, and best practices for on-chain storage in Neo N3 Rust contracts.
+draft: false
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Neo N3 contracts persist state in a key-value store scoped to the contract. Every read and write costs GAS, so key design and access patterns matter. This page covers the storage API, prefix namespacing, iteration, and practical patterns from the example contracts.
+
+## Storage Context
+
+Before any storage operation, you need a context handle. The context determines whether you can read and write, or only read.
+
+```rust
+use neo_devpack::prelude::*;
+
+// Read-write context (requires a transaction)
+let ctx = NeoStorage::get_context()?;
+
+// Read-only context (usable from safe methods)
+let ro_ctx = NeoStorage::get_read_only_context()?;
+```
+
+| Context | Obtained via | Capabilities |
+|---|---|---|
+| Read-write | `NeoStorage::get_context()` | `get`, `put`, `delete`, `find` |
+| Read-only | `NeoStorage::get_read_only_context()` | `get`, `find` |
+
+<Aside type="caution">
+  Calling `put` or `delete` on a read-only context returns `Err(NeoError::InvalidOperation)`. Use read-only contexts in `#[neo_method(safe)]` methods to enforce the read-only guarantee at the API level.
+</Aside>
+
+## Key Design: Prefix Namespacing
+
+Use byte prefixes to partition storage into logical namespaces. This prevents key collisions between different data types and enables efficient prefix iteration.
+
+```rust
+// Governance DAO key prefixes (from contracts/governance-dao)
+pub const CONFIG_KEY: &[u8]          = b"dao:config";
+pub const PROPOSAL_COUNTER_KEY: &[u8] = b"dao:counter";
+pub const PROPOSAL_PREFIX: &[u8]     = b"dao:proposal:";
+pub const STAKE_PREFIX: &[u8]        = b"dao:stake:";
+pub const VOTE_PREFIX: &[u8]         = b"dao:vote:";
+```
+
+Common prefix conventions:
+
+| Domain | Prefix Pattern | Example Key |
+|---|---|---|
+| Token balances | `token:balance:` | `token:balance:<address>` |
+| NFT ownership | `nft:owner:` | `nft:owner:<token_id>` |
+| DAO stakes | `dao:stake:` | `dao:stake:<address>` |
+| Configuration | `dao:config` | `dao:config` (singleton) |
+| Counters | `dao:counter` | `dao:counter` (singleton) |
+
+### Building Composite Keys
+
+Append identifiers to a prefix to form a unique key:
+
+```rust
+use neo_devpack::prelude::*;
+
+pub fn stake_key(address: &NeoByteString) -> Vec<u8> {
+    let mut key = b"dao:stake:".to_vec();
+    key.extend_from_slice(address.as_slice());
+    key
+}
+
+pub fn vote_key(proposal_id: i64, voter: &NeoByteString) -> Vec<u8> {
+    let mut key = b"dao:vote:".to_vec();
+    key.extend_from_slice(&proposal_id.to_le_bytes());
+    key.push(b':');
+    key.extend_from_slice(voter.as_slice());
+    key
+}
+```
+
+## CRUD Operations
+
+### Create / Update (Put)
+
+```rust
+use neo_devpack::prelude::*;
+
+fn set_balance(ctx: &NeoStorageContext, account: &[u8], amount: i64) -> NeoResult<()> {
+    let mut key = b"token:balance:".to_vec();
+    key.extend_from_slice(account);
+
+    let key_bytes = NeoByteString::from_slice(&key);
+    let value_bytes = NeoByteString::from_slice(&amount.to_le_bytes());
+    NeoStorage::put(ctx, &key_bytes, &value_bytes)
+}
+```
+
+`put` creates the key if it does not exist, or overwrites the value if it does. There is no separate "create" vs "update" distinction.
+
+### Read (Get)
+
+```rust
+use neo_devpack::prelude::*;
+
+fn get_balance(ctx: &NeoStorageContext, account: &[u8]) -> i64 {
+    let mut key = b"token:balance:".to_vec();
+    key.extend_from_slice(account);
+
+    let key_bytes = NeoByteString::from_slice(&key);
+    match NeoStorage::get(ctx, &key_bytes) {
+        Ok(bytes) if !bytes.is_empty() => {
+            // Decode the stored i64
+            let mut buf = [0u8; 8];
+            let slice = bytes.as_slice();
+            buf[..slice.len().min(8)].copy_from_slice(&slice[..slice.len().min(8)]);
+            i64::from_le_bytes(buf)
+        }
+        _ => 0, // Key not found or empty -- default to zero
+    }
+}
+```
+
+`get` returns an empty `NeoByteString` if the key does not exist. Always check for empty before decoding.
+
+### Delete
+
+```rust
+use neo_devpack::prelude::*;
+
+fn remove_balance(ctx: &NeoStorageContext, account: &[u8]) -> NeoResult<()> {
+    let mut key = b"token:balance:".to_vec();
+    key.extend_from_slice(account);
+
+    let key_bytes = NeoByteString::from_slice(&key);
+    NeoStorage::delete(ctx, &key_bytes)
+}
+```
+
+Deleting a non-existent key is a no-op -- it does not return an error.
+
+## Typed Storage Helpers
+
+The `neo_devpack::storage` module provides higher-level functions that serialize and deserialize values as JSON:
+
+```rust
+use neo_devpack::prelude::*;
+use neo_devpack::storage;
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct TokenMetadata {
+    name: String,
+    symbol: String,
+    decimals: u8,
+}
+
+fn save_metadata(ctx: &NeoStorageContext, meta: &TokenMetadata) -> NeoResult<()> {
+    storage::store(ctx, b"token:metadata", meta)
+}
+
+fn load_metadata(ctx: &NeoStorageContext) -> Option<TokenMetadata> {
+    storage::load(ctx, b"token:metadata")
+}
+
+fn remove_metadata(ctx: &NeoStorageContext) -> NeoResult<()> {
+    storage::delete(ctx, b"token:metadata")
+}
+```
+
+| Function | Signature | Description |
+|---|---|---|
+| `storage::store` | `(ctx, key, &T) -> NeoResult<()>` | Serialize `T` as JSON and write to storage |
+| `storage::load` | `(ctx, key) -> Option<T>` | Read from storage and deserialize as `T` |
+| `storage::delete` | `(ctx, key) -> NeoResult<()>` | Remove the key from storage |
+| `storage::find_prefix` | `(ctx, prefix) -> NeoResult<NeoIterator<NeoValue>>` | Iterate all entries matching a prefix |
+
+## Prefix Iteration
+
+Use `NeoStorage::find` to iterate all keys that share a prefix. This is the primary mechanism for scanning collections.
+
+```rust
+use neo_devpack::prelude::*;
+
+fn total_staked(ctx: &NeoStorageContext) -> NeoResult<i64> {
+    let prefix = NeoByteString::from_slice(b"dao:stake:");
+    let iter = NeoStorage::find(ctx, &prefix)?;
+    let mut total: i64 = 0;
+
+    // Each entry is a NeoValue containing the stored bytes
+    // Iterate and accumulate
+    // (iteration pattern depends on NeoIterator API)
+    let _ = iter; // consume iterator
+    Ok(total)
+}
+```
+
+Or use the typed helper:
+
+```rust
+use neo_devpack::prelude::*;
+use neo_devpack::storage;
+
+fn find_all_stakes(ctx: &NeoStorageContext) -> NeoResult<NeoIterator<NeoValue>> {
+    storage::find_prefix(ctx, b"dao:stake:")
+}
+```
+
+<Aside type="note">
+  Prefix iteration scans all matching keys in the contract's storage. On contracts with large datasets, this can consume significant GAS. Prefer targeted key lookups when possible.
+</Aside>
+
+## Best Practices
+
+### Key Size
+
+- Keep keys short. Every byte in the key costs GAS for both reads and writes.
+- Use single-character or abbreviated prefixes for high-frequency keys: `b"b:"` instead of `b"token:balance:"` in gas-sensitive contracts.
+- Fixed-length suffixes (like `i64::to_le_bytes()`) are more efficient than variable-length string representations.
+
+### Value Encoding
+
+- For simple numeric values, store raw bytes (`i64::to_le_bytes()`) rather than JSON. It is smaller and faster to decode.
+- For structured data, the `storage::store` / `storage::load` helpers use JSON serialization via `serde_json`. This is convenient but adds overhead.
+- Avoid storing large blobs. Neo N3 charges per byte of storage, and large values increase GAS costs for every read and write.
+
+### Minimize Storage Operations
+
+```rust
+// Bad: two separate reads for the same key
+let balance = get_balance(ctx, account);
+let balance_again = get_balance(ctx, account); // redundant GAS cost
+
+// Good: read once, reuse the value
+let balance = get_balance(ctx, account);
+// use `balance` for both checks
+```
+
+### Batch Writes
+
+If you need to update multiple keys, do all writes in sequence within a single method invocation. Each `put` is a separate storage operation, but they all execute within the same transaction.
+
+```rust
+use neo_devpack::prelude::*;
+
+fn transfer(
+    ctx: &NeoStorageContext,
+    from: &[u8],
+    to: &[u8],
+    amount: i64,
+) -> NeoResult<()> {
+    let from_balance = get_balance(ctx, from) - amount;
+    let to_balance = get_balance(ctx, to) + amount;
+
+    // Two writes in the same invocation
+    set_balance(ctx, from, from_balance)?;
+    set_balance(ctx, to, to_balance)?;
+    Ok(())
+}
+# fn get_balance(_ctx: &NeoStorageContext, _account: &[u8]) -> i64 { 100 }
+# fn set_balance(_ctx: &NeoStorageContext, _account: &[u8], _amount: i64) -> NeoResult<()> { Ok(()) }
+```
+
+### Read-Only Methods
+
+Mark methods that only read storage with `#[neo_method(safe)]`. Safe methods use a read-only context and can be invoked off-chain without a transaction, costing the caller zero GAS.
+
+```rust
+#[neo_method(safe)]
+pub fn balance_of(account: i64) -> i64 {
+    // Read-only: no put or delete calls
+    balance_of_internal(account)
+}
+```
+
+## What's Next
+
+- [Events](/guides/events/) -- emit notifications when storage state changes.
+- [Error Handling](/guides/error-handling/) -- handle storage operation failures with `NeoResult`.
+- [Gas Optimization](/guides/gas-optimization/) -- reduce the GAS cost of storage-heavy contracts.

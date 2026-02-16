@@ -1,0 +1,315 @@
+---
+title: "NEP-17 Fungible Token"
+description: "Complete walkthrough of the NEP-17 fungible token standard for Neo N3, with a full Rust contract implementation."
+draft: false
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+NEP-17 is Neo's fungible token standard -- the equivalent of ERC-20 on Ethereum. Every NEP-17 contract must expose a fixed set of methods and emit a `Transfer` event so that wallets, exchanges, and other contracts can interact with it uniformly.
+
+This page walks through a complete NEP-17 token contract written in Rust using the `neo-devpack` SDK.
+
+## Standard Requirements
+
+A compliant NEP-17 contract must implement these methods:
+
+| Method | Parameters | Returns | Safe |
+|---|---|---|---|
+| `totalSupply` | -- | Integer | Yes |
+| `symbol` | -- | String | Yes |
+| `decimals` | -- | Integer | Yes |
+| `balanceOf` | `account: Hash160` | Integer | Yes |
+| `transfer` | `from: Hash160, to: Hash160, amount: Integer` | Boolean | No |
+
+It must also emit a `Transfer` event on every successful transfer (including mints and burns):
+
+```
+Transfer(from: Hash160 | null, to: Hash160 | null, amount: Integer)
+```
+
+<Aside type="note">
+  Methods marked **safe** are read-only. They can be invoked off-chain without a transaction and cost no GAS.
+</Aside>
+
+## The Full Contract
+
+```rust
+use neo_devpack::prelude::*;
+
+neo_manifest_overlay!(
+    r#"{
+    "name": "SampleNEP17",
+    "supportedstandards": ["NEP-17"]
+}"#
+);
+
+const TOTAL_SUPPLY: i64 = 1_000_000;
+const HOLDER_ONE: i64 = 1;
+const HOLDER_TWO: i64 = 2;
+
+fn init_internal(owner: i64, amount: i64) -> bool {
+    owner > 0 && amount > 0
+}
+
+fn balance_of_internal(account: i64) -> i64 {
+    if account == HOLDER_ONE {
+        750_000
+    } else if account == HOLDER_TWO {
+        250_000
+    } else {
+        0
+    }
+}
+
+fn transfer_internal(from: i64, to: i64, amount: i64) -> bool {
+    from > 0 && to > 0 && from != to && amount > 0
+}
+
+#[neo_contract]
+pub struct SampleNep17Contract;
+
+#[neo_contract]
+impl SampleNep17Contract {
+    pub fn new() -> Self {
+        Self
+    }
+
+    #[neo_method]
+    pub fn init(owner: i64, amount: i64) -> bool {
+        init_internal(owner, amount)
+    }
+
+    #[neo_method(safe)]
+    pub fn total_supply() -> i64 {
+        TOTAL_SUPPLY
+    }
+
+    #[neo_method(safe)]
+    pub fn balance_of(account: i64) -> i64 {
+        balance_of_internal(account)
+    }
+
+    #[neo_method]
+    pub fn transfer(from: i64, to: i64, amount: i64) -> bool {
+        transfer_internal(from, to, amount)
+    }
+
+    #[neo_method(name = "onNEP17Payment")]
+    pub fn on_nep17_payment(_from: i64, _amount: i64, _data: i64) {}
+}
+
+impl Default for SampleNep17Contract {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+```
+
+The sections below break this contract apart piece by piece.
+
+## Manifest Overlay
+
+```rust
+neo_manifest_overlay!(
+    r#"{
+    "name": "SampleNEP17",
+    "supportedstandards": ["NEP-17"]
+}"#
+);
+```
+
+The `neo_manifest_overlay!` macro embeds a JSON fragment into a Wasm custom section. During compilation the `wasm-neovm` translator extracts it and merges it into the generated manifest. Two fields matter here:
+
+- `name` -- the human-readable contract name that appears on-chain.
+- `supportedstandards` -- declares NEP-17 compliance. Wallets and block explorers use this field to detect token contracts automatically.
+
+See [Manifest Overlays](/concepts/manifest-overlays/) for the full merge semantics.
+
+## Constants
+
+```rust
+const TOTAL_SUPPLY: i64 = 1_000_000;
+const HOLDER_ONE: i64 = 1;
+const HOLDER_TWO: i64 = 2;
+```
+
+Rust constants compile to inline values in the Wasm output. The translator emits them as `PUSHINT` opcodes in NeoVM -- no storage slot is allocated. `TOTAL_SUPPLY` defines the fixed token supply. `HOLDER_ONE` and `HOLDER_TWO` are placeholder account identifiers used by the sample balance logic.
+
+## Internal Helper Functions
+
+```rust
+fn init_internal(owner: i64, amount: i64) -> bool {
+    owner > 0 && amount > 0
+}
+
+fn balance_of_internal(account: i64) -> i64 {
+    if account == HOLDER_ONE {
+        750_000
+    } else if account == HOLDER_TWO {
+        250_000
+    } else {
+        0
+    }
+}
+
+fn transfer_internal(from: i64, to: i64, amount: i64) -> bool {
+    from > 0 && to > 0 && from != to && amount > 0
+}
+```
+
+The contract separates business logic into free functions outside the `impl` block. This is a deliberate pattern:
+
+- **`init_internal`** -- validates that the owner and amount are positive before initializing the token supply.
+- **`balance_of_internal`** -- returns the balance for a given account. In this sample it uses deterministic values; a production contract would read from contract storage.
+- **`transfer_internal`** -- validates transfer preconditions: both addresses must be valid, they must differ, and the amount must be positive.
+
+Keeping logic in free functions makes it directly testable without going through the contract entry points.
+
+<Aside type="tip">
+  In a production contract, `balance_of_internal` would call `Storage.get()` to read the account's balance from on-chain storage, and `transfer_internal` would update both balances and fire the `Transfer` event.
+</Aside>
+
+## The Contract Struct
+
+```rust
+#[neo_contract]
+pub struct SampleNep17Contract;
+```
+
+`#[neo_contract]` on a unit struct marks it as the contract entry point. The macro generates the Wasm export shims that the translator expects. A contract module must have exactly one struct annotated with `#[neo_contract]`.
+
+## The Implementation Block
+
+```rust
+#[neo_contract]
+impl SampleNep17Contract {
+    // methods...
+}
+```
+
+`#[neo_contract]` on the `impl` block processes each method inside it. For every `#[neo_method]`-annotated function the macro generates:
+
+1. A public Wasm export with the correct name and signature.
+2. Parameter marshalling code that bridges Rust types to the Wasm ABI.
+3. ABI metadata that the translator collects for the manifest.
+
+### `init` -- Deploy-Time Initialization
+
+```rust
+#[neo_method]
+pub fn init(owner: i64, amount: i64) -> bool {
+    init_internal(owner, amount)
+}
+```
+
+Called once at deploy time to set the initial token owner and supply. This is not part of the NEP-17 standard itself, but most token contracts need an initialization entry point. The method is not marked `safe` because it modifies state.
+
+### `total_supply` -- Read Total Supply
+
+```rust
+#[neo_method(safe)]
+pub fn total_supply() -> i64 {
+    TOTAL_SUPPLY
+}
+```
+
+Returns the fixed total supply. Marked `safe` so it can be queried without a transaction.
+
+### `balance_of` -- Read Account Balance
+
+```rust
+#[neo_method(safe)]
+pub fn balance_of(account: i64) -> i64 {
+    balance_of_internal(account)
+}
+```
+
+Returns the token balance for a given account. Also marked `safe` -- balance queries are read-only.
+
+### `transfer` -- Move Tokens
+
+```rust
+#[neo_method]
+pub fn transfer(from: i64, to: i64, amount: i64) -> bool {
+    transfer_internal(from, to, amount)
+}
+```
+
+Transfers `amount` tokens from one account to another. This is the core state-mutating operation. It is **not** marked `safe` because it modifies balances and must emit a `Transfer` event. The NEP-17 standard requires that:
+
+1. The caller must be the `from` account (verified via `CheckWitness`).
+2. The method must return `false` (not abort) if the transfer cannot proceed.
+3. A `Transfer` event must fire on success.
+
+### `onNEP17Payment` -- Token Receive Callback
+
+```rust
+#[neo_method(name = "onNEP17Payment")]
+pub fn on_nep17_payment(_from: i64, _amount: i64, _data: i64) {}
+```
+
+The `name` parameter overrides the exported method name to match the NEP-17 callback convention. When another contract sends NEP-17 tokens to this contract, the runtime invokes `onNEP17Payment` on the receiving contract. Even if the body is empty, the method **must exist** for the contract to accept incoming tokens.
+
+<Aside type="caution">
+  If you omit `onNEP17Payment`, any NEP-17 transfer targeting your contract will fail at runtime. The Neo runtime requires the callback to be present on the receiver.
+</Aside>
+
+## Default Implementation
+
+```rust
+impl Default for SampleNep17Contract {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+```
+
+A standard Rust `Default` impl. This satisfies the `clippy::new_without_default` lint and allows the contract struct to be instantiated with `Default::default()`.
+
+## Unit Tests
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::SampleNep17Contract;
+
+    #[test]
+    fn init_and_supply_paths_match_contract_rules() {
+        assert!(SampleNep17Contract::init(1, 1));
+        assert!(!SampleNep17Contract::init(0, 1));
+        assert_eq!(SampleNep17Contract::total_supply(), 1_000_000);
+    }
+
+    #[test]
+    fn balance_distribution_is_deterministic() {
+        assert_eq!(SampleNep17Contract::balance_of(1), 750_000);
+        assert_eq!(SampleNep17Contract::balance_of(2), 250_000);
+        assert_eq!(SampleNep17Contract::balance_of(3), 0);
+    }
+
+    #[test]
+    fn transfer_rejects_invalid_paths() {
+        assert!(SampleNep17Contract::transfer(1, 2, 1));
+        assert!(!SampleNep17Contract::transfer(1, 1, 1));
+        assert!(!SampleNep17Contract::transfer(0, 2, 1));
+        assert!(!SampleNep17Contract::transfer(1, 2, 0));
+    }
+}
+```
+
+The tests call contract methods directly as associated functions -- no VM or blockchain needed. This is possible because the internal logic is pure Rust. The three test functions cover:
+
+- **`init_and_supply_paths_match_contract_rules`** -- verifies that `init` accepts valid inputs, rejects zero-owner, and that `total_supply` returns the constant.
+- **`balance_distribution_is_deterministic`** -- confirms the hardcoded balance distribution for each holder.
+- **`transfer_rejects_invalid_paths`** -- exercises the transfer validation: valid transfers succeed, self-transfers and zero-amount transfers fail.
+
+## Building
+
+Compile the contract with:
+
+```bash
+make nep17-token
+```
+
+This produces a `.nef` file and a `.manifest.json` file in the build output directory, ready for deployment to Neo N3.

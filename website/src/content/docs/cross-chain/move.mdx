@@ -1,0 +1,135 @@
+---
+title: "Move Support (Experimental)"
+description: "Translate Move bytecode to WASM for NeoVM compilation, with resource semantics emulation and standard library mapping."
+draft: false
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+<Aside type="caution">
+  Move support is experimental. Control flow and storage-backed resource operations with ability checks are implemented, but full struct layouts and generics remain incomplete.
+</Aside>
+
+The `move-neovm` crate translates Move bytecode into WASM modules. The resulting WASM then passes through the standard `wasm-neovm` pipeline to produce NEF + Manifest output for Neo N3.
+
+## Pipeline
+
+```
+Move Source (.move)
+       |
+       v
+Move Compiler (external)
+       |
+       v
+Move Bytecode (.mv)
+       |
+       v
+move-neovm (parse + translate)
+       |
+       v
+WASM Module (.wasm)
+       |
+       v
+wasm-neovm
+       |
+       v
+NEF + Manifest
+```
+
+The Move compiler is external to this toolchain. You compile `.move` sources to `.mv` bytecode using the standard Move compiler from Aptos or Sui, then feed the bytecode into `move-neovm`.
+
+## Bytecode Format
+
+Move bytecode files start with the magic bytes `0xa11ceb0b`. The `move-neovm` parser validates this header before attempting translation.
+
+### Supported Opcodes
+
+| Move Opcode | WASM Equivalent | Notes |
+|-------------|-----------------|-------|
+| `LdU64` | `i64.const` | Load constant |
+| `Add` / `Sub` / `Mul` / `Div` | `i64.add` / `sub` / `mul` / `div_s` | Arithmetic |
+| `Lt` / `Gt` / `Le` / `Ge` / `Eq` | `i64.lt_s` / `gt_s` / `le_s` / `ge_s` / `eq` | Comparison |
+| `CopyLoc` / `MoveLoc` | `local.get` | Local access |
+| `StLoc` | `local.set` | Local store |
+| `Branch` / `BrTrue` / `BrFalse` | `br` / `br_if` | Control flow |
+| `Call` | `call` | Function call |
+| `Ret` | `return` | Function return |
+| `BorrowGlobal` | `Storage.Get` | Resource access |
+| `MoveTo` / `MoveFrom` | `Storage.Put` / `Delete` | Resource operations |
+
+## Resource Semantics
+
+Move's linear type system guarantees that resources cannot be copied or implicitly dropped. Since NeoVM does not enforce linear types natively, `move-neovm` emulates these semantics through storage tracking.
+
+### Storage Key Format
+
+Resources are stored with type-prefixed keys:
+
+```
+"R" + address + ":" + type_name
+```
+
+For example, a `Coin` resource owned by address `0xABC...` would be stored under the key `R0xABC...:Coin`.
+
+### ResourceTracker
+
+A `ResourceTracker` enforces linear semantics at runtime:
+
+- `move_to` — Fails if the resource already exists at the target address.
+- `move_from` — Fails if the resource does not exist at the source address.
+- `exists<T>()` — Translates to a `Storage.Get != null` check.
+
+This emulation preserves Move's safety guarantees within the constraints of the NeoVM storage model.
+
+## Standard Library Mapping
+
+| Move Stdlib | Neo Equivalent |
+|-------------|---------------|
+| `hash::sha256` | `Neo.Crypto.SHA256` |
+| `timestamp::now_seconds` | `System.Runtime.GetTime` |
+| `event::emit` | `System.Runtime.Notify` |
+| `signer::address_of` | `System.Runtime.GetCallingScriptHash` |
+
+## Building a Move Contract
+
+<Steps>
+1. **Compile Move source to bytecode** (using the external Move compiler)
+
+   ```bash
+   # Use the Aptos or Sui Move compiler
+   aptos move compile --package-dir my-move-project/
+   ```
+
+2. **Translate bytecode to WASM**
+
+   ```rust
+   use move_neovm::{parse_move_bytecode, translate_to_wasm};
+
+   let module = parse_move_bytecode(&bytecode)?;
+   let wasm = translate_to_wasm(&module)?;
+   ```
+
+3. **Build a Move-style Rust contract to NEF**
+
+   For Move-inspired patterns written in Rust:
+
+   ```bash
+   cargo build --manifest-path contracts/move-coin/Cargo.toml \
+     --target wasm32-unknown-unknown --release
+
+   cargo run --manifest-path wasm-neovm/Cargo.toml -- \
+     --input contracts/move-coin/target/wasm32-unknown-unknown/release/move_coin_neo.wasm \
+     --nef build/MoveCoin.nef \
+     --manifest build/MoveCoin.manifest.json \
+     --name MoveCoin \
+     --source-chain move
+   ```
+</Steps>
+
+## Limitations
+
+- **Struct layouts** — Full struct serialization and deserialization is not yet implemented. Complex nested structs may fail to translate.
+- **Generics** — Generic type instantiation is incomplete. Monomorphized functions work; polymorphic dispatch does not.
+- **Formal verification** — Move's formal verification properties are lost during translation. The resulting NeoVM bytecode cannot be verified using Move's prover.
+- **Module publishing** — Move's module publishing model differs from Neo's contract deployment. Module dependencies must be resolved before translation.
+- **Linear type enforcement** — Resource linearity is emulated via runtime checks, not enforced by the VM. A bug in the emulation layer could violate Move's safety guarantees.

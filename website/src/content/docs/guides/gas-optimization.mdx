@@ -1,0 +1,221 @@
+---
+title: Gas Optimization
+description: Reduce GAS consumption and NEF size for Neo N3 smart contracts compiled with the neo-llvm Rust toolchain.
+draft: false
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Every NeoVM instruction costs GAS. Smaller contracts deploy cheaper and execute faster. This guide covers optimization techniques at both the Wasm compilation level and the contract design level.
+
+## Wasm-Level Optimizations
+
+### Cargo Profile Settings
+
+Your contract's `Cargo.toml` should use an aggressive release profile:
+
+```toml
+[profile.release]
+opt-level = "z"        # Optimize for size (smallest binary)
+lto = true             # Link-time optimization across crates
+codegen-units = 1      # Single codegen unit for maximum optimization
+panic = "abort"        # No unwinding machinery
+strip = "symbols"      # Remove debug symbols from output
+```
+
+| Setting | Effect | Impact |
+|---|---|---|
+| `opt-level = "z"` | Prioritize binary size over speed | 30–60% smaller Wasm |
+| `lto = true` | Cross-crate dead code elimination | 10–30% smaller |
+| `codegen-units = 1` | Better whole-program optimization | 5–15% smaller |
+| `panic = "abort"` | Remove panic unwinding tables | 5–10% smaller |
+| `strip = "symbols"` | Remove symbol names | Smaller Wasm, no debug info |
+
+<Aside type="tip">
+All example contracts in the repository already use these settings. Check `contracts/nep17-token/Cargo.toml` for a reference configuration.
+</Aside>
+
+### Avoid Large Dependencies
+
+Every dependency you add increases the Wasm module size. The `wasm32-unknown-unknown` target has no standard library, so most crates pull in significant code.
+
+- Use `neo_devpack::prelude::*` instead of importing individual crates
+- Avoid `serde` with derive macros unless you genuinely need serialization
+- Prefer simple data structures over complex generic abstractions
+
+### RUSTFLAGS
+
+The build pipeline restricts certain Wasm features. Ensure your build uses:
+
+```bash
+RUSTFLAGS="-C link-arg=--no-entry -C link-arg=--export-dynamic" \
+  cargo build --release --target wasm32-unknown-unknown
+```
+
+The Makefile handles this automatically via `make examples`.
+
+## Contract-Level Optimizations
+
+### Minimize Storage Operations
+
+Storage reads and writes are the most expensive operations in NeoVM:
+
+| Operation | Relative Cost |
+|---|---|
+| Stack arithmetic | 1x (baseline) |
+| Storage read | ~100x |
+| Storage write | ~1000x |
+| Cross-contract call | ~1000x |
+
+```rust
+// BAD: Multiple storage reads for the same key
+let balance = NeoStorage::get("balance").unwrap_or(0);
+// ... some logic ...
+let balance_again = NeoStorage::get("balance").unwrap_or(0);
+
+// GOOD: Read once, reuse the value
+let balance = NeoStorage::get("balance").unwrap_or(0);
+// ... use balance throughout the method ...
+```
+
+### Batch Storage Writes
+
+```rust
+// BAD: Write after every change
+NeoStorage::put("balance:alice", alice_balance - amount);
+NeoStorage::put("balance:bob", bob_balance + amount);
+NeoStorage::put("total_transfers", transfers + 1);
+
+// This is actually fine — each put is a separate key.
+// But avoid redundant writes to the SAME key:
+
+// BAD: Writing the same key twice
+NeoStorage::put("counter", counter + 1);
+// ... more logic ...
+NeoStorage::put("counter", counter + 2); // overwrites the first write
+
+// GOOD: Compute final value, write once
+let final_counter = counter + 2;
+NeoStorage::put("counter", final_counter);
+```
+
+### Use Short Storage Keys
+
+Storage keys are stored on-chain. Shorter keys cost less GAS:
+
+```rust
+// Acceptable: clear prefix namespacing
+NeoStorage::put("t:b:alice", balance);  // token:balance:alice
+
+// Avoid: unnecessarily verbose keys
+NeoStorage::put("token_contract_balance_for_account_alice", balance);
+```
+
+### Mark Read-Only Methods as Safe
+
+Methods marked with `#[neo_method(safe)]` or `#[neo_safe]` have lower invocation costs because NeoVM knows they won't modify state:
+
+```rust
+#[neo_method(safe)]
+pub fn total_supply() -> i64 {
+    TOTAL_SUPPLY
+}
+
+#[neo_method(safe)]
+pub fn balance_of(account: i64) -> i64 {
+    NeoStorage::get(&format!("b:{}", account)).unwrap_or(0)
+}
+```
+
+<Aside type="note">
+Safe methods can still read storage — they just can't write to it. The NeoVM enforces this at runtime.
+</Aside>
+
+### Use Checked Arithmetic Judiciously
+
+`checked_add`, `checked_sub`, and `checked_mul` add a branch instruction per operation. Use them where overflow is a real risk (user-supplied values, token amounts), but plain arithmetic is fine for bounded internal counters:
+
+```rust
+// Use checked arithmetic for user inputs
+let new_balance = balance.checked_add(amount)
+    .ok_or_else(|| NeoError::new("overflow"))?;
+
+// Plain arithmetic is fine for bounded values
+let index = current_index + 1; // index is always < MAX_PROPOSALS
+```
+
+### Avoid Unnecessary Allocations
+
+In the Wasm → NeoVM pipeline, allocations translate to stack operations. Minimize dynamic allocations:
+
+```rust
+// BAD: Allocating a Vec just to count items
+let items: Vec<_> = storage_find("prefix:").collect();
+let count = items.len();
+
+// GOOD: Count without collecting
+let mut count = 0;
+let iter = NeoStorage::find("prefix:");
+while iter.next() {
+    count += 1;
+}
+```
+
+## NEF Size Reduction
+
+Neo N3 has deployment size limits. Large NEF files also cost more GAS to deploy.
+
+### Check NEF Size
+
+After translation, check the output size:
+
+```bash
+ls -la build/MyContract.nef
+```
+
+The example contracts in this repository produce sub-1 KB NEF artifacts thanks to the aggressive profile settings.
+
+### Reduce Method Count
+
+Each exported method adds overhead to the NEF (method tokens, ABI entries). Only export methods that callers need:
+
+```rust
+// Public API — exported
+#[neo_method]
+pub fn transfer(from: i64, to: i64, amount: i64) -> bool {
+    transfer_internal(from, to, amount)
+}
+
+// Internal helper — NOT exported, no NEF overhead
+fn transfer_internal(from: i64, to: i64, amount: i64) -> bool {
+    // ... implementation ...
+}
+```
+
+## Profiling with Neo Express
+
+Neo Express reports GAS consumption for each invocation:
+
+```bash
+neoxp contract invoke <hash> transfer -- 1 2 100
+```
+
+The output includes:
+
+- GAS consumed
+- Stack result
+- Storage changes
+- Notifications emitted
+
+Compare GAS costs before and after optimizations to measure improvement.
+
+## Optimization Checklist
+
+- [ ] Release profile uses `opt-level = "z"`, `lto`, `codegen-units = 1`, `panic = "abort"`, `strip = "symbols"`
+- [ ] No unnecessary dependencies in `Cargo.toml`
+- [ ] Storage reads are not duplicated within the same method
+- [ ] Storage keys are short and namespaced
+- [ ] Read-only methods are marked `safe`
+- [ ] Checked arithmetic is used for user-supplied values
+- [ ] NEF size is within deployment limits
+- [ ] GAS consumption has been profiled on Neo Express

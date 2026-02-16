@@ -1,0 +1,297 @@
+---
+title: Testing Strategy
+description: Three-tier testing approach for Neo N3 Rust smart contracts — unit tests, integration tests, and on-chain smoke tests.
+draft: false
+---
+
+import { Steps, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Smart contracts are immutable once deployed. Bugs cannot be patched -- they require a full redeployment to a new address. A rigorous testing strategy is non-negotiable. neo-llvm supports three tiers of testing, each catching a different class of defect.
+
+## The Three Tiers
+
+| Tier | What It Tests | Runs On | Speed | Command |
+|---|---|---|---|---|
+| 1. Unit tests | Business logic, validation, math | Native Rust (`x86_64`) | Fast | `cargo test` |
+| 2. Integration tests | Wasm compilation, NEF output, manifest correctness | Wasm + translator | Medium | `make test-contracts` |
+| 3. Smoke tests | Deployment, invocation, on-chain behavior | Neo Express | Slow | `make smoke-neoxp` |
+
+Each tier builds on the one below it. Run all three before any deployment.
+
+## Tier 1: Unit Tests
+
+Standard Rust `#[test]` functions that run natively on your development machine. No Wasm compilation, no NeoVM, no blockchain. These test pure business logic.
+
+### Writing Unit Tests
+
+```rust
+use neo_devpack::prelude::*;
+
+const TOTAL_SUPPLY: i64 = 1_000_000;
+
+fn balance_of_internal(account: i64) -> i64 {
+    if account == 1 { 750_000 }
+    else if account == 2 { 250_000 }
+    else { 0 }
+}
+
+fn transfer_internal(from: i64, to: i64, amount: i64) -> bool {
+    from > 0 && to > 0 && from != to && amount > 0
+}
+
+#[neo_contract]
+pub struct TokenContract;
+
+#[neo_contract]
+impl TokenContract {
+    #[neo_method(safe)]
+    pub fn total_supply() -> i64 { TOTAL_SUPPLY }
+
+    #[neo_method(safe)]
+    pub fn balance_of(account: i64) -> i64 { balance_of_internal(account) }
+
+    #[neo_method]
+    pub fn transfer(from: i64, to: i64, amount: i64) -> bool {
+        transfer_internal(from, to, amount)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TokenContract;
+
+    #[test]
+    fn total_supply_returns_constant() {
+        assert_eq!(TokenContract::total_supply(), 1_000_000);
+    }
+
+    #[test]
+    fn balance_distribution_is_deterministic() {
+        assert_eq!(TokenContract::balance_of(1), 750_000);
+        assert_eq!(TokenContract::balance_of(2), 250_000);
+        assert_eq!(TokenContract::balance_of(3), 0);
+    }
+
+    #[test]
+    fn transfer_rejects_invalid_inputs() {
+        // Valid transfer
+        assert!(TokenContract::transfer(1, 2, 100));
+
+        // Self-transfer rejected
+        assert!(!TokenContract::transfer(1, 1, 100));
+
+        // Zero amount rejected
+        assert!(!TokenContract::transfer(1, 2, 0));
+
+        // Invalid addresses rejected
+        assert!(!TokenContract::transfer(0, 2, 100));
+        assert!(!TokenContract::transfer(1, 0, 100));
+    }
+}
+```
+
+### Key Pattern: Separate Logic from Entry Points
+
+The contract methods delegate to free functions (`balance_of_internal`, `transfer_internal`). This makes the logic directly callable in tests without going through the macro-generated entry points.
+
+```rust
+// Internal function -- testable without #[neo_contract] machinery
+fn validate_proposal(proposer: i64, vote_start: i64, vote_end: i64) -> bool {
+    proposer > 0 && vote_start >= 0 && vote_end > vote_start
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_proposal;
+
+    #[test]
+    fn proposal_validation_edge_cases() {
+        assert!(validate_proposal(1, 0, 100));
+        assert!(!validate_proposal(0, 0, 100));   // invalid proposer
+        assert!(!validate_proposal(1, 100, 100));  // end == start
+        assert!(!validate_proposal(1, 100, 50));   // end < start
+    }
+}
+```
+
+### Running Unit Tests
+
+```bash
+# Test a single contract
+cargo test --manifest-path contracts/nep17-token/Cargo.toml
+
+# Test all contracts
+make test-contracts
+
+# Test the devpack SDK itself
+cargo test --manifest-path rust-devpack/Cargo.toml
+
+# Test the translator
+cargo test --manifest-path wasm-neovm/Cargo.toml
+
+# Run everything
+make test
+```
+
+## Tier 2: Integration Tests
+
+Integration tests verify that contracts compile to valid Wasm, translate to correct NEF output, and produce expected manifests. These catch issues that unit tests miss -- macro expansion bugs, ABI mismatches, and translator regressions.
+
+### What Integration Tests Check
+
+- The contract compiles to `wasm32-unknown-unknown` without errors.
+- The `wasm-neovm` translator produces a valid NEF binary.
+- The generated manifest contains the expected methods, parameters, return types, and `safe` flags.
+- Manifest overlays merge correctly (name, supported standards, permissions).
+- Event definitions appear in the manifest's `abi.events` array.
+
+### Running Integration Tests
+
+```bash
+# Build all contracts (compilation + translation)
+make examples
+
+# Run the translator's own test suite (includes NEF validation)
+cargo test --manifest-path wasm-neovm/Cargo.toml
+
+# Run cross-chain integration tests
+make test-cross-chain
+```
+
+### Manifest Comparison
+
+Use `--compare-manifest` to verify that the generated manifest matches a checked-in baseline:
+
+```bash
+cargo run --manifest-path wasm-neovm/Cargo.toml -- \
+  --input build/NEP17.snip.wasm \
+  --nef /dev/null \
+  --manifest /dev/null \
+  --name SampleNEP17 \
+  --compare-manifest expected/NEP17.manifest.json
+```
+
+If the manifests differ, the translator exits non-zero and prints the diff. This is useful in CI to catch unintended ABI changes.
+
+### Contract Test Verification
+
+The project includes a script that ensures every contract crate defines at least one test:
+
+```bash
+make verify-contract-tests
+```
+
+This runs `scripts/verify_contract_tests.sh`, which scans each contract's source for `#[test]` attributes and fails if any contract has zero tests.
+
+## Tier 3: Smoke Tests
+
+Smoke tests deploy contracts to a local Neo Express instance and invoke methods on-chain. They verify the full end-to-end path: NEF loading, manifest parsing, method dispatch, storage operations, and event emission.
+
+### Prerequisites
+
+| Tool | Install |
+|---|---|
+| .NET SDK 8.0+ | [dotnet.microsoft.com](https://dotnet.microsoft.com/download) |
+| Neo Express | `dotnet tool install Neo.Express -g` |
+
+### Running Smoke Tests
+
+```bash
+make smoke-neoxp
+```
+
+This runs `scripts/neoxp_smoke.sh`, which:
+
+<Steps>
+
+1. Creates a fresh Neo Express chain (or resets an existing one).
+2. Deploys each compiled contract from the `build/` directory.
+3. Invokes key methods on each contract.
+4. Verifies return values and transaction success.
+5. Checks application logs for expected events.
+
+</Steps>
+
+### Writing Custom Smoke Tests
+
+The `integration-tests` crate provides a Rust harness for Neo Express:
+
+```bash
+# Requires NEO_EXPRESS_RPC environment variable
+NEO_EXPRESS_RPC=http://localhost:50012 \
+  cargo test --manifest-path integration-tests/Cargo.toml -- --ignored
+```
+
+<Aside type="note">
+  Smoke tests are marked `#[ignore]` by default because they require a running Neo Express instance. The `-- --ignored` flag tells cargo to run them.
+</Aside>
+
+## Test Commands Summary
+
+| Command | What It Runs |
+|---|---|
+| `make test` | Translator tests + devpack tests + all contract unit tests |
+| `make test-contracts` | Unit tests for every contract crate |
+| `make test-cross-chain` | Cross-chain compatibility test suites |
+| `make verify-contract-tests` | Verify every contract has at least one test |
+| `make integration-tests` | Neo Express integration harness (requires running instance) |
+| `make smoke-neoxp` | Full deploy-and-invoke smoke checks |
+
+## Code Coverage
+
+Use `cargo-tarpaulin` to measure test coverage:
+
+```bash
+# Install tarpaulin
+cargo install cargo-tarpaulin
+
+# Coverage for the translator
+cargo tarpaulin --manifest-path wasm-neovm/Cargo.toml --out Html
+
+# Coverage for the devpack
+cargo tarpaulin --manifest-path rust-devpack/Cargo.toml --out Html
+
+# Coverage for a specific contract
+cargo tarpaulin --manifest-path contracts/nep17-token/Cargo.toml --out Html
+```
+
+The HTML report shows line-by-line coverage. Aim for high coverage on business logic functions -- the internal helpers that unit tests exercise directly.
+
+<Aside type="tip">
+  Coverage for macro-generated code (the `#[neo_contract]` export shims) will appear low because those code paths only execute in the Wasm target. Focus coverage efforts on the business logic that runs natively.
+</Aside>
+
+## CI Pipeline
+
+A typical CI configuration runs all three tiers:
+
+```yaml
+# .github/workflows/test.yml (simplified)
+jobs:
+  test:
+    steps:
+      - name: Unit + translator tests
+        run: make test
+
+      - name: Build all contracts
+        run: make examples
+
+      - name: Smoke tests
+        run: make smoke-neoxp
+```
+
+The project's CI runs `make test` and `make examples` on every push. Smoke tests run on a schedule or before releases.
+
+## Best Practices
+
+- Test validation logic exhaustively in Tier 1. Edge cases (zero values, overflow, self-transfers) are cheapest to catch here.
+- Keep unit tests fast. They should run in under a second per contract. If a test needs blockchain state, it belongs in Tier 2 or 3.
+- Use `make verify-contract-tests` in CI to prevent contracts from shipping without tests.
+- Run `make examples` in CI to catch compilation and translation regressions early.
+- Reserve smoke tests for critical paths: deployment, token transfers, permission checks.
+
+## What's Next
+
+- [Building Contracts](/guides/building/) -- compile contracts before testing them.
+- [Deployment](/guides/deployment/) -- deploy tested contracts to Neo Express and beyond.
+- [Error Handling](/guides/error-handling/) -- test error paths with `NeoResult`.

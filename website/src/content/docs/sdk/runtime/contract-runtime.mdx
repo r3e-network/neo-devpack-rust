@@ -1,0 +1,369 @@
+---
+title: Contract Runtime
+description: Cross-contract invocation, dynamic dispatch, and return value handling for Neo N3 smart contracts.
+draft: false
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+`NeoContractRuntime` handles interactions between deployed contracts on the Neo N3 blockchain. It wraps the `System.Contract.Call` syscall, enabling your contract to invoke methods on other contracts, pass parameters, and process return values.
+
+```rust
+use neo_devpack::prelude::*;
+
+#[neo_method]
+pub fn check_token_balance(token: ScriptHash, account: ScriptHash) -> i64 {
+    NeoContractRuntime::call(
+        token,
+        "balanceOf",
+        CallFlags::ReadOnly,
+        &[NeoValue::from(account)],
+    )
+    .as_integer()
+}
+```
+
+## Cross-contract calls
+
+The core primitive is `NeoContractRuntime::call`, which invokes a method on another deployed contract by its script hash.
+
+**Syscall:** `System.Contract.Call`
+
+```rust
+use neo_devpack::prelude::*;
+
+fn transfer_gas(from: ScriptHash, to: ScriptHash, amount: i64) -> bool {
+    let gas_hash = ScriptHash::from_hex("d2a4cff31913016155e38e474a2c06d08be276cf");
+
+    let result = NeoContractRuntime::call(
+        gas_hash,
+        "transfer",
+        CallFlags::All,
+        &[
+            NeoValue::from(from),
+            NeoValue::from(to),
+            NeoValue::Integer(NeoInteger::new(amount)),
+            NeoValue::Null,  // data parameter
+        ],
+    );
+
+    result.as_bool()
+}
+```
+
+| Item | Detail |
+|------|--------|
+| Parameters | `target: ScriptHash`, `method: &str`, `flags: CallFlags`, `args: &[NeoValue]` |
+| Returns | `NeoValue` — the return value from the called method |
+| GAS cost | Base cost + the GAS consumed by the called contract |
+
+### CallFlags
+
+The `flags` parameter controls what the called contract is permitted to do during the invocation:
+
+| Flag | Value | Description |
+|------|-------|-------------|
+| `CallFlags::None` | `0x00` | No permissions — the call will fail if the target tries anything |
+| `CallFlags::ReadStates` | `0x01` | Allow reading storage and blockchain state |
+| `CallFlags::WriteStates` | `0x02` | Allow writing to storage |
+| `CallFlags::AllowCall` | `0x04` | Allow the target to make further cross-contract calls |
+| `CallFlags::AllowNotify` | `0x08` | Allow the target to emit notifications |
+| `CallFlags::ReadOnly` | `0x05` | `ReadStates \| AllowCall` — read-only access |
+| `CallFlags::All` | `0x0F` | All permissions |
+
+```rust
+use neo_devpack::prelude::*;
+
+// Safe read — target cannot modify state or emit events
+let balance = NeoContractRuntime::call(
+    token_hash,
+    "balanceOf",
+    CallFlags::ReadOnly,
+    &[NeoValue::from(account)],
+);
+
+// Full access — target can read, write, call others, and notify
+let success = NeoContractRuntime::call(
+    token_hash,
+    "transfer",
+    CallFlags::All,
+    &[/* ... */],
+);
+```
+
+<Aside type="caution">
+  Use the most restrictive `CallFlags` that the operation requires. Granting `CallFlags::All` to an untrusted contract allows it to modify its own storage, call other contracts, and emit arbitrary notifications during your invocation.
+</Aside>
+
+---
+
+## Dynamic invocation patterns
+
+### Calling by contract hash
+
+The most common pattern is calling a known contract by its fixed script hash:
+
+```rust
+use neo_devpack::prelude::*;
+
+const NEO_TOKEN: ScriptHash = /* NEO native contract hash */;
+const GAS_TOKEN: ScriptHash = /* GAS native contract hash */;
+
+#[neo_method(safe)]
+pub fn get_neo_balance(account: ScriptHash) -> i64 {
+    NeoContractRuntime::call(
+        NEO_TOKEN,
+        "balanceOf",
+        CallFlags::ReadOnly,
+        &[NeoValue::from(account)],
+    )
+    .as_integer()
+}
+```
+
+### Calling a configurable contract
+
+For contracts whose target is determined at runtime (e.g., a DEX router calling arbitrary token contracts):
+
+```rust
+use neo_devpack::prelude::*;
+
+#[neo_method]
+pub fn swap(
+    token_in: ScriptHash,
+    token_out: ScriptHash,
+    sender: ScriptHash,
+    amount_in: i64,
+) -> i64 {
+    // Transfer token_in from sender to this contract
+    let deposited = NeoContractRuntime::call(
+        token_in,
+        "transfer",
+        CallFlags::All,
+        &[
+            NeoValue::from(sender),
+            NeoValue::from(NeoRuntimeContext::get_executing_script_hash()),
+            NeoValue::Integer(NeoInteger::new(amount_in)),
+            NeoValue::Null,
+        ],
+    )
+    .as_bool();
+
+    if !deposited {
+        NeoRuntime::log("deposit failed");
+        return 0;
+    }
+
+    // Calculate output amount and transfer token_out to sender
+    let amount_out = calculate_output(amount_in);
+
+    NeoContractRuntime::call(
+        token_out,
+        "transfer",
+        CallFlags::All,
+        &[
+            NeoValue::from(NeoRuntimeContext::get_executing_script_hash()),
+            NeoValue::from(sender),
+            NeoValue::Integer(NeoInteger::new(amount_out)),
+            NeoValue::Null,
+        ],
+    );
+
+    amount_out
+}
+```
+
+### Callback pattern
+
+A contract can pass its own script hash to another contract, which then calls back:
+
+```rust
+use neo_devpack::prelude::*;
+
+/// Request a price from an oracle contract, which will call
+/// our `on_price_response` method with the result.
+#[neo_method]
+pub fn request_price(oracle: ScriptHash, symbol: &str) {
+    let self_hash = NeoRuntimeContext::get_executing_script_hash();
+
+    NeoContractRuntime::call(
+        oracle,
+        "requestPrice",
+        CallFlags::All,
+        &[
+            NeoValue::from(self_hash),
+            NeoValue::String(NeoString::from_str("on_price_response")),
+            NeoValue::String(NeoString::from_str(symbol)),
+        ],
+    );
+}
+
+/// Called by the oracle contract with the price data.
+#[neo_method]
+pub fn on_price_response(symbol: &str, price: i64) {
+    // Verify the caller is the trusted oracle
+    let caller = NeoRuntimeContext::get_calling_script_hash();
+    let ctx = NeoStorage::get_context();
+    let trusted_oracle = NeoStorage::get(&ctx, b"oracle_hash");
+
+    if caller.as_bytes() != trusted_oracle.as_slice() {
+        NeoRuntime::log("untrusted caller");
+        return;
+    }
+
+    // Store the price
+    let key = storage_key("price", symbol.as_bytes());
+    NeoStorage::put_integer(&ctx, &key, price);
+}
+```
+
+---
+
+## Return value handling
+
+`NeoContractRuntime::call` always returns a `NeoValue`. Use the appropriate conversion method based on what the target method returns:
+
+| Target returns | Conversion | Example |
+|---------------|------------|---------|
+| Integer | `.as_integer()` | `result.as_integer()` → `i64` |
+| Boolean | `.as_bool()` | `result.as_bool()` → `bool` |
+| String | `.as_string()` | `result.as_string()` → `NeoString` |
+| Byte array | `.as_bytes()` | `result.as_bytes()` → `Vec<u8>` |
+| Array | `.as_array()` | `result.as_array()` → `NeoArray<NeoValue>` |
+| Map | `.as_map()` | `result.as_map()` → `NeoMap<NeoValue, NeoValue>` |
+| Void | (ignore) | The return value is `NeoValue::Null` |
+
+```rust
+use neo_devpack::prelude::*;
+
+fn query_token_info(token: ScriptHash) -> (NeoString, i64) {
+    let symbol = NeoContractRuntime::call(
+        token, "symbol", CallFlags::ReadOnly, &[],
+    ).as_string();
+
+    let decimals = NeoContractRuntime::call(
+        token, "decimals", CallFlags::ReadOnly, &[],
+    ).as_integer();
+
+    (symbol, decimals)
+}
+```
+
+<Aside type="tip">
+  If the called contract aborts (e.g., via an assertion failure), the entire transaction reverts — including any state changes your contract made before the call. Design your logic to validate inputs before making cross-contract calls when possible.
+</Aside>
+
+---
+
+## Additional contract utilities
+
+### get_call_flags
+
+Returns the `CallFlags` that were used to invoke the current contract. Useful for contracts that need to verify they were called with sufficient permissions.
+
+**Syscall:** `System.Contract.GetCallFlags`
+
+```rust
+use neo_devpack::prelude::*;
+
+#[neo_method]
+pub fn requires_write_access() -> bool {
+    let flags = NeoContractRuntime::get_call_flags();
+    if flags & CallFlags::WriteStates == CallFlags::None {
+        NeoRuntime::log("caller did not grant write access");
+        return false;
+    }
+    // ... proceed with state modifications
+    true
+}
+```
+
+### create_standard_account
+
+Converts a public key into a standard Neo N3 account script hash.
+
+**Syscall:** `System.Contract.CreateStandardAccount`
+
+```rust
+use neo_devpack::prelude::*;
+
+#[neo_method(safe)]
+pub fn pubkey_to_account(pubkey: &[u8]) -> ScriptHash {
+    NeoContractRuntime::create_standard_account(pubkey)
+}
+```
+
+---
+
+## Complete example
+
+A vault contract that interacts with the GAS token contract:
+
+```rust
+use neo_devpack::prelude::*;
+
+neo_manifest_overlay!(r#"{
+    "name": "GasVault",
+    "features": { "storage": true },
+    "permissions": [
+        { "contract": "*", "methods": ["transfer", "balanceOf"] }
+    ]
+}"#);
+
+const GAS_HASH: ScriptHash = /* GAS native contract hash */;
+
+#[neo_contract]
+pub struct GasVault;
+
+#[neo_contract]
+impl GasVault {
+    pub fn new() -> Self { Self }
+
+    /// Deposit GAS into the vault. The caller must have approved
+    /// this contract to transfer on their behalf.
+    #[neo_method]
+    pub fn deposit(sender: ScriptHash, amount: i64) -> bool {
+        if !NeoRuntime::check_witness(sender) {
+            return false;
+        }
+
+        let self_hash = NeoRuntimeContext::get_executing_script_hash();
+
+        let transferred = NeoContractRuntime::call(
+            GAS_HASH,
+            "transfer",
+            CallFlags::All,
+            &[
+                NeoValue::from(sender),
+                NeoValue::from(self_hash),
+                NeoValue::Integer(NeoInteger::new(amount)),
+                NeoValue::Null,
+            ],
+        )
+        .as_bool();
+
+        if transferred {
+            let ctx = NeoStorage::get_context();
+            let key = storage_key("deposit", &sender);
+            let current = NeoStorage::get_integer(&ctx, &key);
+            NeoStorage::put_integer(&ctx, &key, current + amount);
+        }
+
+        transferred
+    }
+
+    /// Check the vault's total GAS balance via cross-contract call.
+    #[neo_method(safe)]
+    pub fn vault_balance() -> i64 {
+        let self_hash = NeoRuntimeContext::get_executing_script_hash();
+
+        NeoContractRuntime::call(
+            GAS_HASH,
+            "balanceOf",
+            CallFlags::ReadOnly,
+            &[NeoValue::from(self_hash)],
+        )
+        .as_integer()
+    }
+}
+```

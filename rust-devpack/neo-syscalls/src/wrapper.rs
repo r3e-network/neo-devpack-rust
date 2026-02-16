@@ -88,28 +88,37 @@ pub fn neovm_syscall(hash: u32, args: &[NeoValue]) -> NeoResult<NeoValue> {
 pub struct NeoVMSyscall;
 
 impl NeoVMSyscall {
+    fn call_value(name: &str, args: &[NeoValue]) -> NeoResult<NeoValue> {
+        neovm_syscall(syscall_hash(name)?, args)
+    }
+
     fn call_integer(name: &str) -> NeoResult<NeoInteger> {
-        let value = neovm_syscall(syscall_hash(name)?, &[])?;
+        let value = Self::call_value(name, &[])?;
         value.as_integer().ok_or(NeoError::InvalidType)
     }
 
     fn call_boolean(name: &str, args: &[NeoValue]) -> NeoResult<NeoBoolean> {
-        let value = neovm_syscall(syscall_hash(name)?, args)?;
+        let value = Self::call_value(name, args)?;
         value.as_boolean().ok_or(NeoError::InvalidType)
     }
 
     fn call_bytes(name: &str) -> NeoResult<NeoByteString> {
-        let value = neovm_syscall(syscall_hash(name)?, &[])?;
+        let value = Self::call_value(name, &[])?;
+        value.as_byte_string().cloned().ok_or(NeoError::InvalidType)
+    }
+
+    fn call_bytes_with_args(name: &str, args: &[NeoValue]) -> NeoResult<NeoByteString> {
+        let value = Self::call_value(name, args)?;
         value.as_byte_string().cloned().ok_or(NeoError::InvalidType)
     }
 
     fn call_string(name: &str) -> NeoResult<NeoString> {
-        let value = neovm_syscall(syscall_hash(name)?, &[])?;
+        let value = Self::call_value(name, &[])?;
         value.as_string().cloned().ok_or(NeoError::InvalidType)
     }
 
     fn call_array(name: &str, args: &[NeoValue]) -> NeoResult<NeoArray<NeoValue>> {
-        let value = neovm_syscall(syscall_hash(name)?, args)?;
+        let value = Self::call_value(name, args)?;
         value.as_array().cloned().ok_or(NeoError::InvalidType)
     }
 
@@ -192,6 +201,117 @@ impl NeoVMSyscall {
 
     pub fn get_script_container() -> NeoResult<NeoArray<NeoValue>> {
         Self::call_array("System.Runtime.GetScriptContainer", &[])
+    }
+
+    /// Burn GAS.
+    pub fn burn_gas(gas: &NeoInteger) -> NeoResult<()> {
+        let args = [NeoValue::from(gas.clone())];
+        Self::call_value("System.Runtime.BurnGas", &args)?;
+        Ok(())
+    }
+
+    /// Get active transaction signers.
+    pub fn current_signers() -> NeoResult<NeoArray<NeoValue>> {
+        Self::call_array("System.Runtime.CurrentSigners", &[])
+    }
+
+    /// Dynamically load and execute a script.
+    pub fn load_script(
+        script: &NeoByteString,
+        call_flags: &NeoInteger,
+        args: &NeoArray<NeoValue>,
+    ) -> NeoResult<()> {
+        let values = [
+            NeoValue::from(script.clone()),
+            NeoValue::from(call_flags.clone()),
+            NeoValue::from(args.clone()),
+        ];
+        Self::call_value("System.Runtime.LoadScript", &values)?;
+        Ok(())
+    }
+
+    /// Call any contract method.
+    pub fn contract_call(
+        script_hash: &NeoByteString,
+        method: &NeoString,
+        call_flags: &NeoInteger,
+        args: &NeoArray<NeoValue>,
+    ) -> NeoResult<NeoValue> {
+        let values = [
+            NeoValue::from(script_hash.clone()),
+            NeoValue::from(method.clone()),
+            NeoValue::from(call_flags.clone()),
+            NeoValue::from(args.clone()),
+        ];
+        Self::call_value("System.Contract.Call", &values)
+    }
+
+    /// Call a native contract by id.
+    pub fn contract_call_native(native_id: &NeoInteger) -> NeoResult<NeoValue> {
+        let values = [NeoValue::from(native_id.clone())];
+        Self::call_value("System.Contract.CallNative", &values)
+    }
+
+    pub fn get_call_flags() -> NeoResult<NeoInteger> {
+        Self::call_integer("System.Contract.GetCallFlags")
+    }
+
+    pub fn create_standard_account(pubkey: &NeoByteString) -> NeoResult<NeoByteString> {
+        let values = [NeoValue::from(pubkey.clone())];
+        Self::call_bytes_with_args("System.Contract.CreateStandardAccount", &values)
+    }
+
+    pub fn create_multisig_account(
+        threshold: &NeoInteger,
+        public_keys: &NeoArray<NeoValue>,
+    ) -> NeoResult<NeoByteString> {
+        let values = [
+            NeoValue::from(threshold.clone()),
+            NeoValue::from(public_keys.clone()),
+        ];
+        Self::call_bytes_with_args("System.Contract.CreateMultisigAccount", &values)
+    }
+
+    pub fn native_on_persist() -> NeoResult<()> {
+        Self::call_value("System.Contract.NativeOnPersist", &[])?;
+        Ok(())
+    }
+
+    pub fn native_post_persist() -> NeoResult<()> {
+        Self::call_value("System.Contract.NativePostPersist", &[])?;
+        Ok(())
+    }
+
+    pub fn check_sig(
+        pubkey: &NeoByteString,
+        signature: &NeoByteString,
+    ) -> NeoResult<NeoBoolean> {
+        let values = [
+            NeoValue::from(pubkey.clone()),
+            NeoValue::from(signature.clone()),
+        ];
+        Self::call_boolean("System.Crypto.CheckSig", &values)
+    }
+
+    pub fn check_multisig(
+        pubkeys: &NeoArray<NeoValue>,
+        signatures: &NeoArray<NeoValue>,
+    ) -> NeoResult<NeoBoolean> {
+        let values = [
+            NeoValue::from(pubkeys.clone()),
+            NeoValue::from(signatures.clone()),
+        ];
+        Self::call_boolean("System.Crypto.CheckMultisig", &values)
+    }
+
+    pub fn iterator_next(items: &NeoArray<NeoValue>) -> NeoResult<NeoBoolean> {
+        let values = [NeoValue::from(items.clone())];
+        Self::call_boolean("System.Iterator.Next", &values)
+    }
+
+    pub fn iterator_value(items: &NeoArray<NeoValue>) -> NeoResult<NeoValue> {
+        let values = [NeoValue::from(items.clone())];
+        Self::call_value("System.Iterator.Value", &values)
     }
 
     #[cfg(not(target_arch = "wasm32"))]

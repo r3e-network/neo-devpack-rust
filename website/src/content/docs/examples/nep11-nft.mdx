@@ -1,0 +1,138 @@
+---
+title: NEP-11 Non-Fungible Token
+description: NEP-11 non-fungible token implementation in Rust with minting, ownership tracking, and token transfers.
+draft: false
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+The NEP-11 standard defines the interface for non-fungible tokens on Neo N3. This example implements the core NFT operations: total supply, balance queries, ownership lookups, minting, and transfers.
+
+## What You Will Learn
+
+- Implementing the NEP-11 standard interface
+- Token ID management and ownership mapping
+- Separating read-only queries from state-mutating operations
+- Input validation patterns for NFT operations
+
+## Full Source
+
+```rust
+// contracts/nep11-nft/src/lib.rs
+use neo_devpack::prelude::*;
+
+neo_manifest_overlay!(
+    r#"{
+    "name": "SampleNEP11",
+    "supportedstandards": ["NEP-11"]
+}"#
+);
+
+const TOTAL_SUPPLY: i64 = 1_000;
+
+fn balance_of_internal(owner: i64) -> i64 {
+    if owner > 0 { 1 } else { 0 }
+}
+
+fn owner_of_internal(token_id: i64) -> i64 {
+    if token_id <= 0 { 0 } else { (token_id % 10) + 1 }
+}
+
+fn mint_internal(owner: i64, token_id: i64) -> bool {
+    owner > 0 && token_id > 0
+}
+
+fn transfer_internal(from: i64, to: i64, token_id: i64) -> bool {
+    from > 0 && to > 0 && from != to && token_id > 0
+}
+
+#[neo_contract]
+pub struct SampleNep11Contract;
+
+#[neo_contract]
+impl SampleNep11Contract {
+    pub fn new() -> Self {
+        Self
+    }
+
+    #[neo_method(safe)]
+    pub fn total_supply() -> i64 {
+        TOTAL_SUPPLY
+    }
+
+    #[neo_method(safe)]
+    pub fn balance_of(owner: i64) -> i64 {
+        balance_of_internal(owner)
+    }
+
+    #[neo_method(safe)]
+    pub fn owner_of(token_id: i64) -> i64 {
+        owner_of_internal(token_id)
+    }
+
+    #[neo_method]
+    pub fn mint(owner: i64, token_id: i64) -> bool {
+        mint_internal(owner, token_id)
+    }
+
+    #[neo_method]
+    pub fn transfer(from: i64, to: i64, token_id: i64) -> bool {
+        transfer_internal(from, to, token_id)
+    }
+}
+
+impl Default for SampleNep11Contract {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+```
+
+## Key Patterns
+
+**NEP-11 standard declaration** — `"supportedstandards": ["NEP-11"]` in the manifest overlay signals NFT compliance to wallets and explorers.
+
+**Ownership mapping** — `owner_of_internal` maps a token ID to its owner. In this example, ownership is derived deterministically (`(token_id % 10) + 1`). A production contract would use storage to track the actual owner of each token.
+
+**Safe query methods** — `total_supply`, `balance_of`, and `owner_of` are all marked `#[neo_method(safe)]`. These are read-only operations that can be called without spending GAS.
+
+**Transfer validation** — The transfer function enforces:
+1. Both sender and receiver must be valid
+2. Sender and receiver must be different addresses
+3. Token ID must be positive (valid)
+
+**Mint validation** — Minting requires both a valid owner and a valid token ID. In production, you would also check that the token ID does not already exist.
+
+## Build
+
+```bash
+make nep11-nft
+```
+
+This produces `build/NEP11.nef` and `build/NEP11.manifest.json`.
+
+## Tests
+
+```bash
+cargo test --manifest-path contracts/nep11-nft/Cargo.toml
+```
+
+The test suite covers:
+- Supply returns the constant 1,000
+- Balance returns 1 for valid owners, 0 for invalid
+- Ownership derivation is consistent (`owner_of(12)` returns 3)
+- Mint rejects zero owner or zero token ID
+- Transfer rejects self-transfers and invalid token IDs
+
+## What to Look For
+
+In the generated `NEP11.manifest.json`:
+
+- `supportedstandards` contains `"NEP-11"`
+- `abi.methods` includes `total_supply`, `balance_of`, `owner_of`, `mint`, and `transfer`
+- The three query methods have `"safe": true`
+- `mint` and `transfer` have `"safe": false`
+
+<Aside type="tip">
+Compare this contract side-by-side with the [NEP-17 Token](/examples/nep17-token/) to see how the two token standards differ. NEP-11 adds `owner_of` and uses token IDs, while NEP-17 operates purely on account balances.
+</Aside>

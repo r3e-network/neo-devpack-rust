@@ -1,0 +1,165 @@
+---
+title: Error Handling
+description: Error types, result aliases, and deterministic error signaling for Neo N3 smart contracts in Rust.
+draft: false
+---
+
+The `neo-types` crate provides `NeoError` and `NeoResult<T>` for structured error handling in Neo N3 contracts. Errors carry stable status codes that map to NeoVM behavior without silently swallowing failures.
+
+## NeoError
+
+An enum representing all error conditions that can occur during contract execution.
+
+```rust
+use neo_types::NeoError;
+
+let err = NeoError::InvalidArgument;
+let custom = NeoError::new("insufficient balance");
+```
+
+### Variants
+
+| Variant | Status Code | Description |
+|---------|:-----------:|-------------|
+| `InvalidOperation` | 1 | Operation not valid in the current context |
+| `InvalidArgument` | 2 | Argument has an invalid value or type |
+| `InvalidType` | 3 | Type mismatch during execution |
+| `OutOfBounds` | 4 | Index or offset exceeds valid range |
+| `DivisionByZero` | 5 | Attempted division by zero |
+| `Overflow` | 6 | Arithmetic overflow |
+| `Underflow` | 7 | Arithmetic underflow |
+| `NullReference` | 8 | Dereferenced a null or invalid reference |
+| `InvalidState` | 9 | Internal state is invalid or corrupted |
+| `Custom(String)` | 10 | Application-specific error with a message |
+
+### Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `NeoError::new(msg)` | `NeoError` | Create a `Custom` variant with the given message |
+| `status_code()` | `i64` | Stable numeric code for this error variant |
+| `message()` | `&str` | Custom message if `Custom`, otherwise the variant name |
+| `as_str()` | `&'static str` | Static string name of the variant (e.g. `"OutOfBounds"`) |
+
+`NeoError` also implements `Display`, producing a human-readable description:
+
+```rust
+use neo_types::NeoError;
+
+let err = NeoError::DivisionByZero;
+println!("{}", err);
+// "Division by zero: cannot divide by zero"
+```
+
+---
+
+## NeoResult\<T\>
+
+A type alias for `Result<T, NeoError>`. This is the standard return type for fallible contract methods.
+
+```rust
+use neo_types::{NeoResult, NeoError, NeoInteger};
+
+fn safe_divide(a: &NeoInteger, b: &NeoInteger) -> NeoResult<NeoInteger> {
+    if b.try_as_i64() == Some(0) {
+        return Err(NeoError::DivisionByZero);
+    }
+    Ok(a / b)
+}
+```
+
+### Using the ? operator
+
+`NeoResult` works with Rust's `?` operator for concise error propagation:
+
+```rust
+use neo_types::{NeoResult, NeoError};
+
+fn transfer(from: &[u8], to: &[u8], amount: i64) -> NeoResult<()> {
+    if amount <= 0 {
+        return Err(NeoError::InvalidArgument);
+    }
+    let balance = get_balance(from)?;
+    if balance < amount {
+        return Err(NeoError::new("insufficient balance"));
+    }
+    // ... perform transfer
+    Ok(())
+}
+# fn get_balance(_: &[u8]) -> NeoResult<i64> { Ok(100) }
+```
+
+---
+
+## Status codes and NeoVM mapping
+
+Each `NeoError` variant has a stable `status_code()` used by generated export wrappers. This prevents the ABI from silently treating a failed method as returning `0` (which could be confused with a valid integer result).
+
+### How it works
+
+When a contract method returns `Err(e)`:
+
+1. The export wrapper calls `e.status_code()` to get the numeric code
+2. The status code is written to a per-method `LastError` slot
+3. The caller can inspect the slot to distinguish success from failure
+
+This is deterministic — the same error always produces the same status code, which is critical for consensus across Neo nodes.
+
+```rust
+use neo_types::NeoError;
+
+let err = NeoError::Overflow;
+assert_eq!(err.status_code(), 6);
+
+let custom = NeoError::new("something went wrong");
+assert_eq!(custom.status_code(), 10);
+```
+
+### NeoVM ABORT vs status codes
+
+Not all errors result in a status code return. Some conditions cause the NeoVM to `ABORT` the entire transaction:
+
+| Scenario | Behavior |
+|----------|----------|
+| Method returns `Err(e)` | Status code written to `LastError` slot; caller decides how to proceed |
+| Uncaught panic / `assert!` failure | NeoVM `ABORT` — transaction reverts entirely |
+| GAS exhaustion | NeoVM `FAULT` — transaction reverts |
+
+Use `NeoResult` for recoverable errors that callers should handle. Use `assert!` or `panic!` only for invariant violations that should halt execution.
+
+---
+
+## Patterns
+
+### Validating input at the boundary
+
+```rust
+use neo_types::{NeoResult, NeoError};
+
+#[neo_contract::public]
+fn set_name(name: &str) -> NeoResult<()> {
+    if name.is_empty() {
+        return Err(NeoError::InvalidArgument);
+    }
+    if name.len() > 64 {
+        return Err(NeoError::new("name exceeds 64 bytes"));
+    }
+    // store name...
+    Ok(())
+}
+```
+
+### Matching on error variants
+
+```rust
+use neo_types::{NeoResult, NeoError};
+
+fn handle_result(result: NeoResult<i64>) {
+    match result {
+        Ok(value) => { /* use value */ }
+        Err(NeoError::InvalidArgument) => { /* bad input */ }
+        Err(NeoError::Custom(msg)) => { /* application error: msg */ }
+        Err(other) => { /* unexpected: other.as_str() */ }
+    }
+}
+```

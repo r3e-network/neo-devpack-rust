@@ -1,0 +1,140 @@
+---
+title: "Memory Model"
+description: "How WebAssembly linear memory is emulated on NeoVM using static buffer slots, runtime helpers, and bulk memory operations."
+draft: false
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+NeoVM has no native linear memory. The `wasm-neovm` translator emulates Wasm's byte-addressable memory model using a NeoVM `Buffer` stored in a static slot, with runtime helpers that perform bounds-checked loads, stores, and bulk operations.
+
+## Representation
+
+Linear memory is backed by three static slots initialised during the first entry into any exported function:
+
+| Slot | Purpose |
+|------|---------|
+| 0 | The `Buffer` object representing the linear memory contents |
+| 1 | Current size in bytes (`current_size_bytes`) |
+| 2 | Current size in pages (`current_pages`, where 1 page = 64 KiB) |
+
+The buffer is zero-initialised on creation. Active data segments are applied during the first initialisation pass, populating the buffer before user code executes.
+
+## Memory Size and Growth
+
+### `memory.size`
+
+Returns the current page count from the bookkeeping slot. This is a thin wrapper that loads slot 2 and returns its value.
+
+### `memory.grow`
+
+Growth follows this sequence:
+
+1. Compute the new size: `current_pages + delta`
+2. Check against the declared maximum (if any); return `-1` on failure
+3. Allocate a new buffer via `NEWBUFFER` with the new byte size
+4. Copy the old contents into the new buffer via `MEMCPY`
+5. The new region is implicitly zero (NeoVM buffers are zero-initialised)
+6. Update bookkeeping slots (bytes and pages)
+7. Return the previous page count
+
+A failed grow (exceeding the maximum or resource limits) returns `-1` without modifying the existing memory.
+
+## Load and Store Operations
+
+Every load and store instruction dispatches to a runtime helper that:
+
+1. Computes the effective address: `base + offset`
+2. Performs a bounds check against the current buffer size
+3. Traps immediately on out-of-bounds access
+
+### Loads
+
+Byte slicing is performed with `SUBSTR` on the backing buffer:
+
+| Helper | Width | Sign Extension |
+|--------|-------|----------------|
+| `load_u8` | 1 byte | None (zero-extended) |
+| `load_u16` | 2 bytes | None (zero-extended) |
+| `load_u32` | 4 bytes | None (zero-extended) |
+| `load_u64` | 8 bytes | None |
+
+Signed load variants (`load8_s`, `load16_s`, `load32_s`) reuse the unsigned helper and apply sign extension via `SHL`/`SHR` pairs after the read.
+
+All loads produce little-endian values, matching Wasm semantics.
+
+### Stores
+
+Writes use staged `SETITEM` operations on the buffer:
+
+| Helper | Width |
+|--------|-------|
+| `store8` | 1 byte |
+| `store16` | 2 bytes |
+| `store32` | 4 bytes |
+| `store64` | 8 bytes |
+
+Multi-byte stores decompose the value into individual bytes (little-endian order) and write each byte to the buffer at the computed offset.
+
+## Bulk Memory Operations
+
+### `memory.fill`
+
+Fills a range of bytes with a given value. The helper validates that `dest + len` does not exceed the buffer size, then writes the fill value to each byte position.
+
+### `memory.copy`
+
+Copies `len` bytes from `src` to `dest` within the same linear memory. The implementation uses memmove-style overlap handling:
+
+- If `dest < src`, copy forward
+- If `dest > src`, copy backward
+- If `dest == src`, no-op
+
+This ensures correct behaviour when source and destination ranges overlap, matching the Wasm specification.
+
+### `memory.init`
+
+Copies bytes from a passive data segment into linear memory. The helper:
+
+1. Checks that the segment has not been dropped
+2. Validates source and destination bounds
+3. Copies the requested slice via `MEMCPY`
+
+### `data.drop`
+
+Marks a passive data segment as dropped by setting its drop flag. Subsequent `memory.init` calls referencing the dropped segment will trap.
+
+## Data Segments
+
+### Active Segments
+
+Active data segments (declared with a constant offset expression) are applied during the first memory initialisation. The translator emits `MEMCPY` operations that copy segment contents into the buffer at the declared offset before any user code runs.
+
+### Passive Segments
+
+Passive segments are cached in dedicated static slots alongside per-segment drop flags. They remain available for `memory.init` until explicitly dropped via `data.drop`. The drop flag prevents double-init scenarios and ensures Wasm semantics are preserved.
+
+## Environment Imports
+
+The translator recognises three memory-related imports from the `env` module:
+
+| Import | Signature | Behaviour |
+|--------|-----------|-----------|
+| `memcpy` | `(dest, src, len) -> dest` | Bounded copy, non-overlapping |
+| `memmove` | `(dest, src, len) -> dest` | Bounded copy, overlap-safe |
+| `memset` | `(dest, value, len) -> dest` | Bounded fill |
+
+Each shim expects three `i32` parameters and, when the Wasm signature includes a return value, returns the destination pointer. Calls are lowered to the same bounded runtime helpers used by the native memory instructions.
+
+## Constraints
+
+| Constraint | Detail |
+|------------|--------|
+| Single memory | Modules may declare at most one memory. Additional memories are rejected. |
+| 32-bit addressing | Memory addresses are 32-bit unsigned integers. |
+| Non-shared | Shared memory (for atomics) is not supported. |
+| Passive segments require memory | Modules without a defined memory cannot use passive data segments. |
+
+<Aside type="caution">
+  Every load and store performs a bounds check before accessing the buffer. While this adds overhead compared to native Wasm execution, it prevents out-of-bounds memory access from corrupting the NeoVM state. There is no "unsafe" fast path.
+</Aside>

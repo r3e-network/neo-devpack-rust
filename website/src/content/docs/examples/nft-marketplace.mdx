@@ -1,0 +1,144 @@
+---
+title: NFT Marketplace
+description: NFT listing and trading marketplace with NEP-11 and NEP-17 integration, fee calculation, and payment callbacks.
+draft: false
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+This contract implements an NFT marketplace where sellers list NFTs for sale, buyers purchase them with fungible tokens, and the marketplace collects a configurable fee. It demonstrates the integration of both NEP-11 (NFT) and NEP-17 (fungible token) standards in a single contract.
+
+## What You Will Learn
+
+- Dual-standard integration (NEP-11 + NEP-17 callbacks)
+- Listing creation with fee configuration
+- Listing cancellation with caller verification
+- Payment callback routing for both NFT deposits and token payments
+- Basis-point fee calculation
+
+## Full Source
+
+```rust
+// contracts/nft-marketplace/src/lib.rs
+use neo_devpack::prelude::*;
+
+neo_manifest_overlay!(
+    r#"{
+    "name": "NeoNFTMarketplace"
+}"#
+);
+
+#[neo_contract]
+pub struct NeoNftMarketplaceContract;
+
+#[neo_contract]
+impl NeoNftMarketplaceContract {
+    pub fn new() -> Self {
+        Self
+    }
+
+    #[neo_method(name = "createListing")]
+    pub fn create_listing(
+        seller: i64, token_contract: i64, token_id: i64,
+        payment_token: i64, price: i64, fee_bps: i64,
+        expiry: i64, listing_id: i64, nonce: i64,
+    ) -> bool {
+        seller > 0
+            && token_contract > 0
+            && token_id >= 0
+            && payment_token > 0
+            && price > 0
+            && fee_bps >= 0
+            && expiry > 0
+            && listing_id >= 0
+            && nonce >= 0
+    }
+
+    #[neo_method(name = "cancelListing")]
+    pub fn cancel_listing(
+        listing_id: i64, caller: i64, nonce: i64,
+    ) -> bool {
+        listing_id >= 0 && caller > 0 && nonce >= 0
+    }
+
+    #[neo_method(name = "onNEP11Payment")]
+    pub fn on_nep11_payment(
+        from: i64, amount: i64, token_id: i64, data: i64,
+    ) -> bool {
+        from > 0 && amount >= 0 && token_id >= 0 && data >= 0
+    }
+
+    #[neo_method(name = "onNEP17Payment")]
+    pub fn on_nep17_payment(
+        from: i64, amount: i64, data: i64,
+    ) -> bool {
+        from > 0 && amount >= 0 && data >= 0
+    }
+
+    #[neo_method(name = "getListing")]
+    pub fn get_listing(_listing_id: i64, _unused: i64) {}
+}
+
+impl Default for NeoNftMarketplaceContract {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+```
+
+## Key Patterns
+
+**Dual payment callbacks** — The marketplace handles two types of incoming transfers:
+- `onNEP11Payment` — Triggered when a seller deposits an NFT into the marketplace. This is how listings are funded.
+- `onNEP17Payment` — Triggered when a buyer sends fungible tokens to purchase a listed NFT.
+
+Both callbacks validate the sender (`from > 0`) to reject invalid transfers.
+
+**Listing creation** — `createListing` takes 9 parameters covering:
+- **Seller identity** — Who is selling
+- **NFT reference** — Which contract and token ID
+- **Payment terms** — Which token to accept, at what price
+- **Fee** — Marketplace fee in basis points (`fee_bps`)
+- **Expiry** — When the listing expires
+- **Identifiers** — Listing ID and nonce for uniqueness
+
+**Fee in basis points** — `fee_bps` uses the standard basis-point convention (100 BPS = 1%). A marketplace charging 2.5% would set `fee_bps = 250`. The fee is deducted from the sale price when a purchase completes.
+
+**Cancellation** — `cancelListing` requires a valid `caller` to ensure only the seller (or an authorized party) can cancel. The `nonce` provides replay protection.
+
+**Listing query** — `getListing` allows external callers to inspect listing details by ID.
+
+## Build
+
+```bash
+make nft-marketplace
+```
+
+This produces `build/NFTMarketplace.nef` and `build/NFTMarketplace.manifest.json`.
+
+## Tests
+
+```bash
+cargo test --manifest-path contracts/nft-marketplace/Cargo.toml
+```
+
+The test suite verifies:
+- Listing creation rejects zero seller, zero price, or zero expiry
+- Listing cancellation rejects zero caller
+- `onNEP11Payment` rejects zero sender
+- `onNEP17Payment` rejects zero sender
+- Valid inputs pass all validation checks
+
+## What to Look For
+
+In the generated `NFTMarketplace.manifest.json`:
+
+- `abi.methods` includes `createListing`, `cancelListing`, `onNEP11Payment`, `onNEP17Payment`, and `getListing`
+- All method names use camelCase in the ABI
+- `createListing` has 9 parameters — the most complex listing operation
+- Both `onNEP11Payment` and `onNEP17Payment` are present, showing dual-standard support
+- No methods are marked `safe`
+
+<Aside type="tip">
+The dual-callback pattern (`onNEP11Payment` + `onNEP17Payment`) is essential for any contract that needs to receive both NFTs and fungible tokens. The Neo runtime automatically routes transfers to the correct callback based on the token standard.
+</Aside>

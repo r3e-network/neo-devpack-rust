@@ -1,0 +1,213 @@
+---
+title: Building Contracts
+description: Compile Rust smart contracts to Wasm and translate them to NeoVM bytecode with the wasm-neovm toolchain.
+draft: false
+---
+
+import { Steps, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Every neo-llvm contract goes through two stages: Rust to Wasm, then Wasm to NeoVM. This page covers both stages, the CLI flags available, Cargo profile tuning, and batch workflows.
+
+## Prerequisites
+
+| Requirement | Minimum Version | Install |
+|---|---|---|
+| Rust toolchain | 1.83+ | [rustup.rs](https://rustup.rs/) |
+| Wasm target | `wasm32-unknown-unknown` | `rustup target add wasm32-unknown-unknown` |
+| wasm-snip (optional) | latest | `cargo install wasm-snip` |
+
+Verify your setup:
+
+```bash
+rustc --version          # 1.83.0 or later
+rustup target list --installed | grep wasm32
+```
+
+<Aside type="tip">
+  `wasm-snip` is optional but recommended. It strips Rust formatting and panicking code from the Wasm binary before translation, reducing NEF size significantly.
+</Aside>
+
+## Step-by-Step Build
+
+<Steps>
+
+1. **Compile to Wasm**
+
+   ```bash
+   cargo build \
+     --manifest-path contracts/hello-world/Cargo.toml \
+     --release \
+     --target wasm32-unknown-unknown
+   ```
+
+   This produces a `.wasm` binary at:
+   ```
+   contracts/hello-world/target/wasm32-unknown-unknown/release/hello_world_neo.wasm
+   ```
+
+2. **Translate to NeoVM**
+
+   ```bash
+   cargo run --manifest-path wasm-neovm/Cargo.toml -- \
+     --input contracts/hello-world/target/wasm32-unknown-unknown/release/hello_world_neo.wasm \
+     --nef build/HelloWorld.nef \
+     --manifest build/HelloWorld.manifest.json \
+     --name HelloWorld
+   ```
+
+   This reads the Wasm module and writes two files:
+   - `build/HelloWorld.nef` -- the NeoVM bytecode binary, ready for deployment.
+   - `build/HelloWorld.manifest.json` -- the contract manifest describing methods, permissions, and features.
+
+</Steps>
+
+## CLI Flags
+
+The `wasm-neovm` translator accepts the following flags:
+
+| Flag | Required | Description |
+|---|---|---|
+| `--input <path>` | Yes | Path to the `.wasm` binary |
+| `--nef <path>` | Yes | Output path for the NEF binary |
+| `--manifest <path>` | Yes | Output path for the manifest JSON |
+| `--name <string>` | Yes | Contract name embedded in the NEF header and manifest |
+| `--source-chain <chain>` | No | Source chain hint for cross-chain contracts (`solana`, `move`) |
+| `--compare-manifest <path>` | No | Compare generated manifest against a baseline; exit non-zero on diff |
+
+Example with all flags:
+
+```bash
+cargo run --manifest-path wasm-neovm/Cargo.toml -- \
+  --input build/MyToken.snip.wasm \
+  --nef build/MyToken.nef \
+  --manifest build/MyToken.manifest.json \
+  --name MyToken \
+  --compare-manifest expected/MyToken.manifest.json
+```
+
+## Cargo.toml Profile Settings
+
+Every contract crate should include a release profile optimized for minimal Wasm output:
+
+```toml
+[lib]
+crate-type = ["cdylib"]
+
+[profile.release]
+opt-level = "z"       # Optimize for size over speed
+lto = true            # Link-time optimization across all crates
+codegen-units = 1     # Single codegen unit for maximum optimization
+panic = "abort"       # No unwinding runtime -- smaller binary
+strip = "symbols"     # Strip debug symbols from the output
+```
+
+| Setting | Effect |
+|---|---|
+| `opt-level = "z"` | Aggressively optimizes for binary size. Produces the smallest Wasm output at the cost of some runtime speed -- acceptable for on-chain contracts where NEF size directly affects deployment cost. |
+| `lto = true` | Enables link-time optimization. The compiler can inline and eliminate dead code across crate boundaries. |
+| `codegen-units = 1` | Forces the compiler to use a single codegen unit, enabling whole-program optimization. Slower compilation, smaller output. |
+| `panic = "abort"` | Removes the unwinding runtime entirely. Panics become immediate aborts, which is the correct behavior for NeoVM contracts. |
+| `strip = "symbols"` | Strips symbol tables and debug info from the final binary. No reason to ship these on-chain. |
+
+<Aside type="caution">
+  The Makefile also passes RUSTFLAGS that disable Wasm features not supported by the translator: `-C target-feature=-simd128,-reference-types,-multivalue,-tail-call`. If you build manually, include these flags to avoid translation errors.
+</Aside>
+
+## RUSTFLAGS for Contracts
+
+When building outside the Makefile, set the same RUSTFLAGS the project uses:
+
+```bash
+RUSTFLAGS="-C opt-level=z -C strip=symbols -C panic=abort \
+  -C target-feature=-simd128,-reference-types,-multivalue,-tail-call" \
+  cargo build --manifest-path contracts/my-contract/Cargo.toml \
+    --release --target wasm32-unknown-unknown
+```
+
+These flags disable Wasm proposals (SIMD, reference types, multi-value returns, tail calls) that the `wasm-neovm` translator does not support.
+
+## Optional: wasm-snip
+
+For contracts with dependencies that pull in Rust formatting or panicking code, run `wasm-snip` before translation:
+
+```bash
+wasm-snip \
+  --snip-rust-fmt-code \
+  --snip-rust-panicking-code \
+  target/wasm32-unknown-unknown/release/my_contract.wasm \
+  -o build/MyContract.snip.wasm
+```
+
+Then pass the snipped Wasm to the translator:
+
+```bash
+cargo run --manifest-path wasm-neovm/Cargo.toml -- \
+  --input build/MyContract.snip.wasm \
+  --nef build/MyContract.nef \
+  --manifest build/MyContract.manifest.json \
+  --name MyContract
+```
+
+## Batch Build
+
+Build all 17 example contracts at once:
+
+```bash
+make examples
+```
+
+This compiles every contract to Wasm, runs `wasm-snip` where needed, and translates each to NEF + manifest. Output lands in the `build/` directory.
+
+Build individual contracts by name:
+
+```bash
+make hello-world
+make nep17-token
+make governance-dao
+make uniswap-v2
+```
+
+## Build Scripts
+
+For single contracts, the repository provides a shell script:
+
+```bash
+scripts/build_contract.sh contracts/hello-world
+```
+
+This runs both the Wasm compilation and NeoVM translation in one command.
+
+## Clean
+
+Remove all build artifacts:
+
+```bash
+make clean
+```
+
+This deletes the `build/` directory and all `target/` directories under each contract crate.
+
+## CI Integration
+
+Use `--compare-manifest` in CI to catch unintended ABI changes:
+
+```bash
+# Build the contract
+make nep17-token
+
+# Compare against checked-in baseline
+cargo run --manifest-path wasm-neovm/Cargo.toml -- \
+  --input build/NEP17.snip.wasm \
+  --nef /dev/null \
+  --manifest /dev/null \
+  --name SampleNEP17 \
+  --compare-manifest expected/NEP17.manifest.json
+```
+
+If the generated manifest differs from the baseline, the translator exits with a non-zero status code and prints the diff.
+
+## What's Next
+
+- [Contract Anatomy](/concepts/contract-anatomy/) -- understand the macros and attributes that structure a contract.
+- [Testing Strategy](/guides/testing/) -- test your contracts at unit, integration, and on-chain levels.
+- [Deployment](/guides/deployment/) -- deploy your compiled contract to Neo Express or testnet.

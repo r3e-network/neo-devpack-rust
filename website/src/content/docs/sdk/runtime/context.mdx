@@ -1,0 +1,446 @@
+---
+title: Context
+description: Transaction and execution context — sender, hashes, GAS remaining, and invocation metadata for Neo N3 smart contracts.
+draft: false
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+`NeoRuntimeContext` provides read-only access to the current execution environment — the transaction that triggered the invocation, the contracts involved in the call chain, and resource accounting. These are essential for access control, reentrancy guards, and gas-aware logic.
+
+```rust
+use neo_devpack::prelude::*;
+
+#[neo_method(safe)]
+pub fn who_called_me() -> (ScriptHash, ScriptHash) {
+    let sender = NeoRuntimeContext::get_sender();
+    let caller = NeoRuntimeContext::get_calling_script_hash();
+    (sender, caller)
+}
+```
+
+## get_tx_hash
+
+Returns the 256-bit hash of the current transaction. This is a unique identifier for the transaction that triggered the contract invocation.
+
+**Syscall:** `System.Runtime.GetScriptContainer` (transaction hash field)
+
+```rust
+use neo_devpack::prelude::*;
+
+#[neo_method]
+pub fn record_action(action: &str) {
+    let tx_hash = NeoRuntimeContext::get_tx_hash();
+    let ctx = NeoStorage::get_context();
+
+    // Use the transaction hash as a unique key for idempotency
+    let key = storage_key(b"tx:", &tx_hash);
+    if !NeoStorage::get(&ctx, &key).is_empty() {
+        NeoRuntime::log("action already recorded for this tx");
+        return;
+    }
+
+    NeoStorage::put_string(&ctx, &key, action);
+}
+```
+
+| Item | Detail |
+|------|--------|
+| Returns | `Vec<u8>` — 32-byte transaction hash |
+| GAS cost | Low |
+
+### Use cases
+
+- Idempotency checks — ensure an action is only performed once per transaction
+- Audit logging — record which transaction triggered a state change
+- Deterministic randomness seed (combined with other entropy sources)
+
+---
+
+## get_sender
+
+Returns the script hash of the transaction sender — the account that signed and submitted the transaction. This is the outermost caller, regardless of how many cross-contract calls deep the current execution is.
+
+**Syscall:** `System.Runtime.GetScriptContainer` (sender field)
+
+```rust
+use neo_devpack::prelude::*;
+
+const ADMIN: ScriptHash = /* admin script hash */;
+
+#[neo_method]
+pub fn admin_action() -> bool {
+    let sender = NeoRuntimeContext::get_sender();
+    if sender != ADMIN {
+        NeoRuntime::log("not admin");
+        return false;
+    }
+    // ... privileged logic
+    true
+}
+```
+
+| Item | Detail |
+|------|--------|
+| Returns | `ScriptHash` — 20-byte script hash of the transaction sender |
+| GAS cost | Low |
+
+<Aside type="note">
+  `get_sender()` returns the transaction signer, not the immediate caller. If Contract A calls Contract B, and B calls your contract, `get_sender()` still returns the original transaction signer. Use `get_calling_script_hash()` to identify the immediate caller.
+</Aside>
+
+---
+
+## get_gas_left
+
+Returns the amount of GAS remaining for the current transaction execution, in fractions (1 GAS = 100,000,000 fractions). Useful for implementing gas-aware logic that aborts gracefully before running out.
+
+**Syscall:** `System.Runtime.GasLeft`
+
+```rust
+use neo_devpack::prelude::*;
+
+const MIN_GAS_RESERVE: i64 = 5_000_000; // 0.05 GAS
+
+#[neo_method]
+pub fn batch_process(items: &NeoArray<Vec<u8>>) -> i64 {
+    let ctx = NeoStorage::get_context();
+    let mut processed: i64 = 0;
+
+    for item in items.iter() {
+        // Check if we have enough GAS to continue
+        if NeoRuntimeContext::get_gas_left() < MIN_GAS_RESERVE {
+            NeoRuntime::log("gas low — stopping batch");
+            break;
+        }
+
+        // ... process item
+        processed += 1;
+    }
+
+    processed
+}
+```
+
+| Item | Detail |
+|------|--------|
+| Returns | `i64` — remaining GAS in fractions (1 GAS = 10^8) |
+| GAS cost | Minimal |
+
+### Gas budgeting pattern
+
+```rust
+use neo_devpack::prelude::*;
+
+/// Estimate whether an operation is affordable before attempting it.
+fn can_afford_operation(estimated_cost: i64) -> bool {
+    let remaining = NeoRuntimeContext::get_gas_left();
+    // Keep a safety margin of 10%
+    remaining > estimated_cost + (estimated_cost / 10)
+}
+```
+
+<Aside type="caution">
+  The value returned by `get_gas_left()` decreases as execution proceeds. Do not cache it — always call it immediately before the check that depends on it.
+</Aside>
+
+---
+
+## get_calling_script_hash
+
+Returns the script hash of the contract that directly invoked the current contract. If the contract was invoked directly by a transaction (not via another contract), this returns the transaction sender's script hash.
+
+**Syscall:** `System.Runtime.GetCallingScriptHash`
+
+```rust
+use neo_devpack::prelude::*;
+
+const TRUSTED_ROUTER: ScriptHash = /* DEX router contract hash */;
+
+/// Only the trusted router contract may call this method.
+#[neo_method]
+pub fn swap_callback(amount_in: i64, amount_out: i64) -> bool {
+    let caller = NeoRuntimeContext::get_calling_script_hash();
+    if caller != TRUSTED_ROUTER {
+        NeoRuntime::log("unauthorized caller");
+        return false;
+    }
+    // ... handle swap
+    true
+}
+```
+
+| Item | Detail |
+|------|--------|
+| Returns | `ScriptHash` — 20-byte script hash of the immediate caller |
+| GAS cost | Low |
+
+### Caller vs sender
+
+| Method | Returns | Use case |
+|--------|---------|----------|
+| `get_sender()` | Transaction signer | User-level access control |
+| `get_calling_script_hash()` | Immediate caller contract | Contract-level access control |
+
+```rust
+use neo_devpack::prelude::*;
+
+#[neo_method]
+pub fn on_nep17_payment(from: ScriptHash, amount: i64, data: &[u8]) {
+    // Which token contract sent us this payment?
+    let token = NeoRuntimeContext::get_calling_script_hash();
+
+    // Who initiated the transaction?
+    let user = NeoRuntimeContext::get_sender();
+
+    NeoRuntime::log("payment received");
+}
+```
+
+---
+
+## get_executing_script_hash
+
+Returns the script hash of the currently executing contract — i.e., your own contract's hash. This is useful when you need to reference yourself in cross-contract calls or storage operations.
+
+**Syscall:** `System.Runtime.GetExecutingScriptHash`
+
+```rust
+use neo_devpack::prelude::*;
+
+/// Transfer tokens from this contract to a recipient.
+#[neo_method]
+pub fn withdraw(token: ScriptHash, to: ScriptHash, amount: i64) -> bool {
+    let self_hash = NeoRuntimeContext::get_executing_script_hash();
+
+    NeoContractRuntime::call(
+        token,
+        "transfer",
+        CallFlags::All,
+        &[
+            NeoValue::from(self_hash),  // from: this contract
+            NeoValue::from(to),          // to: recipient
+            NeoValue::Integer(NeoInteger::new(amount)),
+            NeoValue::Null,
+        ],
+    )
+    .as_bool()
+}
+```
+
+| Item | Detail |
+|------|--------|
+| Returns | `ScriptHash` — 20-byte script hash of the current contract |
+| GAS cost | Low |
+
+### Common patterns
+
+```rust
+use neo_devpack::prelude::*;
+
+/// Check this contract's own token balance.
+fn own_balance(token: ScriptHash) -> i64 {
+    let self_hash = NeoRuntimeContext::get_executing_script_hash();
+    NeoContractRuntime::call(
+        token,
+        "balanceOf",
+        CallFlags::ReadOnly,
+        &[NeoValue::from(self_hash)],
+    )
+    .as_integer()
+}
+
+/// Verify that a callback is being called by this contract itself
+/// (e.g., during a re-entrant pattern).
+fn is_self_call() -> bool {
+    let caller = NeoRuntimeContext::get_calling_script_hash();
+    let self_hash = NeoRuntimeContext::get_executing_script_hash();
+    caller == self_hash
+}
+```
+
+---
+
+## get_invocation_counter
+
+Returns the number of times the current contract has been invoked within the current transaction. The counter starts at 1 for the first invocation and increments with each subsequent call. This is useful for detecting and preventing reentrancy.
+
+**Syscall:** `System.Runtime.GetInvocationCounter`
+
+```rust
+use neo_devpack::prelude::*;
+
+/// Reject re-entrant calls to this contract.
+#[neo_method]
+pub fn protected_transfer(to: ScriptHash, amount: i64) -> bool {
+    let call_count = NeoRuntimeContext::get_invocation_counter();
+    if call_count > 1 {
+        NeoRuntime::log("reentrancy detected");
+        return false;
+    }
+
+    // ... safe to proceed with transfer logic
+    true
+}
+```
+
+| Item | Detail |
+|------|--------|
+| Returns | `i64` — invocation count (starts at 1) |
+| GAS cost | Minimal |
+
+### Reentrancy guard
+
+```rust
+use neo_devpack::prelude::*;
+
+/// A reusable reentrancy check. Call at the top of any method
+/// that should not be re-entered.
+fn require_no_reentrancy() {
+    let count = NeoRuntimeContext::get_invocation_counter();
+    assert!(count == 1, "reentrancy not allowed");
+}
+
+#[neo_method]
+pub fn sensitive_operation() -> bool {
+    require_no_reentrancy();
+    // ... logic that makes external calls
+    true
+}
+```
+
+<Aside type="tip">
+  The invocation counter is per-contract, per-transaction. If your contract is called once directly and once via a cross-contract call in the same transaction, the counter will be 2 on the second invocation.
+</Aside>
+
+---
+
+## Complete example
+
+An escrow contract using multiple context methods for security:
+
+```rust
+use neo_devpack::prelude::*;
+
+neo_manifest_overlay!(r#"{
+    "name": "SecureEscrow",
+    "features": { "storage": true },
+    "permissions": [
+        { "contract": "*", "methods": ["transfer", "balanceOf"] }
+    ]
+}"#);
+
+#[neo_contract]
+pub struct SecureEscrow;
+
+#[neo_contract]
+impl SecureEscrow {
+    pub fn new() -> Self { Self }
+
+    /// Create an escrow deposit. Records the transaction hash
+    /// for idempotency and the sender for withdrawal authorization.
+    #[neo_method]
+    pub fn create_escrow(
+        beneficiary: ScriptHash,
+        token: ScriptHash,
+        amount: i64,
+    ) -> Vec<u8> {
+        // Reentrancy guard
+        let call_count = NeoRuntimeContext::get_invocation_counter();
+        assert!(call_count == 1, "no reentrancy");
+
+        let sender = NeoRuntimeContext::get_sender();
+        if !NeoRuntime::check_witness(sender) {
+            return Vec::new();
+        }
+
+        // Generate a unique escrow ID from the transaction hash
+        let tx_hash = NeoRuntimeContext::get_tx_hash();
+        let escrow_id = NeoCrypto::sha256(&tx_hash);
+
+        // Transfer tokens to this contract
+        let self_hash = NeoRuntimeContext::get_executing_script_hash();
+        let deposited = NeoContractRuntime::call(
+            token,
+            "transfer",
+            CallFlags::All,
+            &[
+                NeoValue::from(sender),
+                NeoValue::from(self_hash),
+                NeoValue::Integer(NeoInteger::new(amount)),
+                NeoValue::Null,
+            ],
+        )
+        .as_bool();
+
+        if !deposited {
+            return Vec::new();
+        }
+
+        // Store escrow record
+        let ctx = NeoStorage::get_context();
+        let key = storage_key(b"escrow:", &escrow_id);
+        let mut record = Vec::new();
+        record.extend_from_slice(sender.as_bytes());       // depositor
+        record.extend_from_slice(beneficiary.as_bytes());   // beneficiary
+        record.extend_from_slice(token.as_bytes());          // token hash
+        record.extend_from_slice(&amount.to_le_bytes());     // amount
+        NeoStorage::put(&ctx, &key, &record);
+
+        escrow_id
+    }
+
+    /// Release escrow funds to the beneficiary.
+    /// Only the original depositor can release.
+    #[neo_method]
+    pub fn release(escrow_id: &[u8]) -> bool {
+        let call_count = NeoRuntimeContext::get_invocation_counter();
+        assert!(call_count == 1, "no reentrancy");
+
+        let ctx = NeoStorage::get_context();
+        let key = storage_key(b"escrow:", escrow_id);
+        let record = NeoStorage::get(&ctx, &key);
+
+        if record.len() < 68 {
+            return false;
+        }
+
+        let depositor = ScriptHash::from_bytes(&record[0..20]);
+        let beneficiary = ScriptHash::from_bytes(&record[20..40]);
+        let token = ScriptHash::from_bytes(&record[40..60]);
+        let amount = i64::from_le_bytes(record[60..68].try_into().unwrap());
+
+        // Only the depositor can release
+        if !NeoRuntime::check_witness(depositor) {
+            return false;
+        }
+
+        // Check remaining GAS before making the transfer
+        if NeoRuntimeContext::get_gas_left() < 50_000_000 {
+            NeoRuntime::log("insufficient gas for release");
+            return false;
+        }
+
+        // Transfer to beneficiary
+        let self_hash = NeoRuntimeContext::get_executing_script_hash();
+        let transferred = NeoContractRuntime::call(
+            token,
+            "transfer",
+            CallFlags::All,
+            &[
+                NeoValue::from(self_hash),
+                NeoValue::from(beneficiary),
+                NeoValue::Integer(NeoInteger::new(amount)),
+                NeoValue::Null,
+            ],
+        )
+        .as_bool();
+
+        if transferred {
+            NeoStorage::delete(&ctx, &key);
+        }
+
+        transferred
+    }
+}
+```

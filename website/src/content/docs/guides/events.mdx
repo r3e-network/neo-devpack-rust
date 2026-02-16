@@ -1,0 +1,308 @@
+---
+title: Events
+description: Define, emit, and register contract events for Neo N3 smart contracts using the neo-devpack SDK.
+draft: false
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Neo N3 contracts emit events (called "notifications") to signal state changes to off-chain listeners -- wallets, indexers, block explorers, and other contracts. Events are recorded in the transaction's application log and are the primary mechanism for observing contract activity without polling storage.
+
+## Defining Events
+
+Use the `#[neo_event]` attribute on a struct to define an event. Each field becomes a parameter in the emitted notification.
+
+```rust
+use neo_devpack::prelude::*;
+
+#[neo_event]
+pub struct Transfer {
+    pub from: NeoByteString,
+    pub to: NeoByteString,
+    pub amount: NeoInteger,
+}
+```
+
+The `#[neo_event]` macro generates:
+
+1. An `emit()` method on the struct that calls `System.Runtime.Notify` with the event name and parameters.
+2. Manifest metadata so the translator registers the event in the contract's ABI.
+
+### Field Types
+
+Event fields can use any SDK type that maps to a NeoVM stack item:
+
+| Rust Type | NeoVM Type | Typical Use |
+|---|---|---|
+| `NeoByteString` | ByteString | Addresses (Hash160), raw bytes |
+| `NeoInteger` | Integer | Amounts, IDs, timestamps |
+| `NeoString` | ByteString (UTF-8) | Human-readable labels |
+| `NeoBoolean` | Boolean | Flags |
+
+## Emitting Events
+
+### Using `.emit()`
+
+Construct the event struct and call `.emit()`. This is the preferred pattern.
+
+```rust
+use neo_devpack::prelude::*;
+
+#[neo_event]
+pub struct Transfer {
+    pub from: NeoByteString,
+    pub to: NeoByteString,
+    pub amount: NeoInteger,
+}
+
+fn do_transfer(from: NeoByteString, to: NeoByteString, amount: i64) -> NeoResult<()> {
+    // ... update balances in storage ...
+
+    Transfer {
+        from: from.clone(),
+        to: to.clone(),
+        amount: NeoInteger::new(amount),
+    }
+    .emit()?;
+
+    Ok(())
+}
+```
+
+The `.emit()` method returns `NeoResult<()>` -- it can fail if the NeoVM notification syscall fails (rare, but handle it).
+
+### Using `NeoRuntime::notify()`
+
+For dynamic or low-level event emission, use the runtime notify syscall directly:
+
+```rust
+use neo_devpack::prelude::*;
+
+fn emit_custom_event(name: &str, value: i64) -> NeoResult<()> {
+    let event_name = NeoString::from_str(name);
+    let event_value = NeoInteger::new(value);
+    NeoRuntime::notify(&event_name, &[NeoValue::from(event_value)])?;
+    Ok(())
+}
+```
+
+This bypasses the typed event struct and emits a raw notification. Use it when the event shape is determined at runtime.
+
+<Aside type="tip">
+  Prefer `#[neo_event]` structs over raw `NeoRuntime::notify()` calls. The struct approach is type-safe, self-documenting, and automatically registers the event in the manifest.
+</Aside>
+
+## Real-World Examples
+
+### NEP-17 Transfer Event
+
+The NEP-17 standard requires a `Transfer` event on every token movement, including mints (where `from` is null) and burns (where `to` is null).
+
+```rust
+use neo_devpack::prelude::*;
+
+#[neo_event]
+pub struct Transfer {
+    pub from: NeoByteString,
+    pub to: NeoByteString,
+    pub amount: NeoInteger,
+}
+
+fn transfer_tokens(
+    ctx: &NeoStorageContext,
+    from: NeoByteString,
+    to: NeoByteString,
+    amount: i64,
+) -> NeoResult<bool> {
+    if amount <= 0 {
+        return Ok(false);
+    }
+
+    // ... validate balances, update storage ...
+
+    Transfer {
+        from,
+        to,
+        amount: NeoInteger::new(amount),
+    }
+    .emit()?;
+
+    Ok(true)
+}
+
+// Mint: from is empty (represents null in NEP-17)
+fn mint_tokens(ctx: &NeoStorageContext, to: NeoByteString, amount: i64) -> NeoResult<()> {
+    // ... update storage ...
+
+    Transfer {
+        from: NeoByteString::new(Vec::new()), // null sender = mint
+        to,
+        amount: NeoInteger::new(amount),
+    }
+    .emit()?;
+
+    Ok(())
+}
+```
+
+### NEP-11 Transfer Event
+
+The NEP-11 (NFT) standard uses a similar `Transfer` event but includes a `tokenId` field:
+
+```rust
+use neo_devpack::prelude::*;
+
+#[neo_event]
+pub struct Transfer {
+    pub from: NeoByteString,
+    pub to: NeoByteString,
+    pub amount: NeoInteger,
+    pub token_id: NeoByteString,
+}
+
+fn transfer_nft(
+    from: NeoByteString,
+    to: NeoByteString,
+    token_id: NeoByteString,
+) -> NeoResult<()> {
+    // ... validate ownership, update storage ...
+
+    Transfer {
+        from,
+        to,
+        amount: NeoInteger::new(1), // NFTs transfer exactly 1
+        token_id,
+    }
+    .emit()?;
+
+    Ok(())
+}
+```
+
+### Governance DAO Events
+
+The governance-dao example contract defines multiple events for different lifecycle stages:
+
+```rust
+use neo_devpack::prelude::*;
+
+#[neo_event]
+pub struct ProposalCreated {
+    pub proposal_id: NeoInteger,
+    pub proposer: NeoByteString,
+    pub title: NeoString,
+}
+
+#[neo_event]
+pub struct VoteCast {
+    pub proposal_id: NeoInteger,
+    pub voter: NeoByteString,
+    pub support: NeoBoolean,
+    pub weight: NeoInteger,
+}
+
+#[neo_event]
+pub struct ProposalExecuted {
+    pub proposal_id: NeoInteger,
+}
+
+#[neo_event]
+pub struct StakeIncreased {
+    pub staker: NeoByteString,
+    pub amount: NeoInteger,
+    pub new_total: NeoInteger,
+}
+```
+
+Each event captures the minimum data needed for off-chain indexers to reconstruct the contract's state transitions.
+
+## Events in the Manifest
+
+The `#[neo_event]` macro automatically registers events in the contract manifest. After translation, the manifest's `abi.events` array contains an entry for each event:
+
+```json
+{
+  "abi": {
+    "events": [
+      {
+        "name": "Transfer",
+        "parameters": [
+          { "name": "from", "type": "ByteArray" },
+          { "name": "to", "type": "ByteArray" },
+          { "name": "amount", "type": "Integer" }
+        ]
+      },
+      {
+        "name": "ProposalCreated",
+        "parameters": [
+          { "name": "proposal_id", "type": "Integer" },
+          { "name": "proposer", "type": "ByteArray" },
+          { "name": "title", "type": "String" }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Wallets and SDKs use this metadata to decode notifications from the application log.
+
+<Aside type="note">
+  Event names in the manifest match the struct name exactly. If you need a different on-chain name, rename the struct accordingly -- there is no `name` override attribute for events (unlike `#[neo_method(name = "...")]`).
+</Aside>
+
+## Organizing Events
+
+For contracts with many events, define them in a separate `events.rs` module:
+
+```rust
+// src/events.rs
+use neo_devpack::prelude::*;
+
+#[neo_event]
+pub struct ProposalCreated {
+    pub proposal_id: NeoInteger,
+    pub proposer: NeoByteString,
+    pub target: NeoByteString,
+    pub method: NeoString,
+}
+
+#[neo_event]
+pub struct ProposalExecuted {
+    pub proposal_id: NeoInteger,
+}
+```
+
+```rust
+// src/lib.rs
+mod events;
+use events::*;
+
+// Use events in contract methods
+fn create_proposal(/* ... */) -> NeoResult<()> {
+    // ... create proposal ...
+    ProposalCreated {
+        proposal_id: NeoInteger::new(1),
+        proposer: NeoByteString::from_slice(b"proposer"),
+        target: NeoByteString::from_slice(b"target"),
+        method: NeoString::from_str("execute"),
+    }
+    .emit()?;
+    Ok(())
+}
+```
+
+This pattern is used by the `multisig-wallet` and `governance-dao` example contracts.
+
+## Best Practices
+
+- Emit events after state changes, not before. If a storage write fails after the event is emitted, the event still appears in the log, creating an inconsistent record.
+- Keep event payloads small. Every byte in the notification costs GAS. Include only the data that off-chain consumers need to reconstruct state.
+- Use `NeoByteString` for addresses rather than string-encoded hex. It is more compact and matches the native Hash160 representation.
+- Define one event struct per logical action. Avoid overloading a single event with optional fields -- it makes off-chain parsing harder.
+
+## What's Next
+
+- [Storage Patterns](/guides/storage/) -- the state changes that events typically accompany.
+- [Permissions & Trust](/guides/permissions/) -- control which contracts can trigger your events via cross-contract calls.
+- [Testing Strategy](/guides/testing/) -- verify that events are emitted correctly in unit tests.

@@ -1,0 +1,185 @@
+---
+title: "NEF Format Specification"
+description: "Byte-level binary layout of the Neo Executable Format (NEF) version 3, including field encoding, method tokens, checksum computation, and the writer API."
+draft: false
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+The NEF (Neo Executable Format) version 3 is the container that packages NeoVM bytecode for deployment on Neo N3. The `wasm-neovm` crate owns NEF emission end-to-end. This page documents the byte-level binary layout, encoding conventions, and the Rust writer API.
+
+## Binary Layout
+
+All multi-byte integers use little-endian encoding.
+
+| # | Field | Type | Description |
+|---|-------|------|-------------|
+| 1 | Magic | `uint32` | Constant `0x3346454E` (ASCII `"NEF3"`) |
+| 2 | Compiler | `byte[64]` | ASCII toolchain identifier, zero-padded to exactly 64 bytes |
+| 3 | Source | `varstring` | Optional URL describing the artifact origin. Compact integer prefix + UTF-8 payload. |
+| 4 | Reserved | `byte` | Must be `0x00` |
+| 5 | Method tokens | `vararray` | Array of static invoke metadata entries (see below) |
+| 6 | Reserved | `uint16` | Must be `0x0000` |
+| 7 | Script | `varbytes` | Length-prefixed NeoVM bytecode payload |
+| 8 | Checksum | `uint32` | First 4 bytes of `hash256` (double SHA-256) over all preceding bytes |
+
+## Variable-Length Encoding
+
+The `varstring`, `vararray`, and `varbytes` types follow the Neo compact integer convention:
+
+| Prefix byte | Length range | Encoding |
+|-------------|-------------|----------|
+| `0x00`-`0xFC` | 0-252 | 1-byte prefix = length |
+| `0xFD` | 253-65535 | 3 bytes: `0xFD` + `uint16` length |
+| `0xFE` | 65536-4294967295 | 5 bytes: `0xFE` + `uint32` length |
+| `0xFF` | > 4294967295 | 9 bytes: `0xFF` + `uint64` length |
+
+The prefix is immediately followed by the payload bytes.
+
+## Method Token Entries
+
+Each entry in the method tokens `vararray` contains:
+
+| Field | Type | Size | Description |
+|-------|------|------|-------------|
+| Hash | `byte[20]` | 20 bytes | Contract hash (script hash, big-endian) |
+| Method | `varstring` | variable | Method name, max 32 bytes |
+| Parameters count | `uint16` | 2 bytes | Number of parameters the method accepts |
+| Has return value | `bool` | 1 byte | `0x01` if the method returns a value, `0x00` otherwise |
+| Call flags | `uint8` | 1 byte | Invocation permission bitmask |
+
+Method names exceeding 32 bytes are rejected during NEF assembly.
+
+## Checksum
+
+The checksum covers every byte from the magic number through the end of the script field (excluding the checksum itself). It is computed as:
+
+```
+checksum = SHA256(SHA256(data))[0..4]
+```
+
+The first 4 bytes of the double SHA-256 digest are written as a little-endian `uint32`. Any byte-level modification to the NEF invalidates the checksum and causes the NeoVM loader to reject the artifact.
+
+## Writer API
+
+The `wasm-neovm` crate exposes two functions for NEF generation.
+
+### `write_nef`
+
+```rust
+pub fn write_nef<P: AsRef<Path>>(
+    script: &[u8],
+    output_path: P,
+) -> anyhow::Result<()>
+```
+
+Convenience wrapper that emits an empty source string and no method tokens. Suitable for simple contracts that do not invoke external contracts.
+
+### `write_nef_with_metadata`
+
+```rust
+pub fn write_nef_with_metadata<P: AsRef<Path>>(
+    script: &[u8],
+    source: Option<&str>,
+    method_tokens: &[MethodToken],
+    output_path: P,
+) -> anyhow::Result<()>
+```
+
+Assembles the full NEF header, script, and checksum. Empty scripts are rejected early with a descriptive error.
+
+## Metadata Extraction
+
+The translator extracts NEF metadata from the contract manifest:
+
+### Source URL
+
+Read from the top-level `"source"` field in the manifest, or from `manifest["extra"]["nefSource"]` as a fallback. The CLI also accepts `--source-url` to set this value directly.
+
+### Method Tokens
+
+Supplied through `manifest["extra"]["nefMethodTokens"]`, which must be an array of objects:
+
+```json
+{
+  "extra": {
+    "nefMethodTokens": [
+      {
+        "hash": "0102030405060708090a0b0c0d0e0f1011121314",
+        "method": "balanceOf",
+        "paramcount": 2,
+        "hasreturnvalue": true,
+        "callflags": 3
+      }
+    ]
+  }
+}
+```
+
+Hashes are specified as 40 hexadecimal characters, optionally prefixed with `0x`.
+
+### Auto-Inference
+
+The translator scans the emitted script for literal `System.Contract.Call` invocations. When it detects constant contract hashes, method names, and argument arrays, it synthesises method tokens automatically and merges them into the manifest before emission. Every other syscall contributes a zero-hash `MethodToken` so the NEF metadata lists each interop touched by the contract.
+
+The `extract_nef_metadata` helper returns both source URL and method tokens in a single struct:
+
+```rust
+use wasm_neovm::extract_nef_metadata;
+
+let metadata = extract_nef_metadata(&manifest)?;
+// metadata.source       -- Option<String>
+// metadata.method_tokens -- Vec<MethodToken>
+```
+
+## End-to-End Example
+
+```rust
+use wasm_neovm::{
+    extract_nef_metadata,
+    manifest::merge_manifest,
+    translate_module,
+    write_nef_with_metadata,
+};
+
+let wasm = std::fs::read("contract.wasm")?;
+let translation = translate_module(&wasm, "HelloWorld")?;
+let mut manifest = translation.manifest.value.clone();
+
+// Apply overlay with metadata
+let overlay: serde_json::Value = serde_json::from_str(r#"{
+    "extra": {
+        "nefSource": "ipfs://hello-world",
+        "nefMethodTokens": [{
+            "hash": "0102030405060708090a0b0c0d0e0f1011121314",
+            "method": "balanceOf",
+            "paramcount": 2,
+            "hasreturnvalue": true,
+            "callflags": 3
+        }]
+    }
+}"#)?;
+merge_manifest(&mut manifest, &overlay);
+
+let nef_metadata = extract_nef_metadata(&manifest)?;
+write_nef_with_metadata(
+    &translation.script,
+    nef_metadata.source.as_deref(),
+    &nef_metadata.method_tokens,
+    "HelloWorld.nef",
+)?;
+```
+
+## Validation
+
+Three levels of validation apply to NEF artifacts:
+
+| Level | Method | Checks |
+|-------|--------|--------|
+| Structural | Hex editor or `neo-cli show contract` | Magic number, compiler field size, reserved byte values, method token constraints |
+| Checksum | Recompute `hash256` locally | Compare against stored checksum; mismatch indicates corruption or tampering |
+| Runtime | NeoVM reference runner or `neo-cli` | Valid opcodes, method offsets point to instruction boundaries, manifest ABI matches script |
+
+<Aside type="caution">
+  The checksum is computed over raw bytes, not a JSON or text representation. Even a single-byte change to the compiler field or source string invalidates the checksum and prevents deployment.
+</Aside>

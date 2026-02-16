@@ -1,0 +1,127 @@
+---
+title: "NEF & Manifest"
+description: "Binary layout of the NEF container format and the structure of the contract manifest JSON for Neo N3."
+draft: false
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+A compiled Neo N3 contract consists of two artifacts: a `.nef` binary containing the NeoVM bytecode and a `.manifest.json` describing the contract's ABI, permissions, and metadata.
+
+## NEF Binary Layout
+
+The NEF (Neo Executable Format) version 3 has the following structure:
+
+| Offset | Field | Type | Description |
+|--------|-------|------|-------------|
+| 0 | Magic | `uint32` | `0x3346454E` (ASCII `"NEF3"`) |
+| 4 | Compiler | `byte[64]` | ASCII compiler identifier, zero-padded |
+| 68 | Source | `varstring` | Optional source URL (length-prefixed) |
+| — | Reserved | `byte` | Must be zero |
+| — | Method tokens | `vararray` | Array of method token entries |
+| — | Reserved | `uint16` | Must be zero |
+| — | Script | `varbytes` | Length-prefixed NeoVM bytecode |
+| — | Checksum | `uint32` | First 4 bytes of `hash256` (double SHA-256) of the preceding data |
+
+### Method Token Entries
+
+Each method token in the `vararray` contains:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| Hash | `byte[20]` | Contract hash (RIPEMD-160 of script hash) |
+| Method | `varstring` | Method name (max 32 bytes) |
+| Parameters count | `uint16` | Number of parameters |
+| Has return value | `bool` | Whether the method returns a value |
+| Call flags | `uint8` | Invocation permission flags |
+
+### Checksum
+
+The checksum covers all bytes from the magic number through the end of the script (excluding the checksum itself). It is computed as the first 4 bytes of `SHA256(SHA256(data))`.
+
+## Manifest JSON Structure
+
+The manifest is a JSON file with the following top-level fields:
+
+```json
+{
+  "name": "SampleNEP17",
+  "abi": {
+    "methods": [
+      {
+        "name": "totalSupply",
+        "offset": 0,
+        "parameters": [],
+        "returntype": "Integer",
+        "safe": true
+      }
+    ],
+    "events": []
+  },
+  "permissions": [
+    {
+      "contract": "*",
+      "methods": "*"
+    }
+  ],
+  "trusts": [],
+  "supportedstandards": ["NEP-17"],
+  "features": {},
+  "extra": null
+}
+```
+
+### ABI
+
+The `abi` object contains two arrays:
+
+- **methods** -- Each entry has `name`, `offset` (byte offset into the NEF script), `parameters` (array of `{name, type}`), `returntype`, and `safe` (boolean).
+- **events** -- Each entry has `name` and `parameters` (array of `{name, type}`).
+
+### Permissions
+
+Each permission entry specifies which external contracts and methods this contract is allowed to call. `"contract": "*"` with `"methods": "*"` grants unrestricted access. Production contracts should scope permissions to specific contract hashes and method names.
+
+### Other Fields
+
+- **trusts** -- Contract hashes or groups allowed to call this contract. Empty array means no restrictions.
+- **supportedstandards** -- Array of standard identifiers (e.g., `"NEP-17"`, `"NEP-11"`).
+- **features** -- Object with boolean flags. Currently unused; reserved for future features.
+- **extra** -- Arbitrary JSON metadata. Preserved across manifest merges.
+
+## Writer API
+
+The `wasm-neovm` crate provides two functions for NEF generation:
+
+### `write_nef`
+
+```rust
+write_nef(script: &[u8], method_tokens: &[MethodToken]) -> Vec<u8>
+```
+
+Produces a NEF binary with the default compiler identifier and no source URL.
+
+### `write_nef_with_metadata`
+
+```rust
+write_nef_with_metadata(
+    script: &[u8],
+    method_tokens: &[MethodToken],
+    compiler: &str,
+    source: Option<&str>,
+) -> Vec<u8>
+```
+
+Produces a NEF binary with a custom compiler string and optional source URL.
+
+## Validation
+
+The toolchain performs three levels of validation:
+
+1. **Structural checks** -- Verifies magic number, field sizes, reserved byte values, and method token constraints.
+2. **Checksum verification** -- Recomputes the double SHA-256 and compares against the stored checksum.
+3. **Runtime validation** -- Ensures the script contains valid NeoVM opcodes and that method offsets in the manifest point to valid instruction boundaries.
+
+<Aside type="caution">
+  The checksum is computed over the raw bytes, not the JSON representation. Any byte-level modification to the NEF (even whitespace in the compiler field) invalidates the checksum.
+</Aside>

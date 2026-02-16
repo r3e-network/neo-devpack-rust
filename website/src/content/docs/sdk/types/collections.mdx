@@ -1,0 +1,187 @@
+---
+title: Collections
+description: Dynamic array, key-value map, and struct types for Neo N3 smart contracts in Rust.
+draft: false
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+The `neo-types` crate provides three collection types that map to NeoVM compound stack items: `NeoArray`, `NeoMap`, and `NeoStruct`.
+
+## NeoArray\<T\>
+
+A generic dynamic array backed by `Vec<T>`. Maps to the NeoVM `Array` stack item.
+
+```rust
+use neo_types::NeoArray;
+
+let mut arr = NeoArray::new();
+arr.push(1);
+arr.push(2);
+arr.push(3);
+assert_eq!(arr.len(), 3);
+```
+
+### Construction
+
+| Method | Description |
+|--------|-------------|
+| `NeoArray::new()` | Empty array |
+| `NeoArray::with_capacity(n)` | Pre-allocate space for `n` elements |
+| `NeoArray::from_vec(vec)` | Wrap an existing `Vec<T>` |
+| `NeoArray::default()` | Empty array (same as `new()`) |
+
+### From conversions
+
+```rust
+let a: NeoArray<i32> = vec![1, 2, 3].into();          // From<Vec<T>>
+let b: NeoArray<i32> = [10, 20, 30].into_iter().collect(); // FromIterator<T>
+```
+
+### Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `push(item)` | `()` | Append an element |
+| `pop()` | `Option<T>` | Remove and return the last element |
+| `get(index)` | `Option<&T>` | Borrow element at index |
+| `get_mut(index)` | `Option<&mut T>` | Mutably borrow element at index |
+| `len()` | `usize` | Number of elements |
+| `is_empty()` | `bool` | `true` if no elements |
+| `iter()` | `impl Iterator<Item = &T>` | Iterate over references |
+
+### Iterator support
+
+`NeoArray` implements `FromIterator`, `Extend`, and comparison with `Vec<T>`:
+
+```rust
+let mut arr = NeoArray::new();
+arr.extend([1, 2, 3]);
+
+// Compare directly with Vec
+assert_eq!(arr, vec![1, 2, 3]);
+```
+
+---
+
+## NeoMap\<K, V\>
+
+A key-value map backed by `Vec<(K, V)>` with linear-scan lookup. Maps to the NeoVM `Map` stack item.
+
+<Aside type="note">
+`NeoMap` uses linear search (O(n) lookups) to match NeoVM's map semantics. For contracts with small maps this is efficient. For large datasets, consider using storage-based patterns instead.
+</Aside>
+
+```rust
+use neo_types::NeoMap;
+
+let mut balances: NeoMap<String, i64> = NeoMap::new();
+balances.insert("alice".into(), 1000);
+balances.insert("bob".into(), 500);
+
+assert_eq!(balances.get(&"alice".into()), Some(&1000));
+```
+
+### Construction
+
+| Method | Description |
+|--------|-------------|
+| `NeoMap::new()` | Empty map |
+| `NeoMap::default()` | Empty map (same as `new()`) |
+
+### Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `insert(key, value)` | `Option<V>` | Insert or replace; returns previous value |
+| `get(&key)` | `Option<&V>` | Look up by key reference |
+| `get_mut(&key)` | `Option<&mut V>` | Mutable look up by key reference |
+| `remove(&key)` | `Option<V>` | Remove and return the value |
+| `len()` | `usize` | Number of entries |
+| `is_empty()` | `bool` | `true` if no entries |
+| `iter()` | `impl Iterator<Item = (&K, &V)>` | Iterate over key-value pairs |
+| `keys()` | `impl Iterator<Item = &K>` | Iterate over keys |
+| `values()` | `impl Iterator<Item = &V>` | Iterate over values |
+
+```rust
+use neo_types::NeoMap;
+
+let mut m: NeoMap<i32, &str> = NeoMap::new();
+m.insert(1, "one");
+m.insert(2, "two");
+
+for (k, v) in m.iter() {
+    // process entries
+}
+```
+
+---
+
+## NeoStruct
+
+A named-field structure backed by `Vec<(String, NeoValue)>`. Maps to the NeoVM `Struct` stack item. Fields are ordered and accessed by name.
+
+```rust
+use neo_types::{NeoStruct, NeoValue, NeoInteger};
+
+let token = NeoStruct::new()
+    .with_field("name", NeoValue::String("NEO".into()))
+    .with_field("decimals", NeoValue::Integer(NeoInteger::new(8)));
+```
+
+### Construction
+
+| Method | Description |
+|--------|-------------|
+| `NeoStruct::new()` | Empty struct |
+| `NeoStruct::default()` | Empty struct (same as `new()`) |
+| `.with_field(name, value)` | Builder pattern — chain field additions |
+
+### Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `get_field(name)` | `Option<&NeoValue>` | Look up a field by name |
+| `set_field(name, value)` | `()` | Set or overwrite a field |
+| `insert(NeoString, NeoValue)` | `()` | Set field using `NeoString` key |
+| `len()` | `usize` | Number of fields |
+| `is_empty()` | `bool` | `true` if no fields |
+| `iter()` | `impl Iterator<Item = (&str, &NeoValue)>` | Iterate over field name-value pairs |
+
+```rust
+use neo_types::{NeoStruct, NeoValue, NeoInteger};
+
+let mut s = NeoStruct::new();
+s.set_field("balance", NeoValue::Integer(NeoInteger::new(100)));
+
+if let Some(NeoValue::Integer(bal)) = s.get_field("balance") {
+    assert_eq!(bal.try_as_i64(), Some(100));
+}
+```
+
+## Usage patterns
+
+### Returning structured data from a contract
+
+```rust
+use neo_types::{NeoStruct, NeoValue, NeoInteger, NeoString};
+
+fn get_token_info() -> NeoStruct {
+    NeoStruct::new()
+        .with_field("symbol", NeoValue::String(NeoString::from_str("GAS")))
+        .with_field("decimals", NeoValue::Integer(NeoInteger::new(8)))
+        .with_field("total_supply", NeoValue::Integer(NeoInteger::new(100_000_000)))
+}
+```
+
+### Iterating a map to build an array
+
+```rust
+use neo_types::{NeoMap, NeoArray};
+
+let mut scores: NeoMap<String, i32> = NeoMap::new();
+scores.insert("alice".into(), 95);
+scores.insert("bob".into(), 87);
+
+let names: NeoArray<&String> = scores.keys().collect();
+```

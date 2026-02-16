@@ -1,0 +1,75 @@
+---
+title: "Compilation Pipeline"
+description: "The 3-stage compilation flow from Rust source code through WebAssembly translation to NEF binary emission for Neo N3."
+draft: false
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+
+The neo-llvm toolchain compiles Rust smart contracts to NeoVM bytecode in three discrete stages. Each stage has a clear input, output, and set of constraints.
+
+```
+Rust Contract → cargo build (wasm32) → Wasm Module → wasm-neovm → NEF + Manifest
+```
+
+## Stage 1: Rust to WebAssembly
+
+Contracts are standard Rust crates compiled for the `wasm32-unknown-unknown` target using stable Rust. Each contract crate sets `crate-type = ["cdylib"]` in its `Cargo.toml` to produce a standalone Wasm module.
+
+The workspace ships a `.cargo/config.toml` that sets `RUSTFLAGS` for the wasm32 target:
+
+```toml
+[target.wasm32-unknown-unknown]
+rustflags = [
+  "-C", "panic=abort",
+  "-C", "target-feature=-simd128,-reference-types,-multivalue,-tail-call",
+]
+```
+
+These flags serve two purposes:
+
+- `panic=abort` eliminates unwinding machinery, reducing binary size.
+- The negated target features ensure that unsupported Wasm proposals (SIMD, reference types, multivalue returns, tail calls) cause compile-time errors rather than silent runtime failures.
+
+The output is a `.wasm` binary containing the compiled contract.
+
+## Stage 2: Wasm to NeoVM Translation
+
+The `wasm-neovm` translator consumes the Wasm module and lowers it to NeoVM bytecode. The translation process:
+
+<Steps>
+1. **Module parsing** -- `ModuleReader` walks all Wasm sections, recording type signatures, function bodies, exports, and custom sections (including manifest overlays).
+
+2. **Validation** -- The translator enforces compatibility constraints:
+   - Single linear memory (32-bit, non-shared)
+   - Integer-only arithmetic (no floats)
+   - `funcref` table element type only
+
+3. **Instruction lowering** -- Each supported Wasm instruction is mapped to one or more NeoVM opcodes. The translator maintains literal tracking to enable peephole optimizations.
+
+4. **ABI collection** -- During translation, the manifest builder collects method signatures, safe flags, and event declarations from the translated exports.
+</Steps>
+
+## Stage 3: NEF Emission
+
+The final stage packages the NeoVM bytecode into deployable artifacts:
+
+- **NEF binary** -- The `write_nef` function produces a `.nef` file containing the script, method tokens, compiler metadata, and a checksum.
+- **Manifest JSON** -- The manifest builder emits a `.manifest.json` with the contract ABI (methods, events, parameters, return types), permissions, supported standards, and trust settings.
+
+Method tokens are inferred from syscall patterns encountered during translation. Manifest overlays (from macros or CLI flags) are merged before safe flags and method tokens are propagated.
+
+## Compatibility Matrix
+
+| Area | Status |
+|------|--------|
+| Linear memory | Single 32-bit, non-shared. Data and bulk memory ops supported. |
+| Tables | `funcref` only. `call_indirect` and table ops translated via runtime helpers. |
+| Imports | Function imports only. `env`, `syscall`, `neo`, `opcode` modules supported. |
+| Globals | `i32`/`i64` only. Stored in static slots. |
+| Signatures | `i32`/`i64` params, single return value. |
+| Numeric | Integer arithmetic covered. Float and SIMD on roadmap. |
+
+<Aside type="tip">
+  The negated target features in `.cargo/config.toml` act as a compile-time safety net. If your Rust code accidentally pulls in SIMD or atomics, the build fails immediately instead of producing an untranslatable Wasm module.
+</Aside>

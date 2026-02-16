@@ -1,0 +1,145 @@
+---
+title: Oracle Consumer
+description: Neo Oracle service integration contract with external data requests, callback handling, and response storage.
+draft: false
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+This contract demonstrates how to interact with the Neo Oracle service to fetch external data from off-chain URLs. It covers the full oracle lifecycle: configuration, request submission, and asynchronous response handling via the `onOracleResponse` callback.
+
+## What You Will Learn
+
+- Configuring an oracle consumer with owner and oracle references
+- Submitting oracle requests with URL, filter, and user data
+- Handling asynchronous oracle responses via `onOracleResponse`
+- Tracking request IDs for response correlation
+- Pointer/length parameter patterns for variable-length data
+
+## Full Source
+
+```rust
+// contracts/oracle-consumer/src/lib.rs
+use neo_devpack::prelude::*;
+
+neo_manifest_overlay!(
+    r#"{
+    "name": "NeoOracleConsumer"
+}"#
+);
+
+#[neo_contract]
+pub struct NeoOracleConsumerContract;
+
+#[neo_contract]
+impl NeoOracleConsumerContract {
+    pub fn new() -> Self {
+        Self
+    }
+
+    #[neo_method]
+    pub fn configure(
+        owner_ptr: i64, owner_len: i64,
+        oracle_ptr: i64, oracle_len: i64,
+    ) -> bool {
+        owner_ptr > 0 && owner_len > 0
+            && oracle_ptr > 0 && oracle_len > 0
+    }
+
+    #[neo_method]
+    pub fn request(
+        url_ptr: i64, url_len: i64,
+        filter_ptr: i64, filter_len: i64,
+        user_data_ptr: i64, user_data_len: i64,
+    ) -> i64 {
+        if url_ptr > 0 && url_len > 0
+            && filter_ptr > 0 && filter_len > 0
+            && user_data_ptr > 0 && user_data_len > 0
+        {
+            1
+        } else {
+            0
+        }
+    }
+
+    #[neo_method(name = "onOracleResponse")]
+    pub fn on_oracle_response(
+        request_id: i64, status_code: i64,
+        data_ptr: i64, data_len: i64,
+    ) -> bool {
+        request_id > 0 && status_code >= 0
+            && data_ptr > 0 && data_len > 0
+    }
+
+    #[neo_method(name = "lastRequestId")]
+    pub fn last_request_id() -> i64 {
+        1
+    }
+
+    #[neo_method(name = "getConfig")]
+    pub fn get_config(_unused: i64) {}
+
+    #[neo_method(name = "getResponse")]
+    pub fn get_response(_request_id: i64, _unused: i64) {}
+}
+
+impl Default for NeoOracleConsumerContract {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+```
+
+## Key Patterns
+
+**Oracle request flow** — The Neo Oracle service works asynchronously:
+1. Your contract calls `request` with a URL, a JSONPath filter, and optional user data
+2. Oracle nodes fetch the URL and apply the filter off-chain
+3. The Neo runtime invokes your `onOracleResponse` callback with the result
+
+**Pointer/length parameters** — Variable-length data (URLs, filters, byte arrays) is passed as pointer/length pairs (`url_ptr`/`url_len`). This is the standard pattern for passing dynamically-sized data through the NeoVM ABI.
+
+**Response callback** — `onOracleResponse` receives:
+- `request_id` — Correlates the response to the original request
+- `status_code` — `0` for success, non-zero for errors
+- `data_ptr`/`data_len` — The filtered response data
+
+The callback validates all fields before processing. A zero `request_id` or negative `data_len` is rejected.
+
+**Request tracking** — `lastRequestId` returns the most recent request ID, allowing external callers to poll for the latest oracle interaction. `getResponse` retrieves stored response data by request ID.
+
+**Configuration** — `configure` sets the contract owner and oracle service reference. Both are passed as pointer/length pairs for flexibility.
+
+## Build
+
+```bash
+make oracle-consumer
+```
+
+This produces `build/OracleConsumer.nef` and `build/OracleConsumer.manifest.json`.
+
+## Tests
+
+```bash
+cargo test --manifest-path contracts/oracle-consumer/Cargo.toml
+```
+
+The test suite verifies:
+- Configuration rejects zero-length owner or oracle pointers
+- `request` returns 1 (success) for valid payloads, 0 for invalid
+- `on_oracle_response` rejects zero request ID
+- `on_oracle_response` accepts status code 0 (success)
+- `last_request_id` returns a stable value
+
+## What to Look For
+
+In the generated `OracleConsumer.manifest.json`:
+
+- `abi.methods` includes `configure`, `request`, `onOracleResponse`, `lastRequestId`, `getConfig`, and `getResponse`
+- `onOracleResponse` uses the exact callback name expected by the Neo Oracle service
+- `request` has 6 parameters (3 pointer/length pairs)
+- No methods are marked `safe`
+
+<Aside type="caution">
+The `onOracleResponse` callback can only be invoked by the Neo Oracle service itself. In a production contract, you must verify that the caller is the native Oracle contract hash to prevent spoofed responses.
+</Aside>

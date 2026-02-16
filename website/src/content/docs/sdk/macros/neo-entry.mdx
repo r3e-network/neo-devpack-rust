@@ -1,0 +1,206 @@
+---
+title: "#[neo_entry]"
+description: "Attribute macro that marks a function as the contract deployment entry point (_deploy)."
+draft: false
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+`#[neo_entry]` marks a function as a contract lifecycle entry point. The most common use is the `_deploy` entry point, which the Neo runtime calls once when the contract is first deployed to the blockchain.
+
+## Basic Usage
+
+```rust
+use neo_devpack::prelude::*;
+
+#[neo_entry]
+pub fn deploy() {
+    // one-time initialization logic
+}
+```
+
+The macro preserves the original function and emits a Wasm custom section containing entry point metadata:
+
+```json
+{
+  "entry": {
+    "name": "deploy",
+    "kind": "deploy"
+  }
+}
+```
+
+The translator reads this metadata to wire the function as the contract's `_deploy` handler in the generated NeoVM bytecode.
+
+## Deployment Initialization
+
+The deploy entry point runs exactly once -- when the contract is first published to the blockchain. Use it for initialization logic that must happen before any contract method is called:
+
+```rust
+use neo_devpack::prelude::*;
+
+#[neo_contract]
+pub struct MyToken;
+
+#[neo_entry]
+pub fn deploy() {
+    // Set the contract owner to the deployer
+    // Initialize the total supply
+    // Mint initial tokens to the owner
+}
+```
+
+### Common Initialization Tasks
+
+| Task | Description |
+|---|---|
+| Set owner | Store the deployer's script hash as the contract owner |
+| Initialize supply | Write the initial token supply to storage |
+| Mint tokens | Allocate initial tokens to the owner or a distribution address |
+| Set defaults | Write default configuration values to storage |
+| Emit event | Fire a deployment event for indexers and block explorers |
+
+## Practical Example
+
+A token contract with a deploy entry point that initializes storage:
+
+```rust
+use neo_devpack::prelude::*;
+use neo_devpack::serde::{Deserialize, Serialize};
+
+neo_manifest_overlay!(
+    r#"{
+    "name": "DeployExample",
+    "supportedstandards": ["NEP-17"]
+}"#
+);
+
+#[derive(Default, Serialize, Deserialize)]
+#[neo_storage]
+pub struct TokenStorage {
+    balances: NeoMap<NeoByteString, NeoInteger>,
+    metadata: NeoMap<NeoString, NeoValue>,
+}
+
+#[neo_contract]
+pub struct DeployableToken;
+
+#[neo_entry]
+pub fn deploy() {
+    let context = match NeoRuntime::get_storage_context() {
+        Ok(ctx) => ctx,
+        Err(_) => return,
+    };
+
+    let owner = match NeoRuntime::get_calling_script_hash() {
+        Ok(hash) => hash,
+        Err(_) => return,
+    };
+
+    let mut storage = TokenStorage::load(&context);
+
+    // Mint entire supply to the deployer
+    let total_supply = NeoInteger::new(1_000_000);
+    storage.balances.insert(owner, total_supply);
+
+    // Store contract metadata
+    storage.metadata.insert(
+        NeoString::from_str("name"),
+        NeoValue::from(NeoString::from_str("DeployableToken")),
+    );
+
+    let _ = storage.save(&context);
+}
+
+#[neo_contract]
+impl DeployableToken {
+    pub fn new() -> Self {
+        Self
+    }
+
+    #[neo_method(safe)]
+    pub fn total_supply() -> i64 {
+        1_000_000
+    }
+
+    #[neo_method(safe)]
+    pub fn balance_of(account: i64) -> i64 {
+        // read from storage
+        0
+    }
+
+    #[neo_method]
+    pub fn transfer(from: i64, to: i64, amount: i64) -> bool {
+        from > 0 && to > 0 && amount > 0
+    }
+}
+```
+
+<Aside type="caution">
+  The deploy function runs in the context of the deployment transaction. If it aborts (panics or hits a VM fault), the entire deployment fails and the contract is not published. Keep initialization logic simple and handle errors gracefully.
+</Aside>
+
+## Entry Point Naming
+
+The function name determines the `kind` field in the metadata. The translator recognizes these conventions:
+
+| Function name | Entry kind | Neo lifecycle event |
+|---|---|---|
+| `deploy` | `deploy` | `_deploy` -- called on first deployment |
+| `update` | `update` | Called on contract update |
+| `destroy` | `destroy` | Called on contract destruction |
+
+```rust
+#[neo_entry]
+pub fn deploy() {
+    // first deployment
+}
+
+#[neo_entry]
+pub fn update() {
+    // contract update / migration
+}
+
+#[neo_entry]
+pub fn destroy() {
+    // cleanup before destruction
+}
+```
+
+## Relationship with `#[neo_contract]`
+
+`#[neo_entry]` is independent of `#[neo_contract]`. The entry function is a free function, not a method on the contract struct. This separation keeps lifecycle logic distinct from business logic:
+
+```rust
+// Lifecycle -- free function
+#[neo_entry]
+pub fn deploy() {
+    let mut contract = MyToken::new();
+    let _ = contract.initialize();
+}
+
+// Business logic -- struct methods
+#[neo_contract]
+pub struct MyToken;
+
+#[neo_contract]
+impl MyToken {
+    pub fn new() -> Self { Self }
+
+    #[neo_method]
+    pub fn initialize(&mut self) -> NeoResult<()> {
+        // initialization logic
+        Ok(())
+    }
+}
+```
+
+<Aside type="note">
+  The deploy entry point can instantiate the contract struct and call its methods. This is a common pattern for bridging lifecycle events into the contract's method-based API.
+</Aside>
+
+## See Also
+
+- [#[neo_contract]](/sdk/macros/neo-contract/) -- the contract struct and impl block macros
+- [#[neo_storage]](/sdk/macros/neo-storage/) -- persistent storage for initialization data
+- [Contract Anatomy](/concepts/contract-anatomy/) -- full contract structure overview

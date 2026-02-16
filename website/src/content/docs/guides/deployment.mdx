@@ -1,0 +1,187 @@
+---
+title: Deployment
+description: Deploy compiled Neo N3 smart contracts to Neo Express, testnet, and mainnet using the generated NEF and manifest artifacts.
+draft: false
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+After translating your Rust contract to a NEF + manifest pair, you need a Neo node to deploy it. This guide covers the full deployment path from local testing to mainnet.
+
+## Local Development with Neo Express
+
+Neo Express is a lightweight private chain for local development and testing.
+
+### Install Neo Express
+
+<Aside type="note">
+Neo Express requires the .NET 8.0 SDK or later.
+</Aside>
+
+```bash
+dotnet tool install Neo.Express -g
+```
+
+Verify the installation:
+
+```bash
+neoxp --version
+```
+
+### Create a Private Chain
+
+<Steps>
+
+1. Initialize a single-node chain:
+
+   ```bash
+   neoxp create
+   ```
+
+   This creates a `default.neo-express` configuration file in the current directory.
+
+2. Start the chain:
+
+   ```bash
+   neoxp run
+   ```
+
+   Leave this running in a separate terminal.
+
+3. Create a test wallet (if needed):
+
+   ```bash
+   neoxp wallet create testuser
+   ```
+
+4. Transfer GAS to your test account:
+
+   ```bash
+   neoxp transfer 1000 GAS genesis testuser
+   ```
+
+</Steps>
+
+### Deploy a Contract
+
+With the chain running, deploy your compiled contract:
+
+```bash
+neoxp contract deploy build/HelloWorld.nef genesis
+```
+
+- The first argument is the path to the `.nef` file. The translator places the matching `.manifest.json` alongside it automatically.
+- The second argument is the account paying the deployment GAS fee.
+
+Neo Express prints the contract hash on success:
+
+```
+Contract deployed: 0x1a2b3c4d5e6f...
+```
+
+### Invoke Contract Methods
+
+```bash
+# Call a safe (read-only) method
+neoxp contract invoke 0x1a2b3c4d5e6f... hello
+
+# Call a state-changing method
+neoxp contract invoke 0x1a2b3c4d5e6f... transfer \
+  --account genesis -- 1 2 100
+```
+
+### Smoke Testing
+
+The repository includes an automated smoke script that deploys and invokes every example contract:
+
+```bash
+make smoke-neoxp
+```
+
+This validates that the generated NEF artifacts are well-formed and execute correctly on a real NeoVM.
+
+## Testnet Deployment
+
+Once your contract works locally, deploy to the Neo N3 TestNet for broader testing.
+
+### Prerequisites
+
+- A Neo N3 testnet wallet with GAS (request from the [Neo TestNet faucet](https://neowish.ngd.network/))
+- A Neo CLI or compatible deployment tool
+
+### Deploy with Neo CLI
+
+```bash
+neo-cli deploy build/MyContract.nef --wallet testnet-wallet.json
+```
+
+### Verify Deployment
+
+After deployment, verify your contract on a testnet block explorer:
+
+- [NeoTube TestNet](https://testnet.neotube.io/)
+- [Dora TestNet](https://testnet.dora.coz.io/)
+
+Search by the contract hash returned during deployment.
+
+## Mainnet Deployment
+
+<Aside type="caution">
+Mainnet deployment is irreversible and costs real GAS. Audit your contract thoroughly before deploying.
+</Aside>
+
+### Pre-Deployment Checklist
+
+1. All unit tests pass: `make test-contracts`
+2. Integration tests pass: `make test`
+3. Smoke tests pass on Neo Express: `make smoke-neoxp`
+4. Contract has been audited (for high-value contracts)
+5. Manifest permissions follow least-privilege principle
+6. NEF size is within Neo's deployment limits
+
+### Deploy
+
+The deployment command is identical to testnet, but pointed at a mainnet RPC node:
+
+```bash
+neo-cli deploy build/MyContract.nef \
+  --wallet mainnet-wallet.json \
+  --rpc-url https://mainnet-rpc.neo.org
+```
+
+### Post-Deployment
+
+- Record the contract hash for future reference
+- Verify on [NeoTube](https://neotube.io/) or [Dora](https://dora.coz.io/)
+- Monitor contract invocations and GAS consumption
+- Plan upgrade paths if your contract supports `update` methods
+
+## Build → Deploy Pipeline
+
+A typical end-to-end workflow:
+
+```bash
+# 1. Compile Rust → Wasm
+cargo build --manifest-path contracts/nep17-token/Cargo.toml \
+  --release --target wasm32-unknown-unknown
+
+# 2. Translate Wasm → NEF + manifest
+cargo run --manifest-path wasm-neovm/Cargo.toml -- \
+  --input contracts/nep17-token/target/wasm32-unknown-unknown/release/nep17_token_neo.wasm \
+  --nef build/SampleNEP17.nef \
+  --manifest build/SampleNEP17.manifest.json \
+  --name SampleNEP17
+
+# 3. Deploy to Neo Express
+neoxp contract deploy build/SampleNEP17.nef genesis
+
+# 4. Invoke
+neoxp contract invoke <hash> totalSupply
+```
+
+Or use the Makefile shortcut:
+
+```bash
+make nep17-token
+make smoke-neoxp
+```

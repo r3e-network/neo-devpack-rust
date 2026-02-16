@@ -1,0 +1,112 @@
+---
+title: Installation
+description: Set up the Rust toolchain, Wasm target, and neo-llvm dependencies needed to compile Neo N3 smart contracts.
+draft: false
+---
+
+import { Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+## Prerequisites
+
+- **Rust 1.83+** (stable or nightly)
+- **wasm32-unknown-unknown** target for cross-compilation
+- **Git** for cloning the repository
+
+## Setup
+
+<Steps>
+
+1. **Install Rust**
+
+   If you don't have Rust installed, use [rustup](https://rustup.rs/):
+
+   ```bash
+   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+   ```
+
+   Verify the installation:
+
+   ```bash
+   rustc --version   # should be 1.83.0 or later
+   cargo --version
+   ```
+
+2. **Add the Wasm target**
+
+   The contracts compile to WebAssembly before translation to NeoVM:
+
+   ```bash
+   rustup target add wasm32-unknown-unknown
+   ```
+
+3. **Clone the repository**
+
+   ```bash
+   git clone https://github.com/r3e-network/neo-llvm.git
+   cd neo-llvm
+   ```
+
+4. **Fetch dependencies**
+
+   Each crate has its own `Cargo.toml` (there is no root workspace):
+
+   ```bash
+   cargo fetch --manifest-path wasm-neovm/Cargo.toml
+   cargo fetch --manifest-path rust-devpack/Cargo.toml
+   ```
+
+5. **Build and verify**
+
+   ```bash
+   cargo build --manifest-path wasm-neovm/Cargo.toml
+   cargo test --manifest-path wasm-neovm/Cargo.toml
+   ```
+
+   A successful test run confirms the translator is working correctly.
+
+</Steps>
+
+## Optional Tools
+
+### Security Auditing
+
+```bash
+cargo install cargo-audit
+cargo install cargo-deny
+```
+
+Run `cargo audit` against each crate to check for known vulnerabilities in dependencies.
+
+### Code Quality
+
+```bash
+rustup component add rustfmt clippy
+```
+
+- `cargo fmt` — auto-format code to match project style.
+- `cargo clippy` — catch common mistakes and suggest improvements.
+
+### Neo Express (Deployment Testing)
+
+[Neo Express](https://github.com/neo-project/neo-express) provides a local private Neo N3 network for testing contract deployment and invocation without touching a public chain.
+
+Install it via the .NET SDK:
+
+```bash
+dotnet tool install Neo.Express -g
+```
+
+See the [Deployment guide](/guides/deployment/) for usage details.
+
+## Troubleshooting
+
+| Problem | Solution |
+|---|---|
+| `rustc` version too old | Run `rustup update` to get the latest stable toolchain |
+| Missing wasm32 target | Run `rustup target add wasm32-unknown-unknown` |
+| Linker errors on Linux | Install `build-essential` (`apt install build-essential`) |
+| Linker errors on macOS | Install Xcode command-line tools (`xcode-select --install`) |
+
+## Next Steps
+
+With the toolchain installed, head to the [Quick Start](/quickstart/) to compile your first contract.

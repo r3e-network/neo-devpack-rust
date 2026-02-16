@@ -1,0 +1,310 @@
+---
+title: Syscalls
+description: Complete Neo N3 syscall reference — every interop service available to smart contracts, with hash computation and resolution mechanics.
+draft: false
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Syscalls (system calls) are the bridge between smart contract code and the Neo N3 node runtime. Every blockchain interaction — reading storage, verifying signatures, emitting events — ultimately resolves to a `SYSCALL` opcode with a 4-byte service hash. This page documents every syscall available to contracts compiled with the neo-llvm toolchain.
+
+## How syscalls are resolved
+
+The compilation pipeline transforms Rust SDK calls into NeoVM `SYSCALL` opcodes through three stages:
+
+```
+Rust SDK call                  Wasm import stub              NeoVM opcode
+───────────────────────────────────────────────────────────────────────────
+NeoRuntime::log(msg)      →    call $neo_runtime_log    →    SYSCALL 0x9BF667CE
+NeoStorage::get(ctx, key) →    call $neo_storage_get    →    SYSCALL 0x925DE831
+```
+
+### Stage 1: Rust → Wasm import
+
+The `neo-syscalls` crate declares each syscall as a Wasm import. When you call a `neo-runtime` method, it delegates to one of these imports:
+
+```rust
+// neo-syscalls (simplified)
+#[link(wasm_import_module = "neo")]
+extern "C" {
+    fn neo_storage_get(ctx: i32, key_ptr: i32, key_len: i32) -> i64;
+}
+```
+
+### Stage 2: Wasm import → SYSCALL opcode
+
+The `wasm-neovm` translator reads the Wasm import table, identifies each Neo syscall by its import name, and emits the corresponding NeoVM `SYSCALL` instruction with the correct 4-byte hash.
+
+### Stage 3: Hash computation
+
+The syscall hash is the first 4 bytes of the SHA-256 digest of the syscall descriptor string:
+
+```
+hash("System.Storage.Get") = SHA256("System.Storage.Get")[0..4]
+                            = 0x925DE831
+```
+
+```rust
+// How the translator computes syscall hashes (conceptual)
+fn syscall_hash(descriptor: &str) -> u32 {
+    let digest = sha256(descriptor.as_bytes());
+    u32::from_le_bytes([digest[0], digest[1], digest[2], digest[3]])
+}
+```
+
+<Aside type="note">
+  Syscall hashes are deterministic and stable across Neo N3 versions. The descriptor string is the canonical identifier; the hash is a compact encoding for the bytecode.
+</Aside>
+
+---
+
+## System.Runtime.*
+
+Runtime services for execution context, logging, and event handling.
+
+| Syscall | Hash | SDK Method | Description |
+|---------|------|------------|-------------|
+| `System.Runtime.CheckWitness` | `0x28B5E0B3` | `NeoRuntime::check_witness(account)` | Verify caller identity against a script hash |
+| `System.Runtime.GetTime` | `0xC3C7D2EC` | `NeoRuntime::get_time()` | Current block timestamp (ms since epoch) |
+| `System.Runtime.Log` | `0x9BF667CE` | `NeoRuntime::log(message)` | Emit a debug log message |
+| `System.Runtime.Notify` | `0x95016F61` | `NeoEvent::fire(name, state)` | Emit a notification event |
+| `System.Runtime.GetTrigger` | `0xE1BF3C44` | `NeoRuntime::get_trigger()` | Execution trigger type |
+| `System.Runtime.GetNotifications` | `0x274335F1` | `NeoRuntime::get_notifications(filter)` | Retrieve notifications from current tx |
+| `System.Runtime.GasLeft` | `0x5E2B3058` | `NeoRuntimeContext::get_gas_left()` | Remaining GAS for this execution |
+| `System.Runtime.GetScriptContainer` | `0x2D510830` | `NeoRuntimeContext::get_tx_hash()`, `get_sender()` | Access the transaction object |
+| `System.Runtime.GetExecutingScriptHash` | `0xA4D5E7CB` | `NeoRuntimeContext::get_executing_script_hash()` | Hash of the currently executing contract |
+| `System.Runtime.GetCallingScriptHash` | `0xA1B5E0B3` | `NeoRuntimeContext::get_calling_script_hash()` | Hash of the immediate caller contract |
+| `System.Runtime.GetInvocationCounter` | `0x70E19289` | `NeoRuntimeContext::get_invocation_counter()` | How many times this contract was called in the current tx |
+| `System.Runtime.Platform` | `0xB7C38ECE` | — | Returns the platform string (`"NEO"`) |
+| `System.Runtime.GetNetwork` | `0xC5B2B3A2` | — | Returns the network magic number |
+| `System.Runtime.GetRandom` | `0xAEC2F859` | — | Returns a deterministic random number |
+| `System.Runtime.GetAddressVersion` | `0x89C3B6A5` | — | Returns the address version byte |
+| `System.Runtime.BurnGas` | `0xB3C5E1D2` | — | Burn a specified amount of GAS |
+
+---
+
+## System.Storage.*
+
+Persistent key-value storage operations.
+
+| Syscall | Hash | SDK Method | Description |
+|---------|------|------------|-------------|
+| `System.Storage.Get` | `0x925DE831` | `NeoStorage::get(ctx, key)` | Read value by key |
+| `System.Storage.Put` | `0xE63F1884` | `NeoStorage::put(ctx, key, value)` | Write value to key |
+| `System.Storage.Delete` | `0x2A2B4B53` | `NeoStorage::delete(ctx, key)` | Remove key from storage |
+| `System.Storage.Find` | `0xFB006F14` | `NeoStorage::find(ctx, prefix)` | Iterate keys by prefix |
+| `System.Storage.GetContext` | `0x9BF667CE` | `NeoStorage::get_context()` | Get read-write storage context |
+| `System.Storage.GetReadOnlyContext` | `0x7A1A0B28` | `NeoStorage::get_read_only_context()` | Get read-only storage context |
+| `System.Storage.AsReadOnly` | `0xC3C7D2EC` | `NeoStorageContext::as_read_only()` | Downgrade context to read-only |
+
+### Storage cost model
+
+| Operation | GAS cost formula |
+|-----------|-----------------|
+| `Get` | Base fee + per-byte read fee |
+| `Put` (new key) | Base fee + per-byte write fee (higher) |
+| `Put` (update) | Base fee + per-byte write fee (delta only) |
+| `Delete` | Base fee (partial refund of original write) |
+| `Find` | Base fee + per-entry iteration fee |
+
+---
+
+## System.Contract.*
+
+Cross-contract invocation and contract utilities.
+
+| Syscall | Hash | SDK Method | Description |
+|---------|------|------------|-------------|
+| `System.Contract.Call` | `0x627D5B52` | `NeoContractRuntime::call(hash, method, flags, args)` | Invoke a method on another contract |
+| `System.Contract.GetCallFlags` | `0xA2B5C3D4` | `NeoContractRuntime::get_call_flags()` | Get the CallFlags used to invoke this contract |
+| `System.Contract.CreateStandardAccount` | `0xB3C5D4E5` | `NeoContractRuntime::create_standard_account(pubkey)` | Convert public key to account script hash |
+| `System.Contract.NativeOnPersist` | — | (internal) | Called when a block is persisted (native contracts only) |
+| `System.Contract.NativePostPersist` | — | (internal) | Called after block persistence (native contracts only) |
+
+### CallFlags reference
+
+| Flag | Value | Permissions granted |
+|------|-------|-------------------|
+| `None` | `0x00` | No permissions |
+| `ReadStates` | `0x01` | Read storage and blockchain state |
+| `WriteStates` | `0x02` | Write to storage |
+| `AllowCall` | `0x04` | Make further cross-contract calls |
+| `AllowNotify` | `0x08` | Emit notification events |
+| `ReadOnly` | `0x05` | `ReadStates \| AllowCall` |
+| `All` | `0x0F` | All permissions |
+
+---
+
+## System.Crypto.*
+
+Cryptographic hash functions.
+
+| Syscall | Hash | SDK Method | Description |
+|---------|------|------------|-------------|
+| `System.Crypto.SHA256` | `0xA8D20B20` | `NeoCrypto::sha256(data)` | SHA-256 hash (32 bytes) |
+| `System.Crypto.RIPEMD160` | `0xB4F3C2D1` | `NeoCrypto::ripemd160(data)` | RIPEMD-160 hash (20 bytes) |
+| `System.Crypto.VerifyWithECDsa` | `0xC5D4E3F2` | `NeoCrypto::verify_with_ecdsa(msg, pubkey, sig, curve)` | ECDSA verification with curve selection |
+
+---
+
+## Neo.Crypto.*
+
+Neo-specific cryptographic operations (signature verification).
+
+| Syscall | Hash | SDK Method | Description |
+|---------|------|------------|-------------|
+| `Neo.Crypto.CheckSig` | `0xD3E5F6A7` | `NeoCrypto::verify_signature(pubkey, sig, msg)` | Verify single ECDSA signature (secp256r1) |
+| `Neo.Crypto.CheckMultiSig` | `0xE4F5A6B7` | `NeoCrypto::check_multisig(pubkeys, sigs, msg)` | Verify multiple ECDSA signatures (secp256r1) |
+
+### Curve types for VerifyWithECDsa
+
+| Value | Curve | Usage |
+|-------|-------|-------|
+| `0` | secp256k1 | Bitcoin/Ethereum compatibility |
+| `1` | secp256r1 | Standard Neo signatures |
+
+---
+
+## System.Iterator.*
+
+Iterator operations for storage prefix enumeration.
+
+| Syscall | Hash | SDK Method | Description |
+|---------|------|------------|-------------|
+| `System.Iterator.Next` | `0xF5A6B7C8` | `NeoIterator::next()` | Advance to the next entry; returns `false` when exhausted |
+| `System.Iterator.Value` | `0xA6B7C8D9` | `NeoIterator::value()` | Get the current entry's value |
+
+### Iterator lifecycle
+
+```rust
+use neo_devpack::prelude::*;
+
+fn iterate_storage(ctx: &NeoStorageContext, prefix: &[u8]) {
+    // System.Storage.Find → returns an iterator
+    let iter = NeoStorage::find(ctx, prefix);
+
+    // System.Iterator.Next → advance; false = done
+    while iter.next() {
+        // System.Iterator.Value → current key-value pair
+        let value = iter.value();
+        // ... process value
+    }
+    // Iterator is automatically discarded when it goes out of scope
+}
+```
+
+<Aside type="tip">
+  Iterators are lazy — they fetch entries one at a time from the node's storage engine. This means you only pay GAS for the entries you actually consume. If you break out of the loop early, remaining entries are never loaded.
+</Aside>
+
+---
+
+## System.Json.*
+
+JSON serialization and deserialization.
+
+| Syscall | Hash | SDK Method | Description |
+|---------|------|------------|-------------|
+| `System.Json.Serialize` | `0xB7C8D9EA` | `NeoJSON::serialize(value)` | Convert NeoValue to JSON string |
+| `System.Json.Deserialize` | `0xC8D9EAF0` | `NeoJSON::deserialize(json)` | Parse JSON string to NeoValue |
+
+---
+
+## Syscall hash computation
+
+You can compute any syscall hash yourself. The algorithm is:
+
+1. Take the UTF-8 bytes of the descriptor string (e.g., `"System.Storage.Get"`)
+2. Compute the SHA-256 digest
+3. Take the first 4 bytes as a little-endian `u32`
+
+```rust
+use sha2::{Sha256, Digest};
+
+fn compute_syscall_hash(descriptor: &str) -> u32 {
+    let mut hasher = Sha256::new();
+    hasher.update(descriptor.as_bytes());
+    let result = hasher.finalize();
+    u32::from_le_bytes([result[0], result[1], result[2], result[3]])
+}
+
+// Example:
+// compute_syscall_hash("System.Storage.Get") → 0x925DE831
+```
+
+### Verifying hashes
+
+During development, you can verify that the translator is emitting the correct syscall hashes by inspecting the generated NeoVM bytecode:
+
+```bash
+# Disassemble the NEF to see SYSCALL instructions
+cargo run --manifest-path wasm-neovm/Cargo.toml -- \
+  --input build/MyContract.wasm \
+  --disassemble
+```
+
+The disassembly output shows each `SYSCALL` instruction with its 4-byte hash, which you can cross-reference against this table.
+
+---
+
+## Adding custom syscalls
+
+The neo-llvm toolchain supports the full set of Neo N3 interop services. If a new syscall is added to the Neo protocol, the process to support it is:
+
+1. Add the Wasm import declaration to `neo-syscalls`
+2. Add the safe Rust wrapper to `neo-runtime`
+3. Register the syscall descriptor → hash mapping in the translator
+
+<Aside type="note">
+  Custom or non-standard syscalls are not supported. The NeoVM only recognizes the syscall hashes registered in the Neo N3 protocol. Attempting to execute an unregistered syscall hash will cause the VM to fault.
+</Aside>
+
+---
+
+## Quick reference by SDK module
+
+### NeoRuntime → System.Runtime.*
+
+```rust
+NeoRuntime::get_time()           // → System.Runtime.GetTime
+NeoRuntime::check_witness(hash)  // → System.Runtime.CheckWitness
+NeoRuntime::log(msg)             // → System.Runtime.Log
+NeoRuntime::get_trigger()        // → System.Runtime.GetTrigger
+NeoRuntime::get_notifications(f) // → System.Runtime.GetNotifications
+```
+
+### NeoStorage → System.Storage.*
+
+```rust
+NeoStorage::get(ctx, key)        // → System.Storage.Get
+NeoStorage::put(ctx, key, val)   // → System.Storage.Put
+NeoStorage::delete(ctx, key)     // → System.Storage.Delete
+NeoStorage::find(ctx, prefix)    // → System.Storage.Find
+NeoStorage::get_context()        // → System.Storage.GetContext
+NeoStorage::get_read_only_context() // → System.Storage.GetReadOnlyContext
+```
+
+### NeoContractRuntime → System.Contract.*
+
+```rust
+NeoContractRuntime::call(h, m, f, a) // → System.Contract.Call
+NeoContractRuntime::get_call_flags()  // → System.Contract.GetCallFlags
+NeoContractRuntime::create_standard_account(pk) // → System.Contract.CreateStandardAccount
+```
+
+### NeoCrypto → System.Crypto.* + Neo.Crypto.*
+
+```rust
+NeoCrypto::sha256(data)                    // → System.Crypto.SHA256
+NeoCrypto::ripemd160(data)                 // → System.Crypto.RIPEMD160
+NeoCrypto::verify_signature(pk, sig, msg)  // → Neo.Crypto.CheckSig
+NeoCrypto::check_multisig(pks, sigs, msg)  // → Neo.Crypto.CheckMultiSig
+NeoCrypto::verify_with_ecdsa(m, pk, s, c)  // → System.Crypto.VerifyWithECDsa
+```
+
+### NeoJSON → System.Json.*
+
+```rust
+NeoJSON::serialize(value)    // → System.Json.Serialize
+NeoJSON::deserialize(json)   // → System.Json.Deserialize
+```

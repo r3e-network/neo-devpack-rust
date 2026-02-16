@@ -1,0 +1,92 @@
+---
+title: "Syscall Mapping Reference"
+description: "Complete reference for cross-chain syscall translations from Solana and Move to Neo N3 interop services."
+draft: false
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+This page provides the complete mapping tables for syscall and standard library translations used by the cross-chain compilation pipeline. These mappings are applied automatically when you build with `--source-chain solana` or `--source-chain move`.
+
+## Solana Syscall Mappings
+
+The Solana adapter intercepts WASM imports from the `solana_program` shim and rewrites them to Neo interop service calls during the WASM-to-NeoVM translation stage.
+
+| Solana Syscall | Neo Interop Service | Notes |
+|----------------|---------------------|-------|
+| `sol_log` | `System.Runtime.Log` | Direct mapping |
+| `sol_sha256` | `Neo.Crypto.SHA256` | Direct mapping |
+| `sol_keccak256` | `Neo.Crypto.Keccak256` | Available in Neo |
+| `sol_get_clock_sysvar` | `System.Runtime.GetTime` | Unix timestamp |
+| `sol_invoke` | `System.Contract.Call` | Cross-contract calls |
+| `sol_verify_signature` | `System.Runtime.CheckWitness` | Different signature scheme (see below) |
+| Account read | `System.Storage.Get` | Storage key prefixed by pubkey |
+| Account write | `System.Storage.Put` | Storage key prefixed by pubkey |
+
+### Solana Storage Mapping
+
+Solana account data access is translated to Neo storage operations:
+
+- Account reads become `System.Storage.Get` with the account pubkey as key prefix.
+- Account writes become `System.Storage.Put` with the same key prefix.
+- Account existence checks map to `Storage.Get != null`.
+
+## Move Standard Library Mappings
+
+The Move adapter maps Move standard library calls to Neo equivalents. These mappings apply to both direct Move bytecode translation and Move-style Rust contracts.
+
+| Move Stdlib | Neo Equivalent | Notes |
+|-------------|---------------|-------|
+| `hash::sha256` | `Neo.Crypto.SHA256` | Direct mapping |
+| `timestamp::now_seconds` | `System.Runtime.GetTime` | Returns Unix timestamp |
+| `event::emit` | `System.Runtime.Notify` | Event data serialized to notification |
+| `signer::address_of` | `System.Runtime.GetCallingScriptHash` | Returns calling contract hash |
+
+### Move Resource Operations
+
+Move resource operations are translated to Neo storage calls with type-prefixed keys:
+
+| Move Operation | Neo Translation | Key Format |
+|----------------|-----------------|------------|
+| `move_to<T>(signer, value)` | `System.Storage.Put` | `"R" + address + ":" + type_name` |
+| `move_from<T>(address)` | `System.Storage.Delete` | `"R" + address + ":" + type_name` |
+| `borrow_global<T>(address)` | `System.Storage.Get` | `"R" + address + ":" + type_name` |
+| `exists<T>(address)` | `System.Storage.Get != null` | `"R" + address + ":" + type_name` |
+
+## Security Considerations
+
+<Aside type="danger">
+  Cross-compiled contracts should be audited for Neo-specific security concerns before deployment to mainnet.
+</Aside>
+
+### Signature Scheme Differences
+
+Solana uses Ed25519 exclusively. Neo supports secp256r1 (primary), secp256k1, and Ed25519. The `sol_verify_signature` syscall maps to `CheckWitness`, which uses Neo's native signature verification. This means:
+
+- The cryptographic primitive changes between source and target chain.
+- Authorization semantics are preserved (the right party must sign), but the underlying key format differs.
+- Contracts that inspect raw signature bytes will not produce compatible results.
+
+### Type Safety
+
+Move's linear type system enforces resource safety at the VM level. In the translated NeoVM bytecode, these guarantees are emulated through runtime storage checks rather than VM-enforced constraints. A bug in the emulation layer could allow:
+
+- Duplication of resources that should be unique.
+- Dropping of resources without proper cleanup.
+
+### Cross-Contract Call Security
+
+| Aspect | Solana | Neo |
+|--------|--------|-----|
+| Call mechanism | CPI (Cross-Program Invocation) | `System.Contract.Call` |
+| Authorization | Signer propagation | `CheckWitness` per call |
+| Reentrancy | Prevented by runtime | Allowed (contract must guard) |
+
+Solana's CPI model propagates signers automatically. Neo requires explicit `CheckWitness` calls. Contracts that rely on implicit signer propagation need manual adaptation.
+
+### Audit Recommendations
+
+1. Verify that authorization checks are preserved after translation.
+2. Test resource lifecycle operations (create, transfer, destroy) for correctness.
+3. Confirm that cross-contract calls enforce the expected permission model.
+4. Validate that fee-sensitive logic accounts for Neo's GAS model rather than Solana's compute units or Move's gas schedule.

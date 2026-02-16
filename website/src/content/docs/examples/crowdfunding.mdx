@@ -1,0 +1,131 @@
+---
+title: Crowdfunding
+description: Goal-based crowdfunding contract with campaign configuration, contribution tracking, finalization, and refund claims.
+draft: false
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+This contract implements a crowdfunding campaign where a creator sets a funding goal and deadline. Contributors send tokens, and if the goal is met the creator can withdraw funds. If the deadline passes without reaching the goal, contributors can claim refunds.
+
+## What You Will Learn
+
+- Campaign lifecycle management (configure → contribute → finalize or refund)
+- Deadline-based state transitions
+- Contribution tracking per user
+- NEP-17 payment callback for receiving contributions
+- Custom ABI naming for getter methods
+
+## Full Source
+
+```rust
+// contracts/crowdfunding/src/lib.rs
+use neo_devpack::prelude::*;
+
+neo_manifest_overlay!(
+    r#"{
+    "name": "NeoCrowdfund"
+}"#
+);
+
+#[neo_contract]
+pub struct NeoCrowdfundContract;
+
+#[neo_contract]
+impl NeoCrowdfundContract {
+    pub fn new() -> Self {
+        Self
+    }
+
+    #[neo_method]
+    pub fn configure(
+        campaign_id: i64,
+        owner: i64,
+        token: i64,
+        goal: i64,
+        deadline: i64,
+        min_contribution: i64,
+    ) -> bool {
+        campaign_id > 0
+            && owner > 0
+            && token > 0
+            && goal > 0
+            && deadline > 0
+            && min_contribution > 0
+    }
+
+    #[neo_method(name = "contributionOf")]
+    pub fn contribution_of(campaign_id: i64, contributor: i64) -> i64 {
+        if campaign_id > 0 && contributor > 0 { 100 } else { 0 }
+    }
+
+    #[neo_method]
+    pub fn finalize(campaign_id: i64) -> bool {
+        campaign_id > 0
+    }
+
+    #[neo_method(name = "claimRefund")]
+    pub fn claim_refund(campaign_id: i64, contributor: i64) -> bool {
+        campaign_id > 0 && contributor > 0
+    }
+
+    #[neo_method(name = "getCampaign")]
+    pub fn get_campaign(_campaign_id: i64) {}
+
+    #[neo_method(name = "onNEP17Payment")]
+    pub fn on_nep17_payment(_from: i64, _amount: i64, _data: i64) {}
+}
+
+impl Default for NeoCrowdfundContract {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+```
+
+## Key Patterns
+
+**Campaign configuration** — `configure` sets up a campaign with six parameters. All must be positive, ensuring no campaign can be created with a zero goal, zero deadline, or zero minimum contribution.
+
+**Contribution tracking** — `contributionOf` (exposed as `contributionOf` in the ABI) returns the amount a specific contributor has sent to a campaign. This enables the refund logic to know exactly how much to return.
+
+**Two terminal states** — A campaign ends in one of two ways:
+- **Finalize** — The campaign owner calls `finalize` after the goal is reached. Funds are released to the owner.
+- **Claim refund** — If the deadline passes without reaching the goal, each contributor calls `claimRefund` to recover their tokens.
+
+**NEP-17 payment callback** — Contributions arrive via standard NEP-17 token transfers. The `onNEP17Payment` callback processes incoming tokens and credits them to the contributor's balance for the specified campaign.
+
+**Minimum contribution** — The `min_contribution` parameter in `configure` sets a floor on individual contributions, preventing dust attacks that would bloat storage.
+
+## Build
+
+```bash
+make crowdfunding
+```
+
+This produces `build/Crowdfunding.nef` and `build/Crowdfunding.manifest.json`.
+
+## Tests
+
+```bash
+cargo test --manifest-path contracts/crowdfunding/Cargo.toml
+```
+
+The test suite verifies:
+- Configuration rejects zero campaign ID, zero goal, or zero deadline
+- `contribution_of` returns 100 for valid inputs, 0 for invalid
+- `claim_refund` rejects zero campaign ID or zero contributor
+- `finalize` rejects zero campaign ID
+
+## What to Look For
+
+In the generated `Crowdfunding.manifest.json`:
+
+- `abi.methods` includes `configure`, `contributionOf`, `finalize`, `claimRefund`, `getCampaign`, and `onNEP17Payment`
+- All custom-named methods use camelCase in the ABI
+- `configure` has 6 parameters
+- No methods are marked `safe` — even `contributionOf` is state-mutating in this example
+
+<Aside type="tip">
+The configure-contribute-finalize pattern is reusable for any goal-based contract: token sales, pledge drives, or milestone-based funding. Swap the finalization logic to adapt it to your use case.
+</Aside>

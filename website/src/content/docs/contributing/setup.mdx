@@ -1,0 +1,149 @@
+---
+title: Dev Setup
+description: Set up a complete neo-llvm development environment with all the tools needed to build, test, lint, and audit the codebase.
+draft: false
+---
+
+import { Steps, Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+This guide covers everything you need to start contributing to neo-llvm — from cloning the repo to running the full test suite.
+
+## Prerequisites
+
+| Tool | Version | Purpose |
+|---|---|---|
+| Rust | 1.70+ (stable) | Compiler toolchain |
+| wasm32-unknown-unknown | (via rustup) | Wasm compilation target |
+| Git | 2.x+ | Source control |
+| Make | GNU Make 4+ | Build automation (optional but recommended) |
+
+## Environment Setup
+
+<Steps>
+
+1. **Install Rust**
+
+   If you don't already have Rust, install it via [rustup](https://rustup.rs/):
+
+   ```bash
+   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+   source $HOME/.cargo/env
+   ```
+
+   Verify the version:
+
+   ```bash
+   rustc --version   # 1.70.0 or later
+   cargo --version
+   ```
+
+2. **Clone the repository**
+
+   ```bash
+   git clone https://github.com/r3e-network/neo-llvm.git
+   cd neo-llvm
+   ```
+
+3. **Add the Wasm target**
+
+   Contracts compile to WebAssembly before translation to NeoVM:
+
+   ```bash
+   rustup target add wasm32-unknown-unknown
+   ```
+
+4. **Install development tools**
+
+   Formatting and linting:
+
+   ```bash
+   rustup component add rustfmt clippy
+   ```
+
+   Security auditing and coverage:
+
+   ```bash
+   cargo install cargo-audit cargo-deny cargo-tarpaulin
+   ```
+
+5. **Build the project**
+
+   ```bash
+   cargo build --all
+   ```
+
+   This compiles every crate in the workspace — the translator, devpack, cross-chain layers, and all example contracts.
+
+6. **Run the tests**
+
+   ```bash
+   cargo test --all
+   ```
+
+   A clean test run confirms your environment is set up correctly.
+
+</Steps>
+
+## Full Test Suite
+
+Beyond `cargo test`, the Makefile provides targets that exercise the entire project:
+
+```bash
+# Unit and integration tests
+make test
+
+# Cross-chain compatibility tests (Solana, Move)
+make test-cross-chain
+
+# Build all 17 example contracts end-to-end
+make examples
+```
+
+<Aside type="tip">
+  Run `make test` before submitting a pull request. CI runs the same targets, so catching failures locally saves round-trip time.
+</Aside>
+
+## Verifying Your Setup
+
+A quick smoke test to confirm everything works:
+
+```bash
+# Format check (should produce no output if clean)
+cargo fmt --all -- --check
+
+# Lint check
+cargo clippy --all -- -D warnings
+
+# Security audit
+cargo audit
+
+# Build + test
+cargo build --all && cargo test --all
+```
+
+If all four commands pass, you're ready to contribute.
+
+## Editor Configuration
+
+The project uses standard Rust conventions. Most editors with `rust-analyzer` will pick up the correct settings automatically. Key points:
+
+- Line length: 100 characters
+- Indentation: 4 spaces (no tabs)
+- Format on save is recommended — the CI enforces `cargo fmt`
+
+## Troubleshooting
+
+| Problem | Solution |
+|---|---|
+| `rustc` version too old | Run `rustup update` to get the latest stable toolchain |
+| Missing wasm32 target | Run `rustup target add wasm32-unknown-unknown` |
+| `cargo-audit` not found | Run `cargo install cargo-audit` |
+| Linker errors on Linux | Install build tools: `sudo apt install build-essential` |
+| Linker errors on macOS | Install Xcode CLI tools: `xcode-select --install` |
+| `make` not found | Install GNU Make via your system package manager |
+
+## Next Steps
+
+- Read the [Contribution Guide](/contributing/guide/) for branch naming, code style, and PR process.
+- Review the [Security Policy](/contributing/security/) if you discover a vulnerability.
+- Check the [Changelog](/contributing/changelog/) to see what's been released recently.

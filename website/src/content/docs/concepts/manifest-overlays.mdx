@@ -1,0 +1,119 @@
+---
+title: "Manifest Overlays"
+description: "How to customize the contract manifest using Rust macros and external JSON overlay files."
+draft: false
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Manifest overlays let you inject metadata into the generated manifest without editing it by hand after compilation. There are two overlay sources, and they can be combined.
+
+## Overlay Sources
+
+### 1. Rust Macros
+
+The `neo_manifest_overlay!` macro embeds a JSON fragment directly in the Rust source. The compiler stores it in a Wasm custom section, and the translator extracts it during translation.
+
+```rust
+neo_manifest_overlay!(
+    r#"{
+    "name": "SampleNEP17",
+    "supportedstandards": ["NEP-17"],
+    "permissions": [
+        { "contract": "*", "methods": "*" }
+    ]
+}"#
+);
+```
+
+### 2. External Files
+
+Pass a JSON file via the CLI `--manifest-overlay` flag. This is useful for CI pipelines or when the same contract needs different manifests for different environments.
+
+```bash
+cargo run --manifest-path wasm-neovm/Cargo.toml -- \
+  --input target/wasm32-unknown-unknown/release/my_contract.wasm \
+  --nef build/MyContract.nef \
+  --manifest build/MyContract.manifest.json \
+  --manifest-overlay overlays/production.json
+```
+
+## Merge Semantics
+
+Overlays are merged into the base manifest **before** safe flags and method tokens are propagated from the translated code. The merge follows these rules:
+
+- **Scalar fields** (`name`, `extra`) -- Overlay value replaces the base value.
+- **`permissions`** -- Entries are appended and deduplicated by `(contract, methods)` pair. Permission `methods` can be `"*"` (wildcard) or an array of method names.
+- **`supportedstandards`** -- Values are appended and deduplicated.
+- **`trusts`** -- Values are appended and deduplicated.
+- **`abi.methods`** -- Overlay method entries are matched by name. Matched entries are merged (overlay fields win). Unmatched overlay methods that do not reference a real export cause the translator to abort.
+- **`abi.events`** -- Same matching logic as methods.
+- **`extra`** -- Retained on merge. If both base and overlay define `extra`, the overlay wins.
+
+<Aside type="caution">
+  Overlay method names must reference real exported functions. If an overlay declares a method that does not exist in the Wasm module, the translator aborts with an error. This prevents stale overlays from producing invalid manifests.
+</Aside>
+
+## Template
+
+A full overlay template covering all supported fields:
+
+```json
+{
+  "name": "MyContract",
+  "abi": {
+    "methods": [
+      {
+        "name": "transfer",
+        "safe": false
+      },
+      {
+        "name": "balanceOf",
+        "safe": true
+      }
+    ],
+    "events": [
+      {
+        "name": "Transfer",
+        "parameters": [
+          { "name": "from", "type": "Hash160" },
+          { "name": "to", "type": "Hash160" },
+          { "name": "amount", "type": "Integer" }
+        ]
+      }
+    ]
+  },
+  "permissions": [
+    { "contract": "*", "methods": "*" }
+  ],
+  "supportedstandards": ["NEP-17"],
+  "trusts": [],
+  "extra": {
+    "author": "My Team",
+    "description": "A sample NEP-17 token"
+  }
+}
+```
+
+## Programmatic Usage
+
+The translator can also be configured programmatically via `TranslationConfig` and `ManifestOverlay`:
+
+```rust
+use wasm_neovm::{TranslationConfig, ManifestOverlay};
+
+let overlay = ManifestOverlay::from_file("overlays/production.json")?;
+
+let config = TranslationConfig::builder()
+    .manifest_overlay(overlay)
+    .build();
+```
+
+This is equivalent to the `--manifest-overlay` CLI flag and follows the same merge semantics.
+
+## Tips
+
+- **Safe methods** -- Set `"safe": true` in the overlay's `abi.methods` entry, or use `#[neo_method(safe)]` in Rust. Both approaches produce the same manifest output.
+- **Events** -- Use `#[neo_event]` in Rust code. The macro generates the correct ABI entry automatically, so manual JSON is usually unnecessary.
+- **Storage and payable features** -- These are auto-detected from syscall usage during translation. You do not need to declare them in overlays.
+- **Multiple overlays** -- You can pass `--manifest-overlay` multiple times. They are merged left to right, with later overlays taking precedence on scalar fields.

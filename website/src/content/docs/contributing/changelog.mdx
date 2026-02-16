@@ -1,0 +1,111 @@
+---
+title: Changelog
+description: Release history for neo-llvm — new features, bug fixes, and breaking changes across all versions.
+draft: false
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+This page summarizes the notable changes in each release. For the complete commit-level history, see the [full changelog on GitHub](https://github.com/r3e-network/neo-llvm/blob/master/CHANGELOG.md).
+
+## 0.4.7 — February 2026
+
+Formal version promotion from development builds. This release stabilizes all changes introduced during the 0.4.x development cycle and marks the current recommended version for production use.
+
+- Promoted all 0.4.6 features to stable
+- Final CI validation pass across all 17 example contracts
+- No breaking changes from 0.4.6
+
+## 0.4.6
+
+Error signaling, configuration normalization, and input validation hardening.
+
+- **NeoResult error signaling** — new `NeoResult` type for structured error reporting from translated contracts
+- **TranslationConfig normalization** — configuration fields are validated and normalized at parse time, catching invalid combinations early
+- **Negative offset rejection** — the translator now rejects negative memory offsets during Wasm parsing instead of silently wrapping
+- **Hash160 validation** — strict validation of Neo N3 address hashes, rejecting malformed or zero-prefixed inputs
+
+## 0.4.5
+
+New contract examples, auto-generated entry shims, and expanded smoke testing.
+
+- **3 new contract examples**: `uniswap-v2` (AMM with constant-product formula), `staking-rewards` (time-weighted reward distribution), `timelock-vault` (time-locked asset custody)
+- **flashloan-pool** example — demonstrates flash loan patterns with callback verification
+- **Auto-generated entry shims** — the translator now emits `_initialize` and `_deploy` entry points automatically when not explicitly defined
+- **Neo Express smoke coverage** — expanded CI integration tests covering deployment and invocation on a local Neo Express network
+
+## 0.4.4
+
+INITSLOT correctness, deploy export cleanup, and Neo Express CI integration.
+
+- **INITSLOT fix** — corrected local variable slot allocation for functions with mixed parameter and local counts
+- **`_deploy` export cleanup** — the `_deploy` method is no longer duplicated in the manifest when both auto-generated and user-defined versions exist
+- **Features normalization** — manifest `features` field is now consistently serialized regardless of input order
+- **Neo Express smoke script** — added `scripts/neo-express-smoke.sh` for local integration testing against a private chain
+
+## 0.4.3
+
+API consistency pass and maintenance fixes.
+
+- **API consistency** — unified naming conventions across all public translator APIs
+- **Copyright headers** — added MIT license headers to all source files
+- **`const fn` fixes** — corrected several functions that were incorrectly marked `const` in contexts where allocation occurs
+
+## 0.4.2
+
+Performance improvements and module reorganization.
+
+- **O(1) iterator** — replaced linear scan with hash-based lookup for Wasm section iteration
+- **Hash-based dedup** — duplicate opcode sequences are now detected and merged in O(1) instead of O(n^2)
+- **New modules** — split the monolithic translator into `core`, `types`, `config`, and `api` modules for better maintainability
+
+## 0.4.1
+
+Performance, correctness, and test coverage milestone.
+
+- **O(1) opcode lookup** — opcode mapping table switched from linear search to perfect hash, reducing translation time by ~40%
+- **Arena allocator** — intermediate translation data now uses an arena allocator, cutting allocation overhead significantly
+- **Critical syscall hash fix** — corrected the hash for `System.Runtime.CheckWitness` which was silently calling the wrong syscall
+- **340+ tests** — expanded test suite covering all supported Wasm opcodes and NeoVM output verification
+
+<Aside type="caution">
+  The syscall hash fix in 0.4.1 is a critical correctness fix. Contracts compiled with 0.4.0 that use `CheckWitness` should be recompiled.
+</Aside>
+
+## 0.4.0
+
+Cross-chain support and the chain adapter architecture.
+
+- **Solana compatibility layer** (`solana-compat`) — allows Solana program patterns to compile to NeoVM via an adapter that maps Solana account model concepts to Neo storage
+- **Move translator** (`move-neovm`) — experimental support for translating Move modules to NeoVM bytecode
+- **Chain adapter system** — pluggable architecture for adding new source-chain compatibility layers
+- **Breaking**: `TranslationConfig` gained required fields for chain target selection
+
+## 0.3.0
+
+Production contract templates and manifest overlay merge.
+
+- **10 production contract templates** — battle-tested examples covering tokens, NFTs, governance, escrow, and more
+- **Manifest overlay merge** — `neo_manifest_overlay!` macro output is now deep-merged with translator-generated manifests, allowing fine-grained control over permissions, trusts, and features
+
+## 0.2.0
+
+Wasm feature expansion.
+
+- **Linear memory** support — contracts can now use Wasm linear memory for complex data structures
+- **`call_indirect`** — function pointer tables are translated to NeoVM dispatch logic
+- **Reference types** — basic support for Wasm `externref` and `funcref`
+- **Bulk memory** — `memory.copy` and `memory.fill` operations mapped to NeoVM equivalents
+
+## 0.1.0
+
+Initial release.
+
+- **Core translation pipeline** — Wasm module parsing, opcode translation, and NeoVM script emission
+- **Basic arithmetic** — i32/i64 add, sub, mul, div, and comparison operations
+- **NEF generation** — valid NEF binary output with correct magic number, compiler metadata, and checksum
+- **Manifest generation** — JSON manifest with method declarations, parameter types, and return types
+
+---
+
+For the complete commit history and diff details, see the [full changelog on GitHub](https://github.com/r3e-network/neo-llvm/blob/master/CHANGELOG.md).

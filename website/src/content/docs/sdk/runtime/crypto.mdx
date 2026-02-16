@@ -1,0 +1,336 @@
+---
+title: Crypto
+description: Cryptographic hash functions and signature verification for Neo N3 smart contracts.
+draft: false
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+`NeoCrypto` provides on-chain cryptographic primitives — hash functions and ECDSA signature verification. These map directly to the `System.Crypto.*` and `Neo.Crypto.*` syscall families and execute inside the NeoVM at consensus-verified cost.
+
+```rust
+use neo_devpack::prelude::*;
+
+#[neo_method(safe)]
+pub fn hash_data(data: &[u8]) -> Vec<u8> {
+    NeoCrypto::sha256(data)
+}
+```
+
+## sha256
+
+Computes the SHA-256 hash of the input data. Returns a 32-byte digest.
+
+**Syscall:** `System.Crypto.SHA256`
+
+```rust
+use neo_devpack::prelude::*;
+
+#[neo_method(safe)]
+pub fn compute_id(name: &str, timestamp: i64) -> Vec<u8> {
+    let mut payload = Vec::new();
+    payload.extend_from_slice(name.as_bytes());
+    payload.extend_from_slice(&timestamp.to_le_bytes());
+    NeoCrypto::sha256(&payload)
+}
+```
+
+| Item | Detail |
+|------|--------|
+| Parameter | `data: &[u8]` — arbitrary input bytes |
+| Returns | `Vec<u8>` — 32-byte SHA-256 digest |
+| GAS cost | Scales with input length |
+
+### Common uses
+
+- Generating deterministic identifiers from structured data
+- Computing storage keys from composite inputs
+- Building Merkle tree nodes
+- Verifying data integrity against known hashes
+
+```rust
+use neo_devpack::prelude::*;
+
+/// Hash160 = RIPEMD160(SHA256(data)), the standard Neo address derivation.
+fn hash160(data: &[u8]) -> Vec<u8> {
+    let sha = NeoCrypto::sha256(data);
+    NeoCrypto::ripemd160(&sha)
+}
+
+/// Hash256 = SHA256(SHA256(data)), used in Bitcoin-compatible protocols.
+fn hash256(data: &[u8]) -> Vec<u8> {
+    let first = NeoCrypto::sha256(data);
+    NeoCrypto::sha256(&first)
+}
+```
+
+---
+
+## ripemd160
+
+Computes the RIPEMD-160 hash of the input data. Returns a 20-byte digest. Primarily used in combination with SHA-256 to produce Hash160 values for Neo address derivation.
+
+**Syscall:** `System.Crypto.RIPEMD160`
+
+```rust
+use neo_devpack::prelude::*;
+
+#[neo_method(safe)]
+pub fn address_hash(pubkey: &[u8]) -> Vec<u8> {
+    // Standard Neo address derivation: RIPEMD160(SHA256(verification_script))
+    let script = build_verification_script(pubkey);
+    let sha = NeoCrypto::sha256(&script);
+    NeoCrypto::ripemd160(&sha)
+}
+```
+
+| Item | Detail |
+|------|--------|
+| Parameter | `data: &[u8]` — arbitrary input bytes |
+| Returns | `Vec<u8>` — 20-byte RIPEMD-160 digest |
+| GAS cost | Scales with input length |
+
+---
+
+## verify_signature
+
+Verifies an ECDSA signature against a public key and message. Neo N3 uses the secp256r1 (NIST P-256) curve by default.
+
+**Syscall:** `Neo.Crypto.CheckSig`
+
+```rust
+use neo_devpack::prelude::*;
+
+#[neo_method(safe)]
+pub fn verify_message(
+    pubkey: &[u8],
+    signature: &[u8],
+    message: &[u8],
+) -> bool {
+    NeoCrypto::verify_signature(pubkey, signature, message)
+}
+```
+
+| Item | Detail |
+|------|--------|
+| Parameters | `pubkey: &[u8]` (33 bytes compressed), `signature: &[u8]` (64 bytes), `message: &[u8]` |
+| Returns | `bool` — `true` if the signature is valid |
+| GAS cost | High (elliptic curve operation) |
+
+### Signature format
+
+| Component | Size | Description |
+|-----------|------|-------------|
+| Public key | 33 bytes | Compressed secp256r1 point (prefix `0x02` or `0x03` + 32-byte X coordinate) |
+| Signature | 64 bytes | Concatenated `r \|\| s` values, each 32 bytes |
+| Message | Variable | The data that was signed (typically a hash) |
+
+### Off-chain signing, on-chain verification
+
+A common pattern is to sign data off-chain and verify it in the contract:
+
+```rust
+use neo_devpack::prelude::*;
+
+const SIGNER_PUBKEY: [u8; 33] = /* trusted signer's compressed public key */;
+
+/// Verify that a price feed was signed by the trusted oracle signer.
+#[neo_method(safe)]
+pub fn verify_price_feed(
+    symbol: &str,
+    price: i64,
+    timestamp: i64,
+    signature: &[u8],
+) -> bool {
+    // Reconstruct the signed message
+    let mut message = Vec::new();
+    message.extend_from_slice(symbol.as_bytes());
+    message.extend_from_slice(&price.to_le_bytes());
+    message.extend_from_slice(&timestamp.to_le_bytes());
+
+    // Hash the message (sign the hash, not the raw data)
+    let hash = NeoCrypto::sha256(&message);
+
+    // Verify against the trusted public key
+    NeoCrypto::verify_signature(&SIGNER_PUBKEY, signature, &hash)
+}
+```
+
+<Aside type="caution">
+  Always verify signatures against a hash of the message, not the raw message. This prevents length-extension attacks and ensures consistent behavior regardless of message size.
+</Aside>
+
+---
+
+## check_multisig
+
+Verifies that a threshold of signatures from a set of public keys are valid for the given message. This is the on-chain equivalent of Neo's multi-signature account verification.
+
+**Syscall:** `Neo.Crypto.CheckMultiSig`
+
+```rust
+use neo_devpack::prelude::*;
+
+#[neo_method(safe)]
+pub fn verify_multisig_approval(
+    pubkeys: &[&[u8]],
+    signatures: &[&[u8]],
+    message: &[u8],
+) -> bool {
+    NeoCrypto::check_multisig(pubkeys, signatures, message)
+}
+```
+
+| Item | Detail |
+|------|--------|
+| Parameters | `pubkeys: &[&[u8]]` — ordered list of public keys, `signatures: &[&[u8]]` — matching signatures, `message: &[u8]` |
+| Returns | `bool` — `true` if all signatures are valid |
+| GAS cost | High (scales with number of signatures) |
+
+### Multi-signature governance
+
+```rust
+use neo_devpack::prelude::*;
+
+/// A 2-of-3 multisig governance action.
+/// The three committee members' public keys are stored on-chain.
+/// Any two must sign the proposal hash to approve it.
+#[neo_method]
+pub fn execute_proposal(
+    proposal_hash: &[u8],
+    signatures: &[&[u8]],
+    signer_indices: &[usize],
+) -> bool {
+    let ctx = NeoStorage::get_read_only_context();
+
+    // Load the committee public keys from storage
+    let committee: [Vec<u8>; 3] = [
+        NeoStorage::get(&ctx, b"committee:0"),
+        NeoStorage::get(&ctx, b"committee:1"),
+        NeoStorage::get(&ctx, b"committee:2"),
+    ];
+
+    // Build the pubkey list for the signers
+    let mut signing_keys = Vec::new();
+    for &idx in signer_indices {
+        if idx >= 3 {
+            return false;
+        }
+        signing_keys.push(committee[idx].as_slice());
+    }
+
+    // Require at least 2 valid signatures
+    if signatures.len() < 2 || signing_keys.len() < 2 {
+        return false;
+    }
+
+    NeoCrypto::check_multisig(&signing_keys, signatures, proposal_hash)
+}
+```
+
+### Ordering requirements
+
+<Aside type="note">
+  The `pubkeys` and `signatures` arrays must be in corresponding order — `signatures[i]` must have been produced by `pubkeys[i]`. The NeoVM verifies them pairwise, not by trying all combinations.
+</Aside>
+
+---
+
+## Supported curves
+
+Neo N3 supports two elliptic curves for signature operations:
+
+| Curve | OID | Usage |
+|-------|-----|-------|
+| secp256r1 (NIST P-256) | Default | Standard Neo signatures, `CheckSig`, `CheckMultiSig` |
+| secp256k1 (Bitcoin curve) | Via `VerifyWithECDsa` | Bitcoin/Ethereum compatibility |
+
+For secp256k1 verification, use the lower-level `System.Crypto.VerifyWithECDsa` syscall:
+
+```rust
+use neo_devpack::prelude::*;
+
+/// Verify a secp256k1 signature (Bitcoin/Ethereum compatible).
+#[neo_method(safe)]
+pub fn verify_secp256k1(
+    pubkey: &[u8],
+    signature: &[u8],
+    message: &[u8],
+) -> bool {
+    // CurveType: 0 = secp256k1, 1 = secp256r1
+    NeoCrypto::verify_with_ecdsa(message, pubkey, signature, 0)
+}
+```
+
+---
+
+## Complete example
+
+A document notarization contract using hashing and signature verification:
+
+```rust
+use neo_devpack::prelude::*;
+
+neo_manifest_overlay!(r#"{
+    "name": "Notary",
+    "features": { "storage": true }
+}"#);
+
+#[neo_contract]
+pub struct Notary;
+
+#[neo_contract]
+impl Notary {
+    pub fn new() -> Self { Self }
+
+    /// Notarize a document by storing its hash with a timestamp.
+    #[neo_method]
+    pub fn notarize(document: &[u8], signer: ScriptHash) -> Vec<u8> {
+        if !NeoRuntime::check_witness(signer) {
+            NeoRuntime::log("unauthorized");
+            return Vec::new();
+        }
+
+        let doc_hash = NeoCrypto::sha256(document);
+        let timestamp = NeoRuntime::get_time();
+
+        let ctx = NeoStorage::get_context();
+        let key = storage_key(b"doc:", &doc_hash);
+
+        // Store: signer (20 bytes) + timestamp (8 bytes)
+        let mut record = Vec::with_capacity(28);
+        record.extend_from_slice(signer.as_bytes());
+        record.extend_from_slice(&timestamp.to_le_bytes());
+        NeoStorage::put(&ctx, &key, &record);
+
+        doc_hash
+    }
+
+    /// Verify a document exists and was signed by the claimed signer.
+    #[neo_method(safe)]
+    pub fn verify(document: &[u8], claimed_signer: ScriptHash) -> bool {
+        let doc_hash = NeoCrypto::sha256(document);
+        let ctx = NeoStorage::get_read_only_context();
+        let key = storage_key(b"doc:", &doc_hash);
+        let record = NeoStorage::get(&ctx, &key);
+
+        if record.len() < 20 {
+            return false;
+        }
+
+        // First 20 bytes are the signer's script hash
+        &record[..20] == claimed_signer.as_bytes()
+    }
+
+    /// Verify an externally-signed attestation for a document.
+    #[neo_method(safe)]
+    pub fn verify_attestation(
+        document: &[u8],
+        pubkey: &[u8],
+        signature: &[u8],
+    ) -> bool {
+        let doc_hash = NeoCrypto::sha256(document);
+        NeoCrypto::verify_signature(pubkey, signature, &doc_hash)
+    }
+}
+```

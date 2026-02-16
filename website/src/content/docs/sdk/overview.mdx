@@ -1,0 +1,247 @@
+---
+title: SDK Overview
+description: The neo-devpack umbrella crate — workspace structure, prelude imports, and how the SDK maps Rust to NeoVM syscalls.
+draft: false
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+`neo-devpack` is the umbrella crate that provides everything needed to write Neo N3 smart contracts in Rust. A single import pulls in macros, types, runtime bindings, and syscall stubs — all designed to compile through the Rust → Wasm → NeoVM pipeline.
+
+```rust
+use neo_devpack::prelude::*;
+
+#[neo_contract]
+pub struct MyContract;
+
+#[neo_contract]
+impl MyContract {
+    pub fn new() -> Self { Self }
+
+    #[neo_method(safe)]
+    pub fn hello() -> i64 {
+        42
+    }
+}
+```
+
+## The prelude
+
+The `prelude` module re-exports the most commonly used items from all sub-crates. In most contracts, this is the only import you need:
+
+```rust
+use neo_devpack::prelude::*;
+```
+
+This brings into scope:
+
+| Category | Items |
+|----------|-------|
+| Macros | `#[neo_contract]`, `#[neo_method]`, `#[neo_event]`, `#[neo_safe]`, `#[neo_entry]`, `#[neo_storage]`, `neo_manifest_overlay!` |
+| Types | `NeoInteger`, `NeoBoolean`, `NeoString`, `NeoArray`, `NeoMap`, `NeoStruct`, `NeoValue`, `NeoIterator`, `NeoStorageContext`, `ScriptHash` |
+| Runtime | `NeoRuntime`, `NeoStorage`, `NeoContractRuntime`, `NeoCrypto`, `NeoJSON`, `NeoRuntimeContext` |
+| Enums | `TriggerType`, `CallFlags` |
+
+If you need fine-grained control over imports, you can import from the sub-crates directly:
+
+```rust
+use neo_types::{NeoInteger, NeoString};
+use neo_runtime::NeoStorage;
+use neo_macros::neo_contract;
+```
+
+---
+
+## Workspace structure
+
+`neo-devpack` is a Cargo workspace composed of four focused crates. Each crate has a single responsibility:
+
+```
+neo-devpack/
+├── neo-macros/       # Procedural macros (#[neo_contract], #[neo_method], etc.)
+├── neo-runtime/      # Runtime bindings (NeoRuntime, NeoStorage, NeoCrypto, etc.)
+├── neo-syscalls/     # Raw syscall stubs (Wasm imports → NeoVM SYSCALL opcodes)
+├── neo-types/        # Type system (NeoInteger, NeoString, NeoArray, etc.)
+└── src/lib.rs        # Umbrella crate — re-exports prelude
+```
+
+### neo-macros
+
+Procedural macros that transform Rust structs and methods into NeoVM-compatible entry points. These run at compile time and generate the boilerplate needed for Wasm export, manifest metadata, and ABI encoding.
+
+See [Macros reference](/sdk/macros/neo-contract/) for details on each macro.
+
+### neo-types
+
+The type system that maps Rust values to NeoVM stack items. Every type implements serialization to/from the Wasm ABI boundary, ensuring correct data representation when values cross the Rust → Wasm → NeoVM boundary.
+
+See [Types reference](/sdk/types/primitives/) for the full type catalog.
+
+### neo-runtime
+
+High-level Rust APIs for interacting with the Neo N3 blockchain — storage, runtime services, cryptography, JSON, cross-contract calls, and execution context. Each module wraps one or more syscalls behind a safe, idiomatic interface.
+
+| Module | Wraps | Documentation |
+|--------|-------|---------------|
+| `NeoRuntime` | `System.Runtime.*` | [NeoRuntime](/sdk/runtime/neo-runtime/) |
+| `NeoStorage` | `System.Storage.*` | [NeoStorage](/sdk/runtime/neo-storage/) |
+| `NeoContractRuntime` | `System.Contract.*` | [Contract Runtime](/sdk/runtime/contract-runtime/) |
+| `NeoCrypto` | `System.Crypto.*`, `Neo.Crypto.*` | [Crypto](/sdk/runtime/crypto/) |
+| `NeoJSON` | `System.Json.*` | [JSON](/sdk/runtime/json/) |
+| `NeoRuntimeContext` | `System.Runtime.*` (context) | [Context](/sdk/runtime/context/) |
+
+### neo-syscalls
+
+The lowest layer — raw Wasm import declarations that the translator resolves into NeoVM `SYSCALL` opcodes. You rarely interact with this crate directly; the `neo-runtime` crate provides the safe wrappers.
+
+See [Syscalls reference](/sdk/syscalls/) for the complete syscall table.
+
+---
+
+## How the SDK maps to NeoVM syscalls
+
+The compilation pipeline transforms Rust SDK calls into NeoVM opcodes through three stages:
+
+```
+Rust source code          →  Wasm module           →  NeoVM bytecode
+─────────────────────────────────────────────────────────────────────
+NeoStorage::get(ctx, key)    call $neo_storage_get     SYSCALL 0x925DE831
+NeoRuntime::log(msg)         call $neo_runtime_log     SYSCALL 0x9BF667CE
+NeoCrypto::sha256(data)      call $neo_crypto_sha256   SYSCALL 0xA8D20B20
+```
+
+### Stage 1: Rust → Wasm imports
+
+When you call `NeoStorage::get(ctx, key)`, the `neo-runtime` crate delegates to a function declared in `neo-syscalls` as a Wasm import:
+
+```rust
+// neo-syscalls/src/lib.rs (simplified)
+#[link(wasm_import_module = "neo")]
+extern "C" {
+    fn neo_storage_get(ctx: i32, key_ptr: i32, key_len: i32) -> i64;
+    fn neo_runtime_log(msg_ptr: i32, msg_len: i32);
+    fn neo_crypto_sha256(data_ptr: i32, data_len: i32) -> i64;
+}
+```
+
+The Rust compiler emits these as Wasm `import` entries in the compiled `.wasm` module.
+
+### Stage 2: Wasm imports → NeoVM SYSCALL
+
+The `wasm-neovm` translator reads the Wasm import table and replaces each import call with the corresponding NeoVM `SYSCALL` opcode. The syscall is identified by a 4-byte hash:
+
+```
+SYSCALL hash = first 4 bytes of SHA-256("System.Storage.Get")
+             = 0x925DE831
+```
+
+### Stage 3: NeoVM execution
+
+At runtime, the NeoVM encounters the `SYSCALL` opcode, looks up the interop service by hash, and executes the native implementation provided by the Neo node.
+
+<Aside type="tip">
+  This three-stage design means the SDK has zero runtime overhead — every abstraction is resolved at compile time. The final NeoVM bytecode is identical to what a hand-written NeoVM assembly program would produce.
+</Aside>
+
+---
+
+## Dependency graph
+
+```
+Your contract
+    └── neo-devpack (umbrella)
+            ├── neo-macros      (proc-macro crate, compile-time only)
+            ├── neo-types       (no dependencies)
+            ├── neo-runtime     (depends on neo-types, neo-syscalls)
+            └── neo-syscalls    (no dependencies, Wasm imports only)
+```
+
+At the Wasm level, only `neo-types` and `neo-runtime` contribute to the binary size. `neo-macros` runs at compile time and `neo-syscalls` is resolved to import stubs that the translator replaces.
+
+---
+
+## Cargo.toml setup
+
+A typical contract's `Cargo.toml`:
+
+```toml
+[package]
+name = "my-contract"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]  # Required for Wasm output
+
+[dependencies]
+neo-devpack = { path = "../../neo-devpack" }
+
+[profile.release]
+opt-level = "z"       # Optimize for size
+lto = true            # Link-time optimization
+strip = true          # Strip debug symbols
+codegen-units = 1     # Single codegen unit for better optimization
+```
+
+<Aside type="note">
+  The `crate-type = ["cdylib"]` setting is required. It tells the Rust compiler to produce a C-compatible dynamic library, which for the `wasm32-unknown-unknown` target means a standalone `.wasm` module with exported functions.
+</Aside>
+
+---
+
+## Minimal contract template
+
+```rust
+use neo_devpack::prelude::*;
+
+neo_manifest_overlay!(r#"{
+    "name": "MyContract",
+    "supportedstandards": [],
+    "features": { "storage": true }
+}"#);
+
+#[neo_contract]
+pub struct MyContract;
+
+#[neo_contract]
+impl MyContract {
+    pub fn new() -> Self { Self }
+
+    #[neo_method]
+    pub fn initialize(owner: ScriptHash) -> bool {
+        let ctx = NeoStorage::get_context();
+        NeoStorage::put(&ctx, b"owner", owner.as_bytes());
+        true
+    }
+
+    #[neo_method(safe)]
+    pub fn get_owner() -> ScriptHash {
+        let ctx = NeoStorage::get_read_only_context();
+        let data = NeoStorage::get(&ctx, b"owner");
+        ScriptHash::from_bytes(&data)
+    }
+
+    #[neo_method]
+    pub fn do_something() -> bool {
+        let ctx = NeoStorage::get_read_only_context();
+        let owner_data = NeoStorage::get(&ctx, b"owner");
+        let owner = ScriptHash::from_bytes(&owner_data);
+
+        if !NeoRuntime::check_witness(owner) {
+            NeoRuntime::log("unauthorized");
+            return false;
+        }
+
+        // ... contract logic
+        true
+    }
+}
+```
+
+## What's next
+
+- [Macros](/sdk/macros/neo-contract/) — learn the contract and method attribute macros
+- [Types](/sdk/types/primitives/) — understand the NeoVM type system
+- [Runtime](/sdk/runtime/neo-runtime/) — explore the runtime service APIs
+- [Syscalls](/sdk/syscalls/) — see the complete syscall reference table
+- [Testing](/sdk/testing/) — test your contracts before deployment

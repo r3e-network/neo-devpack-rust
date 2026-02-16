@@ -1,0 +1,107 @@
+---
+title: Iterator
+description: Cursor-based iterator for efficient storage enumeration in Neo N3 smart contracts.
+draft: false
+---
+
+## NeoIterator\<T\>
+
+`NeoIterator` is a cursor-based iterator designed for efficient sequential traversal. It is the return type of storage enumeration operations like `NeoStorage::find()` for prefix-based scanning.
+
+```rust
+use neo_types::NeoIterator;
+
+let items = vec!["alice", "bob", "carol"];
+let mut iter = NeoIterator::new(items);
+
+while iter.has_next() {
+    let item = iter.next().unwrap();
+    // process item
+}
+```
+
+### Why cursor-based?
+
+A naive iterator that calls `Vec::remove(0)` on each step is O(n) per call, making a full traversal O(n^2). `NeoIterator` uses an internal cursor index that advances in O(1), giving O(n) total traversal cost.
+
+```
+// Naive approach — O(n) per step, O(n^2) total
+vec.remove(0);  // shifts all remaining elements
+
+// NeoIterator — O(1) per step, O(n) total
+cursor += 1;    // just moves the index forward
+```
+
+### Construction
+
+| Method | Description |
+|--------|-------------|
+| `NeoIterator::new(Vec<T>)` | Create an iterator from a vector of elements |
+
+### Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `next()` | `Option<T>` | Return the current element and advance the cursor. `None` when exhausted. Requires `T: Clone`. |
+| `has_next()` | `bool` | `true` if there are remaining elements |
+| `len()` | `usize` | Number of remaining (unconsumed) elements |
+| `is_empty()` | `bool` | `true` if no remaining elements |
+| `reset()` | `()` | Reset the cursor to the beginning |
+| `total_len()` | `usize` | Total number of elements including already consumed ones |
+
+### Usage with storage enumeration
+
+`NeoIterator` is the type returned by `NeoStorage::find()` when scanning storage by key prefix:
+
+```rust
+use neo_types::NeoIterator;
+
+// Returned by NeoStorage::find(ctx, prefix)
+fn process_balances(mut iter: NeoIterator<(Vec<u8>, Vec<u8>)>) {
+    while iter.has_next() {
+        if let Some((key, value)) = iter.next() {
+            // key:   prefix + account hash
+            // value: serialized balance
+        }
+    }
+}
+```
+
+### Resetting and re-traversal
+
+The `reset()` method moves the cursor back to position 0, allowing you to traverse the same data again without re-querying storage:
+
+```rust
+use neo_types::NeoIterator;
+
+let mut iter = NeoIterator::new(vec![1, 2, 3]);
+
+// First pass — count
+let mut count = 0;
+while iter.has_next() {
+    iter.next();
+    count += 1;
+}
+assert_eq!(count, 3);
+assert!(iter.is_empty());
+
+// Reset and traverse again
+iter.reset();
+assert_eq!(iter.len(), 3);
+```
+
+### Tracking progress
+
+Use `len()` and `total_len()` together to track iteration progress:
+
+```rust
+use neo_types::NeoIterator;
+
+let mut iter = NeoIterator::new(vec![10, 20, 30, 40, 50]);
+
+iter.next(); // consume one
+iter.next(); // consume two
+
+assert_eq!(iter.len(), 3);       // remaining
+assert_eq!(iter.total_len(), 5); // total including consumed
+```

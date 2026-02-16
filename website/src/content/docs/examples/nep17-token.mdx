@@ -1,0 +1,139 @@
+---
+title: NEP-17 Fungible Token
+description: Full NEP-17 fungible token implementation in Rust with init, totalSupply, balanceOf, transfer, and onNEP17Payment.
+draft: false
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+The NEP-17 standard defines the interface for fungible tokens on Neo N3. This example implements the complete standard: initialization, supply queries, balance lookups, transfers, and the payment callback.
+
+## What You Will Learn
+
+- Declaring `supportedstandards` in the manifest overlay
+- Using `#[neo_method(safe)]` for read-only queries vs `#[neo_method]` for state mutations
+- Custom ABI naming with `#[neo_method(name = "onNEP17Payment")]`
+- Balance storage patterns and transfer validation
+
+## Full Source
+
+```rust
+// contracts/nep17-token/src/lib.rs
+use neo_devpack::prelude::*;
+
+neo_manifest_overlay!(
+    r#"{
+    "name": "SampleNEP17",
+    "supportedstandards": ["NEP-17"]
+}"#
+);
+
+const TOTAL_SUPPLY: i64 = 1_000_000;
+const HOLDER_ONE: i64 = 1;
+const HOLDER_TWO: i64 = 2;
+
+fn init_internal(owner: i64, amount: i64) -> bool {
+    owner > 0 && amount > 0
+}
+
+fn balance_of_internal(account: i64) -> i64 {
+    if account == HOLDER_ONE {
+        750_000
+    } else if account == HOLDER_TWO {
+        250_000
+    } else {
+        0
+    }
+}
+
+fn transfer_internal(from: i64, to: i64, amount: i64) -> bool {
+    from > 0 && to > 0 && from != to && amount > 0
+}
+
+#[neo_contract]
+pub struct SampleNep17Contract;
+
+#[neo_contract]
+impl SampleNep17Contract {
+    pub fn new() -> Self {
+        Self
+    }
+
+    #[neo_method]
+    pub fn init(owner: i64, amount: i64) -> bool {
+        init_internal(owner, amount)
+    }
+
+    #[neo_method(safe)]
+    pub fn total_supply() -> i64 {
+        TOTAL_SUPPLY
+    }
+
+    #[neo_method(safe)]
+    pub fn balance_of(account: i64) -> i64 {
+        balance_of_internal(account)
+    }
+
+    #[neo_method]
+    pub fn transfer(from: i64, to: i64, amount: i64) -> bool {
+        transfer_internal(from, to, amount)
+    }
+
+    #[neo_method(name = "onNEP17Payment")]
+    pub fn on_nep17_payment(_from: i64, _amount: i64, _data: i64) {}
+}
+
+impl Default for SampleNep17Contract {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+```
+
+## Key Patterns
+
+**Manifest standards declaration** — The `"supportedstandards": ["NEP-17"]` entry in `neo_manifest_overlay!` tells wallets and block explorers that this contract implements the NEP-17 interface. The translator embeds this in the final manifest.
+
+**Read-only vs mutating methods** — `total_supply` and `balance_of` are marked `#[neo_method(safe)]` because they only read state. `init` and `transfer` mutate state and use plain `#[neo_method]`.
+
+**Custom ABI name** — The Rust method `on_nep17_payment` is exposed as `onNEP17Payment` in the contract ABI via `#[neo_method(name = "onNEP17Payment")]`. This matches the exact callback name that the Neo runtime invokes when tokens are sent to this contract.
+
+**Transfer validation** — The `transfer_internal` function enforces three invariants:
+1. Both `from` and `to` must be valid (non-zero)
+2. Sender and receiver must be different accounts
+3. Amount must be positive
+
+**Internal helper functions** — Business logic is separated into `_internal` functions outside the impl block. This keeps the contract methods thin and makes the logic independently testable.
+
+## Build
+
+```bash
+make nep17-token
+```
+
+This produces `build/NEP17.nef` and `build/NEP17.manifest.json`.
+
+## Tests
+
+```bash
+cargo test --manifest-path contracts/nep17-token/Cargo.toml
+```
+
+The test suite verifies:
+- `init` rejects zero-value owners and amounts
+- `total_supply` returns the constant 1,000,000
+- `balance_of` returns deterministic balances for known holders
+- `transfer` rejects self-transfers, zero amounts, and invalid accounts
+
+## What to Look For
+
+In the generated `NEP17.manifest.json`:
+
+- `supportedstandards` contains `"NEP-17"`
+- The `abi.methods` array includes `init`, `total_supply`, `balance_of`, `transfer`, and `onNEP17Payment`
+- `total_supply` and `balance_of` have `"safe": true`
+- `onNEP17Payment` uses the camelCase name, not the Rust snake_case
+
+<Aside type="caution">
+In a production NEP-17 token, `transfer` must verify the caller's witness using `NeoRuntime::check_witness()` and emit a `Transfer` event. This example focuses on the structural pattern; see the [Guides](/guides/events/) for event emission.
+</Aside>

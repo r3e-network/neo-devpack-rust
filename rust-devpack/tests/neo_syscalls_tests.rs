@@ -119,3 +119,62 @@ fn neovm_syscall_rejects_invalid_hash160_length() {
     let err = neovm_syscall(info.hash, &args).unwrap_err();
     assert!(err.message().contains("invalid syscall argument type"));
 }
+
+#[test]
+fn syscall_wrapper_supports_extended_system_surface() {
+    let script_hash = NeoByteString::new(vec![1u8; 20]);
+    let method = NeoString::from_str("balanceOf");
+    let call_flags = NeoInteger::new(0);
+    let args = NeoArray::<NeoValue>::new();
+
+    let call_result = NeoVMSyscall::contract_call(&script_hash, &method, &call_flags, &args)
+        .expect("contract call wrapper");
+    assert!(call_result.is_null());
+
+    let native_result =
+        NeoVMSyscall::contract_call_native(&NeoInteger::new(1)).expect("contract call native");
+    assert!(native_result.is_null());
+
+    let flags = NeoVMSyscall::get_call_flags().expect("get call flags");
+    assert_eq!(flags, NeoInteger::new(0));
+
+    let standard_account =
+        NeoVMSyscall::create_standard_account(&NeoByteString::new(vec![2u8; 33]))
+            .expect("create standard account");
+    assert_eq!(standard_account.len(), 20);
+
+    let mut pubkeys = NeoArray::<NeoValue>::new();
+    pubkeys.push(NeoByteString::new(vec![3u8; 33]).into());
+    pubkeys.push(NeoByteString::new(vec![4u8; 33]).into());
+    let multisig_account = NeoVMSyscall::create_multisig_account(&NeoInteger::new(2), &pubkeys)
+        .expect("create multisig account");
+    assert_eq!(multisig_account.len(), 20);
+
+    NeoVMSyscall::native_on_persist().expect("native on persist");
+    NeoVMSyscall::native_post_persist().expect("native post persist");
+
+    let check_sig = NeoVMSyscall::check_sig(
+        &NeoByteString::new(vec![5u8; 33]),
+        &NeoByteString::new(vec![6u8; 64]),
+    )
+    .expect("check sig");
+    assert!(check_sig.as_bool());
+
+    let mut signatures = NeoArray::<NeoValue>::new();
+    signatures.push(NeoByteString::new(vec![7u8; 64]).into());
+    let check_multisig =
+        NeoVMSyscall::check_multisig(&pubkeys, &signatures).expect("check multisig");
+    assert!(check_multisig.as_bool());
+
+    let iterator_values = NeoArray::<NeoValue>::new();
+    let has_next = NeoVMSyscall::iterator_next(&iterator_values).expect("iterator next");
+    assert!(has_next.as_bool());
+    let iterator_value = NeoVMSyscall::iterator_value(&iterator_values).expect("iterator value");
+    assert!(iterator_value.as_array().is_some());
+
+    NeoVMSyscall::burn_gas(&NeoInteger::new(1)).expect("burn gas");
+    let signers = NeoVMSyscall::current_signers().expect("current signers");
+    assert!(signers.is_empty());
+    NeoVMSyscall::load_script(&NeoByteString::new(vec![]), &NeoInteger::new(0), &args)
+        .expect("load script");
+}

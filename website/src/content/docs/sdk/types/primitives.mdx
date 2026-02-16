@@ -1,0 +1,163 @@
+---
+title: Primitives
+description: Arbitrary-precision integer and boolean types for Neo N3 smart contracts in Rust.
+draft: false
+---
+
+import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+
+The `neo-types` crate provides two primitive types that map directly to NeoVM stack items: `NeoInteger` for numeric values and `NeoBoolean` for logical values.
+
+## NeoInteger
+
+Arbitrary-precision integer backed by `BigInt`. Maps to `i64` in the Wasm ABI and to the NeoVM `Integer` stack item. Used for balances, amounts, counters, and all numeric contract state.
+
+```rust
+use neo_types::NeoInteger;
+
+let balance = NeoInteger::new(1_000_000_i64);
+let zero = NeoInteger::zero();
+let one = NeoInteger::one();
+```
+
+### Construction
+
+| Method | Description |
+|--------|-------------|
+| `NeoInteger::new(value)` | Create from any type that converts to `BigInt` |
+| `NeoInteger::zero()` | The value `0` |
+| `NeoInteger::one()` | The value `1` |
+| `NeoInteger::min_i32()` | `i32::MIN` as a `NeoInteger` |
+| `NeoInteger::max_i32()` | `i32::MAX` as a `NeoInteger` |
+
+### From conversions
+
+`NeoInteger` implements `From` for common Rust integer types:
+
+```rust
+let a: NeoInteger = 42_i32.into();
+let b: NeoInteger = 100_i64.into();
+let c: NeoInteger = 255_u32.into();
+```
+
+### Conversion to native types
+
+Safe conversions return `Option`, saturating conversions clamp to the target range:
+
+| Method | Returns | Behavior |
+|--------|---------|----------|
+| `try_as_i32()` | `Option<i32>` | `None` if out of range |
+| `try_as_u32()` | `Option<u32>` | `None` if out of range |
+| `try_as_i64()` | `Option<i64>` | `None` if out of range |
+| `as_i32_saturating()` | `i32` | Clamps to `i32::MIN..=i32::MAX` |
+| `as_u32_saturating()` | `u32` | Clamps to `0..=u32::MAX` |
+| `as_i64_saturating()` | `i64` | Clamps to `i64::MIN..=i64::MAX` |
+| `as_bigint()` | `&BigInt` | Direct reference to inner value |
+
+```rust
+let big = NeoInteger::new(i64::MAX);
+
+// Safe — returns None when out of range
+assert!(big.try_as_i32().is_none());
+
+// Saturating — clamps instead of panicking
+assert_eq!(big.as_i32_saturating(), i32::MAX);
+
+// i64 fits
+assert_eq!(big.try_as_i64(), Some(i64::MAX));
+```
+
+<Aside type="caution">
+The `as_i32()` and `as_u32()` methods are deprecated since 0.4.1 because they panic on overflow. Use `try_as_*()` or `as_*_saturating()` instead.
+</Aside>
+
+### Arithmetic operators
+
+`NeoInteger` implements the standard Rust operator traits for both owned and borrowed values:
+
+| Operator | Trait | Example |
+|----------|-------|---------|
+| `+` | `Add` | `a + b` |
+| `-` | `Sub` | `a - b` |
+| `*` | `Mul` | `a * b` |
+| `/` | `Div` | `a / b` |
+| `%` | `Rem` | `a % b` |
+
+### Bitwise operators
+
+| Operator | Trait | Example |
+|----------|-------|---------|
+| `&` | `BitAnd` | `a & b` |
+| `\|` | `BitOr` | `a \| b` |
+| `^` | `BitXor` | `a ^ b` |
+| `!` | `Not` | `!a` |
+| `<<` | `Shl<u32>` | `a << 4` |
+| `>>` | `Shr<u32>` | `a >> 4` |
+
+### Comparison and ordering
+
+`NeoInteger` derives `PartialEq`, `Eq`, `PartialOrd`, and `Ord`, so you can compare and sort values directly:
+
+```rust
+let a = NeoInteger::new(10);
+let b = NeoInteger::new(20);
+
+assert!(a < b);
+assert_eq!(a, NeoInteger::new(10));
+```
+
+### Default
+
+`NeoInteger::default()` returns `NeoInteger::zero()`.
+
+---
+
+## NeoBoolean
+
+A transparent wrapper around Rust's `bool`, mapping to the NeoVM `Boolean` stack item.
+
+```rust
+use neo_types::NeoBoolean;
+
+let yes = NeoBoolean::TRUE;
+let no = NeoBoolean::FALSE;
+let dynamic = NeoBoolean::new(some_condition);
+```
+
+### Constants and construction
+
+| Item | Description |
+|------|-------------|
+| `NeoBoolean::TRUE` | Constant `true` |
+| `NeoBoolean::FALSE` | Constant `false` |
+| `NeoBoolean::new(bool)` | Wrap a runtime `bool` |
+| `NeoBoolean::default()` | Returns `FALSE` |
+
+### Conversion
+
+```rust
+let b = NeoBoolean::TRUE;
+let native: bool = b.as_bool(); // true
+```
+
+### Logical operators
+
+| Operator | Trait | Example |
+|----------|-------|---------|
+| `&` | `BitAnd` | `a & b` |
+| `\|` | `BitOr` | `a \| b` |
+| `^` | `BitXor` | `a ^ b` |
+| `!` | `Not` | `!a` |
+
+```rust
+let a = NeoBoolean::TRUE;
+let b = NeoBoolean::FALSE;
+
+assert_eq!(a & b, NeoBoolean::FALSE);
+assert_eq!(a | b, NeoBoolean::TRUE);
+assert_eq!(!a, NeoBoolean::FALSE);
+```
+
+### Representation
+
+`NeoBoolean` is `#[repr(transparent)]` over `bool`, so it has the same memory layout and can be safely transmuted in FFI contexts.

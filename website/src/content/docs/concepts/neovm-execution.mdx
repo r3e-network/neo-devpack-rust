@@ -1,0 +1,154 @@
+---
+title: "NeoVM Execution Model"
+description: "A primer on the NeoVM stack-based virtual machine for Rust developers, covering stacks, slots, opcodes, syscalls, and the Wasm-to-NeoVM mapping."
+draft: false
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+NeoVM is a stack-based virtual machine -- all operations consume and produce values on an operand stack. This is fundamentally different from register-based architectures. If you are coming from Rust/Wasm (also stack-based at the bytecode level), the mental model transfers well, but the slot and syscall mechanics are NeoVM-specific.
+
+## Core Concepts
+
+### Evaluation Stack
+
+The primary operand stack. Every arithmetic, comparison, and logic operation pops its inputs from and pushes its result onto this stack. There is no concept of registers.
+
+### Alt Stack
+
+An auxiliary stack available for temporary storage. Useful when you need to stash a value without disturbing the evaluation stack. Accessed via `TOALTSTACK` and `FROMALTSTACK`.
+
+### Static Fields
+
+Module-level storage slots that persist for the lifetime of a contract invocation. Wasm globals map to these slots. Accessed by index.
+
+### Local Slots
+
+Per-method local variable storage. Declared via the `INITSLOT` instruction at the start of each method. Accessed with `LDLOC` (load local) and `STLOC` (store local).
+
+### Argument Slots
+
+Per-method parameter storage. Also declared via `INITSLOT`. Accessed with `LDARG` (load argument) and `STARG` (store argument).
+
+### INITSLOT
+
+Every method that uses locals or arguments begins with:
+
+```
+INITSLOT <num_locals> <num_args>
+```
+
+This allocates the local and argument slots for the method frame. The translator emits this automatically based on the Wasm function signature and local declarations.
+
+## Opcode Categories
+
+### Push
+
+Constant-pushing opcodes for embedding literal values in the bytecode.
+
+| Opcode | Description |
+|--------|-------------|
+| `PUSHINT8` .. `PUSHINT256` | Push a signed integer of 1 to 32 bytes |
+| `PUSH0` .. `PUSH16` | Push small constants 0 through 16 |
+| `PUSHDATA1/2/4` | Push arbitrary byte arrays (1/2/4-byte length prefix) |
+| `PUSHNULL` | Push a null reference |
+
+### Arithmetic
+
+| Opcode | Description |
+|--------|-------------|
+| `ADD` | Addition |
+| `SUB` | Subtraction |
+| `MUL` | Multiplication |
+| `DIV` | Integer division |
+| `MOD` | Modulo |
+| `NEGATE` | Unary negation |
+| `ABS` | Absolute value |
+
+### Bitwise
+
+| Opcode | Description |
+|--------|-------------|
+| `AND` | Bitwise AND |
+| `OR` | Bitwise OR |
+| `XOR` | Bitwise XOR |
+| `SHL` | Shift left |
+| `SHR` | Shift right |
+| `INVERT` | Bitwise NOT |
+
+### Comparison
+
+| Opcode | Description |
+|--------|-------------|
+| `EQUAL` | Equality |
+| `LT` | Less than |
+| `LE` | Less than or equal |
+| `GT` | Greater than |
+| `GE` | Greater than or equal |
+
+### Control Flow
+
+| Opcode | Description |
+|--------|-------------|
+| `JMP` | Unconditional jump |
+| `JMPIF` | Jump if top of stack is true |
+| `JMPIFNOT` | Jump if top of stack is false |
+| `CALL` | Call a method by offset |
+| `RET` | Return from method |
+| `ABORT` | Halt execution with failure |
+
+### Stack Manipulation
+
+| Opcode | Description |
+|--------|-------------|
+| `DUP` | Duplicate top of stack |
+| `DROP` | Discard top of stack |
+| `SWAP` | Swap top two elements |
+| `PICK` | Copy the nth element to the top |
+| `NIP` | Remove the second element |
+
+### Memory
+
+| Opcode | Description |
+|--------|-------------|
+| `NEWBUFFER` | Allocate a new byte buffer |
+| `MEMCPY` | Copy bytes between buffers |
+| `SUBSTR` | Extract a substring |
+| `SETITEM` | Set an element in a compound type |
+
+## Syscalls
+
+NeoVM exposes platform functionality through the `SYSCALL` opcode followed by a 4-byte hash of the interop descriptor string. The hash is computed as the first 4 bytes of `SHA256(descriptor)`.
+
+### Common Syscalls
+
+| Descriptor | Purpose |
+|------------|---------|
+| `System.Runtime.Log` | Emit a log message |
+| `System.Runtime.GetTime` | Get the current block timestamp |
+| `System.Runtime.CheckWitness` | Verify a transaction signer |
+| `System.Storage.Get` | Read from contract storage |
+| `System.Storage.Put` | Write to contract storage |
+| `System.Storage.Delete` | Delete from contract storage |
+| `System.Contract.Call` | Call another contract |
+| `Neo.Crypto.SHA256` | Compute SHA-256 hash |
+
+In the Wasm source, these appear as imported functions. The translator recognizes the import module and function name, computes the syscall hash, and emits the corresponding `SYSCALL` instruction.
+
+## Wasm to NeoVM Mapping
+
+The translator maps Wasm constructs to NeoVM equivalents:
+
+| Wasm Concept | NeoVM Equivalent |
+|-------------|-----------------|
+| Operand stack | Evaluation stack |
+| Local variables (`local.get`/`local.set`) | Local slots (`LDLOC`/`STLOC`) |
+| Globals (`global.get`/`global.set`) | Static fields |
+| Linear memory | Buffer in a static slot |
+| Function calls (`call`) | `CALL` opcode |
+| Indirect calls (`call_indirect`) | Runtime dispatch via funcref table |
+| Imported functions | `SYSCALL` opcode |
+
+<Aside type="note">
+  Wasm and NeoVM are both stack machines, so the operand stack maps directly. The main conceptual difference is that NeoVM uses explicit slot instructions (`LDLOC`, `STLOC`, `LDARG`, `STARG`) instead of Wasm's indexed `local.get`/`local.set`, and NeoVM has no concept of linear memory as a first-class feature -- the translator emulates it with a buffer stored in a static slot.
+</Aside>

@@ -1,0 +1,202 @@
+---
+title: "#[neo_contract]"
+description: "Attribute macro that registers a contract struct and generates Wasm export shims from its impl block."
+draft: false
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+`#[neo_contract]` is the foundational macro for every Neo N3 smart contract. It serves two roles depending on where it is applied:
+
+- **On a struct** -- registers the type as the contract entry point.
+- **On an impl block** -- scans for `#[neo_method]` methods and generates the Wasm export shims the translator needs.
+
+Both annotations are required. A contract module must have exactly one struct and one impl block annotated with `#[neo_contract]`.
+
+## On a Struct
+
+```rust
+use neo_devpack::prelude::*;
+
+#[neo_contract]
+pub struct MyContract;
+```
+
+The macro implements the `NeoContract` trait for the struct, providing default metadata methods (`name`, `version`, `author`, `description`). The struct can be a unit struct or carry fields:
+
+```rust
+#[neo_contract]
+pub struct TokenContract {
+    owner: NeoByteString,
+    total_supply: NeoInteger,
+}
+```
+
+Fields are regular Rust struct fields -- they are not persisted to storage automatically. Use `#[neo_storage]` for persistent state.
+
+<Aside type="caution">
+  Only one struct per crate may carry `#[neo_contract]`. If the macro is applied to multiple structs, the translator will see duplicate contract registrations and abort.
+</Aside>
+
+## On an Impl Block
+
+```rust
+#[neo_contract]
+impl MyContract {
+    pub fn new() -> Self {
+        Self
+    }
+
+    #[neo_method(safe)]
+    pub fn get_value() -> i64 {
+        42
+    }
+
+    #[neo_method]
+    pub fn set_value(value: i64) -> bool {
+        value > 0
+    }
+}
+```
+
+The macro iterates over every method annotated with `#[neo_method]` and generates:
+
+1. A `#[no_mangle] pub extern "C" fn` with the correct export name and flat Wasm ABI signature (`i64` parameters).
+2. Parameter marshalling code that converts `i64` inputs into the Rust types declared in the method signature (`NeoInteger`, `NeoBoolean`, `bool`, `i64`).
+3. Return value marshalling that converts Rust return types back to `i64` for the Wasm boundary.
+4. ABI metadata embedded in a Wasm custom section for the translator to populate the manifest.
+
+Methods without `#[neo_method]` (like `new()` above) are left untouched -- they are regular Rust methods, not contract entry points.
+
+## Name Conversion
+
+Export names are derived from the Rust method name by converting `snake_case` to `camelCase`:
+
+| Rust method | Export name |
+|---|---|
+| `total_supply` | `totalSupply` |
+| `balance_of` | `balanceOf` |
+| `transfer` | `transfer` |
+
+Use `#[neo_method(name = "...")]` to override this conversion when the target name does not follow the camelCase pattern (e.g., `onNEP17Payment`).
+
+## Result Handling
+
+Methods that return `NeoResult<T>` get automatic error handling in the generated wrapper. The macro creates a companion status function (`<ExportName>LastError`) that callers can query for the last error code:
+
+```rust
+#[neo_contract]
+impl MyContract {
+    #[neo_method]
+    pub fn withdraw(amount: i64) -> NeoResult<NeoInteger> {
+        if amount <= 0 {
+            return Err(NeoError::InvalidArgument);
+        }
+        Ok(NeoInteger::new(amount))
+    }
+}
+```
+
+This generates two exports: `withdraw` (returns the value or `0` on error) and `withdrawLastError` (returns `0` on success or the error status code).
+
+## Receiver Methods
+
+Methods can take `&self` or `&mut self`. The generated wrapper instantiates the contract via `::new()` and calls the method on it:
+
+```rust
+#[neo_contract]
+impl TokenContract {
+    pub fn new() -> Self {
+        Self {
+            owner: NeoByteString::new(vec![]),
+            total_supply: NeoInteger::zero(),
+        }
+    }
+
+    #[neo_method]
+    pub fn initialize(&mut self) -> NeoResult<()> {
+        self.owner = NeoRuntime::get_calling_script_hash()?;
+        Ok(())
+    }
+
+    #[neo_method(safe)]
+    pub fn get_owner(&self) -> NeoResult<NeoByteString> {
+        Ok(self.owner.clone())
+    }
+}
+```
+
+<Aside type="note">
+  Because the contract struct is instantiated fresh for each call, receiver fields do not persist between invocations. Use `#[neo_storage]` or direct `NeoStorage` calls for persistent state.
+</Aside>
+
+## Supported Parameter Types
+
+The generated wrappers support these parameter types in `#[neo_method]` signatures:
+
+| Rust type | Wasm ABI | Conversion |
+|---|---|---|
+| `i64` | `i64` | Passed through |
+| `bool` | `i64` | `value != 0` |
+| `NeoInteger` | `i64` | `NeoInteger::new(value)` |
+| `NeoBoolean` | `i64` | `NeoBoolean::new(value != 0)` |
+
+## Supported Return Types
+
+| Rust type | Wasm ABI | Conversion |
+|---|---|---|
+| `i64` | `i64` | Passed through |
+| `bool` | `i64` | `true` = `1`, `false` = `0` |
+| `NeoInteger` | `i64` | `.as_i64_saturating()` |
+| `NeoBoolean` | `i64` | `true` = `1`, `false` = `0` |
+| `()` | `()` | No return value |
+| `NeoResult<T>` | `i64` / `()` | Unwraps `Ok`, stores error code on `Err` |
+
+## Complete Example
+
+```rust
+use neo_devpack::prelude::*;
+
+neo_manifest_overlay!(
+    r#"{
+    "name": "CounterContract",
+    "supportedstandards": []
+}"#
+);
+
+#[neo_contract]
+pub struct Counter;
+
+#[neo_contract]
+impl Counter {
+    pub fn new() -> Self {
+        Self
+    }
+
+    #[neo_method(safe)]
+    pub fn get_count() -> i64 {
+        // In production, read from storage
+        0
+    }
+
+    #[neo_method]
+    pub fn increment(amount: i64) -> bool {
+        amount > 0
+    }
+
+    #[neo_method(name = "onNEP17Payment")]
+    pub fn on_payment(_from: i64, _amount: i64, _data: i64) {}
+}
+
+impl Default for Counter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+```
+
+## See Also
+
+- [#[neo_method]](/sdk/macros/neo-method/) -- method-level annotation options
+- [Contract Anatomy](/concepts/contract-anatomy/) -- line-by-line walkthrough of a full contract
+- [Manifest Overlays](/concepts/manifest-overlays/) -- how ABI metadata flows into the manifest

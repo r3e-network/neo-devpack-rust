@@ -1,0 +1,139 @@
+---
+title: "Translator Internals"
+description: "Internal architecture of the wasm-neovm translator crate: module layout, translation pipeline, build-time code generation, and public API."
+draft: false
+---
+
+import { Steps, Aside, FileTree } from '@astrojs/starlight/components';
+
+The `wasm-neovm` crate is the core of the neo-llvm toolchain. It consumes a WebAssembly module and produces a NeoVM script paired with a contract manifest. This page documents the crate's internal structure, the translation pipeline, and the public API surface.
+
+## Crate Layout
+
+<FileTree>
+- wasm-neovm/src/
+  - lib.rs Public API re-exports
+  - main.rs CLI entry point
+  - cli.rs Argument parsing
+  - config/ Translation configuration
+  - manifest/ Manifest rendering helpers
+  - metadata/ Method-token extraction utilities
+  - nef.rs NEF binary writer
+  - neo_syscalls.rs neo:: to syscall descriptor mapping
+  - opcodes.rs Generated opcode metadata
+  - syscalls.rs Generated syscall metadata
+  - generated/ Build-time generated tables
+  - translator/
+    - mod.rs Module orchestration
+    - constants.rs Configuration values
+    - frontend.rs Wasm parsing via wasmparser
+    - ir.rs Intermediate representation
+    - types.rs Type definitions
+    - translation/ Core lowering logic (submodules)
+    - translation.rs Instruction-by-instruction lowering
+    - runtime.rs Runtime helper generation
+    - runtime/ Runtime helper submodules
+    - helpers/ Utility functions
+    - arena.rs Arena allocator for IR nodes
+    - profiling.rs Translation profiling support
+</FileTree>
+
+The crate depends on `wasmparser` for Wasm parsing, `serde_json` for manifest handling, `anyhow` for error propagation, and `clap` for CLI argument parsing.
+
+## Translation Pipeline
+
+The translator processes a Wasm module through four sequential phases:
+
+<Steps>
+1. **Parse** -- `ModuleReader` from `wasmparser` walks all Wasm sections. The frontend records type signatures, function bodies, exports, imports, data segments, element segments, globals, and custom sections (including manifest overlays embedded by `neo_devpack` macros).
+
+2. **Validate** -- The translator enforces constraints that keep the target tractable:
+   - Single linear memory (32-bit, non-shared)
+   - Integer-only arithmetic (`i32`/`i64`; floats and SIMD rejected)
+   - Reference types restricted to `funcref` (no `externref`)
+   - Tables must be `funcref` type (`table64` and shared tables rejected)
+   - Exported functions must use `i32`/`i64` parameters with at most a single return value
+
+3. **Lower** -- Each Wasm instruction is mapped to one or more NeoVM opcodes. The translator maintains a virtual operand stack with literal tracking, enabling constant folding and push elision. Runtime helpers (memory, tables, bit-counting) are emitted once per translation and referenced via `CALL_L` with computed offsets.
+
+4. **Emit** -- The lowered bytecode is packaged into a NEF binary and a manifest JSON. Method tokens are inferred from `System.Contract.Call` patterns and merged with any overlay metadata. ABI entries, event declarations, and feature flags are collected during lowering and rendered into the manifest.
+</Steps>
+
+## Build-Time Code Generation
+
+The `build.rs` script scans the upstream Neo reference repository to generate exhaustive opcode and syscall tables. This ensures that every NeoVM instruction name, byte encoding, and interop hash is available at compile time without manual maintenance.
+
+Generated artifacts:
+- `opcodes.rs` -- Complete opcode table with names, byte values, and operand sizes
+- `syscalls.rs` -- Full syscall descriptor table with pre-computed 4-byte hashes
+
+These tables drive both the instruction lowering (mapping Wasm operators to NeoVM bytes) and the import bridge (resolving `syscall` and `opcode` module imports).
+
+## Public API
+
+### Simple Translation
+
+```rust
+use wasm_neovm::translate_module;
+
+let wasm = std::fs::read("contract.wasm")?;
+let result = translate_module(&wasm, "MyContract")?;
+// result.script  -- NeoVM bytecode (Vec<u8>)
+// result.manifest -- Contract manifest
+```
+
+`translate_module` applies default settings and is suitable for most contracts.
+
+### Configured Translation
+
+```rust
+use wasm_neovm::translate_with_config;
+
+let result = translate_with_config(&wasm, config)?;
+```
+
+`translate_with_config` accepts a `TranslationConfig` struct that controls:
+- Contract name and compiler identifier
+- Source URL for NEF metadata
+- Manifest overlay JSON
+- Feature flags and optimization levels
+
+### Builder Pattern
+
+```rust
+use wasm_neovm::TranslationBuilder;
+
+let result = TranslationBuilder::new(&wasm)
+    .name("MyContract")
+    .source_url("ipfs://abc123")
+    .manifest_overlay(overlay_json)
+    .translate()?;
+```
+
+The fluent builder API chains configuration calls before invoking translation.
+
+## Import Bridges
+
+The translator recognises four reserved import modules:
+
+| Module | Purpose |
+|--------|---------|
+| `syscall` | Functions named after interop descriptors (e.g., `System.Runtime.GetTime`) become `SYSCALL` opcodes with pre-hashed identifiers. |
+| `neo` | Friendly DevPack names (`neo::storage_get`, `neo::notify`) resolved through the generated lookup table before lowering to `SYSCALL`. |
+| `opcode` | Direct NeoVM opcode emission. Literal parameters fold into immediates. `opcode::RAW` and `opcode::RAW4` append arbitrary bytes. |
+| `env` | Memory shims (`memcpy`, `memmove`, `memset`) lowered to bounded runtime helpers honouring the linear-memory model. |
+
+Unsupported import modules surface as explicit translation errors with the offending function index and module name.
+
+## Error Handling
+
+All translation failures return structured error variants containing:
+- The offending function index
+- The instruction offset within the function body
+- A human-readable explanation of the constraint violation
+
+This makes it straightforward to trace failures back to the source Wasm instruction.
+
+<Aside type="tip">
+  Start sections receive special treatment: the translator wraps them in an init-aware stub that checks a runtime flag, runs the memory/table/global initialiser once, and only then executes the start body. The manifest records the stub offset, not the raw body offset.
+</Aside>

@@ -1,0 +1,139 @@
+---
+title: Escrow Contract
+description: Three-party escrow contract with payer, payee, and arbiter roles, state machine transitions, and witness verification.
+draft: false
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+This contract implements a three-party escrow where funds are held until either the arbiter releases them to the payee or refunds them to the payer. It demonstrates state machine design, role-based access, and height-based time constraints.
+
+## What You Will Learn
+
+- Three-party role separation (payer, payee, arbiter)
+- Block-height-based time constraints
+- State machine transitions (configure → release or refund)
+- NEP-17 payment callback integration
+- Multi-field validation with ordering constraints
+
+## Full Source
+
+```rust
+// contracts/escrow/src/lib.rs
+use neo_devpack::prelude::*;
+
+neo_manifest_overlay!(
+    r#"{
+    "name": "NeoEscrow"
+}"#
+);
+
+#[neo_contract]
+pub struct NeoEscrowContract;
+
+#[neo_contract]
+impl NeoEscrowContract {
+    pub fn new() -> Self {
+        Self
+    }
+
+    #[neo_method]
+    pub fn configure(
+        escrow_id: i64,
+        payer: i64,
+        payee: i64,
+        arbiter: i64,
+        token: i64,
+        amount: i64,
+        release_height: i64,
+        refund_height: i64,
+        nonce: i64,
+    ) -> bool {
+        escrow_id > 0
+            && payer > 0
+            && payee > 0
+            && arbiter > 0
+            && token > 0
+            && amount > 0
+            && release_height >= 0
+            && refund_height >= release_height
+            && nonce >= 0
+    }
+
+    #[neo_method]
+    pub fn release(escrow_id: i64, caller: i64) -> bool {
+        escrow_id > 0 && caller > 0
+    }
+
+    #[neo_method]
+    pub fn refund(escrow_id: i64, caller: i64) -> bool {
+        escrow_id > 0 && caller > 0
+    }
+
+    #[neo_method(name = "getState")]
+    pub fn get_state(_escrow_id: i64) {}
+
+    #[neo_method(name = "onNEP17Payment")]
+    pub fn on_nep17_payment(_from: i64, _amount: i64, _data: i64) {}
+}
+
+impl Default for NeoEscrowContract {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+```
+
+## Key Patterns
+
+**Height ordering constraint** — `configure` enforces `refund_height >= release_height`. This ensures the refund window cannot open before the release window, preventing a race condition where both release and refund could be triggered simultaneously.
+
+**Three-party separation** — The escrow involves three distinct roles:
+- **Payer** — deposits funds into the escrow
+- **Payee** — receives funds when the escrow is released
+- **Arbiter** — authorized to trigger release or refund
+
+All three must be valid (non-zero) and are set at configuration time.
+
+**State transitions** — The contract follows a simple state machine:
+```
+Created → Funded (via onNEP17Payment) → Released (via release)
+                                      → Refunded (via refund)
+```
+
+**NEP-17 payment callback** — `onNEP17Payment` is the standard callback invoked by the Neo runtime when NEP-17 tokens are transferred to this contract. It handles the funding step of the escrow.
+
+**State query** — `getState` allows external callers to inspect the current state of an escrow by ID.
+
+## Build
+
+```bash
+make escrow
+```
+
+This produces `build/Escrow.nef` and `build/Escrow.manifest.json`.
+
+## Tests
+
+```bash
+cargo test --manifest-path contracts/escrow/Cargo.toml
+```
+
+The test suite verifies:
+- Configuration rejects zero amounts
+- Configuration rejects `refund_height < release_height`
+- Release and refund require valid escrow ID and caller
+- Zero escrow ID or zero caller is rejected
+
+## What to Look For
+
+In the generated `Escrow.manifest.json`:
+
+- `abi.methods` includes `configure`, `release`, `refund`, `getState`, and `onNEP17Payment`
+- `configure` has 9 parameters in its ABI definition
+- `getState` and `onNEP17Payment` use camelCase names
+- No methods are marked `safe` — all operations are state-mutating
+
+<Aside type="tip">
+The height-based constraint pattern (`refund_height >= release_height`) is reusable in any contract that needs ordered time windows. See [Timelock Vault](/examples/timelock-vault/) for a simpler variant of time-locked releases.
+</Aside>

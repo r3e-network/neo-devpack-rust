@@ -1,0 +1,216 @@
+---
+title: "#[neo_method]"
+description: "Attribute macro that marks methods as contract entry points with optional safe and name override flags."
+draft: false
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+`#[neo_method]` marks a method inside a `#[neo_contract] impl` block as a contract entry point. The macro itself is a lightweight marker -- the heavy lifting (export shim generation, parameter marshalling, ABI metadata) happens in the parent `#[neo_contract]` impl expansion.
+
+## Basic Usage
+
+```rust
+use neo_devpack::prelude::*;
+
+#[neo_contract]
+pub struct MyContract;
+
+#[neo_contract]
+impl MyContract {
+    #[neo_method]
+    pub fn transfer(from: i64, to: i64, amount: i64) -> bool {
+        from > 0 && to > 0 && amount > 0
+    }
+}
+```
+
+This generates a Wasm export named `transfer` (snake_case is preserved when it contains no underscores). The export accepts three `i64` parameters and returns `i64` (`1` for `true`, `0` for `false`).
+
+## The `safe` Flag
+
+```rust
+#[neo_method(safe)]
+pub fn balance_of(account: i64) -> i64 {
+    // read-only query
+    0
+}
+```
+
+The `safe` flag marks the method as read-only in the generated manifest. Safe methods:
+
+- Have `"safe": true` in the manifest's `abi.methods` entry.
+- Can be invoked off-chain without submitting a transaction.
+- Cost no GAS for the caller.
+- Must not modify contract storage or emit notifications.
+
+Use `safe` for any getter or query method. The Neo runtime does not enforce the read-only constraint at the VM level, but wallets and tooling rely on the manifest flag to determine invocation mode.
+
+<Aside type="tip">
+  When in doubt, mark a method as `safe` if it only reads state. Omitting the flag on a read-only method forces callers to submit a transaction and pay GAS unnecessarily.
+</Aside>
+
+## The `name` Override
+
+```rust
+#[neo_method(name = "onNEP17Payment")]
+pub fn on_nep17_payment(_from: i64, _amount: i64, _data: i64) {}
+```
+
+By default, the export name is derived from the Rust method name by converting `snake_case` to `camelCase`. The `name` parameter overrides this conversion entirely.
+
+Common use cases:
+
+| Rust method | Default export | Override needed? |
+|---|---|---|
+| `total_supply` | `totalSupply` | No |
+| `balance_of` | `balanceOf` | No |
+| `on_nep17_payment` | `onNep17Payment` | Yes -- standard requires `onNEP17Payment` |
+| `on_nep11_payment` | `onNep11Payment` | Yes -- standard requires `onNEP11Payment` |
+
+The `snake_to_camel` conversion lowercases the first character and uppercases each character after an underscore. Acronyms like `NEP17` are not preserved, so any callback or standard-defined name with non-standard casing needs an explicit override.
+
+## Combining Flags
+
+Both flags can be used together:
+
+```rust
+#[neo_method(safe, name = "getSymbol")]
+pub fn symbol() -> i64 {
+    // return symbol string pointer
+    0
+}
+```
+
+The order does not matter -- `name = "...", safe` works identically.
+
+## Name Conversion Rules
+
+The automatic `snake_case` to `camelCase` conversion follows these rules:
+
+1. Underscores are removed.
+2. The character following each underscore is uppercased.
+3. The first character is **not** uppercased (it stays lowercase).
+
+Examples:
+
+| Rust name | Generated export |
+|---|---|
+| `get_balance` | `getBalance` |
+| `total_supply` | `totalSupply` |
+| `transfer` | `transfer` |
+| `set_owner_address` | `setOwnerAddress` |
+
+## Placement Rules
+
+`#[neo_method]` must appear on methods inside a `#[neo_contract] impl` block. Using it outside that context compiles but has no effect -- no export shim is generated.
+
+```rust
+// This works -- export shim is generated
+#[neo_contract]
+impl MyContract {
+    #[neo_method]
+    pub fn works() -> i64 { 0 }
+}
+
+// This compiles but does nothing useful
+impl MyContract {
+    #[neo_method]
+    pub fn no_export() -> i64 { 0 }
+}
+```
+
+<Aside type="caution">
+  The macro does not emit a warning when used outside a `#[neo_contract]` impl block. The method compiles normally but is never exported to Wasm, so the translator will not see it.
+</Aside>
+
+## Supported Signatures
+
+### Parameters
+
+All parameters (except `self` receivers) must be one of the supported types:
+
+| Rust type | Wasm ABI | Conversion in wrapper |
+|---|---|---|
+| `i64` | `i64` | Passed through |
+| `bool` | `i64` | `value != 0` |
+| `NeoInteger` | `i64` | `NeoInteger::new(value)` |
+| `NeoBoolean` | `i64` | `NeoBoolean::new(value != 0)` |
+
+Unsupported parameter types cause a compile-time error with a descriptive message.
+
+### Return Types
+
+| Rust type | Wasm ABI | Conversion in wrapper |
+|---|---|---|
+| `i64` | `i64` | Passed through |
+| `bool` | `i64` | `true` = `1`, `false` = `0` |
+| `NeoInteger` | `i64` | `.as_i64_saturating()` |
+| `NeoBoolean` | `i64` | `.as_bool()` then `1` / `0` |
+| `()` | `()` | No return |
+| `NeoResult<NeoInteger>` | `i64` | Unwrap or store error code |
+| `NeoResult<NeoBoolean>` | `i64` | Unwrap or store error code |
+| `NeoResult<()>` | `()` | Store error code on `Err` |
+
+## Complete Example
+
+A NEP-17 token contract using all `#[neo_method]` features:
+
+```rust
+use neo_devpack::prelude::*;
+
+neo_manifest_overlay!(
+    r#"{
+    "name": "ExampleToken",
+    "supportedstandards": ["NEP-17"]
+}"#
+);
+
+#[neo_contract]
+pub struct ExampleToken;
+
+#[neo_contract]
+impl ExampleToken {
+    pub fn new() -> Self {
+        Self
+    }
+
+    #[neo_method(safe)]
+    pub fn total_supply() -> i64 {
+        1_000_000
+    }
+
+    #[neo_method(safe)]
+    pub fn symbol() -> i64 {
+        // return string pointer
+        0
+    }
+
+    #[neo_method(safe)]
+    pub fn decimals() -> i64 {
+        8
+    }
+
+    #[neo_method(safe)]
+    pub fn balance_of(account: i64) -> i64 {
+        // read balance from storage
+        0
+    }
+
+    #[neo_method]
+    pub fn transfer(from: i64, to: i64, amount: i64) -> bool {
+        from > 0 && to > 0 && amount > 0
+    }
+
+    #[neo_method(name = "onNEP17Payment")]
+    pub fn on_nep17_payment(_from: i64, _amount: i64, _data: i64) {}
+}
+```
+
+This generates six Wasm exports: `totalSupply`, `symbol`, `decimals`, `balanceOf`, `transfer`, and `onNEP17Payment`. The first four are marked safe in the manifest.
+
+## See Also
+
+- [#[neo_contract]](/sdk/macros/neo-contract/) -- the parent macro that processes `#[neo_method]` annotations
+- [#[neo_safe]](/sdk/macros/neo-safe/) -- standalone alternative for marking free functions as safe
+- [Contract Anatomy](/concepts/contract-anatomy/) -- full contract walkthrough with method annotations

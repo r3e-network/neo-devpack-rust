@@ -1,0 +1,239 @@
+---
+title: "#[neo_storage]"
+description: "Attribute macro that generates load/save methods for mapping struct fields to Neo contract storage."
+draft: false
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+`#[neo_storage]` generates storage persistence methods for a Rust struct. The macro adds `load()`, `load_result()`, and `save()` methods that serialize the struct to and from Neo contract storage using a deterministic key derived from the struct name.
+
+## Basic Usage
+
+```rust
+use neo_devpack::prelude::*;
+use neo_devpack::serde::{Deserialize, Serialize};
+
+#[derive(Default, Serialize, Deserialize)]
+#[neo_storage]
+pub struct ContractState {
+    balances: NeoMap<NeoByteString, NeoInteger>,
+    owner: NeoByteString,
+    total_supply: NeoInteger,
+}
+```
+
+This generates an `impl ContractState` block with three methods:
+
+| Method | Signature | Description |
+|---|---|---|
+| `load` | `fn load(context: &NeoStorageContext) -> Self` | Load from storage, return `Default` on error |
+| `load_result` | `fn load_result(context: &NeoStorageContext) -> NeoResult<Self>` | Load from storage, propagate errors |
+| `save` | `fn save(&self, context: &NeoStorageContext) -> NeoResult<()>` | Serialize and write to storage |
+
+## Storage Key
+
+The storage key is derived from the struct name using the pattern `{StructName}::storage`. For `ContractState`, the key is `ContractState::storage`.
+
+All fields are serialized together into a single storage entry under this key. This means the entire struct is read and written as one unit.
+
+```rust
+// Key: "ContractState::storage"
+let context = NeoRuntime::get_storage_context()?;
+let state = ContractState::load(&context);
+```
+
+<Aside type="note">
+  The single-key approach is simple and works well for small to medium state. For contracts with large or frequently-updated individual fields, consider using direct `NeoStorage` calls with per-field keys instead.
+</Aside>
+
+## Loading State
+
+### `load` -- Infallible
+
+Returns the deserialized struct or `Default::default()` if the key does not exist or deserialization fails:
+
+```rust
+let context = NeoRuntime::get_storage_context()?;
+let state = ContractState::load(&context);
+// state is either the persisted value or Default::default()
+```
+
+### `load_result` -- Fallible
+
+Returns `NeoResult<Self>`, allowing the caller to handle errors explicitly:
+
+```rust
+let context = NeoRuntime::get_storage_context()?;
+match ContractState::load_result(&context) {
+    Ok(state) => {
+        // use state
+    }
+    Err(e) => {
+        // handle deserialization error
+    }
+}
+```
+
+If the storage key does not exist (empty bytes), `load_result` returns `Ok(Self::default())` rather than an error.
+
+## Saving State
+
+`save` serializes the struct and writes it to storage. It checks for read-only contexts and returns an error if the context does not allow writes:
+
+```rust
+let context = NeoRuntime::get_storage_context()?;
+let mut state = ContractState::load(&context);
+
+state.total_supply = NeoInteger::new(1_000_000);
+state.owner = NeoRuntime::get_calling_script_hash()?;
+
+state.save(&context)?;
+```
+
+<Aside type="caution">
+  Calling `save` on a read-only storage context returns `Err(NeoError::InvalidOperation)`. This happens when the function is invoked via a safe (read-only) call. Only state-mutating methods should call `save`.
+</Aside>
+
+## Required Trait Bounds
+
+The generated methods require these trait implementations on the struct:
+
+| Method | Required traits |
+|---|---|
+| `load` | `Default` + `DeserializeOwned` |
+| `load_result` | `Default` + `DeserializeOwned` |
+| `save` | `Serialize` |
+
+The simplest way to satisfy these is with derive macros:
+
+```rust
+#[derive(Default, Serialize, Deserialize)]
+#[neo_storage]
+pub struct MyState {
+    // fields...
+}
+```
+
+## Practical Example
+
+A complete contract using `#[neo_storage]` for persistent state:
+
+```rust
+use neo_devpack::prelude::*;
+use neo_devpack::serde::{Deserialize, Serialize};
+
+neo_manifest_overlay!(
+    r#"{
+    "name": "StorageExample",
+    "supportedstandards": []
+}"#
+);
+
+#[derive(Default, Serialize, Deserialize)]
+#[neo_storage]
+pub struct AppState {
+    counters: NeoMap<NeoString, NeoInteger>,
+    settings: NeoMap<NeoString, NeoValue>,
+}
+
+#[neo_contract]
+pub struct StorageApp;
+
+#[neo_contract]
+impl StorageApp {
+    pub fn new() -> Self {
+        Self
+    }
+
+    #[neo_method]
+    pub fn increment(counter_name: i64) -> i64 {
+        let context = match NeoRuntime::get_storage_context() {
+            Ok(ctx) => ctx,
+            Err(_) => return 0,
+        };
+
+        let mut state = AppState::load(&context);
+        let key = NeoString::from_str("default");
+        let current = state
+            .counters
+            .get(&key)
+            .cloned()
+            .unwrap_or(NeoInteger::zero());
+        let next = current + NeoInteger::one();
+        let result = next.as_i64_saturating();
+        state.counters.insert(key, next);
+        let _ = state.save(&context);
+
+        result
+    }
+
+    #[neo_method(safe)]
+    pub fn get_count() -> i64 {
+        let context = match NeoRuntime::get_storage_context() {
+            Ok(ctx) => ctx,
+            Err(_) => return 0,
+        };
+
+        let state = AppState::load(&context);
+        let key = NeoString::from_str("default");
+        state
+            .counters
+            .get(&key)
+            .map(|v| v.as_i64_saturating())
+            .unwrap_or(0)
+    }
+}
+```
+
+## Multiple Storage Structs
+
+A contract can define multiple `#[neo_storage]` structs. Each gets its own storage key:
+
+```rust
+#[derive(Default, Serialize, Deserialize)]
+#[neo_storage]
+pub struct UserStore {
+    users: NeoMap<NeoByteString, NeoValue>,
+}
+// Key: "UserStore::storage"
+
+#[derive(Default, Serialize, Deserialize)]
+#[neo_storage]
+pub struct ConfigStore {
+    settings: NeoMap<NeoString, NeoValue>,
+}
+// Key: "ConfigStore::storage"
+```
+
+This is useful for separating concerns -- user data and configuration live in different storage entries and can be loaded independently.
+
+## Storage Cost Considerations
+
+Every `load` reads the entire serialized struct from storage, and every `save` writes it back. For contracts with large state:
+
+- Minimize the number of `load`/`save` round-trips per method call.
+- Load once at the start of a method, mutate in memory, and save once at the end.
+- Consider splitting large state across multiple `#[neo_storage]` structs so you only load what you need.
+
+```rust
+// Good: one load, one save
+#[neo_method]
+pub fn batch_update(&mut self) -> NeoResult<()> {
+    let context = NeoRuntime::get_storage_context()?;
+    let mut state = AppState::load(&context);
+
+    // multiple mutations in memory
+    state.counters.insert(NeoString::from_str("a"), NeoInteger::one());
+    state.counters.insert(NeoString::from_str("b"), NeoInteger::new(2));
+
+    state.save(&context)?;
+    Ok(())
+}
+```
+
+## See Also
+
+- [#[neo_contract]](/sdk/macros/neo-contract/) -- the contract struct (fields are not auto-persisted)
+- [Storage Context](/sdk/types/storage-context/) -- the `NeoStorageContext` type reference
+- [Contract Anatomy](/concepts/contract-anatomy/) -- how storage fits into the contract lifecycle

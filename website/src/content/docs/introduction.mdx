@@ -1,0 +1,65 @@
+---
+title: Introduction
+description: What neo-llvm is, how the Rust-to-NeoVM compilation pipeline works, and why Rust is a compelling alternative to C# for Neo N3 smart contract development.
+draft: false
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+neo-llvm is a production-ready Rust toolchain for compiling [Neo N3](https://neo.org/) smart contracts. It takes standard Rust code, compiles it to WebAssembly, then translates the Wasm bytecode into NeoVM instructions — producing the NEF binary and manifest JSON that Neo N3 nodes expect.
+
+## Compilation Pipeline
+
+```
+Rust Contract → cargo build (wasm32) → Wasm Module → wasm-neovm → NEF + Manifest
+```
+
+1. You write a smart contract in Rust using the `rust-devpack` SDK.
+2. `cargo build` compiles it to a `.wasm` binary targeting `wasm32-unknown-unknown`.
+3. The `wasm-neovm` translator reads the Wasm module and emits NeoVM opcodes.
+4. The output is a `.nef` file (the on-chain bytecode) and a `.manifest.json` file (the contract metadata).
+
+## Why Rust?
+
+Neo N3 contracts are traditionally written in C#. Rust offers a different set of trade-offs:
+
+| | Rust (neo-llvm) | C# (neo-devpack-dotnet) |
+|---|---|---|
+| Memory safety | Compile-time guarantees via ownership | Garbage-collected runtime |
+| Ecosystem | Cargo, crates.io, mature tooling | NuGet, .NET SDK |
+| Performance | Zero-cost abstractions | JIT-compiled |
+| Learning curve | Steeper, but enforces correctness | Gentler for .NET developers |
+| Contract size | Typically smaller Wasm output | Managed IL output |
+
+Both toolchains produce valid NEF bytecode. Choose the one that fits your team and project.
+
+## What's Included
+
+<CardGrid>
+  <Card title="wasm-neovm" icon="rocket">
+    The core translator. Reads Wasm modules and emits NeoVM bytecode as NEF binaries with accompanying manifest files.
+  </Card>
+  <Card title="rust-devpack" icon="seti:rust">
+    The Rust SDK — types (`NeoInteger`, `NeoByteString`, `NeoStorage`), macros (`#[neo_contract]`, `#[neo_method]`, `#[neo_event]`), runtime bindings, and syscall wrappers.
+  </Card>
+  <Card title="17 Example Contracts" icon="open-book">
+    From hello-world to Uniswap V2 AMMs, flashloan pools, NFT marketplaces, governance DAOs, and more. Every example compiles, tests, and produces valid NEF output.
+  </Card>
+  <Card title="Cross-Chain Layers" icon="random">
+    Experimental compatibility layers for Solana (`solana-compat`) and Move (`move-neovm`), enabling developers from other ecosystems to target NeoVM.
+  </Card>
+</CardGrid>
+
+## Project Status
+
+- **Version**: 0.4.7
+- **License**: MIT
+- **Neo N3 compatibility**: 3.9.1
+- **Test coverage**: 500+ tests across unit, integration, and contract-level suites
+- **CI**: GitHub Actions with Neo Express integration testing
+
+## Next Steps
+
+- [Install the toolchain](/installation/) to set up your development environment.
+- [Follow the Quick Start](/quickstart/) to compile your first contract end-to-end.
+- [Explore the project structure](/project-structure/) to understand how the repository is organized.

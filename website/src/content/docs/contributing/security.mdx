@@ -1,0 +1,153 @@
+---
+title: Security Policy
+description: How to report vulnerabilities, severity classifications, response timelines, and security tooling for the neo-llvm project.
+draft: false
+---
+
+import { Aside, Steps, Card, CardGrid } from '@astrojs/starlight/components';
+
+Smart contract toolchains are security-critical infrastructure. A bug in the translator can produce bytecode that loses funds on-chain. We take every report seriously.
+
+## Supported Versions
+
+| Version | Status | Support level |
+|---|---|---|
+| 0.4.x | **Current** | Active development, security patches |
+| 0.3.x | Maintenance | Critical security fixes only |
+| < 0.3 | Unsupported | No patches — upgrade immediately |
+
+<Aside type="caution">
+  If you are running a version older than 0.3.0, upgrade as soon as possible. Unsupported versions will not receive security fixes.
+</Aside>
+
+## Reporting a Vulnerability
+
+**Do not open a public GitHub issue for security vulnerabilities.**
+
+Use GitHub Security Advisories to report vulnerabilities privately:
+
+<Steps>
+
+1. Go to the [Security Advisories page](https://github.com/r3e-network/neo-llvm/security/advisories).
+
+2. Click **"New draft security advisory"**.
+
+3. Provide a clear description of the vulnerability, including:
+   - Affected component (translator, devpack, cross-chain layer, etc.)
+   - Steps to reproduce
+   - Potential impact on deployed contracts
+   - Suggested fix, if you have one
+
+4. Submit the advisory. The maintainers will be notified immediately.
+
+</Steps>
+
+<Aside type="danger">
+  Public disclosure of unpatched vulnerabilities puts deployed contracts at risk. Always use the private advisory process.
+</Aside>
+
+## Response Timeline
+
+| Stage | Timeframe |
+|---|---|
+| Initial acknowledgment | Within **48 hours** |
+| Triage and severity assessment | Within **5 business days** |
+| Fix development and testing | **7–30 days** depending on severity |
+| Public disclosure | After the fix is released and users have had time to upgrade |
+
+We will keep you informed at each stage. If you don't hear back within 48 hours, follow up on the advisory thread.
+
+## Severity Levels
+
+### Critical
+
+Vulnerabilities that can lead to direct loss of funds or complete compromise of contract execution.
+
+- **Remote code execution** in the translator or build pipeline
+- **Bytecode injection** — attacker-controlled opcodes in generated NEF output
+- **Syscall spoofing** — incorrect syscall hashes that redirect contract calls
+
+### High
+
+Vulnerabilities that produce incorrect on-chain behavior.
+
+- **Incorrect bytecode translation** — valid Wasm producing wrong NeoVM semantics
+- **Manifest corruption** — generated manifest that misrepresents contract capabilities
+- **Stack corruption** — translation errors that leave the NeoVM stack in an invalid state
+
+### Medium
+
+Vulnerabilities that affect correctness under specific conditions.
+
+- **Logic errors** in edge-case Wasm patterns (e.g., unusual control flow, rare type combinations)
+- **Resource limit bypass** — contracts that exceed expected GAS or storage bounds due to translation bugs
+- **Cross-chain layer errors** — incorrect mapping in Solana or Move compatibility layers
+
+### Low
+
+Issues with minimal direct impact.
+
+- **Minor inconsistencies** between documented and actual behavior
+- **Non-exploitable deviations** from the Wasm specification
+- **Cosmetic issues** in generated manifests (e.g., incorrect metadata fields that don't affect execution)
+
+## Security Considerations
+
+The neo-llvm toolchain has several security-sensitive areas that require particular attention:
+
+<CardGrid>
+  <Card title="Bytecode Translation" icon="warning">
+    The core translator must produce NeoVM opcodes that are semantically equivalent to the input Wasm. Any divergence can cause contracts to behave differently than the developer intended.
+  </Card>
+  <Card title="Memory Safety" icon="warning">
+    Wasm linear memory must be correctly mapped to NeoVM's stack-based model. Buffer overflows, out-of-bounds access, and memory corruption in the translation layer are critical issues.
+  </Card>
+  <Card title="Syscall Mapping" icon="warning">
+    NeoVM syscalls are identified by hash. An incorrect hash silently calls the wrong system function, potentially granting unintended permissions or accessing wrong data.
+  </Card>
+  <Card title="Resource Limits" icon="warning">
+    Translated contracts must respect Neo N3 GAS limits and storage constraints. Translation bugs that produce inefficient opcode sequences can make contracts unexpectedly expensive or cause execution failures.
+  </Card>
+</CardGrid>
+
+## Security Tooling
+
+The project uses several automated tools to catch vulnerabilities early:
+
+| Tool | Purpose | Command |
+|---|---|---|
+| `cargo-audit` | Checks dependencies for known CVEs | `cargo audit` |
+| `cargo-deny` | Enforces license and advisory policies | `cargo deny check` |
+| `cargo-tarpaulin` | Measures test coverage (security-critical code must be well-tested) | `cargo tarpaulin --all` |
+| `clippy` | Catches common Rust pitfalls including unsafe patterns | `cargo clippy --all -- -D warnings` |
+
+### Running All Security Checks
+
+A single command runs the full security suite:
+
+```bash
+make security-check
+```
+
+This executes `cargo audit`, `cargo deny check`, and `cargo clippy` in sequence. CI runs this on every pull request.
+
+<Aside type="tip">
+  Run `make security-check` locally before submitting a PR. It catches dependency vulnerabilities and unsafe patterns that unit tests won't find.
+</Aside>
+
+## Disclosure Policy
+
+We follow coordinated disclosure:
+
+1. The reporter submits a private advisory.
+2. We acknowledge, triage, and develop a fix.
+3. We release the fix and notify affected users.
+4. After a reasonable upgrade window (typically 7–14 days), we publish the advisory with full details.
+
+We credit reporters in the advisory unless they prefer to remain anonymous.
+
+## Next Steps
+
+- Set up your environment with the [Dev Setup](/contributing/setup/) guide.
+- Read the [Contribution Guide](/contributing/guide/) for code quality standards.
+- Check the [Changelog](/contributing/changelog/) for recent security-related fixes.

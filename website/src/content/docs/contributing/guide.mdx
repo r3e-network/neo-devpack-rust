@@ -1,0 +1,242 @@
+---
+title: Contribution Guide
+description: Branch naming, code style, testing requirements, and pull request process for contributing to neo-llvm.
+draft: false
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+This guide covers the conventions and processes that keep the codebase consistent and the review cycle fast.
+
+## Branch Naming
+
+Create branches from `master` using one of these prefixes:
+
+| Prefix | Use case | Example |
+|---|---|---|
+| `feature/` | New functionality | `feature/move-translator-enums` |
+| `fix/` | Bug fixes | `fix/42-initslot-offset` |
+| `docs/` | Documentation only | `docs/update-syscall-table` |
+| `refactor/` | Internal restructuring | `refactor/arena-allocator` |
+| `ci/` | CI/CD changes | `ci/add-neo-express-smoke` |
+
+```bash
+git checkout -b feature/your-feature-name
+```
+
+## Code Style
+
+### Formatting
+
+All Rust code must pass `cargo fmt` with the project's default settings:
+
+- **Line length**: 100 characters
+- **Indentation**: 4 spaces
+- **Braces**: Kernighan & Ritchie style (opening brace on same line)
+
+Run the formatter before committing:
+
+```bash
+cargo fmt --all
+```
+
+### Naming Conventions
+
+| Element | Convention | Example |
+|---|---|---|
+| Types, traits, enums | `PascalCase` | `TranslationConfig`, `NeoValue` |
+| Functions, methods | `snake_case` | `translate_module`, `emit_opcode` |
+| Constants | `SCREAMING_SNAKE_CASE` | `MAX_SCRIPT_LENGTH` |
+| Modules | `snake_case` | `opcode_mapping` |
+| Type parameters | Single uppercase letter or short `PascalCase` | `T`, `E`, `Item` |
+
+### Linting
+
+Code must be clean under `cargo clippy`:
+
+```bash
+cargo clippy --all -- -D warnings
+```
+
+<Aside type="caution">
+  CI treats clippy warnings as errors. Fix all warnings before pushing.
+</Aside>
+
+## Documentation
+
+### Public API Docs
+
+Every public function, struct, enum, and trait must have a `///` doc comment explaining what it does, its parameters, and its return value:
+
+```rust
+/// Translates a single Wasm instruction into one or more NeoVM opcodes.
+///
+/// # Arguments
+///
+/// * `instr` - The Wasm instruction to translate.
+/// * `ctx` - Mutable translation context tracking the current stack state.
+///
+/// # Errors
+///
+/// Returns `TranslationError::UnsupportedInstruction` if the Wasm opcode
+/// has no NeoVM equivalent.
+pub fn translate_instruction(
+    instr: &Instruction,
+    ctx: &mut TranslationContext,
+) -> Result<Vec<NeoOpcode>, TranslationError> {
+    // ...
+}
+```
+
+### Module-Level Docs
+
+Each module should have a `//!` comment at the top of `mod.rs` or the module file describing its purpose.
+
+## Error Handling
+
+- Use `Result<T, E>` for all fallible operations.
+- Define error types with [`thiserror`](https://docs.rs/thiserror/) for automatic `Display` and `From` implementations.
+- Avoid `.unwrap()` and `.expect()` in library code. These are acceptable only in tests and examples.
+- Use `?` for error propagation.
+
+```rust
+// Good
+let module = parse_module(&bytes)?;
+
+// Bad — panics on invalid input
+let module = parse_module(&bytes).unwrap();
+```
+
+## Testing Requirements
+
+### Coverage Thresholds
+
+| Code area | Minimum coverage |
+|---|---|
+| New feature code | 70% |
+| Core translation (`wasm-neovm`) | 90%+ |
+| Devpack SDK | 80%+ |
+
+Measure coverage locally with:
+
+```bash
+cargo tarpaulin --all --out Html
+```
+
+### Test Organization
+
+- **Unit tests**: In the same file as the code, inside a `#[cfg(test)]` module.
+- **Integration tests**: In the `tests/` directory of each crate.
+- **Contract tests**: End-to-end tests that compile a contract to Wasm, translate it, and verify the NEF output.
+
+### Writing Good Tests
+
+```rust
+#[test]
+fn translate_i32_add_emits_neovm_add() {
+    let wasm = wat::parse_str("(module (func (result i32) i32.const 1 i32.const 2 i32.add))")
+        .expect("valid WAT");
+    let result = translate(&wasm).expect("translation succeeds");
+    assert!(result.opcodes.contains(&NeoOpcode::Add));
+}
+```
+
+Name tests descriptively: `<unit>_<scenario>_<expected_outcome>`.
+
+## Pull Request Process
+
+<Steps>
+
+1. **Ensure all checks pass locally**
+
+   ```bash
+   cargo fmt --all -- --check
+   cargo clippy --all -- -D warnings
+   cargo test --all
+   ```
+
+2. **Write or update tests** for every change.
+
+3. **Update documentation** if you changed public APIs or behavior.
+
+4. **Add a CHANGELOG entry** under the `[Unreleased]` section describing your change.
+
+5. **Open a pull request** against `master` with a clear title and description.
+
+6. **Respond to review feedback** promptly. All PRs require at least one approving review.
+
+</Steps>
+
+### PR Checklist
+
+Before requesting review, confirm:
+
+- [ ] Tests pass (`cargo test --all`)
+- [ ] Code is formatted (`cargo fmt --all -- --check`)
+- [ ] No clippy warnings (`cargo clippy --all -- -D warnings`)
+- [ ] Public APIs have doc comments
+- [ ] CHANGELOG entry added
+- [ ] Commit messages follow Conventional Commits
+
+## Commit Messages
+
+This project uses [Conventional Commits](https://www.conventionalcommits.org/). Every commit message follows this format:
+
+```
+<type>(<scope>): <subject>
+
+[optional body]
+
+[optional footer]
+```
+
+### Types
+
+| Type | When to use |
+|---|---|
+| `feat` | New feature or capability |
+| `fix` | Bug fix |
+| `docs` | Documentation changes only |
+| `style` | Formatting, whitespace (no logic change) |
+| `refactor` | Code restructuring (no behavior change) |
+| `perf` | Performance improvement |
+| `test` | Adding or updating tests |
+| `ci` | CI/CD configuration changes |
+| `chore` | Maintenance tasks (dependency updates, etc.) |
+
+### Scopes
+
+| Scope | Area |
+|---|---|
+| `wasm-neovm` | Core translator |
+| `devpack` | Rust SDK / devpack |
+| `solana` | Solana compatibility layer |
+| `move` | Move translator |
+| `contracts` | Example contracts |
+| `docs` | Documentation and website |
+| `ci` | CI/CD pipelines |
+
+### Examples
+
+```
+feat(wasm-neovm): add support for bulk memory operations
+
+Implements Wasm bulk memory proposal opcodes (memory.copy, memory.fill)
+with NeoVM equivalents using MEMCPY syscall.
+
+Closes #127
+```
+
+```
+fix(devpack): correct Hash160 validation for zero-prefixed addresses
+```
+
+```
+test(contracts): add integration tests for staking-rewards contract
+```
+
+## Next Steps
+
+- Set up your environment with the [Dev Setup](/contributing/setup/) guide if you haven't already.
+- Review the [Security Policy](/contributing/security/) for reporting vulnerabilities.
+- Check the [Changelog](/contributing/changelog/) to understand recent changes.

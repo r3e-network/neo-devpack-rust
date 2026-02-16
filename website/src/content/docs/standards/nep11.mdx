@@ -1,0 +1,318 @@
+---
+title: "NEP-11 Non-Fungible Token"
+description: "Complete walkthrough of the NEP-11 non-fungible token standard for Neo N3, with a full Rust contract implementation."
+draft: false
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+NEP-11 is Neo's non-fungible token standard -- the equivalent of ERC-721 on Ethereum. Each token has a unique identifier and a single owner. NEP-11 contracts expose a standard interface for minting, transferring, and querying ownership of individual tokens.
+
+This page walks through a complete NEP-11 NFT contract written in Rust using the `neo-devpack` SDK.
+
+## Standard Requirements
+
+A compliant NEP-11 contract must implement these methods:
+
+| Method | Parameters | Returns | Safe |
+|---|---|---|---|
+| `totalSupply` | -- | Integer | Yes |
+| `balanceOf` | `owner: Hash160` | Integer | Yes |
+| `ownerOf` | `tokenId: ByteString` | Hash160 | Yes |
+| `transfer` | `to: Hash160, tokenId: ByteString` | Boolean | No |
+| `tokens` | -- | Iterator | Yes |
+| `tokensOf` | `owner: Hash160` | Iterator | Yes |
+
+It must also emit a `Transfer` event on every successful transfer (including mints and burns):
+
+```
+Transfer(from: Hash160 | null, to: Hash160 | null, amount: Integer, tokenId: ByteString)
+```
+
+<Aside type="note">
+  Unlike NEP-17, the NEP-11 `transfer` method takes a `to` address and a `tokenId` -- there is no `from` parameter. The runtime determines the sender via `CheckWitness` on the current token owner.
+</Aside>
+
+## The Full Contract
+
+```rust
+use neo_devpack::prelude::*;
+
+neo_manifest_overlay!(
+    r#"{
+    "name": "SampleNEP11",
+    "supportedstandards": ["NEP-11"]
+}"#
+);
+
+const TOTAL_SUPPLY: i64 = 1_000;
+
+fn balance_of_internal(owner: i64) -> i64 {
+    if owner > 0 {
+        1
+    } else {
+        0
+    }
+}
+
+fn owner_of_internal(token_id: i64) -> i64 {
+    if token_id <= 0 {
+        0
+    } else {
+        (token_id % 10) + 1
+    }
+}
+
+fn mint_internal(owner: i64, token_id: i64) -> bool {
+    owner > 0 && token_id > 0
+}
+
+fn transfer_internal(from: i64, to: i64, token_id: i64) -> bool {
+    from > 0 && to > 0 && from != to && token_id > 0
+}
+
+#[neo_contract]
+pub struct SampleNep11Contract;
+
+#[neo_contract]
+impl SampleNep11Contract {
+    pub fn new() -> Self {
+        Self
+    }
+
+    #[neo_method(safe)]
+    pub fn total_supply() -> i64 {
+        TOTAL_SUPPLY
+    }
+
+    #[neo_method(safe)]
+    pub fn balance_of(owner: i64) -> i64 {
+        balance_of_internal(owner)
+    }
+
+    #[neo_method(safe)]
+    pub fn owner_of(token_id: i64) -> i64 {
+        owner_of_internal(token_id)
+    }
+
+    #[neo_method]
+    pub fn mint(owner: i64, token_id: i64) -> bool {
+        mint_internal(owner, token_id)
+    }
+
+    #[neo_method]
+    pub fn transfer(from: i64, to: i64, token_id: i64) -> bool {
+        transfer_internal(from, to, token_id)
+    }
+}
+
+impl Default for SampleNep11Contract {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+```
+
+The sections below break this contract apart piece by piece.
+
+## Manifest Overlay
+
+```rust
+neo_manifest_overlay!(
+    r#"{
+    "name": "SampleNEP11",
+    "supportedstandards": ["NEP-11"]
+}"#
+);
+```
+
+Declares the contract name and NEP-11 compliance. The `supportedstandards` array tells wallets and marketplaces that this contract follows the NFT standard, enabling automatic token discovery and display. See [Manifest Overlays](/concepts/manifest-overlays/) for the full merge semantics.
+
+## Constants
+
+```rust
+const TOTAL_SUPPLY: i64 = 1_000;
+```
+
+The fixed total supply of NFTs in this collection. Compiled to an inline `PUSHINT` opcode in NeoVM -- no storage slot is allocated.
+
+## Internal Helper Functions
+
+```rust
+fn balance_of_internal(owner: i64) -> i64 {
+    if owner > 0 {
+        1
+    } else {
+        0
+    }
+}
+
+fn owner_of_internal(token_id: i64) -> i64 {
+    if token_id <= 0 {
+        0
+    } else {
+        (token_id % 10) + 1
+    }
+}
+
+fn mint_internal(owner: i64, token_id: i64) -> bool {
+    owner > 0 && token_id > 0
+}
+
+fn transfer_internal(from: i64, to: i64, token_id: i64) -> bool {
+    from > 0 && to > 0 && from != to && token_id > 0
+}
+```
+
+The contract separates business logic into free functions for testability:
+
+- **`balance_of_internal`** -- returns `1` for any valid owner (positive ID), `0` otherwise. A production contract would count the tokens stored under the owner's key.
+- **`owner_of_internal`** -- maps a token ID to its owner using modular arithmetic. In production this would be a storage lookup keyed by `tokenId`.
+- **`mint_internal`** -- validates that both the owner and token ID are positive before allowing a mint.
+- **`transfer_internal`** -- validates transfer preconditions: both addresses must be valid, they must differ, and the token ID must be positive.
+
+<Aside type="tip">
+  In a production contract, `owner_of_internal` would call `Storage.get()` to look up the owner for a given token ID, and `transfer_internal` would update the ownership mapping and fire the `Transfer` event.
+</Aside>
+
+## The Contract Struct
+
+```rust
+#[neo_contract]
+pub struct SampleNep11Contract;
+```
+
+`#[neo_contract]` on a unit struct marks it as the contract entry point. The macro generates the Wasm export shims that the translator expects. A contract module must have exactly one struct annotated with `#[neo_contract]`.
+
+## The Implementation Block
+
+```rust
+#[neo_contract]
+impl SampleNep11Contract {
+    // methods...
+}
+```
+
+`#[neo_contract]` on the `impl` block processes each method inside it. For every `#[neo_method]`-annotated function the macro generates a Wasm export, parameter marshalling, and ABI metadata for the manifest.
+
+### `total_supply` -- Read Total Supply
+
+```rust
+#[neo_method(safe)]
+pub fn total_supply() -> i64 {
+    TOTAL_SUPPLY
+}
+```
+
+Returns the total number of NFTs in the collection. Marked `safe` for gas-free off-chain queries.
+
+### `balance_of` -- Count Tokens Owned
+
+```rust
+#[neo_method(safe)]
+pub fn balance_of(owner: i64) -> i64 {
+    balance_of_internal(owner)
+}
+```
+
+Returns how many NFTs a given owner holds. For NEP-11 this is a count of distinct token IDs, not a fungible amount. Marked `safe` because it is read-only.
+
+### `owner_of` -- Look Up Token Owner
+
+```rust
+#[neo_method(safe)]
+pub fn owner_of(token_id: i64) -> i64 {
+    owner_of_internal(token_id)
+}
+```
+
+Returns the owner of a specific token. This is the core ownership query that marketplaces and wallets use to verify who holds a given NFT. Marked `safe` for off-chain access.
+
+### `mint` -- Create a New Token
+
+```rust
+#[neo_method]
+pub fn mint(owner: i64, token_id: i64) -> bool {
+    mint_internal(owner, token_id)
+}
+```
+
+Creates a new NFT and assigns it to `owner`. Not part of the NEP-11 standard itself, but virtually every NFT contract needs a minting entry point. The method is not marked `safe` because it modifies state. A production implementation would:
+
+1. Verify the caller has minting authority.
+2. Check that `token_id` does not already exist.
+3. Store the ownership mapping.
+4. Fire a `Transfer` event with `from` set to `null`.
+
+### `transfer` -- Transfer Token Ownership
+
+```rust
+#[neo_method]
+pub fn transfer(from: i64, to: i64, token_id: i64) -> bool {
+    transfer_internal(from, to, token_id)
+}
+```
+
+Transfers ownership of a specific NFT. This is the core state-mutating operation. The NEP-11 standard requires that:
+
+1. The caller must be the current owner of the token (verified via `CheckWitness`).
+2. The method must return `false` (not abort) if the transfer cannot proceed.
+3. A `Transfer` event must fire on success.
+
+<Aside type="caution">
+  The standard NEP-11 `transfer` signature takes only `to` and `tokenId` -- the `from` is implicit (the current owner). This sample contract includes `from` explicitly for validation clarity.
+</Aside>
+
+## Default Implementation
+
+```rust
+impl Default for SampleNep11Contract {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+```
+
+Satisfies the `clippy::new_without_default` lint and allows the contract struct to be instantiated with `Default::default()`.
+
+## Unit Tests
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::SampleNep11Contract;
+
+    #[test]
+    fn supply_and_read_paths_are_consistent() {
+        assert_eq!(SampleNep11Contract::total_supply(), 1_000);
+        assert_eq!(SampleNep11Contract::balance_of(1), 1);
+        assert_eq!(SampleNep11Contract::balance_of(0), 0);
+        assert_eq!(SampleNep11Contract::owner_of(0), 0);
+        assert_eq!(SampleNep11Contract::owner_of(12), 3);
+    }
+
+    #[test]
+    fn mint_and_transfer_validate_inputs() {
+        assert!(SampleNep11Contract::mint(1, 1));
+        assert!(!SampleNep11Contract::mint(0, 1));
+        assert!(SampleNep11Contract::transfer(1, 2, 1));
+        assert!(!SampleNep11Contract::transfer(1, 1, 1));
+        assert!(!SampleNep11Contract::transfer(1, 2, 0));
+    }
+}
+```
+
+The tests call contract methods directly as associated functions -- no VM needed. The two test functions cover:
+
+- **`supply_and_read_paths_are_consistent`** -- verifies `total_supply` returns the constant, `balance_of` returns `1` for valid owners and `0` for invalid ones, and `owner_of` correctly maps token IDs to owners (e.g., token 12 maps to owner 3 via `(12 % 10) + 1`).
+- **`mint_and_transfer_validate_inputs`** -- exercises input validation: valid mints and transfers succeed, zero-owner mints fail, self-transfers fail, and zero-token-ID transfers fail.
+
+## Building
+
+Compile the contract with:
+
+```bash
+make nep11-nft
+```
+
+This produces a `.nef` file and a `.manifest.json` file in the build output directory, ready for deployment to Neo N3.

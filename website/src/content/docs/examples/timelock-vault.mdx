@@ -1,0 +1,114 @@
+---
+title: Timelock Vault
+description: Time-locked token release contract with deposit scheduling, maturity checks, and guarded withdrawals.
+draft: false
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+This contract implements a timelock vault where tokens are deposited with a future unlock timestamp. Withdrawals are only permitted after the timelock expires. It is the simplest time-constraint pattern in the example set and serves as a building block for vesting schedules and delayed execution.
+
+## What You Will Learn
+
+- Time-locked release patterns
+- Maturity checking as a safe (read-only) operation
+- Separating the scheduling step from the release step
+- Minimal contract design with only three methods
+
+## Full Source
+
+```rust
+// contracts/timelock-vault/src/lib.rs
+use neo_devpack::prelude::*;
+
+neo_manifest_overlay!(
+    r#"{
+    "name": "TimelockVault"
+}"#
+);
+
+#[neo_contract]
+pub struct TimelockVaultContract;
+
+#[neo_contract]
+impl TimelockVaultContract {
+    pub fn new() -> Self {
+        Self
+    }
+
+    #[neo_method]
+    pub fn queue_release(
+        beneficiary: i64, amount: i64, unlock_time: i64,
+    ) -> bool {
+        beneficiary > 0 && amount > 0 && unlock_time > 0
+    }
+
+    #[neo_method(safe)]
+    pub fn is_mature(unlock_time: i64, current_time: i64) -> bool {
+        current_time >= unlock_time
+    }
+
+    #[neo_method]
+    pub fn release(
+        beneficiary: i64, amount: i64,
+        unlock_time: i64, current_time: i64,
+    ) -> bool {
+        beneficiary > 0 && amount > 0
+            && unlock_time > 0 && current_time >= unlock_time
+    }
+}
+
+impl Default for TimelockVaultContract {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+```
+
+## Key Patterns
+
+**Queue and release** — The contract separates scheduling from execution:
+1. `queue_release` — Records a future release: who gets the tokens, how many, and when
+2. `release` — Executes the release, but only if `current_time >= unlock_time`
+
+This two-step pattern prevents premature withdrawals while allowing anyone to trigger the release once the timelock expires.
+
+**Maturity check** — `is_mature` is marked `#[neo_method(safe)]` so callers can check whether a timelock has expired without spending GAS. It returns `true` when `current_time >= unlock_time`, using a simple greater-than-or-equal comparison.
+
+**Minimal surface area** — At only 59 lines and 3 methods, this is the smallest intermediate contract. The simplicity makes it easy to audit and compose with other contracts.
+
+**Time representation** — Times are represented as `i64` values (typically block heights or Unix timestamps). The contract is agnostic to the time source — the caller provides `current_time`, and a production version would read it from `NeoRuntime::time()`.
+
+## Build
+
+```bash
+make timelock-vault
+```
+
+This produces `build/TimelockVault.nef` and `build/TimelockVault.manifest.json`.
+
+## Tests
+
+```bash
+cargo test --manifest-path contracts/timelock-vault/Cargo.toml
+```
+
+The test suite verifies:
+- `queue_release` rejects zero beneficiary, zero amount, or zero unlock time
+- `is_mature(10, 10)` returns `true` (exact match)
+- `is_mature(11, 10)` returns `false` (not yet mature)
+- `release` succeeds when `current_time >= unlock_time`
+- `release` fails when `current_time < unlock_time`
+
+## What to Look For
+
+In the generated `TimelockVault.manifest.json`:
+
+- `abi.methods` contains exactly 3 methods: `queue_release`, `is_mature`, `release`
+- `is_mature` has `"safe": true` — the only safe method
+- `queue_release` and `release` have `"safe": false`
+- `release` has 4 parameters; `is_mature` has 2
+
+<Aside type="tip">
+This pattern is the foundation for token vesting schedules. To build a vesting contract, create multiple queued releases with staggered unlock times (e.g., 25% every 6 months).
+</Aside>

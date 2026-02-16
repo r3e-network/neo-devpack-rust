@@ -1,0 +1,240 @@
+---
+title: Permissions & Trust
+description: Declare contract permissions and trusted callers using neo_permission! and neo_trusts! macros for Neo N3 smart contracts.
+draft: false
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Neo N3 enforces a permission model at the manifest level. Before a contract can call another contract's method, the caller's manifest must declare that permission. Similarly, a contract can restrict which callers it trusts. This page covers both mechanisms and how to configure them in Rust.
+
+## How Permissions Work
+
+When contract A calls contract B's method `foo`, the Neo runtime checks:
+
+1. Does A's manifest declare permission to call B (or wildcard `*`) with method `foo` (or wildcard `*`)?
+2. If not, the call fails with a runtime error.
+
+Permissions are declared at compile time and baked into the manifest. They cannot be changed after deployment.
+
+## Declaring Permissions
+
+Use the `neo_permission!` macro to declare which contracts and methods your contract is allowed to call.
+
+### Syntax
+
+```rust
+use neo_devpack::prelude::*;
+
+// Allow calling any method on any contract
+neo_permission!("*", ["*"]);
+
+// Allow calling specific methods on any contract
+neo_permission!("*", ["balanceOf", "transfer"]);
+
+// Allow calling any method on a specific contract (by hash)
+neo_permission!("0xef4073a0f2b305a38ec4050e4d3d28bc40ea63f5", ["*"]);
+
+// Allow calling specific methods on a specific contract
+neo_permission!(
+    "0xef4073a0f2b305a38ec4050e4d3d28bc40ea63f5",
+    ["balanceOf", "transfer"]
+);
+```
+
+The first argument is the contract target -- either a script hash or `"*"` for any contract. The second argument is an array of method names, or `["*"]` for all methods.
+
+### Multiple Permissions
+
+Declare multiple permissions by invoking the macro multiple times:
+
+```rust
+use neo_devpack::prelude::*;
+
+// Permission to read balances from any NEP-17 token
+neo_permission!("*", ["balanceOf", "decimals", "symbol"]);
+
+// Permission to call the oracle contract
+neo_permission!(
+    "0xfe924b7cfe89ddd271abaf7210a80a7e11178758",
+    ["request", "getPrice"]
+);
+```
+
+Each invocation adds a separate entry to the manifest's `permissions` array.
+
+## Manifest Output
+
+The `neo_permission!` macro generates entries in the manifest like this:
+
+```json
+{
+  "permissions": [
+    {
+      "contract": "*",
+      "methods": ["balanceOf", "decimals", "symbol"]
+    },
+    {
+      "contract": "0xfe924b7cfe89ddd271abaf7210a80a7e11178758",
+      "methods": ["request", "getPrice"]
+    }
+  ]
+}
+```
+
+The Neo runtime reads this array at invocation time to authorize or reject cross-contract calls.
+
+## Declaring Trusted Callers
+
+Use the `neo_trusts!` macro to declare which contracts are trusted to call your contract. This is the inverse of permissions -- it controls who can call you.
+
+```rust
+use neo_devpack::prelude::*;
+
+// Trust any contract to call this contract
+neo_trusts!(["*"]);
+
+// Trust only specific contracts
+neo_trusts!([
+    "0xef4073a0f2b305a38ec4050e4d3d28bc40ea63f5",
+    "0xd2a4cff31913016155e38e474a2c06d08be276cf"
+]);
+```
+
+### Manifest Output
+
+```json
+{
+  "trusts": [
+    "0xef4073a0f2b305a38ec4050e4d3d28bc40ea63f5",
+    "0xd2a4cff31913016155e38e474a2c06d08be276cf"
+  ]
+}
+```
+
+<Aside type="caution">
+  `neo_trusts!(["*"])` allows any contract to call yours. This is appropriate for public utility contracts (like tokens) but dangerous for contracts with privileged operations. Prefer explicit trust lists for contracts that manage funds or governance.
+</Aside>
+
+## Least Privilege Principle
+
+Follow the principle of least privilege: declare only the permissions your contract actually needs.
+
+### Bad: Overly Broad
+
+```rust
+use neo_devpack::prelude::*;
+
+// Grants permission to call ANY method on ANY contract
+neo_permission!("*", ["*"]);
+```
+
+This works but tells auditors nothing about your contract's actual dependencies. It also means a bug in your contract could be exploited to call arbitrary methods on arbitrary contracts.
+
+### Good: Scoped Permissions
+
+```rust
+use neo_devpack::prelude::*;
+
+// Only what we actually call
+neo_permission!("*", ["balanceOf"]);  // Read balances from any token
+neo_permission!(
+    "0xef4073a0f2b305a38ec4050e4d3d28bc40ea63f5",  // NEO token
+    ["transfer"]
+);
+neo_permission!(
+    "0xd2a4cff31913016155e38e474a2c06d08be276cf",  // GAS token
+    ["transfer"]
+);
+```
+
+This makes the contract's external dependencies explicit and auditable.
+
+## Wildcard vs Specific Contracts
+
+| Target | Use Case | Risk |
+|---|---|---|
+| `"*"` (wildcard) | Reading public data from any NEP-17 token (e.g., `balanceOf`) | Low -- read-only methods are safe |
+| Specific hash | Transferring tokens from a known contract | Low -- tightly scoped |
+| `"*"` with `["*"]` | Development / prototyping only | High -- allows calling anything |
+
+A common pattern is to use wildcards for read-only methods and specific hashes for state-mutating calls:
+
+```rust
+use neo_devpack::prelude::*;
+
+// Safe reads from any token
+neo_permission!("*", ["balanceOf", "totalSupply", "symbol", "decimals"]);
+
+// State-mutating calls only to known contracts
+neo_permission!("0xef4073a0f2b305a38ec4050e4d3d28bc40ea63f5", ["transfer"]);
+```
+
+## Complete Example
+
+A staking contract that reads balances from any NEP-17 token and transfers from the NEO and GAS native contracts:
+
+```rust
+use neo_devpack::prelude::*;
+
+neo_manifest_overlay!(r#"{
+    "name": "StakingPool",
+    "supportedstandards": ["NEP-17"],
+    "features": { "storage": true }
+}"#);
+
+// Permissions: what we call
+neo_permission!("*", ["balanceOf", "decimals", "symbol"]);
+neo_permission!("0xef4073a0f2b305a38ec4050e4d3d28bc40ea63f5", ["transfer"]);
+neo_permission!("0xd2a4cff31913016155e38e474a2c06d08be276cf", ["transfer"]);
+
+// Trust: who can call us
+neo_trusts!([
+    "0xef4073a0f2b305a38ec4050e4d3d28bc40ea63f5",
+    "0xd2a4cff31913016155e38e474a2c06d08be276cf"
+]);
+
+#[neo_contract]
+pub struct StakingPool;
+
+#[neo_contract]
+impl StakingPool {
+    #[neo_method(name = "onNEP17Payment")]
+    pub fn on_nep17_payment(_from: i64, _amount: i64, _data: i64) {
+        // Accept incoming NEP-17 tokens
+    }
+
+    #[neo_method(safe)]
+    pub fn total_staked() -> i64 {
+        // Read from storage
+        0
+    }
+
+    #[neo_method]
+    pub fn withdraw(staker: i64, amount: i64) -> bool {
+        staker > 0 && amount > 0
+    }
+}
+```
+
+## Supported Standards Declaration
+
+Use `neo_supported_standards!` alongside permissions to declare which NEP standards your contract implements:
+
+```rust
+use neo_devpack::prelude::*;
+
+neo_supported_standards!(["NEP-17"]);
+```
+
+This adds a `supportedstandards` entry to the manifest. Wallets and block explorers use this to identify token contracts, NFT contracts, and other standard-compliant contracts.
+
+<Aside type="note">
+  `neo_supported_standards!` and the `supportedstandards` field in `neo_manifest_overlay!` serve the same purpose. Use one or the other -- if both are present, the manifest overlay value takes precedence during the merge.
+</Aside>
+
+## What's Next
+
+- [Cross-Contract Calls](/guides/contract-calls/) -- use the permissions you declared to call other contracts.
+- [Contract Anatomy](/concepts/contract-anatomy/) -- see how permissions fit into the full contract structure.
+- [Deployment](/guides/deployment/) -- deploy and verify your contract's permissions on Neo Express.

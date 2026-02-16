@@ -1,0 +1,277 @@
+---
+title: NeoRuntime
+description: Facade for Neo N3 runtime services — timestamps, witness checks, logging, triggers, and notifications.
+draft: false
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+`NeoRuntime` is the primary entry point for interacting with the Neo N3 execution environment. It wraps the `System.Runtime.*` family of syscalls behind a safe Rust API, giving your contract access to block timestamps, caller verification, debug logging, trigger inspection, and notification retrieval.
+
+```rust
+use neo_devpack::prelude::*;
+
+#[neo_contract]
+impl MyContract {
+    #[neo_method]
+    pub fn protected_action() -> bool {
+        let caller = NeoRuntimeContext::get_sender();
+        NeoRuntime::check_witness(caller)
+    }
+}
+```
+
+## get_time
+
+Returns the timestamp of the current block in milliseconds since Unix epoch. This is the consensus timestamp agreed upon by the network validators, not the local machine time.
+
+**Syscall:** `System.Runtime.GetTime`
+
+```rust
+use neo_devpack::prelude::*;
+
+#[neo_method(safe)]
+pub fn is_sale_active(start: i64, end: i64) -> bool {
+    let now = NeoRuntime::get_time();
+    now >= start && now <= end
+}
+```
+
+| Item | Detail |
+|------|--------|
+| Returns | `i64` — milliseconds since Unix epoch |
+| GAS cost | Low (read-only runtime data) |
+| Determinism | Yes — all nodes agree on the block timestamp |
+
+<Aside type="caution">
+  Block timestamps are set by the consensus leader and are only guaranteed to be monotonically non-decreasing. Do not rely on sub-second precision for time-critical logic.
+</Aside>
+
+---
+
+## check_witness
+
+Verifies that the specified account or contract has authorized the current invocation. This is the fundamental access-control primitive on Neo N3 — it checks whether the given script hash signed the transaction or is the calling contract.
+
+**Syscall:** `System.Runtime.CheckWitness`
+
+```rust
+use neo_devpack::prelude::*;
+
+const OWNER: [u8; 20] = /* contract owner script hash */;
+
+#[neo_method]
+pub fn admin_only() -> bool {
+    if !NeoRuntime::check_witness(OWNER) {
+        NeoRuntime::log("unauthorized caller");
+        return false;
+    }
+    // ... privileged logic
+    true
+}
+```
+
+| Item | Detail |
+|------|--------|
+| Parameter | `account: impl Into<ScriptHash>` — a 20-byte script hash |
+| Returns | `bool` — `true` if the witness is verified |
+| GAS cost | Medium (signature verification) |
+
+### How witness checking works
+
+1. If the account is a standard address, the runtime checks whether the transaction's signature list contains a valid signature for that address.
+2. If the account is a contract hash, the runtime checks whether the calling contract's script hash matches.
+3. For multi-signature accounts, the required threshold of signatures must be present.
+
+```rust
+use neo_devpack::prelude::*;
+
+#[neo_method]
+pub fn transfer(from: ScriptHash, to: ScriptHash, amount: i64) -> bool {
+    // The sender must have authorized this transaction
+    if !NeoRuntime::check_witness(from) {
+        return false;
+    }
+
+    // ... debit `from`, credit `to`
+    true
+}
+```
+
+---
+
+## log
+
+Emits a debug log message. Log messages are recorded in the transaction's application log and are visible in Neo Express and other development tools. They are not stored on-chain and are not accessible to other contracts.
+
+**Syscall:** `System.Runtime.Log`
+
+```rust
+use neo_devpack::prelude::*;
+
+#[neo_method]
+pub fn process_payment(amount: i64) -> bool {
+    NeoRuntime::log("payment processing started");
+
+    if amount <= 0 {
+        NeoRuntime::log("invalid amount — rejecting");
+        return false;
+    }
+
+    // ... process payment
+    NeoRuntime::log("payment completed");
+    true
+}
+```
+
+| Item | Detail |
+|------|--------|
+| Parameter | `message: &str` — the log message (max 1024 bytes) |
+| Returns | `()` |
+| GAS cost | Low |
+
+<Aside type="tip">
+  Use `NeoRuntime::log()` liberally during development. In production builds, consider gating verbose logs behind a debug flag to save GAS.
+</Aside>
+
+---
+
+## get_trigger
+
+Returns the trigger type that caused the current contract execution. Contracts can be invoked in different contexts — the trigger tells you which one.
+
+**Syscall:** `System.Runtime.GetTrigger`
+
+```rust
+use neo_devpack::prelude::*;
+
+#[neo_method]
+pub fn on_entry() -> bool {
+    let trigger = NeoRuntime::get_trigger();
+
+    match trigger {
+        TriggerType::Application => {
+            // Normal invocation via a transaction
+            true
+        }
+        TriggerType::Verification => {
+            // Called during transaction verification
+            // Return true to approve, false to reject
+            NeoRuntime::check_witness(OWNER)
+        }
+        _ => false,
+    }
+}
+```
+
+| Item | Detail |
+|------|--------|
+| Returns | `TriggerType` enum |
+| GAS cost | Minimal |
+
+### TriggerType variants
+
+| Variant | Value | Description |
+|---------|-------|-------------|
+| `Verification` | `0x00` | Transaction signature verification phase |
+| `Application` | `0x10` | Normal application execution |
+| `System` | `0x01` | System-level trigger (internal) |
+
+---
+
+## get_notifications
+
+Retrieves all notifications emitted during the current transaction execution, optionally filtered by the originating contract hash. This is useful for reacting to events fired by other contracts during cross-contract calls.
+
+**Syscall:** `System.Runtime.GetNotifications`
+
+```rust
+use neo_devpack::prelude::*;
+
+#[neo_method]
+pub fn check_transfer_events(token_hash: ScriptHash) -> i64 {
+    let notifications = NeoRuntime::get_notifications(Some(token_hash));
+    let mut total_transferred: i64 = 0;
+
+    for notification in notifications.iter() {
+        if notification.event_name == "Transfer" {
+            // Extract amount from notification state
+            // notification.state is a NeoArray of the event parameters
+            if let Some(amount) = notification.state.get(2) {
+                total_transferred += amount.as_integer();
+            }
+        }
+    }
+
+    total_transferred
+}
+```
+
+| Item | Detail |
+|------|--------|
+| Parameter | `filter: Option<ScriptHash>` — if `Some`, only return notifications from that contract; if `None`, return all |
+| Returns | `NeoArray<Notification>` |
+| GAS cost | Varies with number of notifications |
+
+### Notification structure
+
+Each `Notification` contains:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `script_hash` | `ScriptHash` | The contract that emitted the notification |
+| `event_name` | `NeoString` | The event name (e.g., `"Transfer"`) |
+| `state` | `NeoArray<NeoValue>` | The event parameters |
+
+---
+
+## Complete example
+
+A token sale contract using multiple runtime services:
+
+```rust
+use neo_devpack::prelude::*;
+
+const OWNER: ScriptHash = /* owner hash */;
+const SALE_START: i64 = 1700000000000; // milliseconds
+const SALE_END: i64   = 1703000000000;
+
+#[neo_contract]
+pub struct TokenSale;
+
+#[neo_contract]
+impl TokenSale {
+    pub fn new() -> Self { Self }
+
+    #[neo_method]
+    pub fn buy_tokens(buyer: ScriptHash, amount: i64) -> bool {
+        // Verify the buyer authorized this call
+        if !NeoRuntime::check_witness(buyer) {
+            NeoRuntime::log("witness check failed");
+            return false;
+        }
+
+        // Check sale window
+        let now = NeoRuntime::get_time();
+        if now < SALE_START || now > SALE_END {
+            NeoRuntime::log("sale not active");
+            return false;
+        }
+
+        // ... mint tokens to buyer
+        NeoRuntime::log("tokens purchased");
+        true
+    }
+
+    /// Verification entry point — only the owner can sign
+    /// transactions on behalf of this contract.
+    #[neo_method(safe)]
+    pub fn verify() -> bool {
+        let trigger = NeoRuntime::get_trigger();
+        match trigger {
+            TriggerType::Verification => NeoRuntime::check_witness(OWNER),
+            _ => false,
+        }
+    }
+}
+```
