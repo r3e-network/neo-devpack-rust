@@ -5,6 +5,21 @@
 
 use neo_devpack::prelude::*;
 use neo_syscalls::*;
+use std::sync::{Mutex, MutexGuard, OnceLock};
+
+fn syscall_test_lock() -> MutexGuard<'static, ()> {
+    static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    match TEST_LOCK.get_or_init(|| Mutex::new(())).lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    }
+}
+
+fn setup_syscall_test() -> MutexGuard<'static, ()> {
+    let guard = syscall_test_lock();
+    NeoVMSyscall::reset_host_state().expect("host syscall state should reset");
+    guard
+}
 
 fn registry() -> NeoVMSyscallRegistry {
     NeoVMSyscallRegistry::get_instance()
@@ -45,6 +60,7 @@ fn assert_value_matches_type(value: &NeoValue, ty: &str) {
 
 #[test]
 fn registry_contains_expected_syscalls() {
+    let _guard = setup_syscall_test();
     let registry = registry();
     let names: Vec<_> = registry.names().collect();
     assert_eq!(names.len(), 37);
@@ -56,6 +72,7 @@ fn registry_contains_expected_syscalls() {
 
 #[test]
 fn hash_lookup_matches_name_lookup() {
+    let _guard = setup_syscall_test();
     let registry = registry();
     for info in registry.iter() {
         let by_hash = registry
@@ -67,6 +84,7 @@ fn hash_lookup_matches_name_lookup() {
 
 #[test]
 fn neovm_syscall_returns_placeholder_for_known_entries() {
+    let _guard = setup_syscall_test();
     let registry = registry();
     for info in registry.iter() {
         let args: Vec<NeoValue> = info.parameters.iter().map(|p| placeholder_arg(p)).collect();
@@ -77,12 +95,14 @@ fn neovm_syscall_returns_placeholder_for_known_entries() {
 
 #[test]
 fn neovm_syscall_handles_unknown_hash() {
+    let _guard = setup_syscall_test();
     let result = neovm_syscall(0xDEADBEEF, &[]);
     assert!(result.is_err());
 }
 
 #[test]
 fn neovm_syscall_rejects_argument_count_mismatch() {
+    let _guard = setup_syscall_test();
     let registry = registry();
     let info = registry
         .get_syscall("System.Runtime.Log")
@@ -93,6 +113,7 @@ fn neovm_syscall_rejects_argument_count_mismatch() {
 
 #[test]
 fn neovm_syscall_rejects_argument_type_mismatch() {
+    let _guard = setup_syscall_test();
     let registry = registry();
     let info = registry
         .get_syscall("System.Runtime.Log")
@@ -104,6 +125,7 @@ fn neovm_syscall_rejects_argument_type_mismatch() {
 
 #[test]
 fn neovm_syscall_rejects_invalid_hash160_length() {
+    let _guard = setup_syscall_test();
     let registry = registry();
     let info = registry
         .get_syscall("System.Contract.Call")
@@ -122,6 +144,7 @@ fn neovm_syscall_rejects_invalid_hash160_length() {
 
 #[test]
 fn syscall_wrapper_supports_extended_system_surface() {
+    let _guard = setup_syscall_test();
     let script_hash = NeoByteString::new(vec![1u8; 20]);
     let method = NeoString::from_str("balanceOf");
     let call_flags = NeoInteger::new(0);
@@ -153,6 +176,7 @@ fn syscall_wrapper_supports_extended_system_surface() {
     NeoVMSyscall::native_on_persist().expect("native on persist");
     NeoVMSyscall::native_post_persist().expect("native post persist");
 
+    NeoVMSyscall::set_crypto_verification_results(true, true).expect("set crypto results");
     let check_sig = NeoVMSyscall::check_sig(
         &NeoByteString::new(vec![5u8; 33]),
         &NeoByteString::new(vec![6u8; 64]),
@@ -181,7 +205,7 @@ fn syscall_wrapper_supports_extended_system_surface() {
 
 #[test]
 fn host_overrides_check_witness_and_script_hash_syscalls() {
-    NeoVMSyscall::reset_host_state().expect("reset host state");
+    let _guard = setup_syscall_test();
 
     let registry = registry();
     let check_witness = registry
@@ -213,4 +237,42 @@ fn host_overrides_check_witness_and_script_hash_syscalls() {
             "{name} should reflect active host contract hash"
         );
     }
+
+    let check_sig = registry
+        .get_syscall("System.Crypto.CheckSig")
+        .expect("check sig syscall");
+    let check_multisig = registry
+        .get_syscall("System.Crypto.CheckMultisig")
+        .expect("check multisig syscall");
+    let check_sig_args = [
+        NeoValue::from(NeoByteString::new(vec![1u8; 33])),
+        NeoValue::from(NeoByteString::new(vec![2u8; 64])),
+    ];
+    let check_multisig_args = [
+        NeoValue::from(NeoArray::<NeoValue>::new()),
+        NeoValue::from(NeoArray::<NeoValue>::new()),
+    ];
+
+    assert!(!neovm_syscall(check_sig.hash, &check_sig_args)
+        .expect("check sig call")
+        .as_boolean()
+        .expect("boolean result")
+        .as_bool());
+    assert!(!neovm_syscall(check_multisig.hash, &check_multisig_args)
+        .expect("check multisig call")
+        .as_boolean()
+        .expect("boolean result")
+        .as_bool());
+
+    NeoVMSyscall::set_crypto_verification_results(true, true).expect("set crypto results");
+    assert!(neovm_syscall(check_sig.hash, &check_sig_args)
+        .expect("check sig call")
+        .as_boolean()
+        .expect("boolean result")
+        .as_bool());
+    assert!(neovm_syscall(check_multisig.hash, &check_multisig_args)
+        .expect("check multisig call")
+        .as_boolean()
+        .expect("boolean result")
+        .as_bool());
 }

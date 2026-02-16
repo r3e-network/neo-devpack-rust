@@ -1,6 +1,7 @@
 // Copyright (c) 2025 R3E Network
 // Licensed under the MIT License
 
+use neo_syscalls::NeoVMSyscall;
 use neo_types::*;
 
 /// Deterministic crypto helpers for tests and examples.
@@ -51,9 +52,13 @@ impl NeoCrypto {
         signature: &NeoByteString,
         public_key: &NeoByteString,
     ) -> NeoResult<NeoBoolean> {
-        Ok(NeoBoolean::new(
-            signature.len() == 64 && public_key.len() == 33,
-        ))
+        // Keep basic shape validation deterministic in host tests.
+        if signature.len() != 64 || public_key.len() != 33 {
+            return Ok(NeoBoolean::FALSE);
+        }
+
+        // Delegate to syscall shim so host-mode auth hardening applies.
+        NeoVMSyscall::check_sig(public_key, signature)
     }
 
     pub fn verify_signature_with_recovery(

@@ -92,6 +92,16 @@ pub fn neovm_syscall(hash: u32, args: &[NeoValue]) -> NeoResult<NeoValue> {
             return Ok(NeoBoolean::new(has_witness).into());
         }
 
+        if info.name == "System.Crypto.CheckSig" {
+            let results = active_crypto_verification_results();
+            return Ok(NeoBoolean::new(results.check_sig).into());
+        }
+
+        if info.name == "System.Crypto.CheckMultisig" {
+            let results = active_crypto_verification_results();
+            return Ok(NeoBoolean::new(results.check_multisig).into());
+        }
+
         if matches!(
             info.name,
             "System.Runtime.GetCallingScriptHash"
@@ -138,6 +148,7 @@ impl NeoVMSyscall {
         STORAGE_STATE.reset()?;
         reset_current_contract_hash();
         clear_active_witnesses();
+        reset_crypto_verification_results();
         Ok(())
     }
 
@@ -196,6 +207,25 @@ impl NeoVMSyscall {
     /// Replace the active witness set used by host-mode `check_witness`.
     #[cfg(target_arch = "wasm32")]
     pub fn set_active_witnesses(_witnesses: &[NeoByteString]) -> NeoResult<()> {
+        Ok(())
+    }
+
+    /// Configure host-mode crypto syscall results (secure default: both false).
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn set_crypto_verification_results(check_sig: bool, check_multisig: bool) -> NeoResult<()> {
+        crate::storage::set_crypto_verification_results(CryptoVerificationResults {
+            check_sig,
+            check_multisig,
+        });
+        Ok(())
+    }
+
+    /// Configure host-mode crypto syscall results (secure default: both false).
+    #[cfg(target_arch = "wasm32")]
+    pub fn set_crypto_verification_results(
+        _check_sig: bool,
+        _check_multisig: bool,
+    ) -> NeoResult<()> {
         Ok(())
     }
 

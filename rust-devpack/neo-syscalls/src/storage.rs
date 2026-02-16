@@ -28,6 +28,16 @@ pub(crate) static ACTIVE_CONTRACT_HASH: Lazy<RwLock<[u8; 20]>> =
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) static ACTIVE_WITNESSES: Lazy<RwLock<HashSet<Vec<u8>>>> =
     Lazy::new(|| RwLock::new(HashSet::new()));
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) static ACTIVE_CRYPTO_RESULTS: Lazy<RwLock<CryptoVerificationResults>> =
+    Lazy::new(|| RwLock::new(CryptoVerificationResults::default()));
+
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Clone, Copy, Default)]
+pub(crate) struct CryptoVerificationResults {
+    pub(crate) check_sig: bool,
+    pub(crate) check_multisig: bool,
+}
 
 #[cfg(not(target_arch = "wasm32"))]
 #[derive(Clone)]
@@ -186,6 +196,27 @@ pub(crate) fn clear_active_witnesses() {
         Ok(mut active) => active.clear(),
         Err(poisoned) => poisoned.into_inner().clear(),
     }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn set_crypto_verification_results(results: CryptoVerificationResults) {
+    match ACTIVE_CRYPTO_RESULTS.write() {
+        Ok(mut active) => *active = results,
+        Err(poisoned) => *poisoned.into_inner() = results,
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn active_crypto_verification_results() -> CryptoVerificationResults {
+    match ACTIVE_CRYPTO_RESULTS.read() {
+        Ok(active) => *active,
+        Err(poisoned) => *poisoned.into_inner(),
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn reset_crypto_verification_results() {
+    set_crypto_verification_results(CryptoVerificationResults::default());
 }
 
 #[cfg(target_arch = "wasm32")]

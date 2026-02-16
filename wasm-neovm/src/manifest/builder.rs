@@ -8,6 +8,7 @@
 //! - Method parity checking between baseline and final manifests
 
 use anyhow::{bail, Result};
+use log::warn;
 use serde_json::{Map, Value};
 use std::collections::{HashMap, HashSet};
 
@@ -40,10 +41,7 @@ impl ManifestBuilder {
         let baseline_signatures = match collect_method_shapes(&manifest) {
             Ok(signatures) => signatures,
             Err(e) => {
-                eprintln!(
-                    "Warning: translator-generated manifest has invalid methods: {}",
-                    e
-                );
+                warn!("translator-generated manifest has invalid methods: {}", e);
                 std::collections::HashMap::new()
             }
         };

@@ -6,10 +6,10 @@ use std::sync::{Mutex, MutexGuard, OnceLock};
 
 fn runtime_test_lock() -> MutexGuard<'static, ()> {
     static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    TEST_LOCK
-        .get_or_init(|| Mutex::new(()))
-        .lock()
-        .expect("neo_runtime test lock poisoned")
+    match TEST_LOCK.get_or_init(|| Mutex::new(())).lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    }
 }
 
 fn setup_runtime_test() -> MutexGuard<'static, ()> {
@@ -187,6 +187,11 @@ fn crypto_helpers_produce_deterministic_lengths() {
 
     let signature = NeoByteString::from_slice(&[0x42; 64]);
     let public_key = NeoByteString::from_slice(&[0x02; 33]);
+    assert!(!NeoCrypto::verify_signature(&data, &signature, &public_key)
+        .unwrap()
+        .as_bool());
+
+    NeoVMSyscall::set_crypto_verification_results(true, true).unwrap();
     assert!(NeoCrypto::verify_signature(&data, &signature, &public_key)
         .unwrap()
         .as_bool());
