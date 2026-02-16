@@ -208,6 +208,27 @@ fn translate_neo_crypto_verify_signature() {
 }
 
 #[test]
+fn translate_neo_crypto_verify_with_ecdsa() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (import "neo" "verify_with_ecdsa" (func $verify (param i32 i32 i32 i32) (result i32)))
+              (func (export "test") (result i32)
+                i32.const 0
+                i32.const 0
+                i32.const 0
+                i32.const 1
+                call $verify))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "VerifyWithECDsa").expect("translation succeeds");
+
+    // Neo.Crypto.VerifyWithECDsa syscall
+    let syscall = wasm_neovm::opcodes::lookup("SYSCALL").unwrap().byte;
+    assert!(translation.script.contains(&syscall));
+}
+
+#[test]
 fn translate_neo_crypto_hash160() {
     let wasm = wat::parse_str(
         r#"(module

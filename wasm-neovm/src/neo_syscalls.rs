@@ -112,6 +112,8 @@ pub static NEO_SYSCALL_MAP: Lazy<HashMap<String, &'static str>> = Lazy::new(|| {
     alias("verify_signature", "System.Crypto.CheckSig");
     alias("check_sig", "System.Crypto.CheckSig");
     alias("check_multisig", "System.Crypto.CheckMultisig");
+    alias("verify_with_ecdsa", "Neo.Crypto.VerifyWithECDsa");
+    alias("crypto_verify_with_ecdsa", "Neo.Crypto.VerifyWithECDsa");
     alias("crypto_sha256", "Neo.Crypto.SHA256");
     alias("crypto_hash160", "Neo.Crypto.Hash160");
     alias("crypto_hash256", "Neo.Crypto.Hash256");
@@ -216,6 +218,14 @@ mod tests {
         assert_eq!(
             lookup_neo_syscall("check_sig"),
             Some("System.Crypto.CheckSig")
+        );
+        assert_eq!(
+            lookup_neo_syscall("verify_with_ecdsa"),
+            Some("Neo.Crypto.VerifyWithECDsa")
+        );
+        assert_eq!(
+            lookup_neo_syscall("crypto_verify_with_ecdsa"),
+            Some("Neo.Crypto.VerifyWithECDsa")
         );
     }
 
