@@ -53,6 +53,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Verify cross-crate syscall parity
+        run: cargo test --manifest-path integration-tests/Cargo.toml --test syscall_parity
+
+      - name: Verify syscall lowering reference vectors
+        run: cargo test --manifest-path wasm-neovm/Cargo.toml --all-features --test neo_n3_direct_syscall_coverage --test syscall_reference_vectors
+
       - name: Verify Neo N3 conformance matrix has no unresolved gaps
         run: bash scripts/check_neo_n3_conformance_matrix.sh
 
