@@ -53,10 +53,10 @@ pub(crate) fn handle_import_call(
         _ => {
             if adapter.recognizes_module(&import.module) {
                 bail!(
-                    "import module '{}' is recognized for {:?} but '{}' could not be mapped",
+                    "import '{}::{}' is recognized for {:?} but could not be mapped",
                     import.module,
-                    adapter.source_chain(),
-                    module
+                    import.name,
+                    adapter.source_chain()
                 );
             }
             bail!("unsupported import module '{}::{}'", module, import.name)

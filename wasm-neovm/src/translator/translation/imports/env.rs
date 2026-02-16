@@ -12,7 +12,7 @@ pub(in super::super) fn try_handle_env_import(
         return Ok(false);
     }
 
-    let name = import.name.to_ascii_lowercase();
+    let lower_name = import.name.to_ascii_lowercase();
     let requires_return = !func_type.results().is_empty();
     if requires_return {
         if func_type.results().len() != 1 {
@@ -53,29 +53,29 @@ pub(in super::super) fn try_handle_env_import(
         Ok(())
     };
 
-    match name.as_str() {
-        "memcpy" | "__builtin_memcpy" => {
+    match lower_name.as_str() {
+        "memcpy" | "__memcpy" | "__builtin_memcpy" => {
             expect_params()?;
             ensure_memory_access(runtime, 0)?;
             runtime.emit_memory_init_call(script)?;
             runtime.emit_env_memcpy_call(script)?;
         }
-        "memmove" | "__builtin_memmove" => {
+        "memmove" | "__memmove" | "__builtin_memmove" => {
             expect_params()?;
             ensure_memory_access(runtime, 0)?;
             runtime.emit_memory_init_call(script)?;
             runtime.emit_env_memmove_call(script)?;
         }
-        "memset" | "__builtin_memset" => {
+        "memset" | "__memset" | "__builtin_memset" => {
             expect_params()?;
             ensure_memory_access(runtime, 0)?;
             runtime.emit_memory_init_call(script)?;
             runtime.emit_env_memset_call(script)?;
         }
-        other => bail!(
+        _ => bail!(
             "env import '{}::{}' is not supported – compile with -nostdlib/-fno-builtin or provide a custom implementation",
             import.module,
-            other
+            import.name
         ),
     }
 

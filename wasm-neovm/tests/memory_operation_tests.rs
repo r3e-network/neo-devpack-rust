@@ -686,3 +686,34 @@ fn translate_env_memmove_call() {
     );
     assert!(!translation.script.is_empty());
 }
+
+#[test]
+fn translate_env_double_underscore_mem_aliases() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (import "env" "__memcpy" (func $memcpy (param i32 i32 i32) (result i32)))
+              (import "env" "__memmove" (func $memmove (param i32 i32 i32) (result i32)))
+              (import "env" "__memset" (func $memset (param i32 i32 i32) (result i32)))
+              (memory 1)
+              (func (export "aliases")
+                i32.const 0
+                i32.const 16
+                i32.const 4
+                call $memcpy
+                drop
+                i32.const 8
+                i32.const 0
+                i32.const 4
+                call $memmove
+                drop
+                i32.const 0
+                i32.const 255
+                i32.const 8
+                call $memset
+                drop))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "EnvMemAliases").expect("translation succeeds");
+    assert!(!translation.script.is_empty());
+}

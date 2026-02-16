@@ -475,3 +475,61 @@ fn translate_validates_type_consistency() {
     let add = wasm_neovm::opcodes::lookup("ADD").unwrap().byte;
     assert!(translation.script.contains(&add));
 }
+
+#[test]
+fn translate_reports_unmapped_recognized_import_with_full_path() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (import "move_stdlib" "unknown_primitive" (func $unknown))
+              (func (export "main")
+                call $unknown))"#,
+    )
+    .expect("valid wat");
+
+    let config =
+        TranslationConfig::new("MoveUnmapped").with_source_chain(wasm_neovm::SourceChain::Move);
+    let result = translate_with_config(&wasm, config);
+
+    assert!(result.is_err(), "should reject unmapped recognized import");
+    let err = result.unwrap_err();
+    let chain: Vec<String> = err.chain().map(|cause| cause.to_string()).collect();
+    let joined = chain.join(" | ");
+    assert!(
+        chain
+            .iter()
+            .any(|message| message.contains("move_stdlib::unknown_primitive")),
+        "error should include full import path, got chain: {joined}"
+    );
+    assert!(
+        chain.iter().any(|message| message.contains("Move")),
+        "error should include source chain, got chain: {joined}"
+    );
+}
+
+#[test]
+fn translate_env_unsupported_import_preserves_original_name_in_error() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (import "env" "__CustomMemFn" (func $unknown (param i32 i32 i32) (result i32)))
+              (memory 1)
+              (func (export "main") (result i32)
+                i32.const 0
+                i32.const 0
+                i32.const 0
+                call $unknown))"#,
+    )
+    .expect("valid wat");
+
+    let result = translate_module(&wasm, "EnvUnsupported");
+
+    assert!(result.is_err(), "should reject unsupported env import");
+    let err = result.unwrap_err();
+    let chain: Vec<String> = err.chain().map(|cause| cause.to_string()).collect();
+    let joined = chain.join(" | ");
+    assert!(
+        chain
+            .iter()
+            .any(|message| message.contains("env::__CustomMemFn")),
+        "error should preserve original import spelling, got chain: {joined}"
+    );
+}
