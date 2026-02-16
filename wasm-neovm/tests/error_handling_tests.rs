@@ -533,3 +533,193 @@ fn translate_env_unsupported_import_preserves_original_name_in_error() {
         "error should preserve original import spelling, got chain: {joined}"
     );
 }
+
+#[test]
+fn translate_opcode_raw_rejects_non_void_signature() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (import "opcode" "RAW" (func $raw (param i32) (result i32)))
+              (func (export "main") (result i32)
+                i32.const 1
+                call $raw))"#,
+    )
+    .expect("valid wat");
+
+    let result = translate_module(&wasm, "OpcodeRawResult");
+
+    assert!(result.is_err(), "raw import with result should be rejected");
+    let err = result.unwrap_err();
+    let chain: Vec<String> = err.chain().map(|cause| cause.to_string()).collect();
+    let joined = chain.join(" | ");
+    assert!(
+        chain
+            .iter()
+            .any(|message| message.contains("must have signature") && message.contains("RAW")),
+        "error should mention opcode signature contract, got chain: {joined}"
+    );
+}
+
+#[test]
+fn translate_opcode_rejects_non_literal_immediate_operand() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (import "opcode" "PUSHINT32" (func $push32 (param i32)))
+              (func (export "main") (param i32)
+                local.get 0
+                call $push32))"#,
+    )
+    .expect("valid wat");
+
+    let result = translate_module(&wasm, "OpcodeDynamicImmediate");
+
+    assert!(
+        result.is_err(),
+        "opcode immediate should require compile-time constant"
+    );
+    let err = result.unwrap_err();
+    let chain: Vec<String> = err.chain().map(|cause| cause.to_string()).collect();
+    let joined = chain.join(" | ");
+    assert!(
+        chain
+            .iter()
+            .any(|message| message.contains("compile-time constant")),
+        "error should mention compile-time constant immediate, got chain: {joined}"
+    );
+}
+
+#[test]
+fn translate_opcode_raw4_rejects_non_literal_operand() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (import "opcode" "raw4" (func $raw4 (param i32)))
+              (func (export "main") (param i32)
+                local.get 0
+                call $raw4))"#,
+    )
+    .expect("valid wat");
+
+    let result = translate_module(&wasm, "OpcodeRaw4Dynamic");
+
+    assert!(result.is_err(), "raw4 should require compile-time constant");
+    let err = result.unwrap_err();
+    let chain: Vec<String> = err.chain().map(|cause| cause.to_string()).collect();
+    let joined = chain.join(" | ");
+    assert!(
+        chain
+            .iter()
+            .any(|message| message.contains("compile-time constant")),
+        "error should mention compile-time constant immediate, got chain: {joined}"
+    );
+}
+
+#[test]
+fn translate_opcode_rejects_variable_size_operands_without_raw() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (import "opcode" "PUSHDATA1" (func $pushdata1 (param i32)))
+              (func (export "main")
+                i32.const 1
+                call $pushdata1))"#,
+    )
+    .expect("valid wat");
+
+    let result = translate_module(&wasm, "OpcodeVariableOperand");
+
+    assert!(
+        result.is_err(),
+        "variable-size opcode import should be rejected"
+    );
+    let err = result.unwrap_err();
+    let chain: Vec<String> = err.chain().map(|cause| cause.to_string()).collect();
+    let joined = chain.join(" | ");
+    assert!(
+        chain
+            .iter()
+            .any(|message| message.contains("variable-size operand")),
+        "error should mention variable-size operand restriction, got chain: {joined}"
+    );
+    assert!(
+        chain
+            .iter()
+            .any(|message| message.contains("opcode.raw/raw4")),
+        "error should suggest raw/raw4 fallback, got chain: {joined}"
+    );
+}
+
+#[test]
+fn translate_opcode_rejects_unknown_opcode_name() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (import "opcode" "NotRealOpcode" (func $unknown))
+              (func (export "main")
+                call $unknown))"#,
+    )
+    .expect("valid wat");
+
+    let result = translate_module(&wasm, "OpcodeUnknown");
+
+    assert!(result.is_err(), "unknown opcode should be rejected");
+    let err = result.unwrap_err();
+    let chain: Vec<String> = err.chain().map(|cause| cause.to_string()).collect();
+    let joined = chain.join(" | ");
+    assert!(
+        chain
+            .iter()
+            .any(|message| message.contains("unknown NeoVM opcode 'NotRealOpcode'")),
+        "error should preserve unknown opcode name, got chain: {joined}"
+    );
+}
+
+#[test]
+fn translate_opcode_raw_rejects_out_of_range_immediate() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (import "opcode" "RAW" (func $raw (param i32)))
+              (func (export "main")
+                i32.const 300
+                call $raw))"#,
+    )
+    .expect("valid wat");
+
+    let result = translate_module(&wasm, "OpcodeRawRange");
+
+    assert!(
+        result.is_err(),
+        "raw immediate outside u8 range should fail"
+    );
+    let err = result.unwrap_err();
+    let chain: Vec<String> = err.chain().map(|cause| cause.to_string()).collect();
+    let joined = chain.join(" | ");
+    assert!(
+        chain
+            .iter()
+            .any(|message| message.contains("does not fit in 1 byte(s)")),
+        "error should include immediate width failure, got chain: {joined}"
+    );
+}
+
+#[test]
+fn translate_opcode_raw4_rejects_wrong_arity() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (import "opcode" "raw4" (func $raw4 (param i32 i32)))
+              (func (export "main")
+                i32.const 1
+                i32.const 2
+                call $raw4))"#,
+    )
+    .expect("valid wat");
+
+    let result = translate_module(&wasm, "OpcodeRaw4Arity");
+
+    assert!(result.is_err(), "raw4 with wrong arity should be rejected");
+    let err = result.unwrap_err();
+    let chain: Vec<String> = err.chain().map(|cause| cause.to_string()).collect();
+    let joined = chain.join(" | ");
+    assert!(
+        chain.iter().any(|message| {
+            message.contains("import 'raw4' expects 1 parameter(s) but 2 were provided")
+        }),
+        "error should report raw4 arity contract, got chain: {joined}"
+    );
+}

@@ -6,6 +6,23 @@ pub(super) fn emit_opcode_call(
     params: &[StackValue],
     script: &mut Vec<u8>,
 ) -> Result<()> {
+    if !func_type.results().is_empty() {
+        bail!(
+            "imported opcode '{}' must have signature (param ..., result void)",
+            import.name
+        );
+    }
+
+    let expected_params = func_type.params().len();
+    if expected_params != params.len() {
+        bail!(
+            "imported opcode '{}' expects {} parameter(s) but {} were provided",
+            import.name,
+            expected_params,
+            params.len()
+        );
+    }
+
     if import.name.eq_ignore_ascii_case("raw") {
         ensure_param_count(import, params, 1)?;
         let param = params
@@ -33,23 +50,6 @@ pub(super) fn emit_opcode_call(
         bail!(
             "opcode '{}' has a variable-size operand; emit it manually via opcode.raw/raw4",
             import.name
-        );
-    }
-
-    if !func_type.results().is_empty() {
-        bail!(
-            "imported opcode '{}' must have signature (param ..., result void)",
-            import.name
-        );
-    }
-
-    let expected_params = func_type.params().len();
-    if expected_params != params.len() {
-        bail!(
-            "imported opcode '{}' expects {} parameter(s) but {} were provided",
-            import.name,
-            expected_params,
-            params.len()
         );
     }
 
