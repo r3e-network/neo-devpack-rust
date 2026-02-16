@@ -214,6 +214,35 @@ fn crypto_helpers_produce_deterministic_lengths() {
 }
 
 #[test]
+fn crypto_verification_argument_order_is_explicit() {
+    let _guard = setup_runtime_test();
+
+    let data = NeoByteString::from_slice(b"neo");
+    let signature = NeoByteString::from_slice(&[0xAA; 64]);
+    let public_key = NeoByteString::from_slice(&[0x02; 33]);
+
+    NeoVMSyscall::set_crypto_verification_results(true, true).unwrap();
+
+    assert!(NeoCrypto::verify_signature(&data, &signature, &public_key)
+        .unwrap()
+        .as_bool());
+    assert!(!NeoCrypto::verify_signature(&data, &public_key, &signature)
+        .unwrap()
+        .as_bool());
+
+    assert!(
+        NeoCrypto::verify_with_ecdsa(&data, &public_key, &signature, NeoInteger::new(1),)
+            .unwrap()
+            .as_bool()
+    );
+    assert!(
+        !NeoCrypto::verify_with_ecdsa(&data, &signature, &public_key, NeoInteger::new(1),)
+            .unwrap()
+            .as_bool()
+    );
+}
+
+#[test]
 fn host_active_contract_hash_controls_storage_partitioning() {
     let _guard = setup_runtime_test();
 

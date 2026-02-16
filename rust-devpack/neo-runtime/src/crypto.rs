@@ -47,6 +47,9 @@ impl NeoCrypto {
         Ok(NeoInteger::new(hash_value))
     }
 
+    /// Verify a signature using the Neo `System.Crypto.CheckSig` semantics.
+    ///
+    /// Parameter order is `(message, signature, public_key)`.
     pub fn verify_signature(
         _message: &NeoByteString,
         signature: &NeoByteString,
@@ -61,6 +64,9 @@ impl NeoCrypto {
         NeoVMSyscall::check_sig(public_key, signature)
     }
 
+    /// Verify a signature with explicit ECDSA curve selection.
+    ///
+    /// Parameter order is `(message, public_key, signature, curve)`.
     pub fn verify_with_ecdsa(
         message: &NeoByteString,
         public_key: &NeoByteString,
