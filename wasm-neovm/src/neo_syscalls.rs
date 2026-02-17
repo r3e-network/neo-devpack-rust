@@ -82,6 +82,7 @@ pub static NEO_SYSCALL_MAP: Lazy<HashMap<String, &'static str>> = Lazy::new(|| {
     // Runtime syscalls
     alias("check_witness", "System.Runtime.CheckWitness");
     alias("runtime_check_witness", "System.Runtime.CheckWitness");
+    alias("runtime_check_witness_hash", "System.Runtime.CheckWitness");
     alias("log", "System.Runtime.Log");
     alias("runtime_log", "System.Runtime.Log");
     alias("notify", "System.Runtime.Notify");

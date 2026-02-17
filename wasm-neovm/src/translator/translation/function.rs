@@ -1,4 +1,6 @@
 use super::*;
+use crate::opcodes;
+use crate::syscalls;
 
 mod op_calls;
 mod op_control;
@@ -33,8 +35,18 @@ const ON_NEP17_PAYMENT_CONFIG_SLOT_COUNT: u32 = 1;
 const STACKITEMTYPE_ARRAY: u8 = 0x40;
 const STACKITEMTYPE_STRUCT: u8 = 0x41;
 const STACKITEMTYPE_BYTESTRING: u8 = 0x28;
-const ON_NEP17_ADAPTER_BASE: i128 = 1_000_000;
+const ON_NEP17_ADAPTER_BASE: i128 = 1_000_000_000_000;
+const ON_NEP17_ADAPTER_TYPE_MULTIPLIER: i128 = 1_000_000_000_000;
+const ON_NEP17_ADAPTER_EXPIRY_MULTIPLIER: i128 = 1_000;
 const ON_NEP17_INVALID_PACKET_COUNT: i128 = 101;
+const GAS_HASH_BE: [u8; 20] = [
+    0xd2, 0xa4, 0xcf, 0xf3, 0x19, 0x13, 0x01, 0x61, 0x55, 0xe3, 0x8e, 0x47, 0x4a, 0x2c, 0x06,
+    0xd0, 0x8b, 0xe2, 0x76, 0xcf,
+];
+const GAS_HASH_LE: [u8; 20] = [
+    0xcf, 0x76, 0xe2, 0x8b, 0xd0, 0x06, 0x2c, 0x4a, 0x47, 0x8e, 0xe3, 0x55, 0x61, 0x01, 0x13,
+    0x19, 0xf3, 0xcf, 0xa4, 0xd2,
+];
 
 fn emit_indexed_opcode(script: &mut Vec<u8>, base_opcode: &str, index: u32) -> Result<()> {
     if index <= 6 {
@@ -67,12 +79,103 @@ fn emit_store_local_slot(script: &mut Vec<u8>, slot: u32) -> Result<()> {
     emit_indexed_opcode(script, "STLOC", slot)
 }
 
+// neo-red-envelope-runtime-guards-v3:
+// Add entry guards so Rust i64 wrappers preserve critical C# runtime invariants:
+// - onNEP17Payment must be called by GAS
+// - direct-user methods must be EntryScriptHash-invoked
+// - selected account args must satisfy CheckWitness
+// Also normalize Null/ByteString parameters into integers before i32/i64 sign extension.
+fn emit_descriptor_syscall(script: &mut Vec<u8>, descriptor: &str) -> Result<()> {
+    let syscall = syscalls::lookup_extended(descriptor)
+        .ok_or_else(|| anyhow!("syscall '{}' not found", descriptor))?;
+    let opcode =
+        opcodes::lookup("SYSCALL").ok_or_else(|| anyhow!("SYSCALL opcode metadata missing"))?;
+    if opcode.operand_size != 4 || opcode.operand_size_prefix != 0 {
+        bail!("unexpected SYSCALL operand metadata");
+    }
+    script.push(opcode.byte);
+    script.extend_from_slice(&syscall.hash.to_le_bytes());
+    Ok(())
+}
+
+fn emit_direct_user_invocation_guard(script: &mut Vec<u8>) -> Result<()> {
+    emit_descriptor_syscall(script, "System.Runtime.GetCallingScriptHash")?;
+    emit_descriptor_syscall(script, "System.Runtime.GetEntryScriptHash")?;
+    script.push(lookup_opcode("EQUAL")?.byte);
+    script.push(lookup_opcode("ASSERT")?.byte);
+    Ok(())
+}
+
+fn emit_witness_guard_for_arg(script: &mut Vec<u8>, arg_index: u32) -> Result<()> {
+    emit_load_arg(script, arg_index)?;
+    script.push(lookup_opcode("CONVERT")?.byte);
+    script.push(STACKITEMTYPE_BYTESTRING);
+    emit_descriptor_syscall(script, "System.Runtime.CheckWitness")?;
+    script.push(lookup_opcode("ASSERT")?.byte);
+    Ok(())
+}
+
+fn emit_on_nep17_gas_caller_guard(script: &mut Vec<u8>) -> Result<()> {
+    emit_descriptor_syscall(script, "System.Runtime.GetCallingScriptHash")?;
+    emit_push_data(script, &GAS_HASH_LE)?;
+    script.push(lookup_opcode("EQUAL")?.byte);
+
+    script.push(lookup_opcode("DUP")?.byte);
+    let match_little_endian = emit_jump_placeholder(script, "JMPIF_L")?;
+    script.push(lookup_opcode("DROP")?.byte);
+
+    emit_descriptor_syscall(script, "System.Runtime.GetCallingScriptHash")?;
+    emit_push_data(script, &GAS_HASH_BE)?;
+    script.push(lookup_opcode("EQUAL")?.byte);
+
+    let match_little_endian_label = script.len();
+    patch_jump(script, match_little_endian, match_little_endian_label)?;
+
+    script.push(lookup_opcode("ASSERT")?.byte);
+    Ok(())
+}
+
+fn method_name_matches(function_name_lower: &str, exported_name_lower: &str) -> bool {
+    function_name_lower == exported_name_lower
+        || function_name_lower.ends_with(&format!("::{exported_name_lower}"))
+}
+
+fn requires_direct_user_invocation(function_name_lower: &str) -> bool {
+    method_name_matches(function_name_lower, "claimfrompool")
+        || method_name_matches(function_name_lower, "openclaim")
+        || method_name_matches(function_name_lower, "transferclaim")
+        || method_name_matches(function_name_lower, "reclaimpool")
+        || method_name_matches(function_name_lower, "transfer")
+        || method_name_matches(function_name_lower, "openenvelope")
+        || method_name_matches(function_name_lower, "transferenvelope")
+        || method_name_matches(function_name_lower, "reclaimenvelope")
+}
+
+fn witness_guard_arg_index(function_name_lower: &str) -> Option<u32> {
+    if method_name_matches(function_name_lower, "claimfrompool")
+        || method_name_matches(function_name_lower, "openclaim")
+        || method_name_matches(function_name_lower, "reclaimpool")
+        || method_name_matches(function_name_lower, "openenvelope")
+        || method_name_matches(function_name_lower, "reclaimenvelope")
+    {
+        return Some(1);
+    }
+
+    if method_name_matches(function_name_lower, "transferclaim")
+        || method_name_matches(function_name_lower, "transferenvelope")
+    {
+        return Some(1);
+    }
+
+    None
+}
+
 // neo-red-envelope-onnep17-object-array-compat:
 // Canonicalize onNEP17Payment `data` (arg #2) so Rust handlers using `i64` can safely accept:
 // - `null`         -> 0
 // - `object[]`     -> adapter integer:
-//                     spread => +(BASE + packetCount)
-//                     pool   => -(BASE + packetCount)
+//                     spread => BASE + packetCount + expiryMs * MULTIPLIER
+//                     pool   => BASE + TYPE_MULTIPLIER + packetCount + expiryMs * MULTIPLIER
 // - `Integer`      -> unchanged (legacy packed-integer path)
 fn emit_on_nep17_payment_config_adapter(script: &mut Vec<u8>, base_temp_slot: u32) -> Result<()> {
     let data_slot = base_temp_slot;
@@ -153,9 +256,56 @@ fn emit_on_nep17_payment_config_adapter(script: &mut Vec<u8>, base_temp_slot: u3
     patch_jump(script, skip_packet_parse, packet_done_label)?;
     patch_jump(script, packet_done_fixup, packet_done_label)?;
 
-    // Adapter v2 encoding:
-    // spread => +(base + packetCount)
-    // pool   => -(base + packetCount)
+    // object[1] => expiryMs (Integer, >0). If provided, fold into adapter payload:
+    // encoded = packetCount + expiryMs * MULTIPLIER
+    emit_load_local_slot(script, data_slot)?;
+    script.push(lookup_opcode("SIZE")?.byte);
+    let _ = emit_push_int(script, 1);
+    script.push(lookup_opcode("GT")?.byte);
+    let skip_expiry_parse = emit_jump_placeholder(script, "JMPIFNOT_L")?;
+
+    emit_load_local_slot(script, data_slot)?;
+    let _ = emit_push_int(script, 1);
+    script.push(lookup_opcode("PICKITEM")?.byte);
+
+    script.push(lookup_opcode("DUP")?.byte);
+    script.push(lookup_opcode("ISTYPE")?.byte);
+    script.push(STACKITEMTYPE_INTEGER);
+    let expiry_int_ready_fixup = emit_jump_placeholder(script, "JMPIF_L")?;
+
+    script.push(lookup_opcode("DUP")?.byte);
+    script.push(lookup_opcode("ISTYPE")?.byte);
+    script.push(STACKITEMTYPE_BYTESTRING);
+    let expiry_drop_fixup = emit_jump_placeholder(script, "JMPIFNOT_L")?;
+    script.push(lookup_opcode("CONVERT")?.byte);
+    script.push(STACKITEMTYPE_INTEGER);
+
+    let expiry_int_ready_label = script.len();
+    patch_jump(script, expiry_int_ready_fixup, expiry_int_ready_label)?;
+
+    script.push(lookup_opcode("DUP")?.byte);
+    let _ = emit_push_int(script, 0);
+    script.push(lookup_opcode("GT")?.byte);
+    let expiry_non_positive_fixup = emit_jump_placeholder(script, "JMPIFNOT_L")?;
+
+    let _ = emit_push_int(script, ON_NEP17_ADAPTER_EXPIRY_MULTIPLIER);
+    script.push(lookup_opcode("MUL")?.byte);
+    emit_load_arg(script, 2)?;
+    script.push(lookup_opcode("ADD")?.byte);
+    emit_store_arg(script, 2)?;
+    let expiry_done_fixup = emit_jump_placeholder(script, "JMP_L")?;
+
+    let expiry_drop_label = script.len();
+    patch_jump(script, expiry_drop_fixup, expiry_drop_label)?;
+    patch_jump(script, expiry_non_positive_fixup, expiry_drop_label)?;
+    script.push(lookup_opcode("DROP")?.byte);
+    let expiry_done_label = script.len();
+    patch_jump(script, skip_expiry_parse, expiry_done_label)?;
+    patch_jump(script, expiry_done_fixup, expiry_done_label)?;
+
+    // Adapter v3 encoding:
+    // spread => base + packetCount + expiryMs * MULTIPLIER
+    // pool   => base + TYPE_MULTIPLIER + packetCount + expiryMs * MULTIPLIER
     emit_load_arg(script, 2)?;
     let _ = emit_push_int(script, ON_NEP17_ADAPTER_BASE);
     script.push(lookup_opcode("ADD")?.byte);
@@ -188,7 +338,7 @@ fn emit_on_nep17_payment_config_adapter(script: &mut Vec<u8>, base_temp_slot: u3
     let type_int_ready_label = script.len();
     patch_jump(script, type_int_ready_fixup, type_int_ready_label)?;
 
-    // type == 1 => pool (negate)
+    // type == 1 => pool (add TYPE_MULTIPLIER marker)
     script.push(lookup_opcode("DUP")?.byte);
     let _ = emit_push_int(script, 1);
     script.push(lookup_opcode("EQUAL")?.byte);
@@ -210,7 +360,8 @@ fn emit_on_nep17_payment_config_adapter(script: &mut Vec<u8>, base_temp_slot: u3
     patch_jump(script, type_is_pool_fixup, type_is_pool_label)?;
     script.push(lookup_opcode("DROP")?.byte);
     emit_load_arg(script, 2)?;
-    script.push(lookup_opcode("NEGATE")?.byte);
+    let _ = emit_push_int(script, ON_NEP17_ADAPTER_TYPE_MULTIPLIER);
+    script.push(lookup_opcode("ADD")?.byte);
     emit_store_arg(script, 2)?;
     let type_pool_done_fixup = emit_jump_placeholder(script, "JMP_L")?;
 
@@ -289,6 +440,8 @@ pub(super) fn translate_function(ctx: &mut TranslationContext<'_>) -> Result<Str
         || function_name_lower.contains("on_nep17_payment");
     let is_deploy_entry =
         function_name_lower == "_deploy" || function_name_lower.ends_with("::_deploy");
+    let is_check_witness_probe = function_name_lower.contains("debug_check_witness")
+        || function_name_lower.contains("debugcheckwitness");
 
     let use_on_nep17_adapter = is_on_nep17_payment && param_count >= 3;
     let helper_local_base = local_count;
@@ -319,6 +472,26 @@ pub(super) fn translate_function(ctx: &mut TranslationContext<'_>) -> Result<Str
         ctx.script.push(param_count as u8);
     }
 
+    if is_on_nep17_payment {
+        emit_on_nep17_gas_caller_guard(ctx.script)?;
+    }
+
+    if requires_direct_user_invocation(&function_name_lower) {
+        emit_direct_user_invocation_guard(ctx.script)?;
+    }
+
+    if let Some(arg_index) = witness_guard_arg_index(&function_name_lower) {
+        if (arg_index as usize) >= param_count {
+            bail!(
+                "function {} requires witness guard on arg {} but has only {} parameter(s)",
+                ctx.function_name,
+                arg_index,
+                param_count
+            );
+        }
+        emit_witness_guard_for_arg(ctx.script, arg_index)?;
+    }
+
     if use_on_nep17_adapter {
         emit_on_nep17_payment_config_adapter(ctx.script, helper_local_base)?;
     }
@@ -328,11 +501,37 @@ pub(super) fn translate_function(ctx: &mut TranslationContext<'_>) -> Result<Str
     //
     // Some Neo entry points carry non-integer stack items (`Any`/`Hash160`) in practice.
     // For those methods, integer coercion can fault before contract logic runs.
-    let skip_param_normalization = is_deploy_entry || is_on_nep17_payment;
+    let skip_param_normalization = is_deploy_entry || is_on_nep17_payment || is_check_witness_probe;
 
     if !skip_param_normalization {
         for (index, ty) in params.iter().enumerate() {
             emit_load_arg(ctx.script, index as u32)?;
+
+            // Neo entry wrappers may pass `Hash160`/`ByteString`/`Any`.
+            // Canonicalize those into integers before Wasm i32/i64 sign extension.
+            ctx.script.push(lookup_opcode("DUP")?.byte);
+            ctx.script.push(lookup_opcode("ISNULL")?.byte);
+            let not_null_fixup = emit_jump_placeholder(ctx.script, "JMPIFNOT_L")?;
+            ctx.script.push(lookup_opcode("DROP")?.byte);
+            let _ = emit_push_int(ctx.script, 0);
+            let null_done_fixup = emit_jump_placeholder(ctx.script, "JMP_L")?;
+
+            let not_null_label = ctx.script.len();
+            patch_jump(ctx.script, not_null_fixup, not_null_label)?;
+
+            ctx.script.push(lookup_opcode("DUP")?.byte);
+            ctx.script.push(lookup_opcode("ISTYPE")?.byte);
+            ctx.script.push(STACKITEMTYPE_BYTESTRING);
+            let not_bytes_fixup = emit_jump_placeholder(ctx.script, "JMPIFNOT_L")?;
+            ctx.script.push(lookup_opcode("CONVERT")?.byte);
+            ctx.script.push(STACKITEMTYPE_INTEGER);
+
+            let not_bytes_label = ctx.script.len();
+            patch_jump(ctx.script, not_bytes_fixup, not_bytes_label)?;
+
+            let null_done_label = ctx.script.len();
+            patch_jump(ctx.script, null_done_fixup, null_done_label)?;
+
             let value = StackValue {
                 const_value: None,
                 bytecode_start: None,
