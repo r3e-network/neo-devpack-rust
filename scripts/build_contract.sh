@@ -2,7 +2,7 @@
 set -euo pipefail
 
 if [[ $# -lt 1 ]]; then
-  echo "Usage: $0 <contract-crate-path> [contract-name] [translator-flags...]" >&2
+  echo "Usage: $0 <contract-crate-path> [manifest-name] [translator-flags...]" >&2
   exit 1
 fi
 
@@ -18,18 +18,20 @@ else
   CONTRACT_NAME="$(basename "$CONTRACT_DIR")"
 fi
 
-TRANSLATOR_ARGS=("$@")
+declare -a TRANSLATOR_ARGS=("$@")
 
 has_overlay_flag=false
 has_source_chain_flag=false
-for arg in "${TRANSLATOR_ARGS[@]}"; do
-  if [[ "$arg" == --manifest-overlay || "$arg" == --manifest-overlay=* ]]; then
-    has_overlay_flag=true
-  fi
-  if [[ "$arg" == --source-chain || "$arg" == --source-chain=* ]]; then
-    has_source_chain_flag=true
-  fi
-done
+if ((${#TRANSLATOR_ARGS[@]})); then
+  for arg in "${TRANSLATOR_ARGS[@]}"; do
+    if [[ "$arg" == --manifest-overlay || "$arg" == --manifest-overlay=* ]]; then
+      has_overlay_flag=true
+    fi
+    if [[ "$arg" == --source-chain || "$arg" == --source-chain=* ]]; then
+      has_source_chain_flag=true
+    fi
+  done
+fi
 
 if [[ "$has_overlay_flag" == false ]]; then
   DEFAULT_OVERLAY="$CONTRACT_DIR/manifest.overlay.json"
@@ -57,8 +59,26 @@ RUSTFLAGS="$RUSTFLAGS_TO_USE" cargo build --manifest-path "$CONTRACT_DIR/Cargo.t
   --target wasm32-unknown-unknown \
   --release
 
-BASENAME="${CONTRACT_NAME//-/_}"
-WASM_PATH="$CONTRACT_DIR/target/wasm32-unknown-unknown/release/${BASENAME}.wasm"
+CRATE_NAME="$(
+  awk '
+    /^\[package\]/ { in_pkg=1; next }
+    /^\[/ && in_pkg { exit }
+    in_pkg && /^[[:space:]]*name[[:space:]]*=/ {
+      line = $0
+      sub(/^[[:space:]]*name[[:space:]]*=[[:space:]]*"/, "", line)
+      sub(/".*$/, "", line)
+      print line
+      exit
+    }
+  ' "$CONTRACT_DIR/Cargo.toml"
+)"
+if [[ -z "$CRATE_NAME" ]]; then
+  echo "error: unable to resolve package.name from $CONTRACT_DIR/Cargo.toml" >&2
+  exit 1
+fi
+
+WASM_BASENAME="${CRATE_NAME//-/_}"
+WASM_PATH="$CONTRACT_DIR/target/wasm32-unknown-unknown/release/${WASM_BASENAME}.wasm"
 if [[ ! -f "$WASM_PATH" ]]; then
   echo "error: expected Wasm artefact at $WASM_PATH" >&2
   exit 1
@@ -68,12 +88,17 @@ NEF_OUT="${WASM_PATH%.wasm}.nef"
 MANIFEST_OUT="${NEF_OUT%.nef}.manifest.json"
 
 echo "==> Translating Wasm to NeoVM"
-cargo run --manifest-path "$REPO_ROOT/wasm-neovm/Cargo.toml" -- \
-  --input "$WASM_PATH" \
-  --nef "$NEF_OUT" \
-  --manifest "$MANIFEST_OUT" \
-  --name "$CONTRACT_NAME" \
-  "${TRANSLATOR_ARGS[@]}"
+declare -a TRANSLATE_CMD=(
+  cargo run --manifest-path "$REPO_ROOT/wasm-neovm/Cargo.toml" --
+  --input "$WASM_PATH"
+  --nef "$NEF_OUT"
+  --manifest "$MANIFEST_OUT"
+  --name "$CONTRACT_NAME"
+)
+if ((${#TRANSLATOR_ARGS[@]})); then
+  TRANSLATE_CMD+=("${TRANSLATOR_ARGS[@]}")
+fi
+"${TRANSLATE_CMD[@]}"
 
 echo "==> Outputs"
 echo "NEF:        $NEF_OUT"
