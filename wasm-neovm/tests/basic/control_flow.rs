@@ -54,6 +54,33 @@ fn translate_if_else_structure() {
     .expect("valid wat");
 
     let translation = translate_module(&wasm, "Cond").expect("translation succeeds");
+    let jmp_if_not = wasm_neovm::opcodes::lookup("JMPIFNOT_L").unwrap().byte;
+    let jmp = wasm_neovm::opcodes::lookup("JMP_L").unwrap().byte;
+
+    let jmp_if_not_pos = translation
+        .script
+        .iter()
+        .position(|&b| b == jmp_if_not)
+        .expect("if should emit JMPIFNOT_L");
+    let jmp_pos = translation
+        .script
+        .iter()
+        .enumerate()
+        .skip(jmp_if_not_pos + 1)
+        .find_map(|(idx, &byte)| if byte == jmp { Some(idx) } else { None })
+        .expect("then branch should emit JMP_L over else body");
+
+    let if_not_offset = i32::from_le_bytes(
+        translation.script[jmp_if_not_pos + 1..jmp_if_not_pos + 5]
+            .try_into()
+            .expect("valid JMPIFNOT_L operand"),
+    );
+    let if_not_target = (jmp_if_not_pos as i32 + if_not_offset) as usize;
+    assert_eq!(
+        if_not_target,
+        jmp_pos + 5,
+        "if-false jump must land at ELSE body start"
+    );
     assert_eq!(translation.script.last().copied(), Some(0x40));
 }
 

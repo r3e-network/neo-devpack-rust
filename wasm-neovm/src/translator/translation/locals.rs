@@ -2,7 +2,6 @@ use anyhow::{anyhow, bail, Result};
 
 use crate::opcodes;
 
-use crate::translator::helpers::emit_push_int;
 use crate::translator::types::StackValue;
 
 #[derive(Debug, Clone)]
@@ -18,10 +17,6 @@ pub(super) enum LocalKind {
 }
 
 pub(super) fn emit_local_get(script: &mut Vec<u8>, state: &LocalState) -> Result<StackValue> {
-    if let Some(value) = state.const_value {
-        return Ok(emit_push_int(script, value));
-    }
-
     match state.kind {
         LocalKind::Param(index) => emit_load_arg(script, index)?,
         LocalKind::Local(slot) => emit_load_local_slot(script, slot)?,
@@ -42,7 +37,10 @@ pub(super) fn emit_local_set(
         LocalKind::Param(index) => emit_store_arg(script, index)?,
         LocalKind::Local(slot) => emit_store_local_slot(script, slot)?,
     }
-    state.const_value = value.const_value;
+    let _ = value;
+    // Local/arg constant propagation across structured control flow requires
+    // SSA-style merge tracking; keeping stale constants is unsound.
+    state.const_value = None;
     Ok(())
 }
 

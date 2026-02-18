@@ -65,13 +65,11 @@ pub(super) fn try_handle(
             Ok(true)
         }
         Operator::Drop => {
-            let value = super::pop_value(value_stack, "drop operand")?;
-            if let Some(start) = value.bytecode_start {
-                script.truncate(start);
-            } else {
-                let drop = lookup_opcode("DROP")?;
-                script.push(drop.byte);
-            }
+            let _value = super::pop_value(value_stack, "drop operand")?;
+            // Do not backtrack with `truncate` here: it can invalidate pending jump/call
+            // fixup positions captured earlier in the same function translation.
+            let drop = lookup_opcode("DROP")?;
+            script.push(drop.byte);
             Ok(true)
         }
         _ => Ok(false),

@@ -1,6 +1,6 @@
 use anyhow::{anyhow, bail, Result};
 
-use crate::translator::helpers::{emit_call_placeholder, patch_call};
+use crate::translator::helpers::{emit_call_placeholder, emit_call_to, patch_call};
 
 pub(crate) struct FunctionRegistry {
     offsets: Vec<Option<usize>>,
@@ -49,10 +49,10 @@ impl FunctionRegistry {
         if self.offsets.get(function_index).is_none() {
             bail!("function index {} out of range", function_index);
         }
-        let call_pos = emit_call_placeholder(script)?;
         if let Some(offset) = self.offsets[function_index] {
-            patch_call(script, call_pos, offset)?;
+            emit_call_to(script, offset)?;
         } else {
+            let call_pos = emit_call_placeholder(script)?;
             self.fixups[function_index].push(call_pos);
         }
         Ok(())

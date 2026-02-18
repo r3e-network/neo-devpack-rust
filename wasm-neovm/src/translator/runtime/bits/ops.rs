@@ -38,8 +38,10 @@ pub(crate) fn emit_zero_extend(
 ) -> Result<StackValue> {
     let const_result = value.const_value.map(|c| truncate_to_bits(c, bits));
 
-    if let (Some(result), Some(start)) = (const_result, value.bytecode_start) {
-        script.truncate(start);
+    if let (Some(result), Some(_start)) = (const_result, value.bytecode_start) {
+        // Avoid bytecode backtracking (`truncate`) because it can invalidate
+        // pending control-flow fixup positions captured earlier.
+        script.push(lookup_opcode("DROP")?.byte);
         return Ok(emit_push_int(script, result));
     }
 
@@ -64,8 +66,8 @@ pub(crate) fn emit_bit_count(
             BitHelperKind::Popcnt(_) => popcnt_const(constant, bits),
         };
 
-        if let Some(start) = value.bytecode_start {
-            script.truncate(start);
+        if let Some(_start) = value.bytecode_start {
+            script.push(lookup_opcode("DROP")?.byte);
             return Ok(emit_push_int(script, result));
         }
     }
@@ -120,8 +122,8 @@ pub(crate) fn emit_sign_extend(
         .const_value
         .map(|c| sign_extend_const(truncate_to_bits(c, from_bits), from_bits));
 
-    if let (Some(result), Some(start)) = (const_result, value.bytecode_start) {
-        script.truncate(start);
+    if let (Some(result), Some(_start)) = (const_result, value.bytecode_start) {
+        script.push(lookup_opcode("DROP")?.byte);
         return Ok(emit_push_int(script, result));
     }
 

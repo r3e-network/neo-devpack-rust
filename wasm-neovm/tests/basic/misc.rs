@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use wasm_neovm::translate_module;
 
 #[test]
-fn translate_drop_eliminates_literal() {
+fn translate_drop_preserves_semantics() {
     let wasm = wat::parse_str(
         r#"(module
               (func (export "main") (result i32)
@@ -14,8 +14,9 @@ fn translate_drop_eliminates_literal() {
     .expect("valid wat");
 
     let translation = translate_module(&wasm, "Drop").expect("translation succeeds");
-    // Expect only PUSH1 and RET (DROP eliminates the first literal push).
-    assert_eq!(translation.script, vec![0x11, 0x40]);
+    // Keep explicit DROP to avoid backtracking truncations that can invalidate
+    // pending control-flow fixup positions in complex functions.
+    assert_eq!(translation.script, vec![0x00, 0x2A, 0x45, 0x11, 0x40]);
 }
 
 #[test]

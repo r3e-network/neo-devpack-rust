@@ -45,10 +45,15 @@ fn translate_call_indirect_dispatches() {
 
     let translation = translate_module(&wasm, "CallIndirect").expect("translate call_indirect");
 
+    let call = wasm_neovm::opcodes::lookup("CALL").unwrap().byte;
     let call_l = wasm_neovm::opcodes::lookup("CALL_L").unwrap().byte;
     let abort = wasm_neovm::opcodes::lookup("ABORT").unwrap().byte;
 
-    let call_count = translation.script.iter().filter(|&&b| b == call_l).count();
+    let call_count = translation
+        .script
+        .iter()
+        .filter(|&&b| b == call || b == call_l)
+        .count();
     assert!(call_count >= 2);
     assert!(translation.script.contains(&abort));
 }
@@ -141,16 +146,21 @@ fn translate_internal_function_call() {
 
     let translation = translate_module(&wasm, "Call").expect("translate call");
 
+    let call = wasm_neovm::opcodes::lookup("CALL").unwrap().byte;
     let call_l = wasm_neovm::opcodes::lookup("CALL_L").unwrap().byte;
     let add = wasm_neovm::opcodes::lookup("ADD").unwrap().byte;
 
     let call_pos = translation
         .script
         .iter()
-        .position(|&b| b == call_l)
-        .expect("CALL_L emitted");
-    let immediate = &translation.script[call_pos + 1..call_pos + 5];
-    assert_ne!(immediate, &[0, 0, 0, 0], "call immediate patched");
+        .position(|&b| b == call || b == call_l)
+        .expect("CALL/CALL_L emitted");
+    if translation.script[call_pos] == call_l {
+        let immediate = &translation.script[call_pos + 1..call_pos + 5];
+        assert_ne!(immediate, &[0, 0, 0, 0], "CALL_L immediate patched");
+    } else {
+        assert_ne!(translation.script[call_pos + 1], 0, "CALL immediate patched");
+    }
     assert!(translation.script.contains(&add));
 }
 

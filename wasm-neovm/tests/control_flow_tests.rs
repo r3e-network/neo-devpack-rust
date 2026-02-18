@@ -576,9 +576,14 @@ fn translate_recursive_structure() {
 
     let translation = translate_module(&wasm, "Recursive").expect("translation succeeds");
 
+    let call = opcodes::lookup("CALL").unwrap().byte;
     let call_l = opcodes::lookup("CALL_L").unwrap().byte;
     // Should have recursive call to self
-    let call_count = translation.script.iter().filter(|&&b| b == call_l).count();
+    let call_count = translation
+        .script
+        .iter()
+        .filter(|&&b| b == call || b == call_l)
+        .count();
     assert!(call_count >= 2, "expected recursive calls");
 }
 

@@ -89,12 +89,14 @@ pub(super) fn try_handle(
             if !matches!(frame.kind, ControlKind::If) {
                 bail!("ELSE can only appear within an IF block");
             }
-            if let Some(pos) = frame.if_false_fixup.take() {
-                let current_len = script.len();
-                patch_jump(script, pos, current_len)?;
-            }
             // Jump over else body when the THEN branch executes
             let jump_end = emit_jump_placeholder(script, "JMP_L")?;
+            // False-condition path must land at the beginning of the ELSE body,
+            // i.e. right after the jump-over-else instruction.
+            if let Some(pos) = frame.if_false_fixup.take() {
+                let else_start = script.len();
+                patch_jump(script, pos, else_start)?;
+            }
             frame.end_fixups.push(jump_end);
             frame.has_else = true;
             frame.start_offset = script.len();

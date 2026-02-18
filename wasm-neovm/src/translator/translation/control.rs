@@ -161,11 +161,11 @@ pub(super) fn handle_br_table(
     is_unreachable: &mut bool,
 ) -> Result<()> {
     if let Some(const_idx) = index.const_value {
-        if let Some(start) = index.bytecode_start {
-            script.truncate(start);
-        } else {
-            script.push(lookup_opcode("DROP")?.byte);
+        if index.bytecode_start.is_some() {
+            // Do not rewind script bytes here; it can invalidate pending
+            // jump/call fixups tracked in surrounding control frames.
         }
+        script.push(lookup_opcode("DROP")?.byte);
         let idx = if const_idx < 0 || const_idx > usize::MAX as i128 {
             usize::MAX
         } else {

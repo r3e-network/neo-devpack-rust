@@ -7,6 +7,22 @@ use anyhow::{bail, Result};
 
 use super::lookup_opcode;
 
+fn long_to_short_opcode(opcode: &str) -> Option<&'static str> {
+    match opcode {
+        "JMP_L" => Some("JMP"),
+        "JMPIF_L" => Some("JMPIF"),
+        "JMPIFNOT_L" => Some("JMPIFNOT"),
+        "JMPEQ_L" => Some("JMPEQ"),
+        "JMPNE_L" => Some("JMPNE"),
+        "JMPGT_L" => Some("JMPGT"),
+        "JMPGE_L" => Some("JMPGE"),
+        "JMPLT_L" => Some("JMPLT"),
+        "JMPLE_L" => Some("JMPLE"),
+        "ENDTRY_L" => Some("ENDTRY"),
+        _ => None,
+    }
+}
+
 /// Offset size constants
 pub const LONG_OFFSET_SIZE: usize = 4; // 4-byte offset for long jumps/calls
 pub const PLACEHOLDER_BYTE: u8 = 0xFF;
@@ -97,13 +113,22 @@ pub fn patch_offset_short(script: &mut [u8], position: usize, target: usize) -> 
 ///
 /// This is used when the target is already known at emission time
 pub fn emit_jump_to(script: &mut Vec<u8>, opcode: &str, target: usize) -> Result<()> {
+    let opcode_pos = script.len() as i32;
+    let offset_i64 = i64::try_from(target)
+        .map_err(|_| anyhow::anyhow!("target offset {} exceeds i64 range", target))?
+        - i64::from(opcode_pos);
+
+    if let Some(short_opcode) = long_to_short_opcode(opcode) {
+        if (i8::MIN as i64..=i8::MAX as i64).contains(&offset_i64) {
+            script.push(lookup_opcode(short_opcode)?.byte);
+            script.push(offset_i64 as i8 as u8);
+            return Ok(());
+        }
+    }
+
+    let offset_i32 =
+        i32::try_from(offset_i64).map_err(|_| anyhow::anyhow!("jump delta {} exceeds i32 range", offset_i64))?;
     script.push(lookup_opcode(opcode)?.byte);
-    let current_pos = script.len();
-
-    let opcode_pos = current_pos as i32 - 1;
-    let offset = (target as i32) - opcode_pos;
-    let bytes = offset.to_le_bytes();
-
-    script.extend_from_slice(&bytes);
+    script.extend_from_slice(&offset_i32.to_le_bytes());
     Ok(())
 }

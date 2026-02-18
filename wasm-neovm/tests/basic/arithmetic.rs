@@ -11,11 +11,15 @@ fn translate_i32_bitcounts_fold_and_call_helpers() {
     .expect("valid wat");
 
     let clz_translation = translate_module(&clz_wasm, "BitClz").expect("translate clz");
+    let call = wasm_neovm::opcodes::lookup("CALL").unwrap().byte;
     let call_l = wasm_neovm::opcodes::lookup("CALL_L").unwrap().byte;
+    assert!(!clz_translation.script.contains(&call));
     assert!(!clz_translation.script.contains(&call_l));
 
     let pushint8 = wasm_neovm::opcodes::lookup("PUSHINT8").unwrap().byte;
-    assert!(clz_translation.script.starts_with(&[pushint8, 27]));
+    let drop = wasm_neovm::opcodes::lookup("DROP").unwrap().byte;
+    assert!(clz_translation.script.windows(2).any(|w| w == [pushint8, 27]));
+    assert!(clz_translation.script.contains(&drop));
 
     let dynamic_wasm = wat::parse_str(
         r#"(module
@@ -29,7 +33,7 @@ fn translate_i32_bitcounts_fold_and_call_helpers() {
     let call_count = dynamic_translation
         .script
         .iter()
-        .filter(|&&b| b == call_l)
+        .filter(|&&b| b == call || b == call_l)
         .count();
     assert_eq!(call_count, 1);
 }
@@ -68,8 +72,10 @@ fn translate_i32_rotl_constant() {
     .expect("valid wat");
 
     let translation = translate_module(&wasm, "Rot32").expect("translation succeeds");
-    // 0x12 rotated left by 8 bits -> 0x1200.
-    assert_eq!(translation.script, vec![0x01, 0x00, 0x12, 0x40]);
+    // 0x12 rotated left by 8 bits -> 0x1200 (PUSHINT16 0x1200, RET).
+    assert!(translation.script.ends_with(&[0x01, 0x00, 0x12, 0x40]));
+    let drop = wasm_neovm::opcodes::lookup("DROP").unwrap().byte;
+    assert!(translation.script.contains(&drop));
 }
 
 #[test]
@@ -86,10 +92,12 @@ fn translate_i64_rotr_constant() {
 
     let translation = translate_module(&wasm, "Rot64").expect("translation succeeds");
     let expected = 0x0102030405060708u64.rotate_right(16).to_le_bytes();
-    let mut script = vec![0x03];
-    script.extend_from_slice(&expected);
-    script.push(0x40);
-    assert_eq!(translation.script, script);
+    let mut suffix = vec![0x03];
+    suffix.extend_from_slice(&expected);
+    suffix.push(0x40);
+    assert!(translation.script.ends_with(&suffix));
+    let drop = wasm_neovm::opcodes::lookup("DROP").unwrap().byte;
+    assert!(translation.script.contains(&drop));
 }
 
 #[test]
@@ -239,7 +247,9 @@ fn translate_i32_wrap_i64_constant() {
     .expect("valid wat");
 
     let translation = translate_module(&wasm, "Wrap").expect("translation succeeds");
-    assert_eq!(translation.script, vec![0x11, 0x40]);
+    assert!(translation.script.ends_with(&[0x11, 0x40]));
+    let drop = wasm_neovm::opcodes::lookup("DROP").unwrap().byte;
+    assert!(translation.script.contains(&drop));
 }
 
 #[test]
@@ -294,7 +304,9 @@ fn translate_i32_extend8_sign_constant() {
 
     let translation = translate_module(&wasm, "Extend8").expect("translation succeeds");
     let pushm1 = wasm_neovm::opcodes::lookup("PUSHM1").unwrap().byte;
-    assert_eq!(translation.script, vec![pushm1, 0x40]);
+    assert!(translation.script.ends_with(&[pushm1, 0x40]));
+    let drop = wasm_neovm::opcodes::lookup("DROP").unwrap().byte;
+    assert!(translation.script.contains(&drop));
 }
 
 #[test]
@@ -310,7 +322,9 @@ fn translate_i64_extend32_sign_constant() {
 
     let translation = translate_module(&wasm, "Extend32").expect("translation succeeds");
     let pushm1 = wasm_neovm::opcodes::lookup("PUSHM1").unwrap().byte;
-    assert_eq!(translation.script, vec![pushm1, 0x40]);
+    assert!(translation.script.ends_with(&[pushm1, 0x40]));
+    let drop = wasm_neovm::opcodes::lookup("DROP").unwrap().byte;
+    assert!(translation.script.contains(&drop));
 }
 
 #[test]

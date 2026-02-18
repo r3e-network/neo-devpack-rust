@@ -147,9 +147,14 @@ fn translate_memory_mixed_ops() {
 
     let translation = translate_module(&wasm, "MixedMemOps").expect("translation succeeds");
 
+    let call = opcodes::lookup("CALL").unwrap().byte;
     let call_l = opcodes::lookup("CALL_L").unwrap().byte;
     // Multiple memory operations should call helpers
-    let call_count = translation.script.iter().filter(|&&b| b == call_l).count();
+    let call_count = translation
+        .script
+        .iter()
+        .filter(|&&b| b == call || b == call_l)
+        .count();
     assert!(
         call_count >= 6,
         "expected multiple helper calls for memory operations"

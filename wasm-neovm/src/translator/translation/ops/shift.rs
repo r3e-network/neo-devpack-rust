@@ -96,7 +96,11 @@ pub(in super::super) fn emit_rotate(
                 }
                 _ => unreachable!(),
             };
-            script.truncate(value_start.min(shift_start));
+            let _ = (value_start, shift_start);
+            // Keep script monotonic: replacing backtracking `truncate` with
+            // explicit stack cleanup avoids invalidating pending fixups.
+            script.push(lookup_opcode("DROP")?.byte);
+            script.push(lookup_opcode("DROP")?.byte);
             Ok(emit_push_int(script, rotate))
         }
         _ => emit_rotate_dynamic(script, value, shift, bits, left),

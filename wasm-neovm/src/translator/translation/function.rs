@@ -570,6 +570,13 @@ pub(super) fn translate_function(ctx: &mut TranslationContext<'_>) -> Result<Str
         }
     }
 
+    // WebAssembly locals are zero-initialized. NeoVM locals default to Null,
+    // so materialize explicit zero stores to preserve Wasm semantics.
+    for slot in 0..next_local_slot {
+        let _ = emit_push_int(ctx.script, 0);
+        emit_store_local_slot(ctx.script, slot)?;
+    }
+
     let op_reader = ctx.body.get_operators_reader()?;
     let mut value_stack: Vec<StackValue> = Vec::new();
     let mut control_stack: Vec<ControlFrame> = Vec::new();

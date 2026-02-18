@@ -94,11 +94,12 @@ fn translate_table_helpers_cover_operations() {
 
     let translation = translate_module(&wasm, "TableOps").expect("translation succeeds");
 
+    let call = wasm_neovm::opcodes::lookup("CALL").unwrap().byte;
     let call_l = wasm_neovm::opcodes::lookup("CALL_L").unwrap().byte;
     let call_count = translation
         .script
         .iter()
-        .filter(|&&opcode| opcode == call_l)
+        .filter(|&&opcode| opcode == call || opcode == call_l)
         .count();
     assert!(
         call_count >= 6,
@@ -211,11 +212,12 @@ fn translate_multi_table_operations() {
         "runtime init should store table 1"
     );
 
+    let call = wasm_neovm::opcodes::lookup("CALL").unwrap().byte;
     let call_l = wasm_neovm::opcodes::lookup("CALL_L").unwrap().byte;
     let helper_calls = translation
         .script
         .iter()
-        .filter(|&&opcode| opcode == call_l)
+        .filter(|&&opcode| opcode == call || opcode == call_l)
         .count();
     assert!(
         helper_calls >= 4,
@@ -373,11 +375,12 @@ fn translate_table_grow_with_maximum() {
 
     let translation = translate_module(&wasm, "TableGrow").expect("translation succeeds");
 
+    let call = wasm_neovm::opcodes::lookup("CALL").unwrap().byte;
     let call_l = wasm_neovm::opcodes::lookup("CALL_L").unwrap().byte;
     let helper_calls = translation
         .script
         .iter()
-        .filter(|&&opcode| opcode == call_l)
+        .filter(|&&opcode| opcode == call || opcode == call_l)
         .count();
     assert!(
         helper_calls >= 2,
