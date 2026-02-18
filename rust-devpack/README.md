@@ -11,6 +11,7 @@ A complete Rust SDK for Neo N3 smart contract development, providing a well-desi
 - **Macro System**: Powerful procedural macros for contract development
 - **Runtime Integration**: Complete runtime environment for smart contracts
 - **Standards Helpers**: NEP-24 royalty helpers and NEP-26 lifecycle wrappers
+- **Native Contract Hashes**: Canonical Neo N3 native contract/script hash constants and helpers
 - **Testing Framework**: Built-in testing and benchmarking support
 
 ## 📦 Installation
@@ -208,6 +209,16 @@ use neo_devpack::prelude::*;
 let price = NeoInteger::new(1_000_000u32);
 let royalty = compute_bps_royalty(&price, 500)?; // 5%
 assert_eq!(royalty.as_i32_saturating(), 50_000);
+```
+
+Native contract hashes are also available from the prelude:
+
+```rust
+use neo_devpack::prelude::*;
+
+let oracle_hash = oracle_contract_hash();
+assert_eq!(ORACLE_CONTRACT, "0xfe924b7cfe89ddd271abaf7210a80a7e11178758");
+assert_eq!(oracle_hash.len(), 20);
 ```
 
 ## 🧪 Testing

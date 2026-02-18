@@ -126,6 +126,17 @@ fn json_deserialize_rejects_out_of_range_bytestring_values() {
 }
 
 #[test]
+fn native_contract_hashes_are_exposed_via_prelude() {
+    assert_eq!(NEO_CONTRACT, "0xef4073a0f2b305a38ec4050e4d3d28bc40ea63f5");
+    assert_eq!(
+        ORACLE_CONTRACT,
+        "0xfe924b7cfe89ddd271abaf7210a80a7e11178758"
+    );
+    assert_eq!(neo_contract_hash().len(), 20);
+    assert_eq!(oracle_contract_hash().len(), 20);
+}
+
+#[test]
 fn neo_manifest_serde_accepts_translator_supportedstandards_alias() {
     let manifest_json = serde_json::json!({
         "name": "Demo",

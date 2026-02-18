@@ -1,0 +1,138 @@
+// Copyright (c) 2025 R3E Network
+// Licensed under the MIT License
+
+//! Canonical Neo N3 native contract and native library script hashes.
+//!
+//! `*_CONTRACT` values are big-endian RPC-style hex strings.
+//! `*_LE` values are little-endian bytes suitable for NeoVM Hash160 usage.
+
+use neo_types::NeoByteString;
+
+pub const NEO_CONTRACT: &str = "0xef4073a0f2b305a38ec4050e4d3d28bc40ea63f5";
+pub const GAS_CONTRACT: &str = "0xd2a4cff31913016155e38e474a2c06d08be276cf";
+pub const CONTRACT_MANAGEMENT: &str = "0xfffdc93764dbaddd97c48f252a53ea4643faa3fd";
+pub const POLICY_CONTRACT: &str = "0xcc5e4edd9f5f8dba8bb65734541df7a1c081c67b";
+pub const ORACLE_CONTRACT: &str = "0xfe924b7cfe89ddd271abaf7210a80a7e11178758";
+pub const ROLE_MANAGEMENT: &str = "0x49cf4e5378ffcd4dec034fd98a174c5491e395e2";
+pub const NOTARY_CONTRACT: &str = "0xc1e14f19c3e60d0b9244d06dd7ba9b113135ec3b";
+pub const TREASURY_CONTRACT: &str = "0x156326f25b1b5d839a4d326aeaa75383c9563ac1";
+pub const LEDGER_CONTRACT: &str = "0xda65b600f7124ce6c79950c1772a36403104f2be";
+pub const CRYPTO_LIB: &str = "0x726cb6e0cd8628a1350a611384688911ab75f51b";
+pub const STD_LIB: &str = "0xacce6fd80d44e1796aa0c2c625e9e4e0ce39efc0";
+
+pub const NEO_CONTRACT_LE: [u8; 20] = [
+    0xf5, 0x63, 0xea, 0x40, 0xbc, 0x28, 0x3d, 0x4d, 0x0e, 0x05, 0xc4, 0x8e, 0xa3, 0x05, 0xb3, 0xf2,
+    0xa0, 0x73, 0x40, 0xef,
+];
+pub const GAS_CONTRACT_LE: [u8; 20] = [
+    0xcf, 0x76, 0xe2, 0x8b, 0xd0, 0x06, 0x2c, 0x4a, 0x47, 0x8e, 0xe3, 0x55, 0x61, 0x01, 0x13, 0x19,
+    0xf3, 0xcf, 0xa4, 0xd2,
+];
+pub const CONTRACT_MANAGEMENT_LE: [u8; 20] = [
+    0xfd, 0xa3, 0xfa, 0x43, 0x46, 0xea, 0x53, 0x2a, 0x25, 0x8f, 0xc4, 0x97, 0xdd, 0xad, 0xdb, 0x64,
+    0x37, 0xc9, 0xfd, 0xff,
+];
+pub const POLICY_CONTRACT_LE: [u8; 20] = [
+    0x7b, 0xc6, 0x81, 0xc0, 0xa1, 0xf7, 0x1d, 0x54, 0x34, 0x57, 0xb6, 0x8b, 0xba, 0x8d, 0x5f, 0x9f,
+    0xdd, 0x4e, 0x5e, 0xcc,
+];
+pub const ORACLE_CONTRACT_LE: [u8; 20] = [
+    0x58, 0x87, 0x17, 0x11, 0x7e, 0x0a, 0xa8, 0x10, 0x72, 0xaf, 0xab, 0x71, 0xd2, 0xdd, 0x89, 0xfe,
+    0x7c, 0x4b, 0x92, 0xfe,
+];
+pub const ROLE_MANAGEMENT_LE: [u8; 20] = [
+    0xe2, 0x95, 0xe3, 0x91, 0x54, 0x4c, 0x17, 0x8a, 0xd9, 0x4f, 0x03, 0xec, 0x4d, 0xcd, 0xff, 0x78,
+    0x53, 0x4e, 0xcf, 0x49,
+];
+pub const NOTARY_CONTRACT_LE: [u8; 20] = [
+    0x3b, 0xec, 0x35, 0x31, 0x11, 0x9b, 0xba, 0xd7, 0x6d, 0xd0, 0x44, 0x92, 0x0b, 0x0d, 0xe6, 0xc3,
+    0x19, 0x4f, 0xe1, 0xc1,
+];
+pub const TREASURY_CONTRACT_LE: [u8; 20] = [
+    0xc1, 0x3a, 0x56, 0xc9, 0x83, 0x53, 0xa7, 0xea, 0x6a, 0x32, 0x4d, 0x9a, 0x83, 0x5d, 0x1b, 0x5b,
+    0xf2, 0x26, 0x63, 0x15,
+];
+pub const LEDGER_CONTRACT_LE: [u8; 20] = [
+    0xbe, 0xf2, 0x04, 0x31, 0x40, 0x36, 0x2a, 0x77, 0xc1, 0x50, 0x99, 0xc7, 0xe6, 0x4c, 0x12, 0xf7,
+    0x00, 0xb6, 0x65, 0xda,
+];
+pub const CRYPTO_LIB_LE: [u8; 20] = [
+    0x1b, 0xf5, 0x75, 0xab, 0x11, 0x89, 0x68, 0x84, 0x13, 0x61, 0x0a, 0x35, 0xa1, 0x28, 0x86, 0xcd,
+    0xe0, 0xb6, 0x6c, 0x72,
+];
+pub const STD_LIB_LE: [u8; 20] = [
+    0xc0, 0xef, 0x39, 0xce, 0xe0, 0xe4, 0xe9, 0x25, 0xc6, 0xc2, 0xa0, 0x6a, 0x79, 0xe1, 0x44, 0x0d,
+    0xd8, 0x6f, 0xce, 0xac,
+];
+
+pub fn neo_contract_hash() -> NeoByteString {
+    NeoByteString::from_slice(&NEO_CONTRACT_LE)
+}
+
+pub fn gas_contract_hash() -> NeoByteString {
+    NeoByteString::from_slice(&GAS_CONTRACT_LE)
+}
+
+pub fn contract_management_hash() -> NeoByteString {
+    NeoByteString::from_slice(&CONTRACT_MANAGEMENT_LE)
+}
+
+pub fn policy_contract_hash() -> NeoByteString {
+    NeoByteString::from_slice(&POLICY_CONTRACT_LE)
+}
+
+pub fn oracle_contract_hash() -> NeoByteString {
+    NeoByteString::from_slice(&ORACLE_CONTRACT_LE)
+}
+
+pub fn role_management_hash() -> NeoByteString {
+    NeoByteString::from_slice(&ROLE_MANAGEMENT_LE)
+}
+
+pub fn notary_contract_hash() -> NeoByteString {
+    NeoByteString::from_slice(&NOTARY_CONTRACT_LE)
+}
+
+pub fn treasury_contract_hash() -> NeoByteString {
+    NeoByteString::from_slice(&TREASURY_CONTRACT_LE)
+}
+
+pub fn ledger_contract_hash() -> NeoByteString {
+    NeoByteString::from_slice(&LEDGER_CONTRACT_LE)
+}
+
+pub fn crypto_lib_hash() -> NeoByteString {
+    NeoByteString::from_slice(&CRYPTO_LIB_LE)
+}
+
+pub fn std_lib_hash() -> NeoByteString {
+    NeoByteString::from_slice(&STD_LIB_LE)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn native_hashes_have_expected_shapes() {
+        assert_eq!(NEO_CONTRACT.len(), 42);
+        assert!(NEO_CONTRACT.starts_with("0x"));
+        assert_eq!(ORACLE_CONTRACT.len(), 42);
+        assert!(ORACLE_CONTRACT.starts_with("0x"));
+
+        assert_eq!(neo_contract_hash().len(), 20);
+        assert_eq!(gas_contract_hash().len(), 20);
+        assert_eq!(oracle_contract_hash().len(), 20);
+    }
+
+    #[test]
+    fn oracle_little_endian_bytes_match_known_value() {
+        assert_eq!(
+            oracle_contract_hash().as_slice(),
+            &[
+                0x58, 0x87, 0x17, 0x11, 0x7e, 0x0a, 0xa8, 0x10, 0x72, 0xaf, 0xab, 0x71, 0xd2, 0xdd,
+                0x89, 0xfe, 0x7c, 0x4b, 0x92, 0xfe
+            ]
+        );
+    }
+}

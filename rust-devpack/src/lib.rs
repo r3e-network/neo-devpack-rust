@@ -6,11 +6,13 @@
 //! Complete Rust SDK for Neo N3 smart contract development
 
 pub mod codec;
+pub mod native_contracts;
 pub mod standards;
 pub mod storage;
 pub mod utils;
 
 // Re-export specific items to avoid conflicts
+pub use native_contracts::*;
 pub use neo_macros::*;
 pub use neo_runtime::{
     NeoContractRuntime, NeoCrypto, NeoJSON, NeoRuntime, NeoRuntimeContext, NeoStorage,
@@ -28,13 +30,14 @@ pub use standards::*;
 /// Neo N3 Prelude - commonly used items
 pub mod prelude {
     pub use crate::{
-        neo_contract, neo_entry, neo_event, neo_manifest_overlay, neo_method, neo_permission,
-        neo_safe, neo_safe_methods, neo_supported_standards, neo_trusts, serde, standards::*,
-        NeoArray, NeoBoolean, NeoByteString, NeoContract, NeoContractABI, NeoContractEntry,
-        NeoContractEvent, NeoContractManifest, NeoContractMethod, NeoContractMethodTrait,
-        NeoContractParameter, NeoContractPermission, NeoContractRuntime, NeoContractTrait,
-        NeoCrypto, NeoError, NeoInteger, NeoIterator, NeoJSON, NeoMap, NeoResult, NeoRuntime,
-        NeoRuntimeContext, NeoStorage, NeoStorageContext, NeoString, NeoStruct, NeoValue,
+        native_contracts::*, neo_contract, neo_entry, neo_event, neo_manifest_overlay, neo_method,
+        neo_permission, neo_safe, neo_safe_methods, neo_supported_standards, neo_trusts, serde,
+        standards::*, NeoArray, NeoBoolean, NeoByteString, NeoContract, NeoContractABI,
+        NeoContractEntry, NeoContractEvent, NeoContractManifest, NeoContractMethod,
+        NeoContractMethodTrait, NeoContractParameter, NeoContractPermission, NeoContractRuntime,
+        NeoContractTrait, NeoCrypto, NeoError, NeoInteger, NeoIterator, NeoJSON, NeoMap, NeoResult,
+        NeoRuntime, NeoRuntimeContext, NeoStorage, NeoStorageContext, NeoString, NeoStruct,
+        NeoValue,
     };
 }
 
