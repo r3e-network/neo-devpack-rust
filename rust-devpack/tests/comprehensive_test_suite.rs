@@ -5,6 +5,21 @@
 
 use neo_devpack::prelude::*;
 use neo_syscalls::*;
+use std::sync::{Mutex, MutexGuard, OnceLock};
+
+fn host_state_lock() -> MutexGuard<'static, ()> {
+    static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    match TEST_LOCK.get_or_init(|| Mutex::new(())).lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    }
+}
+
+fn setup_host_state() -> MutexGuard<'static, ()> {
+    let guard = host_state_lock();
+    NeoVMSyscall::reset_host_state().expect("host syscall state should reset");
+    guard
+}
 
 struct FailingSerialize;
 
@@ -29,6 +44,7 @@ fn syscall_registry_matches_canonical_list() {
 
 #[test]
 fn runtime_surface_is_coherent() {
+    let _guard = setup_host_state();
     let ctx = NeoRuntimeContext::new();
     assert!(ctx.trigger().unwrap().as_i32_saturating() >= 0);
     assert!(ctx.gas_left().unwrap().as_i32_saturating() >= 0);
@@ -45,6 +61,7 @@ fn runtime_surface_is_coherent() {
 
 #[test]
 fn storage_facade_obeys_read_only_contexts() {
+    let _guard = setup_host_state();
     let writable = NeoStorage::get_context().unwrap();
     let read_only = NeoStorage::get_read_only_context().unwrap();
     assert!(read_only.is_read_only());
@@ -61,6 +78,7 @@ fn storage_facade_obeys_read_only_contexts() {
 
 #[test]
 fn contract_crypto_and_json_helpers_behave_consistently() {
+    let _guard = setup_host_state();
     let script = NeoByteString::from_slice(b"contract");
     let manifest = NeoContractManifest {
         name: "Demo".to_string(),
@@ -113,6 +131,7 @@ fn json_helpers_propagate_serialization_errors() {
 
 #[test]
 fn storage_store_propagates_serialization_errors() {
+    let _guard = setup_host_state();
     let context = NeoStorage::get_context().expect("writable context");
     let err = neo_devpack::storage::store(&context, b"failing", &FailingSerialize).unwrap_err();
     assert!(err.message().contains("failed to serialize storage JSON"));

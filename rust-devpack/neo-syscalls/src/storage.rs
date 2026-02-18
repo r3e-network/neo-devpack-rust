@@ -18,13 +18,41 @@ use std::sync::{Arc, RwLock};
 
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) const DEFAULT_CONTRACT_HASH: [u8; 20] = [0u8; 20];
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) const MAX_SCRIPT_HASH_STACK_DEPTH: usize = 1024;
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) const DEFAULT_CALL_FLAGS: i32 = 0x0F;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) type ContractStore = Arc<RwLock<HashMap<Vec<u8>, Vec<u8>>>>;
 
 #[cfg(not(target_arch = "wasm32"))]
-pub(crate) static ACTIVE_CONTRACT_HASH: Lazy<RwLock<[u8; 20]>> =
-    Lazy::new(|| RwLock::new(DEFAULT_CONTRACT_HASH));
+#[derive(Clone, Copy)]
+pub(crate) struct ActiveScriptHashes {
+    pub(crate) calling: [u8; 20],
+    pub(crate) entry: [u8; 20],
+    pub(crate) executing: [u8; 20],
+    pub(crate) call_flags: i32,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl Default for ActiveScriptHashes {
+    fn default() -> Self {
+        Self {
+            calling: DEFAULT_CONTRACT_HASH,
+            entry: DEFAULT_CONTRACT_HASH,
+            executing: DEFAULT_CONTRACT_HASH,
+            call_flags: DEFAULT_CALL_FLAGS,
+        }
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) static ACTIVE_SCRIPT_HASHES: Lazy<RwLock<ActiveScriptHashes>> =
+    Lazy::new(|| RwLock::new(ActiveScriptHashes::default()));
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) static ACTIVE_SCRIPT_HASH_STACK: Lazy<RwLock<Vec<ActiveScriptHashes>>> =
+    Lazy::new(|| RwLock::new(Vec::new()));
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) static ACTIVE_WITNESSES: Lazy<RwLock<HashSet<Vec<u8>>>> =
     Lazy::new(|| RwLock::new(HashSet::new()));
@@ -151,24 +179,153 @@ impl StorageState {
 pub(crate) static STORAGE_STATE: Lazy<StorageState> = Lazy::new(StorageState::new);
 
 #[cfg(not(target_arch = "wasm32"))]
-pub(crate) fn current_contract_hash() -> [u8; 20] {
-    match ACTIVE_CONTRACT_HASH.read() {
-        Ok(hash) => *hash,
-        Err(poisoned) => *poisoned.into_inner(),
+pub(crate) fn current_calling_script_hash() -> [u8; 20] {
+    match ACTIVE_SCRIPT_HASHES.read() {
+        Ok(active) => active.calling,
+        Err(poisoned) => poisoned.into_inner().calling,
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn current_entry_script_hash() -> [u8; 20] {
+    match ACTIVE_SCRIPT_HASHES.read() {
+        Ok(active) => active.entry,
+        Err(poisoned) => poisoned.into_inner().entry,
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn current_executing_script_hash() -> [u8; 20] {
+    match ACTIVE_SCRIPT_HASHES.read() {
+        Ok(active) => active.executing,
+        Err(poisoned) => poisoned.into_inner().executing,
     }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn set_current_contract_hash(hash: [u8; 20]) {
-    match ACTIVE_CONTRACT_HASH.write() {
-        Ok(mut active) => *active = hash,
-        Err(poisoned) => *poisoned.into_inner() = hash,
+    set_current_script_hashes(hash, hash, hash);
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn set_current_script_hashes(calling: [u8; 20], entry: [u8; 20], executing: [u8; 20]) {
+    match ACTIVE_SCRIPT_HASHES.write() {
+        Ok(mut active) => {
+            active.calling = calling;
+            active.entry = entry;
+            active.executing = executing;
+        }
+        Err(poisoned) => {
+            let mut active = poisoned.into_inner();
+            active.calling = calling;
+            active.entry = entry;
+            active.executing = executing;
+        }
+    }
+    clear_script_hash_stack();
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn set_current_calling_script_hash(hash: [u8; 20]) {
+    match ACTIVE_SCRIPT_HASHES.write() {
+        Ok(mut active) => active.calling = hash,
+        Err(poisoned) => poisoned.into_inner().calling = hash,
+    }
+    clear_script_hash_stack();
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn set_current_entry_script_hash(hash: [u8; 20]) {
+    match ACTIVE_SCRIPT_HASHES.write() {
+        Ok(mut active) => active.entry = hash,
+        Err(poisoned) => poisoned.into_inner().entry = hash,
+    }
+    clear_script_hash_stack();
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn set_current_executing_script_hash(hash: [u8; 20]) {
+    match ACTIVE_SCRIPT_HASHES.write() {
+        Ok(mut active) => active.executing = hash,
+        Err(poisoned) => poisoned.into_inner().executing = hash,
+    }
+    clear_script_hash_stack();
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn current_call_flags() -> i32 {
+    match ACTIVE_SCRIPT_HASHES.read() {
+        Ok(active) => active.call_flags,
+        Err(poisoned) => poisoned.into_inner().call_flags,
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn set_current_call_flags(flags: i32) {
+    match ACTIVE_SCRIPT_HASHES.write() {
+        Ok(mut active) => active.call_flags = flags,
+        Err(poisoned) => poisoned.into_inner().call_flags = flags,
+    }
+    clear_script_hash_stack();
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn push_current_executing_script_hash(hash: [u8; 20], call_flags: i32) -> NeoResult<()> {
+    let mut active = match ACTIVE_SCRIPT_HASHES.write() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    let mut stack = match ACTIVE_SCRIPT_HASH_STACK.write() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+
+    if stack.len() >= MAX_SCRIPT_HASH_STACK_DEPTH {
+        return Err(NeoError::InvalidOperation);
+    }
+
+    stack.push(*active);
+    active.calling = active.executing;
+    active.executing = hash;
+    active.call_flags = call_flags;
+    Ok(())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn pop_current_script_hash_frame() -> NeoResult<()> {
+    let mut active = match ACTIVE_SCRIPT_HASHES.write() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    let mut stack = match ACTIVE_SCRIPT_HASH_STACK.write() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+
+    if let Some(previous) = stack.pop() {
+        *active = previous;
+        Ok(())
+    } else {
+        Err(NeoError::InvalidState)
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn clear_script_hash_stack() {
+    match ACTIVE_SCRIPT_HASH_STACK.write() {
+        Ok(mut stack) => stack.clear(),
+        Err(poisoned) => poisoned.into_inner().clear(),
     }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn reset_current_contract_hash() {
-    set_current_contract_hash(DEFAULT_CONTRACT_HASH);
+    set_current_script_hashes(
+        DEFAULT_CONTRACT_HASH,
+        DEFAULT_CONTRACT_HASH,
+        DEFAULT_CONTRACT_HASH,
+    );
+    set_current_call_flags(DEFAULT_CALL_FLAGS);
 }
 
 #[cfg(not(target_arch = "wasm32"))]

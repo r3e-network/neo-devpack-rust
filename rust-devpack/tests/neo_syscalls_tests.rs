@@ -170,14 +170,14 @@ fn syscall_wrapper_supports_extended_system_surface() {
 
     let call_result = NeoVMSyscall::contract_call(&script_hash, &method, &call_flags, &args)
         .expect("contract call wrapper");
-    assert!(call_result.is_null());
+    assert!(call_result.as_array().is_some());
 
     let native_result =
         NeoVMSyscall::contract_call_native(&NeoInteger::new(1)).expect("contract call native");
     assert!(native_result.is_null());
 
     let flags = NeoVMSyscall::get_call_flags().expect("get call flags");
-    assert_eq!(flags, NeoInteger::new(0));
+    assert_eq!(flags, NeoInteger::new(0x0F));
 
     let standard_account =
         NeoVMSyscall::create_standard_account(&NeoByteString::new(vec![2u8; 33]))
@@ -333,5 +333,447 @@ fn host_overrides_check_witness_and_script_hash_syscalls() {
             .as_boolean()
             .expect("boolean result")
             .as_bool()
+    );
+}
+
+#[test]
+fn host_can_set_independent_script_hashes() {
+    let _guard = setup_syscall_test();
+
+    let calling = NeoByteString::new(vec![0x11; 20]);
+    let entry = NeoByteString::new(vec![0x22; 20]);
+    let executing = NeoByteString::new(vec![0x33; 20]);
+
+    NeoVMSyscall::set_active_script_hashes(&calling, &entry, &executing)
+        .expect("set active script hashes");
+    assert_eq!(
+        NeoVMSyscall::get_calling_script_hash().expect("calling hash"),
+        calling
+    );
+    assert_eq!(
+        NeoVMSyscall::get_entry_script_hash().expect("entry hash"),
+        entry
+    );
+    assert_eq!(
+        NeoVMSyscall::get_executing_script_hash().expect("executing hash"),
+        executing
+    );
+
+    let key = NeoByteString::from_slice(b"hash-partition-key");
+    let value = NeoByteString::from_slice(b"hash-partition-value");
+    let ctx = NeoVMSyscall::storage_get_context().expect("storage context");
+    NeoVMSyscall::storage_put(&ctx, &key, &value).expect("storage put");
+
+    let other_executing = NeoByteString::new(vec![0x44; 20]);
+    NeoVMSyscall::set_active_executing_script_hash(&other_executing)
+        .expect("set other executing hash");
+    let other_ctx = NeoVMSyscall::storage_get_context().expect("other storage context");
+    assert_eq!(
+        NeoVMSyscall::storage_get(&other_ctx, &key)
+            .expect("storage get in other partition")
+            .len(),
+        0
+    );
+
+    NeoVMSyscall::set_active_executing_script_hash(&executing).expect("restore executing hash");
+    let restored_ctx = NeoVMSyscall::storage_get_context().expect("restored storage context");
+    assert_eq!(
+        NeoVMSyscall::storage_get(&restored_ctx, &key).expect("storage get in original partition"),
+        value
+    );
+
+    let unified = NeoByteString::new(vec![0x55; 20]);
+    NeoVMSyscall::set_active_contract_hash(&unified).expect("legacy contract hash setter");
+    assert_eq!(
+        NeoVMSyscall::get_calling_script_hash().expect("calling hash"),
+        unified
+    );
+    assert_eq!(
+        NeoVMSyscall::get_entry_script_hash().expect("entry hash"),
+        unified
+    );
+    assert_eq!(
+        NeoVMSyscall::get_executing_script_hash().expect("executing hash"),
+        unified
+    );
+}
+
+#[test]
+fn script_hash_setters_reject_invalid_hash160_lengths() {
+    let _guard = setup_syscall_test();
+    let invalid = NeoByteString::new(vec![0xAA; 19]);
+    let valid = NeoByteString::new(vec![0xBB; 20]);
+
+    assert_eq!(
+        NeoVMSyscall::set_active_contract_hash(&invalid).unwrap_err(),
+        NeoError::InvalidArgument
+    );
+    assert_eq!(
+        NeoVMSyscall::set_active_calling_script_hash(&invalid).unwrap_err(),
+        NeoError::InvalidArgument
+    );
+    assert_eq!(
+        NeoVMSyscall::set_active_entry_script_hash(&invalid).unwrap_err(),
+        NeoError::InvalidArgument
+    );
+    assert_eq!(
+        NeoVMSyscall::set_active_executing_script_hash(&invalid).unwrap_err(),
+        NeoError::InvalidArgument
+    );
+    assert_eq!(
+        NeoVMSyscall::set_active_script_hashes(&valid, &invalid, &valid).unwrap_err(),
+        NeoError::InvalidArgument
+    );
+}
+
+#[test]
+fn call_flags_override_rejects_invalid_values() {
+    let _guard = setup_syscall_test();
+
+    assert_eq!(
+        NeoVMSyscall::set_active_call_flags(&NeoInteger::new(-1)).unwrap_err(),
+        NeoError::InvalidArgument
+    );
+    assert_eq!(
+        NeoVMSyscall::set_active_call_flags(&NeoInteger::new(0x10)).unwrap_err(),
+        NeoError::InvalidArgument
+    );
+}
+
+#[test]
+fn nested_contract_invocations_track_calling_entry_and_executing_hashes() {
+    let _guard = setup_syscall_test();
+
+    let calling = NeoByteString::new(vec![0x10; 20]);
+    let entry = NeoByteString::new(vec![0x20; 20]);
+    let root = NeoByteString::new(vec![0x30; 20]);
+    let child = NeoByteString::new(vec![0x40; 20]);
+    let grandchild = NeoByteString::new(vec![0x50; 20]);
+
+    NeoVMSyscall::set_active_script_hashes(&calling, &entry, &root).expect("set root frame");
+    NeoVMSyscall::begin_contract_invocation(&child).expect("enter child frame");
+    assert_eq!(
+        NeoVMSyscall::get_calling_script_hash().expect("calling hash"),
+        root
+    );
+    assert_eq!(
+        NeoVMSyscall::get_entry_script_hash().expect("entry hash"),
+        entry
+    );
+    assert_eq!(
+        NeoVMSyscall::get_executing_script_hash().expect("executing hash"),
+        child
+    );
+
+    NeoVMSyscall::begin_contract_invocation(&grandchild).expect("enter grandchild frame");
+    assert_eq!(
+        NeoVMSyscall::get_calling_script_hash().expect("calling hash"),
+        child
+    );
+    assert_eq!(
+        NeoVMSyscall::get_entry_script_hash().expect("entry hash"),
+        entry
+    );
+    assert_eq!(
+        NeoVMSyscall::get_executing_script_hash().expect("executing hash"),
+        grandchild
+    );
+
+    NeoVMSyscall::end_contract_invocation().expect("leave grandchild frame");
+    assert_eq!(
+        NeoVMSyscall::get_calling_script_hash().expect("calling hash"),
+        root
+    );
+    assert_eq!(
+        NeoVMSyscall::get_entry_script_hash().expect("entry hash"),
+        entry
+    );
+    assert_eq!(
+        NeoVMSyscall::get_executing_script_hash().expect("executing hash"),
+        child
+    );
+
+    NeoVMSyscall::end_contract_invocation().expect("leave child frame");
+    assert_eq!(
+        NeoVMSyscall::get_calling_script_hash().expect("calling hash"),
+        calling
+    );
+    assert_eq!(
+        NeoVMSyscall::get_entry_script_hash().expect("entry hash"),
+        entry
+    );
+    assert_eq!(
+        NeoVMSyscall::get_executing_script_hash().expect("executing hash"),
+        root
+    );
+}
+
+#[test]
+fn contract_invocation_stack_rejects_underflow_and_is_reset_by_explicit_override() {
+    let _guard = setup_syscall_test();
+
+    let root = NeoByteString::new(vec![0xAA; 20]);
+    let child = NeoByteString::new(vec![0xBB; 20]);
+    NeoVMSyscall::set_active_contract_hash(&root).expect("set root hash");
+    NeoVMSyscall::begin_contract_invocation(&child).expect("enter child frame");
+
+    // Explicit frame overrides should drop any pending invocation stack.
+    NeoVMSyscall::set_active_contract_hash(&root).expect("override root frame");
+    assert_eq!(
+        NeoVMSyscall::end_contract_invocation().unwrap_err(),
+        NeoError::InvalidState
+    );
+}
+
+#[test]
+fn single_hash_setters_clear_invocation_stack_frames() {
+    let _guard = setup_syscall_test();
+
+    let calling = NeoByteString::new(vec![0x01; 20]);
+    let entry = NeoByteString::new(vec![0x02; 20]);
+    let root = NeoByteString::new(vec![0x03; 20]);
+    let child = NeoByteString::new(vec![0x04; 20]);
+    let override_hash = NeoByteString::new(vec![0x05; 20]);
+
+    NeoVMSyscall::set_active_script_hashes(&calling, &entry, &root).expect("set root frame");
+    NeoVMSyscall::begin_contract_invocation(&child).expect("enter child frame");
+
+    NeoVMSyscall::set_active_executing_script_hash(&override_hash).expect("override executing");
+    assert_eq!(
+        NeoVMSyscall::get_executing_script_hash().expect("executing hash"),
+        override_hash
+    );
+    assert_eq!(
+        NeoVMSyscall::end_contract_invocation().unwrap_err(),
+        NeoError::InvalidState
+    );
+
+    NeoVMSyscall::set_active_script_hashes(&calling, &entry, &root).expect("set root frame");
+    NeoVMSyscall::begin_contract_invocation(&child).expect("enter child frame");
+    NeoVMSyscall::set_active_calling_script_hash(&override_hash).expect("override calling");
+    assert_eq!(
+        NeoVMSyscall::get_calling_script_hash().expect("calling hash"),
+        override_hash
+    );
+    assert_eq!(
+        NeoVMSyscall::end_contract_invocation().unwrap_err(),
+        NeoError::InvalidState
+    );
+
+    NeoVMSyscall::set_active_script_hashes(&calling, &entry, &root).expect("set root frame");
+    NeoVMSyscall::begin_contract_invocation(&child).expect("enter child frame");
+    NeoVMSyscall::set_active_entry_script_hash(&override_hash).expect("override entry");
+    assert_eq!(
+        NeoVMSyscall::get_entry_script_hash().expect("entry hash"),
+        override_hash
+    );
+    assert_eq!(
+        NeoVMSyscall::end_contract_invocation().unwrap_err(),
+        NeoError::InvalidState
+    );
+}
+
+#[test]
+fn contract_invocation_stack_enforces_max_depth_limit() {
+    let _guard = setup_syscall_test();
+
+    let root = NeoByteString::new(vec![0x01; 20]);
+    let child = NeoByteString::new(vec![0x02; 20]);
+    NeoVMSyscall::set_active_contract_hash(&root).expect("set root frame");
+
+    for _ in 0..1024 {
+        NeoVMSyscall::begin_contract_invocation(&child).expect("push invocation frame");
+    }
+
+    assert_eq!(
+        NeoVMSyscall::begin_contract_invocation(&child).unwrap_err(),
+        NeoError::InvalidOperation
+    );
+
+    for _ in 0..1024 {
+        NeoVMSyscall::end_contract_invocation().expect("pop invocation frame");
+    }
+    assert_eq!(
+        NeoVMSyscall::end_contract_invocation().unwrap_err(),
+        NeoError::InvalidState
+    );
+}
+
+#[test]
+fn with_contract_invocation_restores_state_on_success_and_error() {
+    let _guard = setup_syscall_test();
+
+    let calling = NeoByteString::new(vec![0x11; 20]);
+    let entry = NeoByteString::new(vec![0x22; 20]);
+    let root = NeoByteString::new(vec![0x33; 20]);
+    let child = NeoByteString::new(vec![0x44; 20]);
+
+    NeoVMSyscall::set_active_script_hashes(&calling, &entry, &root).expect("set root state");
+
+    let success = NeoVMSyscall::with_contract_invocation(&child, || {
+        assert_eq!(
+            NeoVMSyscall::get_calling_script_hash().expect("calling hash"),
+            root
+        );
+        assert_eq!(
+            NeoVMSyscall::get_entry_script_hash().expect("entry hash"),
+            entry
+        );
+        assert_eq!(
+            NeoVMSyscall::get_executing_script_hash().expect("executing hash"),
+            child
+        );
+        Ok(NeoInteger::new(7))
+    })
+    .expect("invocation success");
+    assert_eq!(success, NeoInteger::new(7));
+    assert_eq!(
+        NeoVMSyscall::get_calling_script_hash().expect("calling hash"),
+        calling
+    );
+    assert_eq!(
+        NeoVMSyscall::get_entry_script_hash().expect("entry hash"),
+        entry
+    );
+    assert_eq!(
+        NeoVMSyscall::get_executing_script_hash().expect("executing hash"),
+        root
+    );
+
+    let err = NeoVMSyscall::with_contract_invocation(&child, || -> NeoResult<NeoInteger> {
+        Err(NeoError::InvalidArgument)
+    })
+    .expect_err("invocation should return operation error");
+    assert_eq!(err, NeoError::InvalidArgument);
+    assert_eq!(
+        NeoVMSyscall::get_calling_script_hash().expect("calling hash"),
+        calling
+    );
+    assert_eq!(
+        NeoVMSyscall::get_entry_script_hash().expect("entry hash"),
+        entry
+    );
+    assert_eq!(
+        NeoVMSyscall::get_executing_script_hash().expect("executing hash"),
+        root
+    );
+}
+
+#[test]
+fn with_contract_invocation_surfaces_unwind_failure_when_frame_is_cleared_inside_operation() {
+    let _guard = setup_syscall_test();
+
+    let root = NeoByteString::new(vec![0xAA; 20]);
+    let child = NeoByteString::new(vec![0xBB; 20]);
+    NeoVMSyscall::set_active_contract_hash(&root).expect("set root frame");
+
+    let err = NeoVMSyscall::with_contract_invocation(&child, || {
+        NeoVMSyscall::set_active_contract_hash(&root)?;
+        Ok(())
+    })
+    .expect_err("operation should fail to unwind cleared frame");
+    assert_eq!(err, NeoError::InvalidState);
+    assert_eq!(
+        NeoVMSyscall::get_executing_script_hash().expect("executing hash"),
+        root
+    );
+    assert_eq!(
+        NeoVMSyscall::end_contract_invocation().unwrap_err(),
+        NeoError::InvalidState
+    );
+}
+
+#[test]
+fn storage_context_write_access_tracks_active_call_flags() {
+    let _guard = setup_syscall_test();
+
+    let key = NeoByteString::from_slice(b"call-flags:key");
+    let value = NeoByteString::from_slice(b"call-flags:value");
+
+    NeoVMSyscall::set_active_call_flags(&NeoInteger::new(0x01)).expect("set read-only flags");
+    assert_eq!(
+        NeoVMSyscall::get_call_flags().expect("current call flags"),
+        NeoInteger::new(0x01)
+    );
+    let read_only_ctx = NeoVMSyscall::storage_get_context().expect("read-only context");
+    assert!(read_only_ctx.is_read_only());
+    assert!(NeoVMSyscall::storage_get(&read_only_ctx, &key)
+        .expect("read should be allowed")
+        .is_empty());
+    assert_eq!(
+        NeoVMSyscall::storage_put(&read_only_ctx, &key, &value).unwrap_err(),
+        NeoError::InvalidOperation
+    );
+
+    NeoVMSyscall::set_active_call_flags(&NeoInteger::new(0x03)).expect("set writable flags");
+    assert_eq!(
+        NeoVMSyscall::get_call_flags().expect("current call flags"),
+        NeoInteger::new(0x03)
+    );
+    let writable_ctx = NeoVMSyscall::storage_get_context().expect("writable context");
+    assert!(!writable_ctx.is_read_only());
+    NeoVMSyscall::storage_put(&writable_ctx, &key, &value).expect("writable put");
+
+    NeoVMSyscall::set_active_call_flags(&NeoInteger::new(0x00)).expect("set none flags");
+    assert_eq!(
+        NeoVMSyscall::storage_get_context().unwrap_err(),
+        NeoError::InvalidOperation
+    );
+    assert_eq!(
+        NeoVMSyscall::storage_get_read_only_context().unwrap_err(),
+        NeoError::InvalidOperation
+    );
+}
+
+#[test]
+fn storage_write_rechecks_call_flags_for_existing_contexts() {
+    let _guard = setup_syscall_test();
+
+    let key = NeoByteString::from_slice(b"existing-context:key");
+    let value = NeoByteString::from_slice(b"value");
+
+    NeoVMSyscall::set_active_call_flags(&NeoInteger::new(0x03)).expect("writable flags");
+    let ctx = NeoVMSyscall::storage_get_context().expect("writable context");
+    NeoVMSyscall::storage_put(&ctx, &key, &value).expect("initial write");
+
+    NeoVMSyscall::set_active_call_flags(&NeoInteger::new(0x01)).expect("read-only flags");
+    assert_eq!(
+        NeoVMSyscall::storage_put(&ctx, &key, &value).unwrap_err(),
+        NeoError::InvalidOperation
+    );
+    assert_eq!(
+        NeoVMSyscall::storage_delete(&ctx, &key).unwrap_err(),
+        NeoError::InvalidOperation
+    );
+    assert_eq!(
+        NeoVMSyscall::storage_get(&ctx, &key).expect("read still allowed"),
+        value
+    );
+}
+
+#[test]
+fn contract_call_rejects_invalid_call_flags_and_restores_current_flags() {
+    let _guard = setup_syscall_test();
+
+    let target = NeoByteString::new(vec![0x11; 20]);
+    let method = NeoString::from_str("balanceOf");
+    let args = NeoArray::<NeoValue>::new();
+
+    NeoVMSyscall::set_active_call_flags(&NeoInteger::new(0x0F)).expect("set baseline flags");
+
+    assert_eq!(
+        NeoVMSyscall::contract_call(&target, &method, &NeoInteger::new(0x10), &args).unwrap_err(),
+        NeoError::InvalidArgument
+    );
+    assert_eq!(
+        NeoVMSyscall::get_call_flags().expect("current call flags"),
+        NeoInteger::new(0x0F)
+    );
+
+    NeoVMSyscall::contract_call(&target, &method, &NeoInteger::new(0x01), &args)
+        .expect("contract call should succeed");
+    assert_eq!(
+        NeoVMSyscall::get_call_flags().expect("current call flags"),
+        NeoInteger::new(0x0F)
     );
 }

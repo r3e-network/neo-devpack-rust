@@ -6,6 +6,8 @@ MAKEFLAGS += --no-builtin-rules
 WASM_TARGET       := wasm32-unknown-unknown
 OUTDIR            := build
 TRANSLATOR        := cargo run --manifest-path wasm-neovm/Cargo.toml --quiet --
+ITERATIONS        ?= 100
+REFERENCE_MODE    ?= auto
 
 CONTRACT_RUSTFLAGS := -C opt-level=z -C strip=symbols -C panic=abort -C target-feature=-simd128,-reference-types,-multivalue,-tail-call
 WASM_SNIP         ?= wasm-snip
@@ -65,7 +67,7 @@ UNISWAP_SNIP_WASM := $(OUTDIR)/UniswapV2.snip.wasm
 STAKING_SNIP_WASM := $(OUTDIR)/StakingRewards.snip.wasm
 TIMELOCK_SNIP_WASM := $(OUTDIR)/TimelockVault.snip.wasm
 FLASHLOAN_SNIP_WASM := $(OUTDIR)/FlashLoanPool.snip.wasm
-.PHONY: help examples cross-chain hello-world nep17-token constant-product nep11-nft uniswap-v2 staking-rewards timelock-vault flashloan-pool multisig-wallet escrow crowdfunding governance-dao oracle-consumer nft-marketplace solana-hello move-coin c-hello fmt lint test verify-contract-tests test-contracts test-cross-chain integration-tests smoke-neoxp security-check spec clean
+.PHONY: help examples cross-chain hello-world nep17-token constant-product nep11-nft uniswap-v2 staking-rewards timelock-vault flashloan-pool multisig-wallet escrow crowdfunding governance-dao oracle-consumer nft-marketplace solana-hello move-coin c-hello fmt lint test verify-contract-tests test-contracts test-cross-chain integration-tests smoke-neoxp security-check iterate-neo-n3 spec clean
 
 help:
 	@echo "Usage: make <target>"
@@ -101,6 +103,7 @@ help:
 	@echo "  test-cross-chain Run wasm-neovm cross-chain test suites"
 	@echo "  integration-tests  Run optional Neo Express integration harness"
 	@echo "  smoke-neoxp     Run local Neo Express deploy/invoke smoke checks"
+	@echo "  iterate-neo-n3 Run iterative Neo N3 quality gates (ITERATIONS=<n>, REFERENCE_MODE=auto|always|never)"
 	@echo "  security-check Run cargo-audit/cargo-deny checks (requires cargo-audit/cargo-deny)"
 	@echo "  unused-deps     Check for unused dependencies (requires cargo-machete)"
 	@echo "  outdated        Check for outdated dependencies (requires cargo-outdated)"
@@ -412,6 +415,9 @@ integration-tests:
 
 smoke-neoxp:
 	scripts/neoxp_smoke.sh
+
+iterate-neo-n3:
+	scripts/iterate_neo_n3_quality.sh --generations $(ITERATIONS) --reference-mode $(REFERENCE_MODE)
 
 security-check:
 	cargo audit --file wasm-neovm/Cargo.lock --deny warnings

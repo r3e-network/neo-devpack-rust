@@ -271,3 +271,81 @@ fn host_active_contract_hash_controls_storage_partitioning() {
     let ctx_b_again = NeoStorage::get_context().unwrap();
     assert_eq!(NeoStorage::get(&ctx_b_again, &key).unwrap(), val_b);
 }
+
+#[test]
+fn runtime_exposes_independent_script_hash_context() {
+    let _guard = setup_runtime_test();
+
+    let calling = NeoByteString::from_slice(&[0xA1; 20]);
+    let entry = NeoByteString::from_slice(&[0xB2; 20]);
+    let executing = NeoByteString::from_slice(&[0xC3; 20]);
+    NeoVMSyscall::set_active_script_hashes(&calling, &entry, &executing).unwrap();
+
+    assert_eq!(NeoRuntime::get_calling_script_hash().unwrap(), calling);
+    assert_eq!(NeoRuntime::get_entry_script_hash().unwrap(), entry);
+    assert_eq!(NeoRuntime::get_executing_script_hash().unwrap(), executing);
+
+    let updated_calling = NeoByteString::from_slice(&[0xD4; 20]);
+    NeoVMSyscall::set_active_calling_script_hash(&updated_calling).unwrap();
+    assert_eq!(
+        NeoRuntime::get_calling_script_hash().unwrap(),
+        updated_calling
+    );
+    assert_eq!(NeoRuntime::get_entry_script_hash().unwrap(), entry);
+    assert_eq!(NeoRuntime::get_executing_script_hash().unwrap(), executing);
+}
+
+#[test]
+fn nested_contract_invocation_preserves_entry_and_partitions_storage_by_executing_hash() {
+    let _guard = setup_runtime_test();
+
+    let calling = NeoByteString::from_slice(&[0x11; 20]);
+    let entry = NeoByteString::from_slice(&[0x22; 20]);
+    let root = NeoByteString::from_slice(&[0x33; 20]);
+    let child = NeoByteString::from_slice(&[0x44; 20]);
+    let grandchild = NeoByteString::from_slice(&[0x55; 20]);
+    let key = NeoByteString::from_slice(b"nested:partition:key");
+    let root_value = NeoByteString::from_slice(b"root");
+    let child_value = NeoByteString::from_slice(b"child");
+    let grandchild_value = NeoByteString::from_slice(b"grandchild");
+
+    NeoVMSyscall::set_active_script_hashes(&calling, &entry, &root).unwrap();
+    let root_ctx = NeoStorage::get_context().unwrap();
+    NeoStorage::put(&root_ctx, &key, &root_value).unwrap();
+    assert_eq!(NeoRuntime::get_calling_script_hash().unwrap(), calling);
+    assert_eq!(NeoRuntime::get_entry_script_hash().unwrap(), entry);
+    assert_eq!(NeoRuntime::get_executing_script_hash().unwrap(), root);
+
+    NeoVMSyscall::begin_contract_invocation(&child).unwrap();
+    assert_eq!(NeoRuntime::get_calling_script_hash().unwrap(), root);
+    assert_eq!(NeoRuntime::get_entry_script_hash().unwrap(), entry);
+    assert_eq!(NeoRuntime::get_executing_script_hash().unwrap(), child);
+    let child_ctx = NeoStorage::get_context().unwrap();
+    assert_eq!(NeoStorage::get(&child_ctx, &key).unwrap().len(), 0);
+    NeoStorage::put(&child_ctx, &key, &child_value).unwrap();
+
+    NeoVMSyscall::begin_contract_invocation(&grandchild).unwrap();
+    assert_eq!(NeoRuntime::get_calling_script_hash().unwrap(), child);
+    assert_eq!(NeoRuntime::get_entry_script_hash().unwrap(), entry);
+    assert_eq!(NeoRuntime::get_executing_script_hash().unwrap(), grandchild);
+    let grandchild_ctx = NeoStorage::get_context().unwrap();
+    assert_eq!(NeoStorage::get(&grandchild_ctx, &key).unwrap().len(), 0);
+    NeoStorage::put(&grandchild_ctx, &key, &grandchild_value).unwrap();
+
+    NeoVMSyscall::end_contract_invocation().unwrap();
+    assert_eq!(NeoRuntime::get_calling_script_hash().unwrap(), root);
+    assert_eq!(NeoRuntime::get_entry_script_hash().unwrap(), entry);
+    assert_eq!(NeoRuntime::get_executing_script_hash().unwrap(), child);
+    let child_ctx_again = NeoStorage::get_context().unwrap();
+    assert_eq!(
+        NeoStorage::get(&child_ctx_again, &key).unwrap(),
+        child_value
+    );
+
+    NeoVMSyscall::end_contract_invocation().unwrap();
+    assert_eq!(NeoRuntime::get_calling_script_hash().unwrap(), calling);
+    assert_eq!(NeoRuntime::get_entry_script_hash().unwrap(), entry);
+    assert_eq!(NeoRuntime::get_executing_script_hash().unwrap(), root);
+    let root_ctx_again = NeoStorage::get_context().unwrap();
+    assert_eq!(NeoStorage::get(&root_ctx_again, &key).unwrap(), root_value);
+}

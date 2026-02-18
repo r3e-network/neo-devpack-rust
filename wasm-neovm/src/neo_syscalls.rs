@@ -6,6 +6,16 @@ use std::collections::HashMap;
 
 use crate::syscalls;
 
+fn descriptor_fingerprint(input: &str) -> String {
+    let mut output = String::with_capacity(input.len());
+    for ch in input.chars() {
+        if ch.is_ascii_alphanumeric() {
+            output.push(ch.to_ascii_lowercase());
+        }
+    }
+    output
+}
+
 fn camel_to_snake(input: &str) -> String {
     let mut output = String::with_capacity(input.len());
     let mut prev_was_lower_or_digit = false;
@@ -52,6 +62,29 @@ fn canonical_aliases(descriptor: &str) -> Vec<String> {
         "System" | "Neo" => vec![format!("{category}_{method}")],
         _ => Vec::new(),
     }
+}
+
+fn register_fingerprint(
+    map: &mut HashMap<String, &'static str>,
+    key: &str,
+    descriptor: &'static str,
+) {
+    let fingerprint = descriptor_fingerprint(key);
+    if fingerprint.is_empty() {
+        return;
+    }
+
+    if let Some(existing) = map.get(&fingerprint) {
+        if *existing != descriptor {
+            panic!(
+                "ambiguous syscall fingerprint '{}' for '{}' and '{}' (from key '{}')",
+                fingerprint, existing, descriptor, key
+            );
+        }
+        return;
+    }
+
+    map.insert(fingerprint, descriptor);
 }
 
 /// Mapping from WASM import names to Neo syscall names
@@ -171,9 +204,35 @@ pub static NEO_SYSCALL_MAP: Lazy<HashMap<String, &'static str>> = Lazy::new(|| {
     map
 });
 
+pub static NEO_SYSCALL_FINGERPRINT_MAP: Lazy<HashMap<String, &'static str>> = Lazy::new(|| {
+    let mut map: HashMap<String, &'static str> = HashMap::new();
+
+    for (alias, descriptor) in NEO_SYSCALL_MAP.iter() {
+        register_fingerprint(&mut map, alias, descriptor);
+    }
+
+    for syscall in syscalls::all().iter().chain(syscalls::extended().iter()) {
+        register_fingerprint(&mut map, syscall.name, syscall.name);
+        for alias in canonical_aliases(syscall.name) {
+            register_fingerprint(&mut map, &alias, syscall.name);
+        }
+    }
+
+    map
+});
+
 /// Lookup a Neo syscall name from a WASM import name
 pub fn lookup_neo_syscall(import_name: &str) -> Option<&'static str> {
-    NEO_SYSCALL_MAP.get(import_name).copied()
+    if let Some(mapped) = NEO_SYSCALL_MAP.get(import_name) {
+        return Some(*mapped);
+    }
+
+    let fingerprint = descriptor_fingerprint(import_name);
+    if fingerprint.is_empty() {
+        return None;
+    }
+
+    NEO_SYSCALL_FINGERPRINT_MAP.get(&fingerprint).copied()
 }
 
 #[cfg(test)]
@@ -305,6 +364,50 @@ mod tests {
     fn all_aliases_resolve_to_known_syscalls() {
         for alias in NEO_SYSCALL_MAP.keys().map(String::as_str) {
             assert_alias_maps_to_known_syscall(alias);
+        }
+    }
+
+    #[test]
+    fn lookup_accepts_case_separator_and_whitespace_variants() {
+        assert_eq!(
+            lookup_neo_syscall("system.runtime.gettime"),
+            Some("System.Runtime.GetTime")
+        );
+        assert_eq!(
+            lookup_neo_syscall(" System/Runtime/GetExecutingScriptHash "),
+            Some("System.Runtime.GetExecutingScriptHash")
+        );
+        assert_eq!(
+            lookup_neo_syscall("runtime-get-time"),
+            Some("System.Runtime.GetTime")
+        );
+        assert_eq!(
+            lookup_neo_syscall("neo.crypto.verifywithecdsa"),
+            Some("Neo.Crypto.VerifyWithECDsa")
+        );
+    }
+
+    #[test]
+    fn lookup_rejects_near_collision_variants_with_missing_characters() {
+        assert_eq!(lookup_neo_syscall("runtime_get_tim"), None);
+        assert_eq!(lookup_neo_syscall("system.runtime.gettim"), None);
+        assert_eq!(lookup_neo_syscall("runtime_get_invocation_counte"), None);
+        assert_eq!(lookup_neo_syscall("system/storage/getreadonlycontex"), None);
+    }
+
+    #[test]
+    fn canonical_descriptor_fingerprints_resolve_without_ambiguity() {
+        for syscall in syscalls::all().iter().chain(syscalls::extended().iter()) {
+            let fingerprint = descriptor_fingerprint(syscall.name);
+            let resolved = NEO_SYSCALL_FINGERPRINT_MAP
+                .get(&fingerprint)
+                .copied()
+                .unwrap_or_else(|| panic!("missing fingerprint mapping for {}", syscall.name));
+            assert_eq!(
+                resolved, syscall.name,
+                "fingerprint of canonical descriptor '{}' should resolve to itself",
+                syscall.name
+            );
         }
     }
 }

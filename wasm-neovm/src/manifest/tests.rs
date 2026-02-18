@@ -20,6 +20,29 @@ fn manifest_method(name: &str, param_count: usize) -> ManifestMethod {
     }
 }
 
+fn void_manifest_method(name: &str, param_count: usize) -> ManifestMethod {
+    let mut method = manifest_method(name, param_count);
+    method.return_type = "Void".to_string();
+    method
+}
+
+fn typed_manifest_method(name: &str, kinds: &[&str], return_type: &str) -> ManifestMethod {
+    ManifestMethod {
+        name: name.to_string(),
+        parameters: kinds
+            .iter()
+            .enumerate()
+            .map(|(idx, kind)| ManifestParameter {
+                name: format!("arg{idx}"),
+                kind: (*kind).to_string(),
+            })
+            .collect(),
+        return_type: return_type.to_string(),
+        offset: 0,
+        safe: false,
+    }
+}
+
 #[test]
 fn merge_manifest_deeply_combines_objects() {
     let mut base = json!({
@@ -61,8 +84,8 @@ fn build_manifest_detects_nep17_nep24_nep26_nep27() {
         manifest_method("balanceOf", 1),
         manifest_method("transfer", 3),
         manifest_method("royalty_info", 3),
-        manifest_method("on_nep11_payment", 4),
-        manifest_method("on_nep17_payment", 3),
+        void_manifest_method("on_nep11_payment", 4),
+        void_manifest_method("on_nep17_payment", 3),
     ];
 
     let manifest = build_manifest("TokenLike", &methods).value;
@@ -89,8 +112,8 @@ fn build_manifest_detects_lifecycle_neps() {
     destroy.return_type = "Void".to_string();
 
     let methods = vec![
-        manifest_method("update", 3),
-        manifest_method("_deploy", 2),
+        void_manifest_method("update", 3),
+        void_manifest_method("_deploy", 2),
         verify,
         destroy,
     ];
@@ -111,6 +134,114 @@ fn build_manifest_detects_lifecycle_neps() {
 }
 
 #[test]
+fn build_manifest_does_not_detect_lifecycle_standards_with_non_void_handlers() {
+    let methods = vec![
+        manifest_method("update", 3),
+        manifest_method("_deploy", 2),
+        manifest_method("on_nep11_payment", 4),
+        manifest_method("on_nep17_payment", 3),
+    ];
+
+    let manifest = build_manifest("LooseLifecycle", &methods).value;
+    let standards = manifest["supportedstandards"]
+        .as_array()
+        .expect("supported standards array");
+    let standards: Vec<&str> = standards
+        .iter()
+        .filter_map(|value| value.as_str())
+        .collect();
+
+    assert!(!standards.contains(&"NEP-22"));
+    assert!(!standards.contains(&"NEP-26"));
+    assert!(!standards.contains(&"NEP-27"));
+    assert!(!standards.contains(&"NEP-29"));
+}
+
+#[test]
+fn build_manifest_does_not_detect_lifecycle_standards_with_invalid_parameter_types() {
+    let methods = vec![
+        typed_manifest_method("update", &["Integer", "Integer", "Integer"], "Void"),
+        typed_manifest_method("_deploy", &["Any", "Integer"], "Void"),
+        typed_manifest_method(
+            "on_nep11_payment",
+            &["ByteString", "Boolean", "ByteString", "Any"],
+            "Void",
+        ),
+        typed_manifest_method(
+            "on_nep17_payment",
+            &["ByteString", "Boolean", "Any"],
+            "Void",
+        ),
+    ];
+
+    let manifest = build_manifest("InvalidLifecycleTypes", &methods).value;
+    let standards = manifest["supportedstandards"]
+        .as_array()
+        .expect("supported standards array");
+    let standards: Vec<&str> = standards
+        .iter()
+        .filter_map(|value| value.as_str())
+        .collect();
+
+    assert!(!standards.contains(&"NEP-22"));
+    assert!(!standards.contains(&"NEP-26"));
+    assert!(!standards.contains(&"NEP-27"));
+    assert!(!standards.contains(&"NEP-29"));
+}
+
+#[test]
+fn build_manifest_detects_lifecycle_standards_with_alias_type_spellings() {
+    let methods = vec![
+        typed_manifest_method("update", &["byte_array", "str", "Map"], "void"),
+        typed_manifest_method("_deploy", &["Map", "bool"], "VOID"),
+        typed_manifest_method(
+            "on_nep11_payment",
+            &["UInt160", "int", "buffer", "Map"],
+            "Void",
+        ),
+        typed_manifest_method(
+            "on_nep17_payment",
+            &["script_hash", "Integer", "Map"],
+            "Void",
+        ),
+    ];
+
+    let manifest = build_manifest("AliasLifecycleTypes", &methods).value;
+    let standards = manifest["supportedstandards"]
+        .as_array()
+        .expect("supported standards array");
+    let standards: Vec<&str> = standards
+        .iter()
+        .filter_map(|value| value.as_str())
+        .collect();
+
+    assert!(standards.contains(&"NEP-22"));
+    assert!(standards.contains(&"NEP-26"));
+    assert!(standards.contains(&"NEP-27"));
+    assert!(standards.contains(&"NEP-29"));
+}
+
+#[test]
+fn build_manifest_does_not_over_accept_unknown_alias_type_spellings() {
+    let methods = vec![
+        typed_manifest_method("update", &["Bytes", "str", "Any"], "Void"),
+        typed_manifest_method("on_nep17_payment", &["Hash256", "int", "Any"], "Void"),
+    ];
+
+    let manifest = build_manifest("UnknownAliasLifecycleTypes", &methods).value;
+    let standards = manifest["supportedstandards"]
+        .as_array()
+        .expect("supported standards array");
+    let standards: Vec<&str> = standards
+        .iter()
+        .filter_map(|value| value.as_str())
+        .collect();
+
+    assert!(!standards.contains(&"NEP-22"));
+    assert!(!standards.contains(&"NEP-27"));
+}
+
+#[test]
 fn build_manifest_does_not_detect_nep30_without_boolean_verify() {
     let mut verify = manifest_method("verify", 0);
     verify.return_type = "Void".to_string();
@@ -128,6 +259,48 @@ fn build_manifest_does_not_detect_nep30_without_boolean_verify() {
         !standards.contains(&"NEP-30"),
         "verify must return Boolean to satisfy NEP-30"
     );
+}
+
+#[test]
+fn build_manifest_does_not_detect_nep17_with_invalid_required_arities() {
+    let methods = vec![
+        typed_manifest_method("symbol", &["Any"], "String"),
+        typed_manifest_method("decimals", &[], "Integer"),
+        typed_manifest_method("total_supply", &[], "Integer"),
+        typed_manifest_method("balance_of", &["Any"], "Integer"),
+        typed_manifest_method("transfer", &["Any", "Any"], "Boolean"),
+    ];
+
+    let manifest = build_manifest("InvalidNep17Arity", &methods).value;
+    let standards = manifest["supportedstandards"]
+        .as_array()
+        .expect("supported standards array");
+    let standards: Vec<&str> = standards
+        .iter()
+        .filter_map(|value| value.as_str())
+        .collect();
+
+    assert!(!standards.contains(&"NEP-17"));
+}
+
+#[test]
+fn build_manifest_does_not_detect_nep11_with_invalid_required_arities() {
+    let methods = vec![
+        typed_manifest_method("balance_of", &["Any", "Any"], "Integer"),
+        typed_manifest_method("owner_of", &[], "Any"),
+        typed_manifest_method("transfer", &["Any", "Any"], "Boolean"),
+    ];
+
+    let manifest = build_manifest("InvalidNep11Arity", &methods).value;
+    let standards = manifest["supportedstandards"]
+        .as_array()
+        .expect("supported standards array");
+    let standards: Vec<&str> = standards
+        .iter()
+        .filter_map(|value| value.as_str())
+        .collect();
+
+    assert!(!standards.contains(&"NEP-11"));
 }
 
 #[test]

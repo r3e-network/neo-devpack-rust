@@ -159,7 +159,11 @@ fn translate_internal_function_call() {
         let immediate = &translation.script[call_pos + 1..call_pos + 5];
         assert_ne!(immediate, &[0, 0, 0, 0], "CALL_L immediate patched");
     } else {
-        assert_ne!(translation.script[call_pos + 1], 0, "CALL immediate patched");
+        assert_ne!(
+            translation.script[call_pos + 1],
+            0,
+            "CALL immediate patched"
+        );
     }
     assert!(translation.script.contains(&add));
 }

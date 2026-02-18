@@ -88,6 +88,48 @@ pub fn build_manifest_with_config(
 }
 
 fn detect_supported_standards(methods: &[ManifestMethod]) -> Vec<String> {
+    struct MethodSignatureRule {
+        standard: &'static str,
+        method_name: &'static str,
+        return_type: &'static str,
+        expected_kinds: &'static [&'static [&'static str]],
+    }
+
+    const UPDATE_PARAM_0: &[&str] = &["ByteString", "ByteArray", "Buffer", "Any"];
+    const UPDATE_PARAM_1: &[&str] = &["String", "Str", "Any"];
+    const HASH160_COMPAT: &[&str] = &["Hash160", "UInt160", "ScriptHash", "ByteString", "Any"];
+    const INTEGER_COMPAT: &[&str] = &["Integer", "Int", "Any"];
+    const TOKEN_ID_COMPAT: &[&str] = &["ByteString", "ByteArray", "Buffer", "Any"];
+    const DEPLOY_FLAG_COMPAT: &[&str] = &["Boolean", "Bool", "Any"];
+    const ANY_PARAM: &[&str] = &[];
+
+    const LIFECYCLE_RULES: &[MethodSignatureRule] = &[
+        MethodSignatureRule {
+            standard: "NEP-22",
+            method_name: "update",
+            return_type: "Void",
+            expected_kinds: &[UPDATE_PARAM_0, UPDATE_PARAM_1, ANY_PARAM],
+        },
+        MethodSignatureRule {
+            standard: "NEP-26",
+            method_name: "onNEP11Payment",
+            return_type: "Void",
+            expected_kinds: &[HASH160_COMPAT, INTEGER_COMPAT, TOKEN_ID_COMPAT, ANY_PARAM],
+        },
+        MethodSignatureRule {
+            standard: "NEP-27",
+            method_name: "onNEP17Payment",
+            return_type: "Void",
+            expected_kinds: &[HASH160_COMPAT, INTEGER_COMPAT, ANY_PARAM],
+        },
+        MethodSignatureRule {
+            standard: "NEP-29",
+            method_name: "_deploy",
+            return_type: "Void",
+            expected_kinds: &[ANY_PARAM, DEPLOY_FLAG_COMPAT],
+        },
+    ];
+
     let names: HashSet<String> = methods
         .iter()
         .map(|method| normalize_method_name(&method.name))
@@ -96,16 +138,34 @@ fn detect_supported_standards(methods: &[ManifestMethod]) -> Vec<String> {
     let mut standards = Vec::new();
 
     // NEP-17 (fungible): symbol, decimals, totalSupply, balanceOf, transfer and no ownerOf.
-    let nep17_required = ["symbol", "decimals", "totalsupply", "balanceof", "transfer"];
     let has_ownerof = names.contains("ownerof");
-    if nep17_required.iter().all(|name| names.contains(*name)) && !has_ownerof {
+    let has_nep17_shape =
+        has_method_with_arity_and_return(methods, "symbol", 0, &["String", "Any"])
+            && has_method_with_arity_and_return(methods, "decimals", 0, &["Integer", "Any"])
+            && has_method_with_arity_and_return(methods, "totalsupply", 0, &["Integer", "Any"])
+            && has_method_with_arity_and_return(methods, "balanceof", 1, &["Integer", "Any"])
+            && has_method_with_arities_and_return(
+                methods,
+                "transfer",
+                &[3, 4],
+                &["Boolean", "Bool", "Any"],
+            );
+    if has_nep17_shape && !has_ownerof {
         standards.push("NEP-17".to_string());
     }
 
     // NEP-11 (NFT): balanceOf + ownerOf + transfer mechanism.
-    let has_nep11_transfer =
-        names.contains("transfer") || names.contains("transferfrom") || names.contains("tokensof");
-    if names.contains("balanceof") && has_ownerof && has_nep11_transfer {
+    let has_nep11_transfer = has_method_with_arities_and_return(
+        methods,
+        "transfer",
+        &[3, 4],
+        &["Boolean", "Bool", "Any"],
+    ) || has_method_with_arities(methods, "transferfrom", &[3, 4, 5])
+        || has_method_with_arities(methods, "tokensof", &[1]);
+    let has_nep11_shape =
+        has_method_with_arity_and_return(methods, "balanceof", 1, &["Integer", "Any"])
+            && has_method_with_arity(methods, "ownerof", 1);
+    if has_nep11_shape && has_nep11_transfer {
         standards.push("NEP-11".to_string());
     }
 
@@ -114,27 +174,15 @@ fn detect_supported_standards(methods: &[ManifestMethod]) -> Vec<String> {
         standards.push("NEP-24".to_string());
     }
 
-    // NEP-22: update(nefFile, manifest, data).
-    if has_method_arity(methods, "update", 3) {
-        standards.push("NEP-22".to_string());
-    }
-
-    // NEP-26: onNEP11Payment(from, amount, tokenId, data).
-    if has_method_arity(methods, "onNEP11Payment", 4) {
-        standards.push("NEP-26".to_string());
-    }
-
-    // NEP-27: onNEP17Payment(from, amount, data).
-    if has_method_arity(methods, "onNEP17Payment", 3) {
-        standards.push("NEP-27".to_string());
-    }
-
-    // NEP-29: _deploy(data, update).
-    if methods
-        .iter()
-        .any(|method| method.name.eq_ignore_ascii_case("_deploy") && method.parameters.len() == 2)
-    {
-        standards.push("NEP-29".to_string());
+    for rule in LIFECYCLE_RULES {
+        if has_method_signature_with_kinds(
+            methods,
+            rule.method_name,
+            rule.return_type,
+            rule.expected_kinds,
+        ) {
+            standards.push(rule.standard.to_string());
+        }
     }
 
     // NEP-30: verify(...) returning Boolean.
@@ -163,10 +211,60 @@ fn detect_supported_standards(methods: &[ManifestMethod]) -> Vec<String> {
     standards
 }
 
-fn has_method_arity(methods: &[ManifestMethod], method_name: &str, arity: usize) -> bool {
+fn has_method_signature_with_kinds(
+    methods: &[ManifestMethod],
+    method_name: &str,
+    return_type: &str,
+    expected_kinds: &[&[&str]],
+) -> bool {
+    let normalized = normalize_method_name(method_name);
+    methods.iter().any(|method| {
+        normalize_method_name(&method.name) == normalized
+            && method.parameters.len() == expected_kinds.len()
+            && method.return_type.eq_ignore_ascii_case(return_type)
+            && method_matches_param_kinds(method, expected_kinds)
+    })
+}
+
+fn has_method_with_arity(methods: &[ManifestMethod], method_name: &str, arity: usize) -> bool {
     let normalized = normalize_method_name(method_name);
     methods.iter().any(|method| {
         normalize_method_name(&method.name) == normalized && method.parameters.len() == arity
+    })
+}
+
+fn has_method_with_arities(
+    methods: &[ManifestMethod],
+    method_name: &str,
+    arities: &[usize],
+) -> bool {
+    arities
+        .iter()
+        .any(|arity| has_method_with_arity(methods, method_name, *arity))
+}
+
+fn has_method_with_arity_and_return(
+    methods: &[ManifestMethod],
+    method_name: &str,
+    arity: usize,
+    accepted_returns: &[&str],
+) -> bool {
+    let normalized = normalize_method_name(method_name);
+    methods.iter().any(|method| {
+        normalize_method_name(&method.name) == normalized
+            && method.parameters.len() == arity
+            && return_type_matches(&method.return_type, accepted_returns)
+    })
+}
+
+fn has_method_with_arities_and_return(
+    methods: &[ManifestMethod],
+    method_name: &str,
+    arities: &[usize],
+    accepted_returns: &[&str],
+) -> bool {
+    arities.iter().any(|arity| {
+        has_method_with_arity_and_return(methods, method_name, *arity, accepted_returns)
     })
 }
 
@@ -178,4 +276,64 @@ fn normalize_method_name(name: &str) -> String {
         }
     }
     out
+}
+
+fn normalize_type_name(name: &str) -> String {
+    let mut out = String::with_capacity(name.len());
+    for c in name.chars() {
+        if c.is_ascii_alphanumeric() {
+            out.push(c.to_ascii_lowercase());
+        }
+    }
+    out
+}
+
+fn kind_matches(actual: &str, accepted: &[&str]) -> bool {
+    if accepted.is_empty() {
+        return true;
+    }
+
+    let normalized_actual = canonical_type_name(actual);
+    if normalized_actual.is_empty() {
+        return false;
+    }
+
+    accepted.iter().any(|candidate| {
+        let normalized_candidate = canonical_type_name(candidate);
+        !normalized_candidate.is_empty() && normalized_actual == normalized_candidate
+    })
+}
+
+fn canonical_type_name(name: &str) -> String {
+    let normalized = normalize_type_name(name);
+    match normalized.as_str() {
+        "bool" | "boolean" => "boolean".to_string(),
+        "int" | "integer" => "integer".to_string(),
+        "str" | "string" => "string".to_string(),
+        "bytestring" | "bytearray" | "buffer" => "bytestring".to_string(),
+        "hash160" | "uint160" | "scripthash" => "hash160".to_string(),
+        _ => normalized,
+    }
+}
+
+fn return_type_matches(actual: &str, accepted: &[&str]) -> bool {
+    if accepted.is_empty() {
+        return true;
+    }
+    let normalized_actual = canonical_type_name(actual);
+    if normalized_actual.is_empty() {
+        return false;
+    }
+    accepted.iter().any(|candidate| {
+        let normalized_candidate = canonical_type_name(candidate);
+        !normalized_candidate.is_empty() && normalized_actual == normalized_candidate
+    })
+}
+
+fn method_matches_param_kinds(method: &ManifestMethod, expected_kinds: &[&[&str]]) -> bool {
+    method
+        .parameters
+        .iter()
+        .zip(expected_kinds.iter())
+        .all(|(parameter, accepted)| kind_matches(&parameter.kind, accepted))
 }

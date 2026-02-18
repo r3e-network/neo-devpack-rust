@@ -126,8 +126,8 @@ pub fn emit_jump_to(script: &mut Vec<u8>, opcode: &str, target: usize) -> Result
         }
     }
 
-    let offset_i32 =
-        i32::try_from(offset_i64).map_err(|_| anyhow::anyhow!("jump delta {} exceeds i32 range", offset_i64))?;
+    let offset_i32 = i32::try_from(offset_i64)
+        .map_err(|_| anyhow::anyhow!("jump delta {} exceeds i32 range", offset_i64))?;
     script.push(lookup_opcode(opcode)?.byte);
     script.extend_from_slice(&offset_i32.to_le_bytes());
     Ok(())

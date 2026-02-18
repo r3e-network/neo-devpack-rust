@@ -9,6 +9,10 @@ use crate::storage::*;
 use crate::syscalls::SYSCALLS;
 use crate::NeoVMSyscallInfo;
 
+const CALL_FLAGS_VALID_MASK: i32 = 0x0F;
+const CALL_FLAGS_READ_STATES: i32 = 0x01;
+const CALL_FLAGS_WRITE_STATES: i32 = 0x02;
+
 fn find_syscall(name: &str) -> Option<&'static NeoVMSyscallInfo> {
     SYSCALLS.iter().find(|info| info.name == name)
 }
@@ -55,6 +59,14 @@ fn value_matches_param_type(value: &NeoValue, param_type: &str) -> bool {
         "StackItem" | "Any" | "ExecutionContext" => true,
         _ => true,
     }
+}
+
+fn call_flags_allow_write(flags: i32) -> bool {
+    (flags & CALL_FLAGS_WRITE_STATES) != 0
+}
+
+fn call_flags_allow_read(flags: i32) -> bool {
+    (flags & CALL_FLAGS_READ_STATES) != 0
 }
 
 /// Neo N3 System Call Function
@@ -108,13 +120,20 @@ pub fn neovm_syscall(hash: u32, args: &[NeoValue]) -> NeoResult<NeoValue> {
             return Ok(NeoBoolean::new(results.verify_with_ecdsa).into());
         }
 
-        if matches!(
-            info.name,
-            "System.Runtime.GetCallingScriptHash"
-                | "System.Runtime.GetEntryScriptHash"
-                | "System.Runtime.GetExecutingScriptHash"
-        ) {
-            return Ok(NeoByteString::from_slice(&current_contract_hash()).into());
+        if info.name == "System.Runtime.GetCallingScriptHash" {
+            return Ok(NeoByteString::from_slice(&current_calling_script_hash()).into());
+        }
+
+        if info.name == "System.Runtime.GetEntryScriptHash" {
+            return Ok(NeoByteString::from_slice(&current_entry_script_hash()).into());
+        }
+
+        if info.name == "System.Runtime.GetExecutingScriptHash" {
+            return Ok(NeoByteString::from_slice(&current_executing_script_hash()).into());
+        }
+
+        if info.name == "System.Contract.GetCallFlags" {
+            return Ok(NeoInteger::new(current_call_flags()).into());
         }
     }
 
@@ -135,6 +154,26 @@ impl NeoVMSyscall {
         Ok(value)
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    fn parse_call_flags(flags: &NeoInteger) -> NeoResult<i32> {
+        let parsed = flags.as_i32_saturating();
+        if parsed < 0 || (parsed & !CALL_FLAGS_VALID_MASK) != 0 {
+            return Err(NeoError::InvalidArgument);
+        }
+        Ok(parsed)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn begin_contract_invocation_with_flags(
+        next_executing: &NeoByteString,
+        call_flags: i32,
+    ) -> NeoResult<()> {
+        if call_flags < 0 || (call_flags & !CALL_FLAGS_VALID_MASK) != 0 {
+            return Err(NeoError::InvalidArgument);
+        }
+        push_current_executing_script_hash(Self::parse_hash160(next_executing)?, call_flags)
+    }
+
     /// Set the active contract hash used by host-mode storage contexts and script-hash syscalls.
     #[cfg(not(target_arch = "wasm32"))]
     pub fn set_active_contract_hash(hash: &NeoByteString) -> NeoResult<()> {
@@ -142,10 +181,155 @@ impl NeoVMSyscall {
         Ok(())
     }
 
+    /// Configure host-mode calling/entry/executing script hashes.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn set_active_script_hashes(
+        calling: &NeoByteString,
+        entry: &NeoByteString,
+        executing: &NeoByteString,
+    ) -> NeoResult<()> {
+        set_current_script_hashes(
+            Self::parse_hash160(calling)?,
+            Self::parse_hash160(entry)?,
+            Self::parse_hash160(executing)?,
+        );
+        Ok(())
+    }
+
+    /// Configure host-mode calling script hash.
+    /// Clears nested invocation frames and applies this value as a new base state.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn set_active_calling_script_hash(hash: &NeoByteString) -> NeoResult<()> {
+        set_current_calling_script_hash(Self::parse_hash160(hash)?);
+        Ok(())
+    }
+
+    /// Configure host-mode entry script hash.
+    /// Clears nested invocation frames and applies this value as a new base state.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn set_active_entry_script_hash(hash: &NeoByteString) -> NeoResult<()> {
+        set_current_entry_script_hash(Self::parse_hash160(hash)?);
+        Ok(())
+    }
+
+    /// Configure host-mode executing script hash.
+    /// Clears nested invocation frames and applies this value as a new base state.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn set_active_executing_script_hash(hash: &NeoByteString) -> NeoResult<()> {
+        set_current_executing_script_hash(Self::parse_hash160(hash)?);
+        Ok(())
+    }
+
+    /// Configure host-mode active call flags (Neo N3 CallFlags mask: 0x00..=0x0F).
+    /// Clears nested invocation frames and applies this value as a new base state.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn set_active_call_flags(call_flags: &NeoInteger) -> NeoResult<()> {
+        set_current_call_flags(Self::parse_call_flags(call_flags)?);
+        Ok(())
+    }
+
+    /// Enter a nested contract invocation frame in host mode.
+    ///
+    /// The new frame preserves `entry`, shifts `calling <- previous executing`,
+    /// and sets `executing` to `next_executing`.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn begin_contract_invocation(next_executing: &NeoByteString) -> NeoResult<()> {
+        Self::begin_contract_invocation_with_flags(next_executing, current_call_flags())
+    }
+
+    /// Exit the most recent nested contract invocation frame in host mode.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn end_contract_invocation() -> NeoResult<()> {
+        pop_current_script_hash_frame()
+    }
+
+    /// Run an operation in a nested host invocation frame, always unwinding the frame.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn with_contract_invocation<T, F>(
+        next_executing: &NeoByteString,
+        operation: F,
+    ) -> NeoResult<T>
+    where
+        F: FnOnce() -> NeoResult<T>,
+    {
+        Self::begin_contract_invocation(next_executing)?;
+        let operation_result = operation();
+        let unwind_result = Self::end_contract_invocation();
+
+        match (operation_result, unwind_result) {
+            (Ok(value), Ok(())) => Ok(value),
+            (Err(err), Ok(())) => Err(err),
+            (Ok(_), Err(unwind_err)) => Err(unwind_err),
+            (Err(operation_err), Err(unwind_err)) => Err(NeoError::new(&format!(
+                "invocation operation failed ({}) and frame unwind failed ({})",
+                operation_err.message(),
+                unwind_err.message()
+            ))),
+        }
+    }
+
     /// Set the active contract hash used by host-mode storage contexts and script-hash syscalls.
     #[cfg(target_arch = "wasm32")]
     pub fn set_active_contract_hash(_hash: &NeoByteString) -> NeoResult<()> {
         Ok(())
+    }
+
+    /// Configure host-mode calling/entry/executing script hashes.
+    #[cfg(target_arch = "wasm32")]
+    pub fn set_active_script_hashes(
+        _calling: &NeoByteString,
+        _entry: &NeoByteString,
+        _executing: &NeoByteString,
+    ) -> NeoResult<()> {
+        Ok(())
+    }
+
+    /// Configure host-mode calling script hash.
+    #[cfg(target_arch = "wasm32")]
+    pub fn set_active_calling_script_hash(_hash: &NeoByteString) -> NeoResult<()> {
+        Ok(())
+    }
+
+    /// Configure host-mode entry script hash.
+    #[cfg(target_arch = "wasm32")]
+    pub fn set_active_entry_script_hash(_hash: &NeoByteString) -> NeoResult<()> {
+        Ok(())
+    }
+
+    /// Configure host-mode executing script hash.
+    #[cfg(target_arch = "wasm32")]
+    pub fn set_active_executing_script_hash(_hash: &NeoByteString) -> NeoResult<()> {
+        Ok(())
+    }
+
+    /// Configure host-mode active call flags.
+    #[cfg(target_arch = "wasm32")]
+    pub fn set_active_call_flags(_call_flags: &NeoInteger) -> NeoResult<()> {
+        Ok(())
+    }
+
+    /// Enter a nested contract invocation frame in host mode.
+    #[cfg(target_arch = "wasm32")]
+    pub fn begin_contract_invocation(_next_executing: &NeoByteString) -> NeoResult<()> {
+        Ok(())
+    }
+
+    /// Exit the most recent nested contract invocation frame in host mode.
+    #[cfg(target_arch = "wasm32")]
+    pub fn end_contract_invocation() -> NeoResult<()> {
+        Ok(())
+    }
+
+    /// Run an operation in a nested host invocation frame, always unwinding the frame.
+    #[cfg(target_arch = "wasm32")]
+    pub fn with_contract_invocation<T, F>(
+        _next_executing: &NeoByteString,
+        operation: F,
+    ) -> NeoResult<T>
+    where
+        F: FnOnce() -> NeoResult<T>,
+    {
+        operation()
     }
 
     /// Clear host-mode syscall/storage simulation state.
@@ -331,7 +515,7 @@ impl NeoVMSyscall {
 
     #[cfg(not(target_arch = "wasm32"))]
     pub fn get_calling_script_hash() -> NeoResult<NeoByteString> {
-        Ok(NeoByteString::from_slice(&current_contract_hash()))
+        Ok(NeoByteString::from_slice(&current_calling_script_hash()))
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -341,7 +525,7 @@ impl NeoVMSyscall {
 
     #[cfg(not(target_arch = "wasm32"))]
     pub fn get_entry_script_hash() -> NeoResult<NeoByteString> {
-        Ok(NeoByteString::from_slice(&current_contract_hash()))
+        Ok(NeoByteString::from_slice(&current_entry_script_hash()))
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -351,7 +535,7 @@ impl NeoVMSyscall {
 
     #[cfg(not(target_arch = "wasm32"))]
     pub fn get_executing_script_hash() -> NeoResult<NeoByteString> {
-        Ok(NeoByteString::from_slice(&current_contract_hash()))
+        Ok(NeoByteString::from_slice(&current_executing_script_hash()))
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -412,7 +596,29 @@ impl NeoVMSyscall {
             NeoValue::from(call_flags.clone()),
             NeoValue::from(args.clone()),
         ];
-        Self::call_value("System.Contract.Call", &values)
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let parsed_flags = Self::parse_call_flags(call_flags)?;
+            Self::begin_contract_invocation_with_flags(script_hash, parsed_flags)?;
+            let call_result = Self::call_value("System.Contract.Call", &values);
+            let unwind_result = Self::end_contract_invocation();
+            match (call_result, unwind_result) {
+                (Ok(value), Ok(())) => Ok(value),
+                (Err(err), Ok(())) => Err(err),
+                (Ok(_), Err(unwind_err)) => Err(unwind_err),
+                (Err(call_err), Err(unwind_err)) => Err(NeoError::new(&format!(
+                    "contract_call failed ({}) and invocation unwind failed ({})",
+                    call_err.message(),
+                    unwind_err.message()
+                ))),
+            }
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            Self::call_value("System.Contract.Call", &values)
+        }
     }
 
     /// Call a native contract by id.
@@ -422,7 +628,15 @@ impl NeoVMSyscall {
     }
 
     pub fn get_call_flags() -> NeoResult<NeoInteger> {
-        Self::call_integer("System.Contract.GetCallFlags")
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            Ok(NeoInteger::new(current_call_flags()))
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            Self::call_integer("System.Contract.GetCallFlags")
+        }
     }
 
     pub fn create_standard_account(pubkey: &NeoByteString) -> NeoResult<NeoByteString> {
@@ -497,7 +711,12 @@ impl NeoVMSyscall {
 
     #[cfg(not(target_arch = "wasm32"))]
     pub fn storage_get_context() -> NeoResult<NeoStorageContext> {
-        STORAGE_STATE.create_context(current_contract_hash(), false)
+        let flags = current_call_flags();
+        if !call_flags_allow_read(flags) {
+            return Err(NeoError::InvalidOperation);
+        }
+        let read_only = !call_flags_allow_write(flags);
+        STORAGE_STATE.create_context(current_executing_script_hash(), read_only)
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -507,7 +726,10 @@ impl NeoVMSyscall {
 
     #[cfg(not(target_arch = "wasm32"))]
     pub fn storage_get_read_only_context() -> NeoResult<NeoStorageContext> {
-        STORAGE_STATE.create_context(current_contract_hash(), true)
+        if !call_flags_allow_read(current_call_flags()) {
+            return Err(NeoError::InvalidOperation);
+        }
+        STORAGE_STATE.create_context(current_executing_script_hash(), true)
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -530,6 +752,9 @@ impl NeoVMSyscall {
         context: &NeoStorageContext,
         key: &NeoByteString,
     ) -> NeoResult<NeoByteString> {
+        if !call_flags_allow_read(current_call_flags()) {
+            return Err(NeoError::InvalidOperation);
+        }
         let handle = STORAGE_STATE.get_handle(context)?;
         let store = handle.store.read().map_err(|_| NeoError::InvalidState)?;
         let value = store.get(key.as_slice()).cloned().unwrap_or_else(Vec::new);
@@ -542,6 +767,9 @@ impl NeoVMSyscall {
         key: &NeoByteString,
         value: &NeoByteString,
     ) -> NeoResult<()> {
+        if !call_flags_allow_write(current_call_flags()) {
+            return Err(NeoError::InvalidOperation);
+        }
         let handle = STORAGE_STATE.get_handle(context)?;
         if handle.read_only {
             return Err(NeoError::InvalidOperation);
@@ -589,6 +817,9 @@ impl NeoVMSyscall {
 
     #[cfg(not(target_arch = "wasm32"))]
     pub fn storage_delete(context: &NeoStorageContext, key: &NeoByteString) -> NeoResult<()> {
+        if !call_flags_allow_write(current_call_flags()) {
+            return Err(NeoError::InvalidOperation);
+        }
         let handle = STORAGE_STATE.get_handle(context)?;
         if handle.read_only {
             return Err(NeoError::InvalidOperation);
@@ -614,6 +845,9 @@ impl NeoVMSyscall {
         context: &NeoStorageContext,
         prefix: &NeoByteString,
     ) -> NeoResult<NeoIterator<NeoValue>> {
+        if !call_flags_allow_read(current_call_flags()) {
+            return Err(NeoError::InvalidOperation);
+        }
         let handle = STORAGE_STATE.get_handle(context)?;
         let prefix_bytes = prefix.as_slice();
         let store = handle.store.read().map_err(|_| NeoError::InvalidState)?;

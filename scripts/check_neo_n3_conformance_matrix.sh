@@ -35,4 +35,41 @@ if [[ -n "$violations" ]]; then
   exit 1
 fi
 
-echo "Neo N3 conformance matrix gate passed: all syscall/native rows are marked with direct test coverage."
+expected_tmp=$(mktemp)
+matrix_tmp=$(mktemp)
+missing_tmp=$(mktemp)
+trap 'rm -f "$expected_tmp" "$matrix_tmp" "$missing_tmp"' EXIT
+
+grep -o 'name: "[^"]*"' "$ROOT_DIR/wasm-neovm/src/generated/syscalls.rs" \
+  | sed -E 's/name: "([^"]*)"/\1/' \
+  > "$expected_tmp"
+grep -o 'name: "[^"]*"' "$ROOT_DIR/wasm-neovm/src/syscalls.rs" \
+  | sed -E 's/name: "([^"]*)"/\1/' \
+  | grep '^Neo\.Crypto\.' \
+  >> "$expected_tmp"
+sort -u "$expected_tmp" -o "$expected_tmp"
+
+awk -F'|' '
+  function trim(s) {
+    gsub(/^[ \t]+|[ \t]+$/, "", s)
+    return s
+  }
+
+  $0 ~ /^\| `System\./ || $0 ~ /^\| `Neo\.Crypto\./ {
+    descriptor = trim($2)
+    gsub(/`/, "", descriptor)
+    print descriptor
+  }
+' "$MATRIX_FILE" | sort -u > "$matrix_tmp"
+
+comm -23 "$expected_tmp" "$matrix_tmp" > "$missing_tmp"
+if [[ -s "$missing_tmp" ]]; then
+  echo "ERROR: conformance matrix is missing syscall/native rows for:" >&2
+  while IFS= read -r descriptor; do
+    [[ -n "$descriptor" ]] && echo "  - $descriptor" >&2
+  done < "$missing_tmp"
+  echo "Add rows to docs/neo-n3-conformance-matrix.md before merging." >&2
+  exit 1
+fi
+
+echo "Neo N3 conformance matrix gate passed: direct coverage flags are set and rows match the current syscall/native registry."

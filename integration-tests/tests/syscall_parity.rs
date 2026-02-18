@@ -97,3 +97,34 @@ fn devpack_syscalls_have_canonical_aliases_in_translator() {
         }
     }
 }
+
+#[test]
+fn descriptor_and_alias_variants_resolve_consistently() {
+    for syscall in DEVPACK_SYSCALLS {
+        let lowercase = syscall.name.to_ascii_lowercase();
+        assert_eq!(
+            translator_aliases::lookup_neo_syscall(&lowercase),
+            Some(syscall.name),
+            "lowercase descriptor variant should resolve for '{}'",
+            syscall.name
+        );
+
+        let slash_variant = syscall.name.replace('.', "/");
+        assert_eq!(
+            translator_aliases::lookup_neo_syscall(&slash_variant),
+            Some(syscall.name),
+            "slash descriptor variant should resolve for '{}'",
+            syscall.name
+        );
+
+        if let Some(alias) = canonical_alias(syscall.name) {
+            let dash_alias = alias.replace('_', "-");
+            assert_eq!(
+                translator_aliases::lookup_neo_syscall(&dash_alias),
+                Some(syscall.name),
+                "dash alias variant should resolve for '{}'",
+                syscall.name
+            );
+        }
+    }
+}

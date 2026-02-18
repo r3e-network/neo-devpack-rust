@@ -18,7 +18,10 @@ fn translate_i32_bitcounts_fold_and_call_helpers() {
 
     let pushint8 = wasm_neovm::opcodes::lookup("PUSHINT8").unwrap().byte;
     let drop = wasm_neovm::opcodes::lookup("DROP").unwrap().byte;
-    assert!(clz_translation.script.windows(2).any(|w| w == [pushint8, 27]));
+    assert!(clz_translation
+        .script
+        .windows(2)
+        .any(|w| w == [pushint8, 27]));
     assert!(clz_translation.script.contains(&drop));
 
     let dynamic_wasm = wat::parse_str(

@@ -9,7 +9,7 @@ pub const SYSCALLS: &[NeoVMSyscallInfo] = &[
         name: "System.Contract.Call",
         hash: 0x525b7d62,
         parameters: &["Hash160", "String", "Integer", "Array"],
-        return_type: "Void",
+        return_type: "StackItem",
         gas_cost: 32768,
         description: "",
     },
