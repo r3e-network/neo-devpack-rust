@@ -113,6 +113,38 @@ pub fn std_lib_hash() -> NeoByteString {
 mod tests {
     use super::*;
 
+    fn hex_nibble(byte: u8) -> Option<u8> {
+        match byte {
+            b'0'..=b'9' => Some(byte - b'0'),
+            b'a'..=b'f' => Some(byte - b'a' + 10),
+            b'A'..=b'F' => Some(byte - b'A' + 10),
+            _ => None,
+        }
+    }
+
+    fn parse_rpc_hash_to_le_bytes(hash: &str) -> [u8; 20] {
+        assert!(hash.starts_with("0x"), "hash must be 0x-prefixed");
+        let hex = hash.as_bytes();
+        assert_eq!(hex.len(), 42, "hash must have 40 hex chars");
+
+        let mut be = [0u8; 20];
+        let mut i = 0usize;
+        while i < 20 {
+            let hi = hex_nibble(hex[2 + i * 2]).expect("valid hex high nibble");
+            let lo = hex_nibble(hex[3 + i * 2]).expect("valid hex low nibble");
+            be[i] = (hi << 4) | lo;
+            i += 1;
+        }
+
+        let mut le = [0u8; 20];
+        let mut j = 0usize;
+        while j < 20 {
+            le[j] = be[19 - j];
+            j += 1;
+        }
+        le
+    }
+
     #[test]
     fn native_hashes_have_expected_shapes() {
         assert_eq!(NEO_CONTRACT.len(), 42);
@@ -134,5 +166,27 @@ mod tests {
                 0x89, 0xfe, 0x7c, 0x4b, 0x92, 0xfe
             ]
         );
+    }
+
+    #[test]
+    fn rpc_hex_and_little_endian_constants_stay_in_sync() {
+        let pairs: [(&str, [u8; 20]); 11] = [
+            (NEO_CONTRACT, NEO_CONTRACT_LE),
+            (GAS_CONTRACT, GAS_CONTRACT_LE),
+            (CONTRACT_MANAGEMENT, CONTRACT_MANAGEMENT_LE),
+            (POLICY_CONTRACT, POLICY_CONTRACT_LE),
+            (ORACLE_CONTRACT, ORACLE_CONTRACT_LE),
+            (ROLE_MANAGEMENT, ROLE_MANAGEMENT_LE),
+            (NOTARY_CONTRACT, NOTARY_CONTRACT_LE),
+            (TREASURY_CONTRACT, TREASURY_CONTRACT_LE),
+            (LEDGER_CONTRACT, LEDGER_CONTRACT_LE),
+            (CRYPTO_LIB, CRYPTO_LIB_LE),
+            (STD_LIB, STD_LIB_LE),
+        ];
+
+        for (rpc_hex, expected_le) in pairs {
+            let derived = parse_rpc_hash_to_le_bytes(rpc_hex);
+            assert_eq!(derived, expected_le, "mismatch for {rpc_hex}");
+        }
     }
 }
