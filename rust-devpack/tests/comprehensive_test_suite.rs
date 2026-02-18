@@ -227,3 +227,125 @@ fn common_supported_standards_include_extended_neps() {
     assert!(standards.contains(&NEP24_STANDARD));
     assert!(standards.contains(&NEP26_STANDARD));
 }
+
+struct StandardsHarness;
+
+impl Nep22Update for StandardsHarness {
+    fn update(
+        &self,
+        _nef_file: NeoByteString,
+        _manifest: NeoString,
+        _data: NeoValue,
+    ) -> NeoResult<()> {
+        Ok(())
+    }
+}
+
+impl Nep26Receiver for StandardsHarness {
+    fn on_nep11_payment(
+        &self,
+        _from: NeoByteString,
+        _amount: NeoInteger,
+        _token_id: NeoByteString,
+        _data: NeoValue,
+    ) -> NeoResult<()> {
+        Ok(())
+    }
+}
+
+impl Nep24Royalty for StandardsHarness {
+    fn royalty_info(
+        &self,
+        _token_id: &NeoByteString,
+        _royalty_token: &NeoByteString,
+        _sale_price: &NeoInteger,
+    ) -> NeoResult<Vec<Nep24RoyaltyRecipient>> {
+        Ok(Vec::new())
+    }
+}
+
+impl Nep24RoyaltyStack for StandardsHarness {
+    fn royalty_info_stack(
+        &self,
+        _token_id: NeoByteString,
+        _royalty_token: NeoByteString,
+        _sale_price: NeoInteger,
+    ) -> NeoResult<NeoArray<NeoValue>> {
+        Ok(NeoArray::new())
+    }
+}
+
+impl Nep27Receiver for StandardsHarness {
+    fn on_nep17_payment(
+        &self,
+        _from: NeoByteString,
+        _amount: NeoInteger,
+        _data: NeoValue,
+    ) -> NeoResult<()> {
+        Ok(())
+    }
+}
+
+impl Nep29Deploy for StandardsHarness {
+    fn deploy(&self, _data: NeoValue, _update: NeoBoolean) -> NeoResult<()> {
+        Ok(())
+    }
+}
+
+impl Nep30Verify for StandardsHarness {
+    fn verify(&self) -> NeoResult<NeoBoolean> {
+        Ok(NeoBoolean::new(true))
+    }
+}
+
+impl Nep31Destroy for StandardsHarness {
+    fn destroy(&self) -> NeoResult<()> {
+        Ok(())
+    }
+}
+
+#[test]
+fn standards_constants_cover_extended_neps() {
+    assert_eq!(NEP_11, "NEP-11");
+    assert_eq!(NEP_17, "NEP-17");
+    assert_eq!(NEP_22, "NEP-22");
+    assert_eq!(NEP_24, "NEP-24");
+    assert_eq!(NEP_26, "NEP-26");
+    assert_eq!(NEP_27, "NEP-27");
+    assert_eq!(NEP_29, "NEP-29");
+    assert_eq!(NEP_30, "NEP-30");
+    assert_eq!(NEP_31, "NEP-31");
+    assert!(LIFECYCLE_STANDARDS.contains(&"NEP-29"));
+    assert!(CALLBACK_STANDARDS.contains(&"NEP-27"));
+}
+
+#[test]
+fn standards_traits_are_usable() {
+    let harness = StandardsHarness;
+    let any = NeoValue::from(NeoInteger::new(1));
+    let bytes = NeoByteString::from_slice(b"neo");
+
+    harness
+        .update(bytes.clone(), NeoString::from_str("{}"), any.clone())
+        .unwrap();
+    harness
+        .on_nep11_payment(
+            bytes.clone(),
+            NeoInteger::new(1),
+            bytes.clone(),
+            any.clone(),
+        )
+        .unwrap();
+    harness
+        .on_nep17_payment(bytes.clone(), NeoInteger::new(1), any.clone())
+        .unwrap();
+    harness
+        .royalty_info(&bytes.clone(), &bytes.clone(), &NeoInteger::new(100))
+        .unwrap();
+    harness
+        .royalty_info_stack(bytes.clone(), bytes.clone(), NeoInteger::new(100))
+        .unwrap();
+    harness.deploy(any, NeoBoolean::new(false)).unwrap();
+    assert!(harness.verify().unwrap().as_bool());
+    harness.destroy().unwrap();
+}

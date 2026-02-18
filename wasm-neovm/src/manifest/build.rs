@@ -114,12 +114,60 @@ fn detect_supported_standards(methods: &[ManifestMethod]) -> Vec<String> {
         standards.push("NEP-24".to_string());
     }
 
-    // NEP-26 (upgrade lifecycle convention): update + destroy.
-    if names.contains("update") && names.contains("destroy") {
+    // NEP-22: update(nefFile, manifest, data).
+    if has_method_arity(methods, "update", 3) {
+        standards.push("NEP-22".to_string());
+    }
+
+    // NEP-26: onNEP11Payment(from, amount, tokenId, data).
+    if has_method_arity(methods, "onNEP11Payment", 4) {
         standards.push("NEP-26".to_string());
     }
 
+    // NEP-27: onNEP17Payment(from, amount, data).
+    if has_method_arity(methods, "onNEP17Payment", 3) {
+        standards.push("NEP-27".to_string());
+    }
+
+    // NEP-29: _deploy(data, update).
+    if methods
+        .iter()
+        .any(|method| method.name.eq_ignore_ascii_case("_deploy") && method.parameters.len() == 2)
+    {
+        standards.push("NEP-29".to_string());
+    }
+
+    // NEP-30: verify(...) returning Boolean.
+    let verify_methods: Vec<&ManifestMethod> = methods
+        .iter()
+        .filter(|method| normalize_method_name(&method.name) == "verify")
+        .collect();
+    if verify_methods.len() == 1
+        && (verify_methods[0]
+            .return_type
+            .eq_ignore_ascii_case("Boolean")
+            || verify_methods[0].return_type.eq_ignore_ascii_case("Bool"))
+    {
+        standards.push("NEP-30".to_string());
+    }
+
+    // NEP-31: destroy() with void return.
+    if methods.iter().any(|method| {
+        normalize_method_name(&method.name) == "destroy"
+            && method.parameters.is_empty()
+            && method.return_type.eq_ignore_ascii_case("Void")
+    }) {
+        standards.push("NEP-31".to_string());
+    }
+
     standards
+}
+
+fn has_method_arity(methods: &[ManifestMethod], method_name: &str, arity: usize) -> bool {
+    let normalized = normalize_method_name(method_name);
+    methods.iter().any(|method| {
+        normalize_method_name(&method.name) == normalized && method.parameters.len() == arity
+    })
 }
 
 fn normalize_method_name(name: &str) -> String {

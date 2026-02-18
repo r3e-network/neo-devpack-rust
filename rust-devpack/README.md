@@ -185,11 +185,20 @@ pub struct ApprovalEvent {
 }
 
 neo_permission!("0xff", ["balanceOf"]);
-neo_supported_standards!(["NEP-17", "NEP-24", "NEP-26"]);
+neo_supported_standards!(["NEP-17", "NEP-24", "NEP-27"]);
 neo_trusts!(["*"]);
 ```
 
 Each invocation emits a `neo.manifest` custom section that `wasm-neovm` merges during translation, keeping your NEF manifest aligned with the code without extra tooling.
+
+The devpack also exposes reusable standard helpers:
+
+```rust
+use neo_devpack::standards::{
+    Nep22Update, Nep24Royalty, Nep26Receiver, Nep27Receiver, Nep29Deploy, Nep30Verify, Nep31Destroy,
+    NEP_22, NEP_24, NEP_26, NEP_27, NEP_29, NEP_30, NEP_31,
+};
+```
 
 You can also use standards helpers directly:
 

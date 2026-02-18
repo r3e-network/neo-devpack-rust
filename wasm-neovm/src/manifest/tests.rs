@@ -53,16 +53,16 @@ fn merge_manifest_deeply_combines_objects() {
 }
 
 #[test]
-fn build_manifest_detects_nep17_nep24_nep26() {
+fn build_manifest_detects_nep17_nep24_nep26_nep27() {
     let methods = vec![
         manifest_method("symbol", 0),
         manifest_method("decimals", 0),
         manifest_method("total_supply", 0),
         manifest_method("balanceOf", 1),
-        manifest_method("transfer", 4),
+        manifest_method("transfer", 3),
         manifest_method("royalty_info", 3),
-        manifest_method("update", 2),
-        manifest_method("destroy", 0),
+        manifest_method("on_nep11_payment", 4),
+        manifest_method("on_nep17_payment", 3),
     ];
 
     let manifest = build_manifest("TokenLike", &methods).value;
@@ -77,6 +77,57 @@ fn build_manifest_detects_nep17_nep24_nep26() {
     assert!(standards.contains(&"NEP-17"));
     assert!(standards.contains(&"NEP-24"));
     assert!(standards.contains(&"NEP-26"));
+    assert!(standards.contains(&"NEP-27"));
+}
+
+#[test]
+fn build_manifest_detects_lifecycle_neps() {
+    let mut verify = manifest_method("verify", 0);
+    verify.return_type = "Boolean".to_string();
+
+    let mut destroy = manifest_method("destroy", 0);
+    destroy.return_type = "Void".to_string();
+
+    let methods = vec![
+        manifest_method("update", 3),
+        manifest_method("_deploy", 2),
+        verify,
+        destroy,
+    ];
+
+    let manifest = build_manifest("LifecycleLike", &methods).value;
+    let standards = manifest["supportedstandards"]
+        .as_array()
+        .expect("supported standards array");
+    let standards: Vec<&str> = standards
+        .iter()
+        .filter_map(|value| value.as_str())
+        .collect();
+
+    assert!(standards.contains(&"NEP-22"));
+    assert!(standards.contains(&"NEP-29"));
+    assert!(standards.contains(&"NEP-30"));
+    assert!(standards.contains(&"NEP-31"));
+}
+
+#[test]
+fn build_manifest_does_not_detect_nep30_without_boolean_verify() {
+    let mut verify = manifest_method("verify", 0);
+    verify.return_type = "Void".to_string();
+
+    let manifest = build_manifest("NoVerifyBool", &[verify]).value;
+    let standards = manifest["supportedstandards"]
+        .as_array()
+        .expect("supported standards array");
+    let standards: Vec<&str> = standards
+        .iter()
+        .filter_map(|value| value.as_str())
+        .collect();
+
+    assert!(
+        !standards.contains(&"NEP-30"),
+        "verify must return Boolean to satisfy NEP-30"
+    );
 }
 
 #[test]
