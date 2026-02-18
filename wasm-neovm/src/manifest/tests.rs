@@ -1,6 +1,24 @@
-use super::{collect_method_names, ensure_manifest_methods_match, merge_manifest};
+use super::{
+    build_manifest, collect_method_names, ensure_manifest_methods_match, merge_manifest,
+    ManifestMethod, ManifestParameter,
+};
 use serde_json::json;
 use std::collections::HashSet;
+
+fn manifest_method(name: &str, param_count: usize) -> ManifestMethod {
+    ManifestMethod {
+        name: name.to_string(),
+        parameters: (0..param_count)
+            .map(|idx| ManifestParameter {
+                name: format!("arg{idx}"),
+                kind: "Any".to_string(),
+            })
+            .collect(),
+        return_type: "Any".to_string(),
+        offset: 0,
+        safe: false,
+    }
+}
 
 #[test]
 fn merge_manifest_deeply_combines_objects() {
@@ -32,6 +50,57 @@ fn merge_manifest_deeply_combines_objects() {
     );
     assert_eq!(base["abi"]["methods"].as_array().unwrap().len(), 1);
     assert_eq!(base["abi"]["events"].as_array().unwrap().len(), 1);
+}
+
+#[test]
+fn build_manifest_detects_nep17_nep24_nep26() {
+    let methods = vec![
+        manifest_method("symbol", 0),
+        manifest_method("decimals", 0),
+        manifest_method("total_supply", 0),
+        manifest_method("balanceOf", 1),
+        manifest_method("transfer", 4),
+        manifest_method("royalty_info", 3),
+        manifest_method("update", 2),
+        manifest_method("destroy", 0),
+    ];
+
+    let manifest = build_manifest("TokenLike", &methods).value;
+    let standards = manifest["supportedstandards"]
+        .as_array()
+        .expect("supported standards array");
+    let standards: Vec<&str> = standards
+        .iter()
+        .filter_map(|value| value.as_str())
+        .collect();
+
+    assert!(standards.contains(&"NEP-17"));
+    assert!(standards.contains(&"NEP-24"));
+    assert!(standards.contains(&"NEP-26"));
+}
+
+#[test]
+fn build_manifest_detects_nep11() {
+    let methods = vec![
+        manifest_method("balance_of", 1),
+        manifest_method("owner_of", 1),
+        manifest_method("tokens_of", 1),
+    ];
+
+    let manifest = build_manifest("NftLike", &methods).value;
+    let standards = manifest["supportedstandards"]
+        .as_array()
+        .expect("supported standards array");
+    let standards: Vec<&str> = standards
+        .iter()
+        .filter_map(|value| value.as_str())
+        .collect();
+
+    assert!(standards.contains(&"NEP-11"));
+    assert!(
+        !standards.contains(&"NEP-17"),
+        "ownerOf signal should prevent NEP-17 detection"
+    );
 }
 
 #[test]

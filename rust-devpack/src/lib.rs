@@ -6,6 +6,7 @@
 //! Complete Rust SDK for Neo N3 smart contract development
 
 pub mod codec;
+pub mod standards;
 pub mod storage;
 pub mod utils;
 
@@ -22,17 +23,24 @@ pub use neo_types::{
     NeoIterator, NeoMap, NeoResult, NeoStorageContext, NeoString, NeoStruct, NeoValue,
 };
 pub use serde;
+pub use standards::{
+    common_supported_standards, compute_bps_royalty, Nep24Royalty, Nep24RoyaltyRecipient,
+    Nep26Lifecycle, NEP11_STANDARD, NEP17_STANDARD, NEP24_STANDARD, NEP26_STANDARD,
+    NEP_BPS_DENOMINATOR,
+};
 
 /// Neo N3 Prelude - commonly used items
 pub mod prelude {
     pub use crate::{
-        neo_contract, neo_entry, neo_event, neo_manifest_overlay, neo_method, neo_permission,
-        neo_safe, neo_safe_methods, neo_supported_standards, neo_trusts, serde, NeoArray,
-        NeoBoolean, NeoByteString, NeoContract, NeoContractABI, NeoContractEntry, NeoContractEvent,
-        NeoContractManifest, NeoContractMethod, NeoContractMethodTrait, NeoContractParameter,
-        NeoContractPermission, NeoContractRuntime, NeoContractTrait, NeoCrypto, NeoError,
-        NeoInteger, NeoIterator, NeoJSON, NeoMap, NeoResult, NeoRuntime, NeoRuntimeContext,
-        NeoStorage, NeoStorageContext, NeoString, NeoStruct, NeoValue,
+        common_supported_standards, compute_bps_royalty, neo_contract, neo_entry, neo_event,
+        neo_manifest_overlay, neo_method, neo_permission, neo_safe, neo_safe_methods,
+        neo_supported_standards, neo_trusts, serde, NeoArray, NeoBoolean, NeoByteString,
+        NeoContract, NeoContractABI, NeoContractEntry, NeoContractEvent, NeoContractManifest,
+        NeoContractMethod, NeoContractMethodTrait, NeoContractParameter, NeoContractPermission,
+        NeoContractRuntime, NeoContractTrait, NeoCrypto, NeoError, NeoInteger, NeoIterator,
+        NeoJSON, NeoMap, NeoResult, NeoRuntime, NeoRuntimeContext, NeoStorage, NeoStorageContext,
+        NeoString, NeoStruct, NeoValue, Nep24Royalty, Nep24RoyaltyRecipient, Nep26Lifecycle,
+        NEP11_STANDARD, NEP17_STANDARD, NEP24_STANDARD, NEP26_STANDARD, NEP_BPS_DENOMINATOR,
     };
 }
 

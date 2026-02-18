@@ -1,4 +1,5 @@
 use serde_json::json;
+use std::collections::HashSet;
 
 use super::{ManifestMethod, RenderedManifest};
 
@@ -37,6 +38,7 @@ pub fn build_manifest_with_config(
     config: ManifestConfig,
     methods: &[ManifestMethod],
 ) -> RenderedManifest {
+    let supported_standards = detect_supported_standards(methods);
     let extra = if let Some(email) = config.email {
         json!({
             "author": config.author,
@@ -56,7 +58,7 @@ pub fn build_manifest_with_config(
         "name": config.contract_name,
         "groups": [],
         "features": {},
-        "supportedstandards": [],
+        "supportedstandards": supported_standards,
         "permissions": [],
         "trusts": [],
         "abi": {
@@ -83,4 +85,49 @@ pub fn build_manifest_with_config(
     }
 
     RenderedManifest { value: manifest }
+}
+
+fn detect_supported_standards(methods: &[ManifestMethod]) -> Vec<String> {
+    let names: HashSet<String> = methods
+        .iter()
+        .map(|method| normalize_method_name(&method.name))
+        .collect();
+
+    let mut standards = Vec::new();
+
+    // NEP-17 (fungible): symbol, decimals, totalSupply, balanceOf, transfer and no ownerOf.
+    let nep17_required = ["symbol", "decimals", "totalsupply", "balanceof", "transfer"];
+    let has_ownerof = names.contains("ownerof");
+    if nep17_required.iter().all(|name| names.contains(*name)) && !has_ownerof {
+        standards.push("NEP-17".to_string());
+    }
+
+    // NEP-11 (NFT): balanceOf + ownerOf + transfer mechanism.
+    let has_nep11_transfer =
+        names.contains("transfer") || names.contains("transferfrom") || names.contains("tokensof");
+    if names.contains("balanceof") && has_ownerof && has_nep11_transfer {
+        standards.push("NEP-11".to_string());
+    }
+
+    // NEP-24 (royalty/discovery): tokenURI or royaltyInfo.
+    if names.contains("tokenuri") || names.contains("royaltyinfo") {
+        standards.push("NEP-24".to_string());
+    }
+
+    // NEP-26 (upgrade lifecycle convention): update + destroy.
+    if names.contains("update") && names.contains("destroy") {
+        standards.push("NEP-26".to_string());
+    }
+
+    standards
+}
+
+fn normalize_method_name(name: &str) -> String {
+    let mut out = String::with_capacity(name.len());
+    for c in name.chars() {
+        if c != '_' && c != '-' {
+            out.push(c.to_ascii_lowercase());
+        }
+    }
+    out
 }

@@ -175,3 +175,55 @@ fn neo_manifest_serde_accepts_translator_extra_metadata() {
     assert_eq!(parsed.email, "dev@neo.org");
     assert_eq!(parsed.description, "Generated");
 }
+
+#[test]
+fn nep24_royalty_helper_computes_basis_points() {
+    let sale_price = NeoInteger::new(1_000_000u32);
+    let royalty = compute_bps_royalty(&sale_price, 500).expect("royalty should compute");
+    assert_eq!(royalty.as_i32_saturating(), 50_000);
+
+    let err = compute_bps_royalty(&sale_price, 10_001).expect_err("bps > 10000 must fail");
+    assert!(err.message().contains("bps cannot exceed 10000"));
+}
+
+struct LifecycleHarness;
+
+impl Nep26Lifecycle for LifecycleHarness {}
+
+#[test]
+fn nep26_lifecycle_helpers_delegate_runtime_calls() {
+    let harness = LifecycleHarness;
+    let script_hash = NeoByteString::from_slice(b"hash");
+    let nef = NeoByteString::from_slice(b"nef");
+    let manifest = NeoContractManifest {
+        name: "Lifecycle".to_string(),
+        version: "1.0.0".to_string(),
+        author: "Neo".to_string(),
+        email: "dev@neo.org".to_string(),
+        description: "Lifecycle test".to_string(),
+        abi: NeoContractABI {
+            hash: "0x00".to_string(),
+            methods: Vec::new(),
+            events: Vec::new(),
+        },
+        permissions: Vec::new(),
+        trusts: Vec::new(),
+        supported_standards: vec![NEP26_STANDARD.to_string()],
+    };
+
+    harness
+        .update_contract(&script_hash, &nef, &manifest)
+        .expect("update should succeed");
+    harness
+        .destroy_contract(&script_hash)
+        .expect("destroy should succeed");
+}
+
+#[test]
+fn common_supported_standards_include_extended_neps() {
+    let standards = common_supported_standards();
+    assert!(standards.contains(&NEP17_STANDARD));
+    assert!(standards.contains(&NEP11_STANDARD));
+    assert!(standards.contains(&NEP24_STANDARD));
+    assert!(standards.contains(&NEP26_STANDARD));
+}

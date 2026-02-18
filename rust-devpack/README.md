@@ -10,6 +10,7 @@ A complete Rust SDK for Neo N3 smart contract development, providing a well-desi
 - **Event System**: Built-in event emission and handling
 - **Macro System**: Powerful procedural macros for contract development
 - **Runtime Integration**: Complete runtime environment for smart contracts
+- **Standards Helpers**: NEP-24 royalty helpers and NEP-26 lifecycle wrappers
 - **Testing Framework**: Built-in testing and benchmarking support
 
 ## 📦 Installation
@@ -184,11 +185,21 @@ pub struct ApprovalEvent {
 }
 
 neo_permission!("0xff", ["balanceOf"]);
-neo_supported_standards!(["NEP-17"]);
+neo_supported_standards!(["NEP-17", "NEP-24", "NEP-26"]);
 neo_trusts!(["*"]);
 ```
 
 Each invocation emits a `neo.manifest` custom section that `wasm-neovm` merges during translation, keeping your NEF manifest aligned with the code without extra tooling.
+
+You can also use standards helpers directly:
+
+```rust
+use neo_devpack::prelude::*;
+
+let price = NeoInteger::new(1_000_000u32);
+let royalty = compute_bps_royalty(&price, 500)?; // 5%
+assert_eq!(royalty.as_i32_saturating(), 50_000);
+```
 
 ## 🧪 Testing
 

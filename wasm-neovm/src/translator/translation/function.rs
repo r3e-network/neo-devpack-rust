@@ -40,12 +40,12 @@ const ON_NEP17_ADAPTER_TYPE_MULTIPLIER: i128 = 1_000_000_000_000;
 const ON_NEP17_ADAPTER_EXPIRY_MULTIPLIER: i128 = 1_000;
 const ON_NEP17_INVALID_PACKET_COUNT: i128 = 101;
 const GAS_HASH_BE: [u8; 20] = [
-    0xd2, 0xa4, 0xcf, 0xf3, 0x19, 0x13, 0x01, 0x61, 0x55, 0xe3, 0x8e, 0x47, 0x4a, 0x2c, 0x06,
-    0xd0, 0x8b, 0xe2, 0x76, 0xcf,
+    0xd2, 0xa4, 0xcf, 0xf3, 0x19, 0x13, 0x01, 0x61, 0x55, 0xe3, 0x8e, 0x47, 0x4a, 0x2c, 0x06, 0xd0,
+    0x8b, 0xe2, 0x76, 0xcf,
 ];
 const GAS_HASH_LE: [u8; 20] = [
-    0xcf, 0x76, 0xe2, 0x8b, 0xd0, 0x06, 0x2c, 0x4a, 0x47, 0x8e, 0xe3, 0x55, 0x61, 0x01, 0x13,
-    0x19, 0xf3, 0xcf, 0xa4, 0xd2,
+    0xcf, 0x76, 0xe2, 0x8b, 0xd0, 0x06, 0x2c, 0x4a, 0x47, 0x8e, 0xe3, 0x55, 0x61, 0x01, 0x13, 0x19,
+    0xf3, 0xcf, 0xa4, 0xd2,
 ];
 
 fn emit_indexed_opcode(script: &mut Vec<u8>, base_opcode: &str, index: u32) -> Result<()> {
@@ -57,8 +57,8 @@ fn emit_indexed_opcode(script: &mut Vec<u8>, base_opcode: &str, index: u32) -> R
         }
     }
 
-    let opcode = lookup_opcode(base_opcode)
-        .map_err(|_| anyhow!("unknown opcode: {base_opcode}"))?;
+    let opcode =
+        lookup_opcode(base_opcode).map_err(|_| anyhow!("unknown opcode: {base_opcode}"))?;
     if index > u8::MAX as u32 {
         bail!(
             "{} index {} exceeds NeoVM operand limit (0-255)",
@@ -352,7 +352,10 @@ fn emit_on_nep17_payment_config_adapter(script: &mut Vec<u8>, base_temp_slot: u3
 
     // Invalid type value => force invalid packet sentinel.
     script.push(lookup_opcode("DROP")?.byte);
-    let _ = emit_push_int(script, ON_NEP17_ADAPTER_BASE + ON_NEP17_INVALID_PACKET_COUNT);
+    let _ = emit_push_int(
+        script,
+        ON_NEP17_ADAPTER_BASE + ON_NEP17_INVALID_PACKET_COUNT,
+    );
     emit_store_arg(script, 2)?;
     let type_invalid_done_fixup = emit_jump_placeholder(script, "JMP_L")?;
 
@@ -374,7 +377,10 @@ fn emit_on_nep17_payment_config_adapter(script: &mut Vec<u8>, base_temp_slot: u3
     let type_drop_label = script.len();
     patch_jump(script, type_drop_fixup, type_drop_label)?;
     script.push(lookup_opcode("DROP")?.byte);
-    let _ = emit_push_int(script, ON_NEP17_ADAPTER_BASE + ON_NEP17_INVALID_PACKET_COUNT);
+    let _ = emit_push_int(
+        script,
+        ON_NEP17_ADAPTER_BASE + ON_NEP17_INVALID_PACKET_COUNT,
+    );
     emit_store_arg(script, 2)?;
     let type_drop_done_fixup = emit_jump_placeholder(script, "JMP_L")?;
 

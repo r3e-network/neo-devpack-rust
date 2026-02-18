@@ -41,9 +41,12 @@ pub(super) fn emit_neo_syscall(
     import: &FunctionImport,
     script: &mut Vec<u8>,
 ) -> Result<&'static str> {
-    if import.name.eq_ignore_ascii_case("runtime_check_witness_hash") {
-        let convert = opcodes::lookup("CONVERT")
-            .ok_or_else(|| anyhow!("CONVERT opcode metadata missing"))?;
+    if import
+        .name
+        .eq_ignore_ascii_case("runtime_check_witness_hash")
+    {
+        let convert =
+            opcodes::lookup("CONVERT").ok_or_else(|| anyhow!("CONVERT opcode metadata missing"))?;
         if convert.operand_size != 1 || convert.operand_size_prefix != 0 {
             bail!("unexpected CONVERT operand metadata");
         }
