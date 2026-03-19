@@ -10,9 +10,15 @@ A complete Rust SDK for Neo N3 smart contract development, providing a well-desi
 - **Event System**: Built-in event emission and handling
 - **Macro System**: Powerful procedural macros for contract development
 - **Runtime Integration**: Complete runtime environment for smart contracts
-- **Standards Helpers**: NEP-24 royalty helpers and NEP-26 lifecycle wrappers
-- **Native Contract Hashes**: Canonical Neo N3 native contract/script hash constants and helpers
 - **Testing Framework**: Built-in testing and benchmarking support
+
+## Compatibility Note
+
+The devpack binary codec now uses `postcard` for maintained serde-based
+serialization. Serialized bytes produced by older repository revisions that used
+`bincode` are not guaranteed to round-trip with the current
+`neo_devpack::codec` helpers, so persisted contract data should be versioned or
+migrated explicitly when upgrading.
 
 ## 📦 Installation
 
@@ -150,8 +156,7 @@ NeoStorage::put(&context, &key, &value)?;
 
 // Crypto operations
 let hash = NeoCrypto::sha256(&data)?;
-// verify_signature(message, signature, public_key)
-let signature_valid = NeoCrypto::verify_signature(&message, &signature, &public_key)?;
+let signature_valid = NeoCrypto::verify_signature(&public_key, &signature)?;
 ```
 
 ### Events
@@ -186,40 +191,11 @@ pub struct ApprovalEvent {
 }
 
 neo_permission!("0xff", ["balanceOf"]);
-neo_supported_standards!(["NEP-17", "NEP-24", "NEP-27"]);
+neo_supported_standards!(["NEP-17"]);
 neo_trusts!(["*"]);
 ```
 
 Each invocation emits a `neo.manifest` custom section that `wasm-neovm` merges during translation, keeping your NEF manifest aligned with the code without extra tooling.
-
-The devpack also exposes reusable standard helpers:
-
-```rust
-use neo_devpack::standards::{
-    Nep22Update, Nep24Royalty, Nep26Receiver, Nep27Receiver, Nep29Deploy, Nep30Verify, Nep31Destroy,
-    NEP_22, NEP_24, NEP_26, NEP_27, NEP_29, NEP_30, NEP_31,
-};
-```
-
-You can also use standards helpers directly:
-
-```rust
-use neo_devpack::prelude::*;
-
-let price = NeoInteger::new(1_000_000u32);
-let royalty = compute_bps_royalty(&price, 500)?; // 5%
-assert_eq!(royalty.as_i32_saturating(), 50_000);
-```
-
-Native contract hashes are also available from the prelude:
-
-```rust
-use neo_devpack::prelude::*;
-
-let oracle_hash = oracle_contract_hash();
-assert_eq!(ORACLE_CONTRACT, "0xfe924b7cfe89ddd271abaf7210a80a7e11178758");
-assert_eq!(oracle_hash.len(), 20);
-```
 
 ## 🧪 Testing
 

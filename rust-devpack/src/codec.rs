@@ -3,18 +3,16 @@
 
 //! Serialization and deserialization utilities for Neo N3 smart contracts.
 //!
-//! This module provides binary serialization using bincode, which is efficient
-//! for storage and cross-contract communication.
+//! This module provides compact binary serialization using postcard for storage
+//! and cross-contract communication.
 
 use neo_types::{NeoError, NeoResult};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
-use bincode::Options;
+const MAX_CODEC_BYTES: usize = 1024 * 1024;
 
-const MAX_CODEC_BYTES: u64 = 1024 * 1024;
-
-/// Serializes a value to bytes using bincode.
+/// Serializes a value to bytes using postcard.
 ///
 /// # Type Parameters
 /// * `T` - The type to serialize, must implement `Serialize`
@@ -35,13 +33,17 @@ const MAX_CODEC_BYTES: u64 = 1024 * 1024;
 /// let bytes = serialize(&value).unwrap();
 /// ```
 pub fn serialize<T: Serialize>(value: &T) -> NeoResult<Vec<u8>> {
-    bincode::DefaultOptions::new()
-        .with_limit(MAX_CODEC_BYTES)
-        .serialize(value)
-        .map_err(|err| NeoError::new(&format!("Failed to serialize value: {err}")))
+    let bytes = postcard::to_allocvec(value)
+        .map_err(|err| NeoError::new(&format!("Failed to serialize value: {err}")))?;
+    if bytes.len() > MAX_CODEC_BYTES {
+        return Err(NeoError::new(
+            "Failed to serialize value: encoded payload exceeds 1048576 bytes",
+        ));
+    }
+    Ok(bytes)
 }
 
-/// Deserializes bytes to a value using bincode.
+/// Deserializes bytes to a value using postcard.
 ///
 /// # Type Parameters
 /// * `T` - The type to deserialize, must implement `DeserializeOwned`
@@ -64,8 +66,11 @@ pub fn serialize<T: Serialize>(value: &T) -> NeoResult<Vec<u8>> {
 /// assert_eq!(value, restored);
 /// ```
 pub fn deserialize<T: DeserializeOwned>(bytes: &[u8]) -> NeoResult<T> {
-    bincode::DefaultOptions::new()
-        .with_limit(MAX_CODEC_BYTES)
-        .deserialize(bytes)
+    if bytes.len() > MAX_CODEC_BYTES {
+        return Err(NeoError::new(
+            "Failed to deserialize bytes: encoded payload exceeds 1048576 bytes",
+        ));
+    }
+    postcard::from_bytes(bytes)
         .map_err(|err| NeoError::new(&format!("Failed to deserialize bytes: {err}")))
 }

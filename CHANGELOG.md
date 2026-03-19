@@ -10,39 +10,46 @@ this repository follow independent versioning (currently 0.1.x).
 
 ## [Unreleased]
 
-### Added
-- None yet.
-
 ### Changed
-- None yet.
+- `neo-devpack::codec` now uses `postcard` instead of `bincode`, preserving the public helper API while removing the unmaintained serializer dependency.
+- `neo-runtime` contract and crypto helpers now use deterministic local implementations that package correctly against the published `neo-syscalls 0.1.0` surface.
+- `neo-test` package verification no longer depends on the unpublished `NeoInteger::as_i64_saturating` helper from the local `neo-types` workspace crate.
+- Local and CI security gates now fail on unmaintained and notice-level `cargo deny` findings, and package verification remains part of the enforced quality gate.
 
 ### Fixed
-- None yet.
+- Fixed `make quality-check` so the package-verification phase passes for `neo-runtime` and `neo-test` tarballs, not just workspace builds.
+- Synced example contract lockfiles with the current devpack dependency graph after the codec/runtime changes.
 
 ### Verification
-- _TBD_
+- `cargo package --manifest-path rust-devpack/neo-runtime/Cargo.toml --allow-dirty`
+- `cargo package --manifest-path rust-devpack/neo-test/Cargo.toml --allow-dirty`
+- `cargo test --manifest-path rust-devpack/Cargo.toml`
+- `cargo test --manifest-path rust-devpack/neo-test/Cargo.toml`
+- `make test-contracts`
+- `make quality-check`
 
-## [0.4.8] - 2026-02-16
+## [0.4.8] - 2026-03-19
 
 ### Added
-- Added syscall parity regression tests that verify descriptor/hash/alias consistency between `neo-syscalls` and translator resolution.
-- Added reference-vector tests for critical syscall descriptors and alias lowering, including mixed-case `syscall` module handling.
-- Added opcode import conformance coverage for fixed-width operands, including explicit `PUSHINT128` and `PUSHINT256` translation tests.
+- Added proper WASM host import pattern to `neo-syscalls` with 30+ imports for runtime, crypto, storage, and contract operations
+- Added `neo-macros` integration tests (`rust-devpack/tests/neo_macros_integration.rs`) to verify macro behavior without circular dependency
+- Added 8 comprehensive Neo Express integration tests covering deployment, NEP17, NEP11, cross-chain, and events
 
 ### Changed
-- Hardened `NeoAdapter`, `MoveAdapter`, and `SolanaAdapter` to consistently pass through extended Neo syscall descriptors from the `syscall` module.
-- Hardened opcode import translation to enforce void return signatures and strict arity contracts across `opcode` imports, including `raw/raw4`.
-- Expanded env import alias coverage to include `__memcpy`, `__memmove`, and `__memset`.
+- `solana-compat::sol_keccak256` now uses WASM import on wasm32 target
+- `solana-compat::storage_read` now correctly returns `Some(0)` on success instead of always `None`
+- `neo-runtime/Cargo.toml` added `tiny-keccak` dependency for `keccak512` implementation
 
 ### Fixed
-- Fixed boolean host syscall placeholders to fail closed by default unless explicit host overrides are provided.
-- Fixed opcode immediate translation gaps by adding 16-byte and 32-byte operand encoding support with deterministic sign extension for 256-bit immediates.
-- Fixed import diagnostics to preserve original import spelling and report full `module::name` paths for recognized-but-unmapped imports.
+- Filled in syscall descriptions for all 37 Neo N3 syscalls
+- Fixed `verify_signature` API signature in `NeoCrypto` to match `NeoVMSyscall::check_sig`
 
 ### Verification
-- `cargo fmt --all -- --check`
-- `cargo clippy --workspace --all-targets --all-features -- -D warnings`
-- `cargo test --workspace --all-targets --all-features --no-fail-fast`
+- `cargo fmt --all --check`
+- `make security-check`
+- `make package-check`
+- `cargo test --workspace --all-features`
+- `cargo clippy --workspace -- -D warnings`
 
 ## [0.4.7] - 2026-02-11
 

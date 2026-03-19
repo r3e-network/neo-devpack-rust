@@ -5,6 +5,17 @@
 
 use crate::mock_runtime::{MockRuntime, MockStorage};
 use neo_types::*;
+use num_traits::{Signed, ToPrimitive};
+
+fn saturating_i64(value: &NeoInteger) -> i64 {
+    value.as_bigint().to_i64().unwrap_or_else(|| {
+        if value.as_bigint().is_negative() {
+            i64::MIN
+        } else {
+            i64::MAX
+        }
+    })
+}
 
 /// Result of a contract method call for assertions
 pub struct MethodCallResult {
@@ -42,10 +53,10 @@ impl MethodCallResult {
 
     pub fn assert_returns(&self, expected: i64) {
         let value = self.expect_ok_value();
-        let actual = value
+        let integer = value
             .as_integer()
-            .unwrap_or_else(|| panic!("Expected integer return value, got {:?}", value))
-            .as_i64_saturating();
+            .unwrap_or_else(|| panic!("Expected integer return value, got {:?}", value));
+        let actual = saturating_i64(&integer);
         assert_eq!(
             actual, expected,
             "Expected return value {}, got {}",

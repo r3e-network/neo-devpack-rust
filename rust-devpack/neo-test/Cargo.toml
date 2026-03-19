@@ -11,6 +11,7 @@ repository = "https://github.com/r3e-network/neo-llvm"
 neo-devpack = { path = "..", version = "0.1.0" }
 neo-types = { path = "../neo-types", version = "0.1.0" }
 neo-syscalls = { path = "../neo-syscalls", version = "0.1.0" }
+num-traits = "0.2"
 
 [dev-dependencies]
 trybuild = "1.0"

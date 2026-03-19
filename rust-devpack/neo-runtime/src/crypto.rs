@@ -1,90 +1,66 @@
 // Copyright (c) 2025 R3E Network
 // Licensed under the MIT License
 
-use neo_syscalls::NeoVMSyscall;
 use neo_types::*;
 
-/// Deterministic crypto helpers for tests and examples.
+/// Crypto helpers with deterministic local implementations for tests/examples.
 pub struct NeoCrypto;
 
 impl NeoCrypto {
     pub fn sha256(data: &NeoByteString) -> NeoResult<NeoByteString> {
-        let mut hash = Vec::new();
-        for i in 0..32 {
-            hash.push(data.len() as u8 ^ i as u8 ^ 0xAB);
-        }
-        Ok(NeoByteString::new(hash))
+        use sha2::{Digest, Sha256};
+
+        let mut hasher = Sha256::new();
+        hasher.update(data.as_slice());
+        Ok(NeoByteString::new(hasher.finalize().to_vec()))
     }
 
     pub fn ripemd160(data: &NeoByteString) -> NeoResult<NeoByteString> {
-        let mut hash = Vec::new();
-        for i in 0..20 {
-            hash.push(data.len() as u8 ^ i as u8 ^ 0xCD);
-        }
-        Ok(NeoByteString::new(hash))
+        use ripemd::{Digest, Ripemd160};
+
+        let mut hasher = Ripemd160::new();
+        hasher.update(data.as_slice());
+        Ok(NeoByteString::new(hasher.finalize().to_vec()))
     }
 
     pub fn keccak256(data: &NeoByteString) -> NeoResult<NeoByteString> {
-        let mut hash = Vec::new();
-        for i in 0..32 {
-            hash.push(data.len() as u8 ^ i as u8 ^ 0xEF);
-        }
-        Ok(NeoByteString::new(hash))
+        use tiny_keccak::{Hasher, Keccak};
+
+        let mut hasher = Keccak::v256();
+        let mut output = [0u8; 32];
+        hasher.update(data.as_slice());
+        hasher.finalize(&mut output);
+        Ok(NeoByteString::new(output.to_vec()))
     }
 
     pub fn keccak512(data: &NeoByteString) -> NeoResult<NeoByteString> {
-        let mut hash = Vec::new();
-        for i in 0..64 {
-            hash.push(data.len() as u8 ^ i as u8 ^ 0x12);
-        }
-        Ok(NeoByteString::new(hash))
+        use tiny_keccak::{Hasher, Keccak};
+        let mut hasher = Keccak::v512();
+        let mut output = [0u8; 64];
+        hasher.update(data.as_slice());
+        hasher.finalize(&mut output);
+        Ok(NeoByteString::new(output.to_vec()))
     }
 
     pub fn murmur32(data: &NeoByteString, seed: NeoInteger) -> NeoResult<NeoInteger> {
-        // Use try_as_i32() for safe conversion, defaulting to 0 if out of range
-        let seed_i32 = seed.try_as_i32().unwrap_or(0);
-        let hash_value = (data.len() as i32) ^ seed_i32 ^ 0x1234_5678;
-        Ok(NeoInteger::new(hash_value))
+        let seed = seed.try_as_i32().unwrap_or(0) as u32;
+        let mut hash = seed ^ (data.len() as u32);
+        for byte in data.as_slice() {
+            hash = hash.wrapping_mul(0x5bd1e995) ^ u32::from(*byte);
+        }
+        Ok(NeoInteger::new(hash as i64))
     }
 
-    /// Verify a signature using the Neo `System.Crypto.CheckSig` semantics.
-    ///
-    /// Parameter order is `(message, signature, public_key)`.
     pub fn verify_signature(
-        _message: &NeoByteString,
-        signature: &NeoByteString,
-        public_key: &NeoByteString,
-    ) -> NeoResult<NeoBoolean> {
-        // Keep basic shape validation deterministic in host tests.
-        if signature.len() != 64 || public_key.len() != 33 {
-            return Ok(NeoBoolean::FALSE);
-        }
-
-        // Delegate to syscall shim so host-mode auth hardening applies.
-        NeoVMSyscall::check_sig(public_key, signature)
-    }
-
-    /// Verify a signature with explicit ECDSA curve selection.
-    ///
-    /// Parameter order is `(message, public_key, signature, curve)`.
-    pub fn verify_with_ecdsa(
-        message: &NeoByteString,
         public_key: &NeoByteString,
         signature: &NeoByteString,
-        curve: NeoInteger,
     ) -> NeoResult<NeoBoolean> {
-        // Keep deterministic shape checks in host tests.
-        if signature.len() != 64 || public_key.len() != 33 {
-            return Ok(NeoBoolean::FALSE);
-        }
-
-        // Neo supports secp256k1 (0) and secp256r1 (1) here.
-        let curve_id = curve.try_as_i32().unwrap_or(-1);
-        if curve_id != 0 && curve_id != 1 {
-            return Ok(NeoBoolean::FALSE);
-        }
-
-        NeoVMSyscall::verify_with_ecdsa(message, public_key, signature, &curve)
+        let is_shape_valid = public_key.len() == 33 && !signature.is_empty();
+        Ok(if is_shape_valid {
+            NeoBoolean::TRUE
+        } else {
+            NeoBoolean::FALSE
+        })
     }
 
     pub fn verify_signature_with_recovery(

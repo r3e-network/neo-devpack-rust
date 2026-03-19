@@ -8,6 +8,7 @@ The CI/CD pipeline is implemented using GitHub Actions and includes:
 
 - Multi-platform testing (Linux, macOS, Windows)
 - Code quality checks (clippy, rustfmt)
+- Package verification for publishable crates
 - Test coverage reporting
 - Security vulnerability scanning
 - Performance benchmarking
@@ -44,13 +45,19 @@ The main CI workflow runs on every push and pull request to the `master` branch.
    - Uploads coverage reports to Codecov
    - Separate coverage for each major crate
 
-5. **Security Audit** (`security`)
+5. **Package Verification** (`package`)
    - Runs on: Linux (stable)
-   - `cargo audit`: Checks for known vulnerabilities
-   - `cargo deny`: Checks licenses and security policies
-   - Fails on HIGH/CRITICAL vulnerabilities
+   - Executes `make package-check`
+   - Verifies every publishable crate can be packaged and compiled from its tarball
+   - Catches publish-only dependency/API mismatches before release
 
-6. **Benchmark** (`benchmark`)
+6. **Security Audit** (`security`)
+   - Runs on: Linux (stable)
+   - Uses `scripts/run_cargo_audit.sh` to check lockfiles and fall back to the local advisory clone if the RustSec fetch fails
+   - Uses `scripts/run_cargo_deny.sh` to enforce cargo-deny policy with the same fallback behavior
+   - Fails on advisories, unmaintained crates, and notice-level policy violations
+
+7. **Benchmark** (`benchmark`)
    - Runs on: Linux (stable)
    - Runs criterion benchmarks for wasm-neovm and move-neovm
    - Detects performance regressions (±5% threshold)
@@ -73,9 +80,9 @@ The `cargo-deny` configuration enforces:
 ### Advisories
 
 - **Vulnerability**: deny (fails on any vulnerability)
-- **Unmaintained**: warn
+- **Unmaintained**: deny in enforced CI/local checks
 - **Yanked**: warn
-- **Notice**: warn
+- **Notice**: deny in enforced CI/local checks
 
 ### Licenses
 
@@ -152,8 +159,10 @@ Benchmarks for Move bytecode to WASM translation:
    cargo test --all-features
 
    # Security audit
-   cargo audit
-   cargo deny check
+   make security-check
+
+   # Package verification
+   make package-check
 
    # Benchmarks
    cargo bench
@@ -224,6 +233,13 @@ Benchmarks for Move bytecode to WASM translation:
 - Review vulnerability details
 - Update dependencies: `cargo update`
 - Check `deny.toml` for policy violations
+- If GitHub advisory-db fetches are flaky, rerun `make security-check`; the wrapper scripts will retry using the local advisory clone when available
+
+**Package verification fails**:
+
+- Run `make package-check` locally
+- Inspect the crate tarball compile error, not just workspace builds
+- Check whether a packaged crate is using newer local APIs than the published dependency version
 
 **Benchmark regression**:
 

@@ -11,14 +11,14 @@ description = "Neo N3 Rust Development Pack for Smart Contract Development"
 rust-version.workspace = true
 keywords = ["neo", "neovm", "blockchain", "smart-contracts", "sdk"]
 categories = ["cryptography::cryptocurrencies", "development-tools::ffi"]
-include = ["src/**/*", "Cargo.toml", "../LICENSE"]
+include = ["src/**/*", "tests/**/*", "examples/**/*", "README.md", "Cargo.toml", "../LICENSE"]
 
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
-bincode = "1.3"
+postcard = { version = "1.1", default-features = false, features = ["use-std"] }
 
 neo-types = { workspace = true }
 neo-syscalls = { workspace = true }

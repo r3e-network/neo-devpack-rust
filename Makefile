@@ -6,8 +6,6 @@ MAKEFLAGS += --no-builtin-rules
 WASM_TARGET       := wasm32-unknown-unknown
 OUTDIR            := build
 TRANSLATOR        := cargo run --manifest-path wasm-neovm/Cargo.toml --quiet --
-ITERATIONS        ?= 100
-REFERENCE_MODE    ?= auto
 
 CONTRACT_RUSTFLAGS := -C opt-level=z -C strip=symbols -C panic=abort -C target-feature=-simd128,-reference-types,-multivalue,-tail-call
 WASM_SNIP         ?= wasm-snip
@@ -67,7 +65,18 @@ UNISWAP_SNIP_WASM := $(OUTDIR)/UniswapV2.snip.wasm
 STAKING_SNIP_WASM := $(OUTDIR)/StakingRewards.snip.wasm
 TIMELOCK_SNIP_WASM := $(OUTDIR)/TimelockVault.snip.wasm
 FLASHLOAN_SNIP_WASM := $(OUTDIR)/FlashLoanPool.snip.wasm
-.PHONY: help examples cross-chain hello-world nep17-token constant-product nep11-nft uniswap-v2 staking-rewards timelock-vault flashloan-pool multisig-wallet escrow crowdfunding governance-dao oracle-consumer nft-marketplace solana-hello move-coin c-hello fmt lint test verify-contract-tests test-contracts test-cross-chain integration-tests smoke-neoxp security-check iterate-neo-n3 spec clean
+PACKAGE_MANIFESTS := \
+	wasm-neovm/Cargo.toml \
+	rust-devpack/Cargo.toml \
+	rust-devpack/neo-types/Cargo.toml \
+	rust-devpack/neo-syscalls/Cargo.toml \
+	rust-devpack/neo-runtime/Cargo.toml \
+	rust-devpack/neo-macros/Cargo.toml \
+	rust-devpack/neo-test/Cargo.toml \
+	move-neovm/Cargo.toml \
+	solana-compat/Cargo.toml
+
+.PHONY: help examples cross-chain hello-world nep17-token constant-product nep11-nft uniswap-v2 staking-rewards timelock-vault flashloan-pool multisig-wallet escrow crowdfunding governance-dao oracle-consumer nft-marketplace solana-hello move-coin c-hello fmt lint test verify-contract-tests test-contracts test-cross-chain integration-tests smoke-neoxp security-check package-check spec clean
 
 help:
 	@echo "Usage: make <target>"
@@ -103,8 +112,8 @@ help:
 	@echo "  test-cross-chain Run wasm-neovm cross-chain test suites"
 	@echo "  integration-tests  Run optional Neo Express integration harness"
 	@echo "  smoke-neoxp     Run local Neo Express deploy/invoke smoke checks"
-	@echo "  iterate-neo-n3 Run iterative Neo N3 quality gates (ITERATIONS=<n>, REFERENCE_MODE=auto|always|never)"
 	@echo "  security-check Run cargo-audit/cargo-deny checks (requires cargo-audit/cargo-deny)"
+	@echo "  package-check   Verify all publishable crates can be packaged"
 	@echo "  unused-deps     Check for unused dependencies (requires cargo-machete)"
 	@echo "  outdated        Check for outdated dependencies (requires cargo-outdated)"
 	@echo "  version-check   Verify version consistency across workspace"
@@ -410,24 +419,28 @@ test-cross-chain:
 	cargo test --manifest-path wasm-neovm/Cargo.toml --test cross_chain_tests --test solana_move_integration
 
 integration-tests:
-	@echo "Running Neo Express integration tests (requires Neo Express CLI; set NEOXP_BIN if needed)..."
+	@echo "Running integration tests (requires NEO_EXPRESS_RPC)..."
 	cargo test --manifest-path integration-tests/Cargo.toml -- --ignored
 
 smoke-neoxp:
 	scripts/neoxp_smoke.sh
 
-iterate-neo-n3:
-	scripts/iterate_neo_n3_quality.sh --generations $(ITERATIONS) --reference-mode $(REFERENCE_MODE)
-
 security-check:
-	cargo audit --file wasm-neovm/Cargo.lock --deny warnings
-	cargo audit --file move-neovm/Cargo.lock --deny warnings
-	cargo audit --file rust-devpack/Cargo.lock --deny warnings
-	cargo audit --file solana-compat/Cargo.lock --deny warnings
-	cargo audit --file integration-tests/Cargo.lock --deny warnings
-	cargo deny --manifest-path wasm-neovm/Cargo.toml check -W unmaintained -W notice
-	cargo deny --manifest-path move-neovm/Cargo.toml check -W unmaintained -W notice
-	cargo deny --manifest-path rust-devpack/Cargo.toml check -W unmaintained -W notice
+	scripts/run_cargo_audit.sh wasm-neovm/Cargo.lock
+	scripts/run_cargo_audit.sh move-neovm/Cargo.lock
+	scripts/run_cargo_audit.sh rust-devpack/Cargo.lock
+	scripts/run_cargo_audit.sh solana-compat/Cargo.lock
+	scripts/run_cargo_audit.sh integration-tests/Cargo.lock
+	scripts/run_cargo_deny.sh wasm-neovm/Cargo.toml
+	scripts/run_cargo_deny.sh move-neovm/Cargo.toml
+	scripts/run_cargo_deny.sh rust-devpack/Cargo.toml
+
+package-check:
+	@set -e; \
+	for manifest in $(PACKAGE_MANIFESTS); do \
+		echo "==> cargo package --manifest-path $$manifest --allow-dirty"; \
+		cargo package --manifest-path "$$manifest" --allow-dirty; \
+	done
 
 # Check for unused dependencies (requires cargo-machete)
 unused-deps:
@@ -450,7 +463,7 @@ doc:
 	cargo doc --manifest-path rust-devpack/Cargo.toml --no-deps
 
 # Run all quality checks
-quality-check: fmt lint test security-check version-check
+quality-check: fmt lint test security-check package-check version-check
 	@echo "✅ All quality checks passed!"
 
 spec:

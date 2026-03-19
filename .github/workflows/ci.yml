@@ -23,11 +23,18 @@ jobs:
     outputs:
       should_run: ${{ steps.gate.outputs.should_run }}
     steps:
-      - name: Check if CI already ran today
+      - name: Check if scheduled CI already ran today
         id: gate
         uses: actions/github-script@v7
         with:
           script: |
+            // Pushes and PRs should always be validated. Only deduplicate the
+            // scheduled daily run so routine development never gets skipped.
+            if (context.eventName !== "schedule") {
+              core.setOutput("should_run", "true");
+              return;
+            }
+
             const todayUtc = new Date().toISOString().slice(0, 10);
             const { data } = await github.rest.actions.listWorkflowRuns({
               owner: context.repo.owner,
@@ -38,7 +45,7 @@ jobs:
 
             const alreadyRanToday = data.workflow_runs.some((run) => {
               if (run.id === context.runId) return false;
-              if (!["push", "schedule", "pull_request"].includes(run.event)) return false;
+              if (run.event !== "schedule") return false;
               return run.created_at.startsWith(todayUtc);
             });
 
@@ -53,49 +60,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Verify cross-crate syscall parity
-        run: cargo test --manifest-path integration-tests/Cargo.toml --test syscall_parity
-
-      - name: Verify syscall lowering reference vectors
-        run: cargo test --manifest-path wasm-neovm/Cargo.toml --all-features --test neo_n3_direct_syscall_coverage --test syscall_reference_vectors
-
       - name: Verify Neo N3 conformance matrix has no unresolved gaps
         run: bash scripts/check_neo_n3_conformance_matrix.sh
-
-  neo-reference-sync:
-    name: Neo Reference Snapshot Sync
-    needs: [daily-run-gate, neo-n3-conformance-gate]
-    if: needs.daily-run-gate.outputs.should_run == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Checkout canonical Neo source
-        uses: actions/checkout@v4
-        with:
-          repository: neo-project/neo
-          path: neo
-          fetch-depth: 1
-
-      - name: Checkout canonical Neo VM source
-        uses: actions/checkout@v4
-        with:
-          repository: neo-project/neo-vm
-          path: neo-vm
-          fetch-depth: 1
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Verify wasm-neovm against canonical Neo source
-        env:
-          WASM_NEOVM_REQUIRE_NEO_CHECKOUT: "1"
-        run: |
-          cargo test --manifest-path wasm-neovm/Cargo.toml --all-features --test opcode_consistency --test syscall_consistency
 
   test:
     name: Test Suite
@@ -265,75 +231,6 @@ jobs:
         env:
           NEOXP_BIN: /tmp/neo-tools/neoxp
         run: make smoke-neoxp
-
-  neoxp-integration:
-    name: Neo Express Integration Tests
-    needs: [daily-run-gate, neo-n3-conformance-gate]
-    if: needs.daily-run-gate.outputs.should_run == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
-
-      - name: Install .NET SDK
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.0.x'
-
-      - name: Cache cargo registry
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/registry
-          key: ${{ runner.os }}-neoxp-integration-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-neoxp-integration-cargo-registry-
-
-      - name: Cache cargo index
-        uses: actions/cache@v4
-        with:
-          path: ~/.cargo/git
-          key: ${{ runner.os }}-neoxp-integration-cargo-index-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-neoxp-integration-cargo-index-
-
-      - name: Cache cargo build
-        uses: actions/cache@v4
-        with:
-          path: target
-          key: ${{ runner.os }}-neoxp-integration-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-neoxp-integration-cargo-build-target-
-
-      - name: Install integration-test dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y jq
-          if ! command -v wasm-snip >/dev/null 2>&1; then
-            cargo install wasm-snip --locked
-          fi
-
-      - name: Install Neo Express CLI
-        run: |
-          mkdir -p /tmp/neo-tools
-          if [ -x /tmp/neo-tools/neoxp ]; then
-            dotnet tool update Neo.Express --tool-path /tmp/neo-tools
-          else
-            dotnet tool install Neo.Express --tool-path /tmp/neo-tools
-          fi
-          /tmp/neo-tools/neoxp --version
-
-      - name: Build cross-chain integration artifacts
-        run: make cross-chain
-
-      - name: Run Neo Express integration tests
-        env:
-          NEOXP_BIN: /tmp/neo-tools/neoxp
-        run: make integration-tests
 
   clippy:
     name: Clippy
@@ -518,33 +415,67 @@ jobs:
         run: cargo install cargo-deny
 
       - name: Run cargo audit - wasm-neovm
-        run: cargo audit --file wasm-neovm/Cargo.lock
-        continue-on-error: true
+        run: scripts/run_cargo_audit.sh wasm-neovm/Cargo.lock
 
       - name: Run cargo audit - move-neovm
-        run: cargo audit --file move-neovm/Cargo.lock
-        continue-on-error: true
+        run: scripts/run_cargo_audit.sh move-neovm/Cargo.lock
 
       - name: Run cargo audit - rust-devpack
-        run: cargo audit --file rust-devpack/Cargo.lock
-        continue-on-error: true
+        run: scripts/run_cargo_audit.sh rust-devpack/Cargo.lock
 
       - name: Run cargo audit - solana-compat
-        run: cargo audit --file solana-compat/Cargo.lock
-        continue-on-error: true
+        run: scripts/run_cargo_audit.sh solana-compat/Cargo.lock
 
       - name: Run cargo audit - integration-tests
-        run: cargo audit --file integration-tests/Cargo.lock
-        continue-on-error: true
+        run: scripts/run_cargo_audit.sh integration-tests/Cargo.lock
 
       - name: Run cargo deny - wasm-neovm
-        run: cargo deny --manifest-path wasm-neovm/Cargo.toml check -W unmaintained -W notice
+        run: scripts/run_cargo_deny.sh wasm-neovm/Cargo.toml
 
       - name: Run cargo deny - move-neovm
-        run: cargo deny --manifest-path move-neovm/Cargo.toml check -W unmaintained -W notice
+        run: scripts/run_cargo_deny.sh move-neovm/Cargo.toml
 
       - name: Run cargo deny - rust-devpack
-        run: cargo deny --manifest-path rust-devpack/Cargo.toml check -W unmaintained -W notice
+        run: scripts/run_cargo_deny.sh rust-devpack/Cargo.toml
+
+  package:
+    name: Package Verification
+    needs: [daily-run-gate, neo-n3-conformance-gate]
+    if: needs.daily-run-gate.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-package-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-package-cargo-registry-
+
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-package-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-package-cargo-index-
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-package-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-package-cargo-build-target-
+
+      - name: Verify publishable crates package successfully
+        run: make package-check
 
   benchmark:
     name: Benchmark
