@@ -11,7 +11,7 @@ pub const SYSCALLS: &[NeoVMSyscallInfo] = &[
         parameters: &["Hash160", "String", "Integer", "Array"],
         return_type: "StackItem",
         gas_cost: 32768,
-        description: "",
+        description: "Calls a method on a smart contract. Takes the script hash of the target contract, the method name to call, the operation method (0 for default), and an array of arguments. The call flags are inherited from the current execution context.",
     },
     NeoVMSyscallInfo {
         name: "System.Contract.CallNative",
@@ -19,7 +19,7 @@ pub const SYSCALLS: &[NeoVMSyscallInfo] = &[
         parameters: &["Integer"],
         return_type: "Void",
         gas_cost: 0,
-        description: "",
+        description: "Calls a native contract by its registered ID. The integer parameter specifies which native contract to invoke (e.g., NEO, GAS, Policy, etc.).",
     },
     NeoVMSyscallInfo {
         name: "System.Contract.CreateMultisigAccount",
@@ -27,7 +27,7 @@ pub const SYSCALLS: &[NeoVMSyscallInfo] = &[
         parameters: &["Integer", "Array"],
         return_type: "Hash160",
         gas_cost: 0,
-        description: "",
+        description: "Creates a multi-signature account from an array of public keys and the minimum number of signatures required (m-of-n). Returns the script hash of the resulting multi-signature account.",
     },
     NeoVMSyscallInfo {
         name: "System.Contract.CreateStandardAccount",
@@ -35,7 +35,7 @@ pub const SYSCALLS: &[NeoVMSyscallInfo] = &[
         parameters: &["ByteString"],
         return_type: "Hash160",
         gas_cost: 0,
-        description: "",
+        description: "Creates a standard contract account from a single public key. Returns the script hash of the resulting account.",
     },
     NeoVMSyscallInfo {
         name: "System.Contract.GetCallFlags",
@@ -43,7 +43,7 @@ pub const SYSCALLS: &[NeoVMSyscallInfo] = &[
         parameters: &[],
         return_type: "Integer",
         gas_cost: 1024,
-        description: "",
+        description: "Gets the call flags of the current execution context. Call flags control what operations are permitted during contract execution, such as allowing state modifications or contract calls.",
     },
     NeoVMSyscallInfo {
         name: "System.Contract.NativeOnPersist",
@@ -51,7 +51,7 @@ pub const SYSCALLS: &[NeoVMSyscallInfo] = &[
         parameters: &[],
         return_type: "Void",
         gas_cost: 0,
-        description: "",
+        description: "Internal native contract callback triggered when a block is about to be persisted. Called by the VM during the persist phase of block processing.",
     },
     NeoVMSyscallInfo {
         name: "System.Contract.NativePostPersist",
@@ -59,7 +59,7 @@ pub const SYSCALLS: &[NeoVMSyscallInfo] = &[
         parameters: &[],
         return_type: "Void",
         gas_cost: 0,
-        description: "",
+        description: "Internal native contract callback triggered after a block has been persisted. Called by the VM after all block transactions have been processed.",
     },
     NeoVMSyscallInfo {
         name: "System.Crypto.CheckMultisig",
@@ -67,7 +67,7 @@ pub const SYSCALLS: &[NeoVMSyscallInfo] = &[
         parameters: &["Array", "Array"],
         return_type: "Boolean",
         gas_cost: 0,
-        description: "",
+        description: "Verifies a multi-signature against the current script context. Takes an array of signatures and an array of public keys. Returns true if the signatures are valid for the accumulated script hash and enough signatures are verified.",
     },
     NeoVMSyscallInfo {
         name: "System.Crypto.CheckSig",
@@ -75,7 +75,7 @@ pub const SYSCALLS: &[NeoVMSyscallInfo] = &[
         parameters: &["ByteString", "ByteString"],
         return_type: "Boolean",
         gas_cost: 32768,
-        description: "",
+        description: "Verifies a single ECDSA signature against the current script context. Takes the signature and public key as byte strings. Returns true if the signature is valid for the accumulated script hash.",
     },
     NeoVMSyscallInfo {
         name: "Neo.Crypto.VerifyWithECDsa",
@@ -91,7 +91,7 @@ pub const SYSCALLS: &[NeoVMSyscallInfo] = &[
         parameters: &["Iterator"],
         return_type: "Boolean",
         gas_cost: 32768,
-        description: "",
+        description: "Advances an iterator to its next element. Returns true if there is a next element available, or false if the iterator has been exhausted.",
     },
     NeoVMSyscallInfo {
         name: "System.Iterator.Value",
@@ -99,7 +99,7 @@ pub const SYSCALLS: &[NeoVMSyscallInfo] = &[
         parameters: &["Iterator"],
         return_type: "StackItem",
         gas_cost: 16,
-        description: "",
+        description: "Gets the current value of an iterator. Must be called after System.Iterator.Next returns true. Returns the value at the current iterator position.",
     },
     NeoVMSyscallInfo {
         name: "System.Runtime.BurnGas",
@@ -107,7 +107,7 @@ pub const SYSCALLS: &[NeoVMSyscallInfo] = &[
         parameters: &["Integer"],
         return_type: "Void",
         gas_cost: 16,
-        description: "",
+        description: "Burns a specified amount of GAS. The gas is permanently destroyed and cannot be recovered. Used for scenarios requiring deliberate GAS consumption beyond regular execution costs.",
     },
     NeoVMSyscallInfo {
         name: "System.Runtime.CheckWitness",
@@ -115,7 +115,7 @@ pub const SYSCALLS: &[NeoVMSyscallInfo] = &[
         parameters: &["ByteString"],
         return_type: "Boolean",
         gas_cost: 1024,
-        description: "",
+        description: "Checks if the specified account has provided a witness (signature) in the current verification context. Takes a script hash or public key hash as input. Returns true if the account is a witness in the current transaction.",
     },
     NeoVMSyscallInfo {
         name: "System.Runtime.CurrentSigners",
@@ -123,7 +123,7 @@ pub const SYSCALLS: &[NeoVMSyscallInfo] = &[
         parameters: &[],
         return_type: "Array",
         gas_cost: 16,
-        description: "",
+        description: "Gets the list of signers (accounts) that signed the current transaction. Returns an array of script hashes representing the signers with their corresponding scopes.",
     },
     NeoVMSyscallInfo {
         name: "System.Runtime.GasLeft",
@@ -131,7 +131,7 @@ pub const SYSCALLS: &[NeoVMSyscallInfo] = &[
         parameters: &[],
         return_type: "Integer",
         gas_cost: 16,
-        description: "",
+        description: "Gets the amount of GAS remaining for the current execution. Used to check available gas before performing gas-consuming operations.",
     },
     NeoVMSyscallInfo {
         name: "System.Runtime.GetAddressVersion",
@@ -139,7 +139,7 @@ pub const SYSCALLS: &[NeoVMSyscallInfo] = &[
         parameters: &[],
         return_type: "Integer",
         gas_cost: 8,
-        description: "",
+        description: "Gets the address version used by the current network. The address version is part of the Neo address format and differs between MainNet and TestNet.",
     },
     NeoVMSyscallInfo {
         name: "System.Runtime.GetCallingScriptHash",
@@ -147,7 +147,7 @@ pub const SYSCALLS: &[NeoVMSyscallInfo] = &[
         parameters: &[],
         return_type: "Hash160",
         gas_cost: 16,
-        description: "",
+        description: "Gets the script hash of the contract that called the current contract. Returns the script hash of the immediate caller in the call chain. Returns empty if called directly from an invocation transaction.",
     },
     NeoVMSyscallInfo {
         name: "System.Runtime.GetEntryScriptHash",
@@ -155,7 +155,7 @@ pub const SYSCALLS: &[NeoVMSyscallInfo] = &[
         parameters: &[],
         return_type: "Hash160",
         gas_cost: 16,
-        description: "",
+        description: "Gets the script hash of the entry script that started the current execution chain. This is the script hash of the contract or transaction that initiated the entire call sequence.",
     },
     NeoVMSyscallInfo {
         name: "System.Runtime.GetExecutingScriptHash",
@@ -163,7 +163,7 @@ pub const SYSCALLS: &[NeoVMSyscallInfo] = &[
         parameters: &[],
         return_type: "Hash160",
         gas_cost: 16,
-        description: "",
+        description: "Gets the script hash of the currently executing script. Returns the script hash of the contract that is currently running.",
     },
     NeoVMSyscallInfo {
         name: "System.Runtime.GetInvocationCounter",
@@ -171,7 +171,7 @@ pub const SYSCALLS: &[NeoVMSyscallInfo] = &[
         parameters: &[],
         return_type: "Integer",
         gas_cost: 16,
-        description: "",
+        description: "Gets the number of times the current script has been invoked during the current execution. The counter starts at 1 and increments with each recursive or nested invocation.",
     },
     NeoVMSyscallInfo {
         name: "System.Runtime.GetNetwork",
@@ -179,7 +179,7 @@ pub const SYSCALLS: &[NeoVMSyscallInfo] = &[
         parameters: &[],
         return_type: "Integer",
         gas_cost: 8,
-        description: "",
+        description: "Gets the network ID of the current blockchain. MainNet uses 1, TestNet uses 2, and other values are used for private networks.",
     },
     NeoVMSyscallInfo {
         name: "System.Runtime.GetNotifications",
@@ -187,7 +187,7 @@ pub const SYSCALLS: &[NeoVMSyscallInfo] = &[
         parameters: &["Hash160"],
         return_type: "Array",
         gas_cost: 4096,
-        description: "",
+        description: "Gets all notifications emitted during the execution of a specific contract. Takes a script hash parameter to filter notifications by source contract. Returns an array of notification objects containing the event name and data.",
     },
     NeoVMSyscallInfo {
         name: "System.Runtime.GetRandom",
@@ -195,7 +195,7 @@ pub const SYSCALLS: &[NeoVMSyscallInfo] = &[
         parameters: &[],
         return_type: "Integer",
         gas_cost: 0,
-        description: "",
+        description: "Gets a pseudo-random number generated from the current block's random seed and the transaction hash. The value is deterministic for the same block and transaction.",
     },
     NeoVMSyscallInfo {
         name: "System.Runtime.GetScriptContainer",
@@ -203,7 +203,7 @@ pub const SYSCALLS: &[NeoVMSyscallInfo] = &[
         parameters: &[],
         return_type: "StackItem",
         gas_cost: 8,
-        description: "",
+        description: "Gets the current script container, which is typically the transaction that triggered the contract execution. Returns a StackItem representing the script container.",
     },
     NeoVMSyscallInfo {
         name: "System.Runtime.GetTime",
@@ -211,7 +211,7 @@ pub const SYSCALLS: &[NeoVMSyscallInfo] = &[
         parameters: &[],
         return_type: "Integer",
         gas_cost: 8,
-        description: "",
+        description: "Gets the timestamp of the current block. The timestamp is in Unix epoch format (seconds since January 1, 1970).",
     },
     NeoVMSyscallInfo {
         name: "System.Runtime.GetTrigger",
@@ -219,7 +219,7 @@ pub const SYSCALLS: &[NeoVMSyscallInfo] = &[
         parameters: &[],
         return_type: "Integer",
         gas_cost: 8,
-        description: "",
+        description: "Gets the trigger type that started the contract execution. Returns 0x01 (Verification) for verification context, or 0x10 (Application) for application context.",
     },
     NeoVMSyscallInfo {
         name: "System.Runtime.LoadScript",
@@ -227,7 +227,7 @@ pub const SYSCALLS: &[NeoVMSyscallInfo] = &[
         parameters: &["ByteString", "Integer", "Array"],
         return_type: "Void",
         gas_cost: 32768,
-        description: "",
+        description: "Loads and executes a script from a byte string. Takes the script bytecode, the call flags to use, and an array of arguments. Used for dynamic script execution within a contract.",
     },
     NeoVMSyscallInfo {
         name: "System.Runtime.Log",
@@ -235,7 +235,7 @@ pub const SYSCALLS: &[NeoVMSyscallInfo] = &[
         parameters: &["ByteString"],
         return_type: "Void",
         gas_cost: 32768,
-        description: "",
+        description: "Emits a log message that is stored in the application log. The message is recorded as part of the transaction execution results and can be used for debugging and monitoring.",
     },
     NeoVMSyscallInfo {
         name: "System.Runtime.Notify",
@@ -243,7 +243,7 @@ pub const SYSCALLS: &[NeoVMSyscallInfo] = &[
         parameters: &["ByteString", "Array"],
         return_type: "Void",
         gas_cost: 32768,
-        description: "",
+        description: "Emits a notification event from the smart contract. Takes an event name and an array of data items. Notifications are stored in the application log and can be watched by external applications.",
     },
     NeoVMSyscallInfo {
         name: "System.Runtime.Platform",
@@ -251,7 +251,7 @@ pub const SYSCALLS: &[NeoVMSyscallInfo] = &[
         parameters: &[],
         return_type: "String",
         gas_cost: 8,
-        description: "",
+        description: "Returns the platform identifier string. For Neo N3, this returns \"NEO\" to identify the blockchain platform.",
     },
     NeoVMSyscallInfo {
         name: "System.Storage.AsReadOnly",
@@ -259,7 +259,7 @@ pub const SYSCALLS: &[NeoVMSyscallInfo] = &[
         parameters: &["StorageContext"],
         return_type: "StorageContext",
         gas_cost: 16,
-        description: "",
+        description: "Converts a storage context to a read-only context. The returned context can be used for read operations but any write attempts will fail. Useful for safely passing storage access to other contracts.",
     },
     NeoVMSyscallInfo {
         name: "System.Storage.Delete",
@@ -267,7 +267,7 @@ pub const SYSCALLS: &[NeoVMSyscallInfo] = &[
         parameters: &["StorageContext", "ByteString"],
         return_type: "Void",
         gas_cost: 32768,
-        description: "",
+        description: "Deletes a storage entry by its key. Takes a storage context and a key byte string. The entry is permanently removed from the contract's storage.",
     },
     NeoVMSyscallInfo {
         name: "System.Storage.Find",
@@ -275,7 +275,7 @@ pub const SYSCALLS: &[NeoVMSyscallInfo] = &[
         parameters: &["StorageContext", "ByteString", "Integer"],
         return_type: "Iterator",
         gas_cost: 32768,
-        description: "",
+        description: "Returns an iterator for searching storage entries. Takes a storage context, a prefix key, and a search options flags. The options can specify whether to search keys only, values only, or both.",
     },
     NeoVMSyscallInfo {
         name: "System.Storage.Get",
@@ -283,7 +283,7 @@ pub const SYSCALLS: &[NeoVMSyscallInfo] = &[
         parameters: &["StorageContext", "ByteString"],
         return_type: "ByteString",
         gas_cost: 32768,
-        description: "",
+        description: "Gets the value of a storage entry by its key. Takes a storage context and a key byte string. Returns the stored value as a byte string, or null if the key does not exist.",
     },
     NeoVMSyscallInfo {
         name: "System.Storage.GetContext",
@@ -291,7 +291,7 @@ pub const SYSCALLS: &[NeoVMSyscallInfo] = &[
         parameters: &[],
         return_type: "StorageContext",
         gas_cost: 16,
-        description: "",
+        description: "Gets the storage context for the current contract. The storage context is required for all storage operations and defines the current contract's storage partition.",
     },
     NeoVMSyscallInfo {
         name: "System.Storage.GetReadOnlyContext",
@@ -299,7 +299,7 @@ pub const SYSCALLS: &[NeoVMSyscallInfo] = &[
         parameters: &[],
         return_type: "StorageContext",
         gas_cost: 16,
-        description: "",
+        description: "Gets a read-only storage context for the current contract. Any attempts to modify storage using this context will fail. Useful for safely exposing storage access to other contracts.",
     },
     NeoVMSyscallInfo {
         name: "System.Storage.Put",
@@ -307,6 +307,6 @@ pub const SYSCALLS: &[NeoVMSyscallInfo] = &[
         parameters: &["StorageContext", "ByteString", "ByteString"],
         return_type: "Void",
         gas_cost: 32768,
-        description: "",
+        description: "Stores a key-value pair in the contract's persistent storage. Takes a storage context, a key, and a value as byte strings. If the key already exists, the value is overwritten.",
     },
 ];
