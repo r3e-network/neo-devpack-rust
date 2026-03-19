@@ -10,13 +10,6 @@ db-urls = ["https://github.com/rustsec/advisory-db"]
 unmaintained = "all"
 # The lint level for crates that have been yanked from their source registry
 yanked = "warn"
-# A list of advisory IDs to ignore
-ignore = [
-    # RUSTSEC-2025-0141: bincode is unmaintained
-    # bincode 1.3.3 is still functional and widely used
-    # TODO: Migrate to bincode 2.0 or alternative when stable
-    "RUSTSEC-2025-0141",
-]
 
 [licenses]
 # List of explicitly allowed licenses

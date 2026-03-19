@@ -522,8 +522,10 @@ name = "integration-tests"
 version = "0.1.0"
 dependencies = [
  "log",
+ "neo-syscalls",
  "serde",
  "serde_json",
+ "wasm-neovm",
 ]
 
 [[package]]
@@ -679,9 +681,6 @@ version = "0.1.0"
 dependencies = [
  "neo-types",
  "once_cell",
- "ripemd",
- "sha2",
- "tiny-keccak",
 ]
 
 [[package]]

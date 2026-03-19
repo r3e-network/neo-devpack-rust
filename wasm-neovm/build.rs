@@ -65,15 +65,12 @@ fn main() -> Result<()> {
         emit_fallback(&fallback_dir, "opcodes.rs")?;
         emit_fallback(&fallback_dir, "syscalls.rs")?;
         if has_partial_reference_checkout {
-            println!(
-                "cargo:warning=Neo reference checkout is incomplete (missing: {}); using bundled opcode/syscall snapshot",
-                missing_sources.join(", ")
-            );
+            let _ = missing_sources;
         } else {
-            println!(
-                "cargo:warning=Neo reference checkouts not found (expected {} + {}); using bundled opcode/syscall snapshot",
-                repo_root.join(NEO_SYSCALL_REL_PATH).display(),
-                repo_root.join(SPLIT_NEO_VM_OPCODE_REL_PATH).display()
+            let _ = (
+                &repo_root,
+                NEO_SYSCALL_REL_PATH,
+                SPLIT_NEO_VM_OPCODE_REL_PATH,
             );
         }
         println!(

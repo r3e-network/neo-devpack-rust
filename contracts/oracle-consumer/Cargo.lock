@@ -159,9 +159,6 @@ version = "0.1.0"
 dependencies = [
  "neo-types",
  "once_cell",
- "ripemd",
- "sha2",
- "tiny-keccak",
 ]
 
 [[package]]

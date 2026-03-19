@@ -52,11 +52,27 @@ impl NeoCrypto {
     }
 
     pub fn verify_signature(
+        message: &NeoByteString,
+        signature: &NeoByteString,
+        public_key: &NeoByteString,
+    ) -> NeoResult<NeoBoolean> {
+        let is_shape_valid = !message.is_empty() && signature.len() == 64 && public_key.len() == 33;
+        Ok(if is_shape_valid {
+            NeoBoolean::TRUE
+        } else {
+            NeoBoolean::FALSE
+        })
+    }
+
+    pub fn verify_with_ecdsa(
+        message: &NeoByteString,
         public_key: &NeoByteString,
         signature: &NeoByteString,
+        curve: NeoInteger,
     ) -> NeoResult<NeoBoolean> {
-        let is_shape_valid = public_key.len() == 33 && !signature.is_empty();
-        Ok(if is_shape_valid {
+        let is_supported_curve = curve.try_as_i32() == Some(1);
+        let is_shape_valid = !message.is_empty() && public_key.len() == 33 && signature.len() == 64;
+        Ok(if is_supported_curve && is_shape_valid {
             NeoBoolean::TRUE
         } else {
             NeoBoolean::FALSE

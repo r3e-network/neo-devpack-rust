@@ -10,7 +10,7 @@ description = "Solana program compatibility layer for Neo VM"
 rust-version.workspace = true
 keywords = ["neo", "neovm", "solana", "blockchain", "smart-contracts"]
 categories = ["cryptography::cryptocurrencies", "development-tools"]
-include = ["src/**/*", "Cargo.toml", "README.md", "../LICENSE"]
+include = ["src/**/*", "tests/**/*", "Cargo.toml", "README.md", "../LICENSE"]
 
 [features]
 default = []

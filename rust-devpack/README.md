@@ -156,7 +156,7 @@ NeoStorage::put(&context, &key, &value)?;
 
 // Crypto operations
 let hash = NeoCrypto::sha256(&data)?;
-let signature_valid = NeoCrypto::verify_signature(&public_key, &signature)?;
+let signature_valid = NeoCrypto::verify_signature(&data, &signature, &public_key)?;
 ```
 
 ### Events
