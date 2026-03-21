@@ -9,6 +9,7 @@ mod array;
 mod boolean;
 mod bytestring;
 mod error;
+mod hash;
 mod integer;
 mod iterator;
 mod manifest;
@@ -22,6 +23,7 @@ pub use array::NeoArray;
 pub use boolean::NeoBoolean;
 pub use bytestring::NeoByteString;
 pub use error::{NeoError, NeoResult};
+pub use hash::{Hash160, Hash256};
 pub use integer::NeoInteger;
 pub use iterator::NeoIterator;
 pub use manifest::{

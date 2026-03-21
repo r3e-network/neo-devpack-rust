@@ -67,6 +67,73 @@ pub fn common_supported_standards() -> Vec<&'static str> {
     ]
 }
 
+/// NEP-17 fungible token standard trait.
+///
+/// Contracts implementing this trait are compliant with the NEP-17 token standard,
+/// which is the canonical fungible token interface on Neo N3.
+pub trait Nep17Token {
+    /// Returns the token symbol (e.g. "NEO", "GAS").
+    fn symbol(&self) -> NeoResult<NeoString>;
+
+    /// Returns the number of decimals the token uses.
+    fn decimals(&self) -> NeoResult<u8>;
+
+    /// Returns the total token supply.
+    fn total_supply(&self) -> NeoResult<NeoInteger>;
+
+    /// Returns the token balance of the given account.
+    fn balance_of(&self, account: &NeoByteString) -> NeoResult<NeoInteger>;
+
+    /// Transfers `amount` tokens from `from` to `to`.
+    ///
+    /// The implementation MUST:
+    /// - Verify `from` witness via `check_witness`
+    /// - Return `false` if the balance is insufficient
+    /// - Fire a `Transfer` event on success
+    /// - Call `onNEP17Payment` on `to` if it is a deployed contract
+    fn transfer(
+        &self,
+        from: &NeoByteString,
+        to: &NeoByteString,
+        amount: &NeoInteger,
+        data: &NeoValue,
+    ) -> NeoResult<bool>;
+}
+
+/// NEP-11 non-fungible token standard trait.
+///
+/// Contracts implementing this trait are compliant with the NEP-11 NFT standard on Neo N3.
+pub trait Nep11Token {
+    /// Returns the token symbol.
+    fn symbol(&self) -> NeoResult<NeoString>;
+
+    /// Returns the number of decimals (0 for indivisible NFTs).
+    fn decimals(&self) -> NeoResult<u8>;
+
+    /// Returns the total supply of issued tokens.
+    fn total_supply(&self) -> NeoResult<NeoInteger>;
+
+    /// Returns the token balance of the given account.
+    fn balance_of(&self, account: &NeoByteString) -> NeoResult<NeoInteger>;
+
+    /// Returns an iterator of token IDs owned by the account.
+    fn tokens_of(&self, account: &NeoByteString) -> NeoResult<NeoArray<NeoValue>>;
+
+    /// Transfers the NFT identified by `token_id` to `to`.
+    fn transfer(
+        &self,
+        to: &NeoByteString,
+        token_id: &NeoByteString,
+        data: &NeoValue,
+    ) -> NeoResult<bool>;
+
+    /// Returns the owner of the given token.
+    fn owner_of(&self, token_id: &NeoByteString) -> NeoResult<NeoByteString>;
+
+    /// Returns properties/metadata for the given token.
+    fn properties(&self, token_id: &NeoByteString) -> NeoResult<NeoArray<NeoValue>>;
+}
+
 /// Minimal NEP-24 royalty trait.
 pub trait Nep24Royalty {
     fn royalty_info(

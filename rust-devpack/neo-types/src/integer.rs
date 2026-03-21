@@ -55,6 +55,39 @@ impl NeoInteger {
         self.0.to_i64()
     }
 
+    /// Convert to u64, returning None if the value is out of range.
+    pub fn try_as_u64(&self) -> Option<u64> {
+        self.0.to_u64()
+    }
+
+    /// Convert to i32, returning `Result` for ergonomic `?` usage.
+    pub fn try_into_i32(&self) -> crate::NeoResult<i32> {
+        self.0
+            .to_i32()
+            .ok_or(crate::NeoError::Overflow)
+    }
+
+    /// Convert to u32, returning `Result` for ergonomic `?` usage.
+    pub fn try_into_u32(&self) -> crate::NeoResult<u32> {
+        self.0
+            .to_u32()
+            .ok_or(crate::NeoError::Overflow)
+    }
+
+    /// Convert to i64, returning `Result` for ergonomic `?` usage.
+    pub fn try_into_i64(&self) -> crate::NeoResult<i64> {
+        self.0
+            .to_i64()
+            .ok_or(crate::NeoError::Overflow)
+    }
+
+    /// Convert to u64, returning `Result` for ergonomic `?` usage.
+    pub fn try_into_u64(&self) -> crate::NeoResult<u64> {
+        self.0
+            .to_u64()
+            .ok_or(crate::NeoError::Overflow)
+    }
+
     /// Convert to i32, saturating at the boundaries if the value is out of range.
     /// This never panics.
     pub fn as_i32_saturating(&self) -> i32 {
