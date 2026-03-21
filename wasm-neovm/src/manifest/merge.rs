@@ -230,18 +230,21 @@ fn merge_permission_methods(target: &mut Value, incoming: &Value) {
     }
 }
 
-fn dedup_method_offsets(value: &mut Value) {
+/// Deduplicates a JSON array of objects by merging entries that share the same
+/// `"name"` field. Later entries overlay earlier ones (key-by-key merge).
+/// Used for both ABI methods and events in manifest overlay merging.
+fn dedup_named_entries(value: &mut Value) {
     if let Some(items) = value.as_array_mut() {
         let mut merged: Vec<serde_json::Value> = Vec::new();
         let mut index_by_name: HashMap<String, usize> = HashMap::new();
 
         for entry in items.drain(..) {
-            let method_name = entry
+            let entry_name = entry
                 .get("name")
                 .and_then(serde_json::Value::as_str)
                 .map(|s| s.to_string());
 
-            if let Some(name) = method_name {
+            if let Some(name) = entry_name {
                 if let Some(existing_index) = index_by_name.get(&name).copied() {
                     if let (Some(existing), Some(overlay)) =
                         (merged[existing_index].as_object_mut(), entry.as_object())
@@ -264,36 +267,10 @@ fn dedup_method_offsets(value: &mut Value) {
     }
 }
 
+fn dedup_method_offsets(value: &mut Value) {
+    dedup_named_entries(value);
+}
+
 fn dedup_events(value: &mut Value) {
-    if let Some(items) = value.as_array_mut() {
-        let mut merged: Vec<serde_json::Value> = Vec::new();
-        let mut index_by_name: HashMap<String, usize> = HashMap::new();
-
-        for entry in items.drain(..) {
-            let event_name = entry
-                .get("name")
-                .and_then(serde_json::Value::as_str)
-                .map(|s| s.to_string());
-
-            if let Some(name) = event_name {
-                if let Some(existing_index) = index_by_name.get(&name).copied() {
-                    if let (Some(existing), Some(overlay)) =
-                        (merged[existing_index].as_object_mut(), entry.as_object())
-                    {
-                        for (key, value) in overlay {
-                            existing.insert(key.clone(), value.clone());
-                        }
-                    }
-                    continue;
-                }
-
-                index_by_name.insert(name, merged.len());
-                merged.push(entry);
-            } else {
-                merged.push(entry);
-            }
-        }
-
-        *items = merged;
-    }
+    dedup_named_entries(value);
 }
