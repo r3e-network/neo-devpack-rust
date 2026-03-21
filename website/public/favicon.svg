@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
-  <title>neo-llvm</title>
+  <title>neo-devpack-rust</title>
   <rect width="32" height="32" rx="6" fill="#00E599"/>
   <path d="M9 24V8h3.5l9 12V8H25v16h-3.5l-9-12v12H9z" fill="#0D1117"/>
 </svg>

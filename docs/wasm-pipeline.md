@@ -1,6 +1,6 @@
 # WebAssembly Contract Pipeline
 
-This document outlines the steps required to make the neo-llvm toolchain operate on a Rust → Wasm → NeoVM conversion pipeline. The intent is to reuse the existing Rust developer experience while performing bytecode generation from WebAssembly modules instead of relying on the unfinished NeoVM LLVM backend.
+This document outlines the steps required to make the neo-devpack-rust toolchain operate on a Rust → Wasm → NeoVM conversion pipeline. The intent is to reuse the existing Rust developer experience while performing bytecode generation from WebAssembly modules instead of relying on the unfinished NeoVM LLVM backend.
 
 For the normative translator specification (acceptance rules, operator mappings, manifest/NEF semantics) see [`spec/wasm-neovm-spec.tex`](../spec/wasm-neovm-spec.tex) or build the PDF via `make -C spec`.
 

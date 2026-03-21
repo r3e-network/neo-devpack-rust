@@ -1,6 +1,6 @@
 # CI/CD Infrastructure Setup
 
-This document describes the CI/CD infrastructure for the neo-llvm project.
+This document describes the CI/CD infrastructure for the neo-devpack-rust project.
 
 ## Overview
 

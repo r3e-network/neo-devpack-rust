@@ -32,7 +32,7 @@ fn write_nef_with_metadata_serializes_tokens_and_source() {
     .expect("nef written");
 
     let bytes = fs::read(&nef_path).expect("nef exists");
-    let expected_compiler = concat!("neo-llvm wasm-neovm ", env!("CARGO_PKG_VERSION"));
+    let expected_compiler = concat!("neo-devpack-rust wasm-neovm ", env!("CARGO_PKG_VERSION"));
     let mut cursor = 0usize;
     assert_eq!(&bytes[cursor..cursor + 4], b"NEF3");
     cursor += 4;
@@ -129,7 +129,7 @@ fn translate_simple_constant_addition() {
 
     let bytes = fs::read(&nef_path).expect("nef exists");
 
-    let expected_compiler = concat!("neo-llvm wasm-neovm ", env!("CARGO_PKG_VERSION"));
+    let expected_compiler = concat!("neo-devpack-rust wasm-neovm ", env!("CARGO_PKG_VERSION"));
     let mut cursor = 0usize;
     assert_eq!(&bytes[cursor..cursor + 4], b"NEF3");
     cursor += 4;

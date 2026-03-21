@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-This report details findings from a comprehensive code analysis of the neo-llvm project, focusing on:
+This report details findings from a comprehensive code analysis of the neo-devpack-rust project, focusing on:
 - wasm-neovm/src/translator (WASM to NeoVM translation)
 - rust-devpack (Neo N3 smart contract development kit)
 

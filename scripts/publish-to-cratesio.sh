@@ -1,5 +1,5 @@
 #!/bin/bash
-# publish-to-cratesio.sh - Publish neo-llvm contracts to crates.io
+# publish-to-cratesio.sh - Publish neo-devpack-rust contracts to crates.io
 #
 # Usage: ./scripts/publish-to-cratesio.sh [--prepare-only]
 #

@@ -1,4 +1,4 @@
-# cargo-deny configuration for neo-llvm project
+# cargo-deny configuration for neo-devpack-rust project
 # https://embarkstudios.github.io/cargo-deny/
 
 [advisories]

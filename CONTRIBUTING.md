@@ -24,7 +24,7 @@ This project adheres to the Contributor Covenant Code of Conduct. By participati
 Before you begin contributing, please:
 
 1. Read the [README.md](README.md) to understand the project's goals and architecture
-2. Review existing [issues](https://github.com/r3e-network/neo-llvm/issues) and [pull requests](https://github.com/r3e-network/neo-llvm/pulls)
+2. Review existing [issues](https://github.com/r3e-network/neo-devpack-rust/issues) and [pull requests](https://github.com/r3e-network/neo-devpack-rust/pulls)
 3. Check the [documentation](docs/) for technical specifications
 4. Join our community discussions on [Discord](https://discord.io/neo)
 
@@ -42,8 +42,8 @@ Before you begin contributing, please:
 1. **Clone the repository**:
 
    ```bash
-   git clone https://github.com/r3e-network/neo-llvm.git
-   cd neo-llvm
+   git clone https://github.com/r3e-network/neo-devpack-rust.git
+   cd neo-devpack-rust
    ```
 
 2. **Install Rust toolchain and wasm32 target**:
@@ -82,7 +82,7 @@ Before you begin contributing, please:
 ## Project Structure
 
 ```
-neo-llvm/
+neo-devpack-rust/
 ├── wasm-neovm/           # Core WebAssembly to NeoVM translator
 ├── rust-devpack/         # Rust SDK for Neo smart contracts
 ├── solana-compat/        # Solana compatibility layer
@@ -499,7 +499,7 @@ Use the feature request template and include:
 For questions and support:
 
 - Check existing [documentation](docs/)
-- Search [existing issues](https://github.com/r3e-network/neo-llvm/issues)
+- Search [existing issues](https://github.com/r3e-network/neo-devpack-rust/issues)
 - Ask on [Discord](https://discord.io/neo)
 
 ## Additional Resources
@@ -518,7 +518,7 @@ By contributing to Neo-LLVM, you agree that your contributions will be licensed 
 
 If you have questions about contributing, please:
 
-- Open a [discussion](https://github.com/r3e-network/neo-llvm/discussions)
+- Open a [discussion](https://github.com/r3e-network/neo-devpack-rust/discussions)
 - Ask on [Discord](https://discord.io/neo)
 - Email the maintainers
 

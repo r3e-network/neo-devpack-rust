@@ -27,8 +27,8 @@ version = "0.4.9"
 edition = "2021"
 authors = ["R3E Network <team@r3e.network>"]
 license = "MIT"
-repository = "https://github.com/r3e-network/neo-llvm"
-homepage = "https://github.com/r3e-network/neo-llvm"
+repository = "https://github.com/r3e-network/neo-devpack-rust"
+homepage = "https://github.com/r3e-network/neo-devpack-rust"
 documentation = "https://docs.rs"
 rust-version = "1.70"
 

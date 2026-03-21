@@ -62,7 +62,7 @@ fn unique_chain_path(tag: &str) -> (PathBuf, PathBuf) {
         .expect("clock should be monotonic from UNIX_EPOCH")
         .as_nanos();
     let base = std::env::temp_dir().join(format!(
-        "neo-llvm-neoxp-{tag}-{}-{nanos}",
+        "neo-devpack-rust-neoxp-{tag}-{}-{nanos}",
         std::process::id()
     ));
     fs::create_dir_all(&base).expect("failed to create temporary Neo Express directory");

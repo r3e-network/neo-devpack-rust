@@ -1,6 +1,6 @@
 # Architectural Improvements Rounds 131-140
 
-This document summarizes the architectural improvements made to neo-llvm in rounds 131-140.
+This document summarizes the architectural improvements made to neo-devpack-rust in rounds 131-140.
 
 ## Summary
 

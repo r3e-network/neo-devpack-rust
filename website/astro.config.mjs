@@ -5,12 +5,12 @@ export default defineConfig({
   site: 'https://neo-rust.vercel.app',
   integrations: [
     starlight({
-      title: 'neo-llvm',
+      title: 'neo-devpack-rust',
       logo: {
         src: './src/assets/logo.svg',
       },
       social: {
-        github: 'https://github.com/r3e-network/neo-llvm',
+        github: 'https://github.com/r3e-network/neo-devpack-rust',
         discord: 'https://discord.gg/neo',
       },
       customCss: ['./src/styles/custom.css'],
@@ -22,7 +22,7 @@ export default defineConfig({
         },
       },
       editLink: {
-        baseUrl: 'https://github.com/r3e-network/neo-llvm/edit/master/website/',
+        baseUrl: 'https://github.com/r3e-network/neo-devpack-rust/edit/master/website/',
       },
       sidebar: [
         {

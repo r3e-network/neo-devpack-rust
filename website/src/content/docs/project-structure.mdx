@@ -1,6 +1,6 @@
 ---
 title: Project Structure
-description: Repository layout and the role of each crate, directory, and configuration file in the neo-llvm toolchain.
+description: Repository layout and the role of each crate, directory, and configuration file in the neo-devpack-rust toolchain.
 draft: false
 ---
 
@@ -9,7 +9,7 @@ import { FileTree } from '@astrojs/starlight/components';
 ## Repository Layout
 
 <FileTree>
-- neo-llvm/
+- neo-devpack-rust/
   - wasm-neovm/ Core Wasm-to-NeoVM translator
   - rust-devpack/ Rust SDK for contract development
     - neo-macros/ Procedural macros (#[neo_contract], #[neo_method], etc.)
@@ -90,7 +90,7 @@ Each contract has its own `Cargo.toml` and can be built independently.
 
 ### Workspace Structure
 
-neo-llvm does **not** use a Cargo workspace. Each crate has an independent `Cargo.toml` and is built with an explicit `--manifest-path` flag. This keeps crate boundaries strict and avoids unintended dependency coupling.
+neo-devpack-rust does **not** use a Cargo workspace. Each crate has an independent `Cargo.toml` and is built with an explicit `--manifest-path` flag. This keeps crate boundaries strict and avoids unintended dependency coupling.
 
 ```bash
 # Build a specific crate

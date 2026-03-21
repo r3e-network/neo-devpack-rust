@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none">
-  <title>neo-llvm</title>
+  <title>neo-devpack-rust</title>
   <!-- Neo green hexagon -->
   <path d="M24 4L42 14V34L24 44L6 34V14L24 4Z" fill="#00E599" opacity="0.15" stroke="#00E599" stroke-width="1.5"/>
   <!-- Rust gear teeth (simplified) -->

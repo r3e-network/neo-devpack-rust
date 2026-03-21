@@ -464,7 +464,7 @@ The \texttt{FeatureTracker} inspects imported syscalls and exported method names
 \subsection{Metadata}
 \texttt{write\_nef\_with\_metadata} produces NEF v3 files with the layout:
 \begin{itemize}[nosep]
-    \item Magic number (\texttt{NEF3}) and a 64-byte compiler string (\texttt{neo-llvm wasm-neovm <version>}).
+    \item Magic number (\texttt{NEF3}) and a 64-byte compiler string (\texttt{neo-devpack-rust wasm-neovm <version>}).
     \item Source URL encoded as a VarString (max 256 bytes) sourced from custom sections, overlays, or \texttt{--source-url}.
     \item Reserved byte (always zero).
     \item Method-token block encoded as a VarUint count followed by tokens (contract hash, method name, parameter count, return flag, call flags) and a 2-byte terminator.

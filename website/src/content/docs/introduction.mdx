@@ -1,12 +1,12 @@
 ---
 title: Introduction
-description: What neo-llvm is, how the Rust-to-NeoVM compilation pipeline works, and why Rust is a compelling alternative to C# for Neo N3 smart contract development.
+description: What neo-devpack-rust is, how the Rust-to-NeoVM compilation pipeline works, and why Rust is a compelling alternative to C# for Neo N3 smart contract development.
 draft: false
 ---
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
 
-neo-llvm is a production-ready Rust toolchain for compiling [Neo N3](https://neo.org/) smart contracts. It takes standard Rust code, compiles it to WebAssembly, then translates the Wasm bytecode into NeoVM instructions — producing the NEF binary and manifest JSON that Neo N3 nodes expect.
+neo-devpack-rust is a production-ready Rust toolchain for compiling [Neo N3](https://neo.org/) smart contracts. It takes standard Rust code, compiles it to WebAssembly, then translates the Wasm bytecode into NeoVM instructions — producing the NEF binary and manifest JSON that Neo N3 nodes expect.
 
 ## Compilation Pipeline
 
@@ -23,7 +23,7 @@ Rust Contract → cargo build (wasm32) → Wasm Module → wasm-neovm → NEF + 
 
 Neo N3 contracts are traditionally written in C#. Rust offers a different set of trade-offs:
 
-| | Rust (neo-llvm) | C# (neo-devpack-dotnet) |
+| | Rust (neo-devpack-rust) | C# (neo-devpack-dotnet) |
 |---|---|---|
 | Memory safety | Compile-time guarantees via ownership | Garbage-collected runtime |
 | Ecosystem | Cargo, crates.io, mature tooling | NuGet, .NET SDK |

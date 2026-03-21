@@ -45,7 +45,7 @@ We take security vulnerabilities seriously. If you discover a security issue in 
 
 Instead, please report security issues through this channel:
 
-1. **GitHub Security Advisories (preferred, private)**: https://github.com/r3e-network/neo-llvm/security/advisories
+1. **GitHub Security Advisories (preferred, private)**: https://github.com/r3e-network/neo-devpack-rust/security/advisories
 
 ### What to Include
 
@@ -208,7 +208,7 @@ make security-check
 
 Security advisories are published at:
 
-- [GitHub Security Advisories](https://github.com/r3e-network/neo-llvm/security/advisories)
+- [GitHub Security Advisories](https://github.com/r3e-network/neo-devpack-rust/security/advisories)
 
 Subscribe to notifications to stay informed about security updates.
 
@@ -225,7 +225,7 @@ We follow responsible disclosure practices:
 
 For security-related questions or concerns:
 
-- **GitHub Security Advisories**: https://github.com/r3e-network/neo-llvm/security/advisories
+- **GitHub Security Advisories**: https://github.com/r3e-network/neo-devpack-rust/security/advisories
 
 ## Acknowledgments
 

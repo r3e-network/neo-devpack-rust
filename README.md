@@ -1,11 +1,11 @@
 # Neo Wasm → NeoVM Pipeline
 
-[![CI](https://github.com/r3e-network/neo-llvm/workflows/CI/badge.svg)](https://github.com/r3e-network/neo-llvm/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/r3e-network/neo-llvm/branch/master/graph/badge.svg)](https://codecov.io/gh/r3e-network/neo-llvm)
+[![CI](https://github.com/r3e-network/neo-devpack-rust/workflows/CI/badge.svg)](https://github.com/r3e-network/neo-devpack-rust/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/r3e-network/neo-devpack-rust/branch/master/graph/badge.svg)](https://codecov.io/gh/r3e-network/neo-devpack-rust)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Rust Version](https://img.shields.io/badge/rust-1.70%2B-blue.svg)](https://www.rust-lang.org)
 [![Neo N3](https://img.shields.io/badge/Neo%20N3-3.9.1-green.svg)](https://neo.org/)
-[![Documentation](https://img.shields.io/badge/docs-latest-blue.svg)](https://github.com/r3e-network/neo-llvm/tree/master/docs)
+[![Documentation](https://img.shields.io/badge/docs-latest-blue.svg)](https://github.com/r3e-network/neo-devpack-rust/tree/master/docs)
 [![Crates.io](https://img.shields.io/crates/v/wasm-neovm.svg)](https://crates.io/crates/wasm-neovm)
 [![Docs.rs](https://docs.rs/wasm-neovm/badge.svg)](https://docs.rs/wasm-neovm)
 
@@ -433,7 +433,7 @@ We welcome contributions from the community! Please read our [Contributing Guide
 
 - Read [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and workflow
 - Follow the [Code of Conduct](CODE_OF_CONDUCT.md)
-- Check [open issues](https://github.com/r3e-network/neo-llvm/issues) for tasks
+- Check [open issues](https://github.com/r3e-network/neo-devpack-rust/issues) for tasks
 - Review [SECURITY.md](SECURITY.md) for security reporting procedures
 - Join our [Discord](https://discord.io/neo) for discussions
 
@@ -450,6 +450,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## Support
 
 - **Documentation**: [docs/](docs/)
-- **Issues**: [GitHub Issues](https://github.com/r3e-network/neo-llvm/issues)
+- **Issues**: [GitHub Issues](https://github.com/r3e-network/neo-devpack-rust/issues)
 - **Discord**: [https://discord.io/neo](https://discord.io/neo)
 - **Neo Developer Portal**: [https://neo.org/dev](https://neo.org/dev)

@@ -51,7 +51,7 @@ fn merge_manifest_deeply_combines_objects() {
             "events": []
         },
         "extra": {
-            "author": "neo-llvm"
+            "author": "neo-devpack-rust"
         }
     });
     let overlay = json!({

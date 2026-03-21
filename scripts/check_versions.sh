@@ -1,5 +1,5 @@
 #!/bin/bash
-# Version consistency check script for neo-llvm workspace
+# Version consistency check script for neo-devpack-rust workspace
 # Ensures all crates have consistent versioning
 
 set -e

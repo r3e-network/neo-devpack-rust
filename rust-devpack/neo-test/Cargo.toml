@@ -5,7 +5,7 @@ edition = "2021"
 description = "Testing framework for Neo N3 Rust smart contracts"
 authors = ["R3E Network <team@r3e.network>"]
 license = "MIT"
-repository = "https://github.com/r3e-network/neo-llvm"
+repository = "https://github.com/r3e-network/neo-devpack-rust"
 
 [dependencies]
 neo-devpack = { path = "..", version = "0.1.0" }

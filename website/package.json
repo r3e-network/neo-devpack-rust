@@ -1,5 +1,5 @@
 {
-  "name": "neo-llvm-docs",
+  "name": "neo-devpack-rust-docs",
   "type": "module",
   "version": "0.4.8",
   "scripts": {

@@ -6,7 +6,7 @@ draft: false
 
 import { Aside } from '@astrojs/starlight/components';
 
-Syscalls (system calls) are the bridge between smart contract code and the Neo N3 node runtime. Every blockchain interaction — reading storage, verifying signatures, emitting events — ultimately resolves to a `SYSCALL` opcode with a 4-byte service hash. This page documents every syscall available to contracts compiled with the neo-llvm toolchain.
+Syscalls (system calls) are the bridge between smart contract code and the Neo N3 node runtime. Every blockchain interaction — reading storage, verifying signatures, emitting events — ultimately resolves to a `SYSCALL` opcode with a 4-byte service hash. This page documents every syscall available to contracts compiled with the neo-devpack-rust toolchain.
 
 ## How syscalls are resolved
 
@@ -249,7 +249,7 @@ The disassembly output shows each `SYSCALL` instruction with its 4-byte hash, wh
 
 ## Adding custom syscalls
 
-The neo-llvm toolchain supports the full set of Neo N3 interop services. If a new syscall is added to the Neo protocol, the process to support it is:
+The neo-devpack-rust toolchain supports the full set of Neo N3 interop services. If a new syscall is added to the Neo protocol, the process to support it is:
 
 1. Add the Wasm import declaration to `neo-syscalls`
 2. Add the safe Rust wrapper to `neo-runtime`

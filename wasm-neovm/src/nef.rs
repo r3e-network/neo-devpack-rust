@@ -18,7 +18,7 @@ use sha2::{Digest, Sha256};
 
 /// NEF3 magic number (little-endian: "NEF3")
 const NEF_MAGIC: u32 = 0x3346_454E;
-const COMPILER: &str = concat!("neo-llvm wasm-neovm ", env!("CARGO_PKG_VERSION"));
+const COMPILER: &str = concat!("neo-devpack-rust wasm-neovm ", env!("CARGO_PKG_VERSION"));
 const MAX_SOURCE_LENGTH: usize = 256;
 const MAX_METHOD_NAME_LENGTH: usize = 32;
 
