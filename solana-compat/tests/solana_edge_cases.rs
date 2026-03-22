@@ -42,14 +42,14 @@ fn pubkey_hash_works() {
 #[test]
 fn pubkey_neo_uint160_first_20_bytes() {
     let mut bytes = [0u8; 32];
-    for i in 0..32 {
-        bytes[i] = i as u8;
+    for (i, byte) in bytes.iter_mut().enumerate() {
+        *byte = i as u8;
     }
     let pk = Pubkey::new(bytes);
     let uint160 = pk.to_neo_uint160();
     assert_eq!(uint160.len(), 20);
-    for i in 0..20 {
-        assert_eq!(uint160[i], i as u8);
+    for (i, val) in uint160.iter().enumerate() {
+        assert_eq!(*val, i as u8);
     }
 }
 
