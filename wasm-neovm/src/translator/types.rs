@@ -8,8 +8,8 @@ use crate::types::ContractName;
 /// Optimized stack value representation (Round 84 - Cache Locality)
 ///
 /// Layout optimized for cache efficiency:
-/// - const_value: 24 bytes (Option<i128> with tag)
-/// - bytecode_start: 16 bytes (Option<usize> with tag)
+/// - const_value: 24 bytes (`Option<i128>` with tag)
+/// - bytecode_start: 16 bytes (`Option<usize>` with tag)
 ///
 /// Total: 40 bytes (padded to 40 on 64-bit)
 ///

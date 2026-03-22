@@ -220,7 +220,14 @@ fn account_info_zero_lamports() {
     let mut lamports = 0u64;
     let mut data = vec![];
     let account = AccountInfo::new(
-        &key, false, false, &mut lamports, &mut data, &owner, false, 0,
+        &key,
+        false,
+        false,
+        &mut lamports,
+        &mut data,
+        &owner,
+        false,
+        0,
     );
     assert_eq!(account.lamports(), 0);
     assert!(account.data_is_empty());
@@ -233,7 +240,14 @@ fn account_info_executable_flag() {
     let mut lamports = 0u64;
     let mut data = vec![];
     let account = AccountInfo::new(
-        &key, false, false, &mut lamports, &mut data, &owner, true, 0,
+        &key,
+        false,
+        false,
+        &mut lamports,
+        &mut data,
+        &owner,
+        true,
+        0,
     );
     assert!(account.executable);
 }
@@ -245,7 +259,14 @@ fn account_info_rent_epoch() {
     let mut lamports = 0u64;
     let mut data = vec![];
     let account = AccountInfo::new(
-        &key, false, false, &mut lamports, &mut data, &owner, false, 42,
+        &key,
+        false,
+        false,
+        &mut lamports,
+        &mut data,
+        &owner,
+        false,
+        42,
     );
     assert_eq!(account.rent_epoch, 42);
 }
@@ -259,7 +280,14 @@ fn account_info_signer_and_writable_flags() {
 
     // Neither signer nor writable
     let account = AccountInfo::new(
-        &key, false, false, &mut lamports, &mut data, &owner, false, 0,
+        &key,
+        false,
+        false,
+        &mut lamports,
+        &mut data,
+        &owner,
+        false,
+        0,
     );
     assert!(!account.is_signer());
     assert!(!account.is_writable());

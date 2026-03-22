@@ -4,7 +4,10 @@
 //! Edge case tests for Move bytecode parsing and runtime
 
 use move_neovm::bytecode::{AbilitySet, MoveOpcode, TypeTag};
-use move_neovm::{global_storage_key, is_move_bytecode, parse_move_bytecode, signer_to_checkwitness, validate_move_bytecode, ResourceError, ResourceTracker};
+use move_neovm::{
+    global_storage_key, is_move_bytecode, parse_move_bytecode, signer_to_checkwitness,
+    validate_move_bytecode, ResourceError, ResourceTracker,
+};
 
 // ============================================================================
 // Bytecode validation
@@ -88,10 +91,7 @@ fn type_tag_to_wasm_type() {
     assert_eq!(TypeTag::Address.to_wasm_type(), "i32");
     assert_eq!(TypeTag::Signer.to_wasm_type(), "i32");
     assert_eq!(TypeTag::Vector(Box::new(TypeTag::U8)).to_wasm_type(), "i32");
-    assert_eq!(
-        TypeTag::Struct("Coin".to_string()).to_wasm_type(),
-        "i32"
-    );
+    assert_eq!(TypeTag::Struct("Coin".to_string()).to_wasm_type(), "i32");
     assert_eq!(
         TypeTag::Reference(Box::new(TypeTag::U64)).to_wasm_type(),
         "i32"

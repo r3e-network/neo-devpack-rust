@@ -256,5 +256,8 @@ impl Default for NeoOracleConsumerContract {
 
 #[cfg(test)]
 mod tests {
-    // Integration tests require NeoVM runtime stubs.
+    #[test]
+    fn contract_compiles() {
+        // Compilation test - verifies contract module parses correctly
+    }
 }

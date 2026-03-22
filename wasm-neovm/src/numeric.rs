@@ -17,7 +17,9 @@ const DOC_HINT: &str = "Refer to docs/wasm-neovm-status.md for current coverage.
 /// which are INCOMPATIBLE with Neo N3. The Neo N3 opcodes are PUSHM1=0x0F, PUSH0=0x10,
 /// PUSH1-16=0x11-0x20. Use `translator::helpers::push::emit_push_int` instead, which
 /// emits correct Neo N3 bytecode.
-#[deprecated(note = "Uses Neo Legacy opcodes, not Neo N3. Use translator::helpers::push::emit_push_int instead.")]
+#[deprecated(
+    note = "Uses Neo Legacy opcodes, not Neo N3. Use translator::helpers::push::emit_push_int instead."
+)]
 pub fn push_biginteger(script: &mut Vec<u8>, value: i64) {
     if value == -1 {
         script.push(0x4F); // PUSHM1
@@ -43,7 +45,9 @@ pub fn push_biginteger(script: &mut Vec<u8>, value: i64) {
 /// This function uses Neo Legacy `PUSHBYTES1-75` encoding (raw length byte for data <= 75 bytes)
 /// which is NOT valid in Neo N3. Neo N3 requires PUSHDATA1/2/4 for all byte data.
 /// Use `translator::helpers::push::emit_push_data` instead, which emits correct Neo N3 bytecode.
-#[deprecated(note = "Uses Neo Legacy PUSHBYTES encoding, not Neo N3. Use translator::helpers::push::emit_push_data instead.")]
+#[deprecated(
+    note = "Uses Neo Legacy PUSHBYTES encoding, not Neo N3. Use translator::helpers::push::emit_push_data instead."
+)]
 pub fn push_bytevec(script: &mut Vec<u8>, data: &[u8]) {
     let len = data.len();
     if len <= 75 {

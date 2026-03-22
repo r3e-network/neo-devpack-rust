@@ -5,7 +5,7 @@ use super::*;
 
 /// Emit binary operation with constant folding (Round 81, 82 optimizations)
 ///
-/// Round 81: #[inline] for hot function
+/// Round 81: `#[inline]` for hot function
 /// Round 82: Compile-time constant evaluation
 #[inline]
 pub(crate) fn emit_binary_op(

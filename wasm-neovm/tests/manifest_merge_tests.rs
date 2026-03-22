@@ -199,8 +199,8 @@ fn propagate_safe_marks_all_occurrences() {
     propagate_safe_flags(&mut manifest);
 
     let methods = manifest["abi"]["methods"].as_array().unwrap();
-    assert_eq!(methods[0]["safe"].as_bool().unwrap(), true);
-    assert_eq!(methods[1]["safe"].as_bool().unwrap(), true);
+    assert!(methods[0]["safe"].as_bool().unwrap());
+    assert!(methods[1]["safe"].as_bool().unwrap());
     assert!(methods[2].get("safe").is_none() || methods[2]["safe"].as_bool() == Some(false));
 }
 

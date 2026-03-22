@@ -251,6 +251,8 @@ impl Default for SampleMultisigContract {
 
 #[cfg(test)]
 mod tests {
-    // Integration tests require NeoVM runtime stubs
-    // and are exercised through integration tests against the compiled WASM.
+    #[test]
+    fn contract_compiles() {
+        // Compilation test - verifies contract module parses correctly
+    }
 }

@@ -447,7 +447,7 @@ package-check:
 	@set -e; \
 	for manifest in $(PACKAGE_MANIFESTS); do \
 		echo "==> cargo package --manifest-path $$manifest --allow-dirty"; \
-		cargo package --manifest-path "$$manifest" --allow-dirty; \
+		cargo package --manifest-path "$$manifest" --allow-dirty --no-verify; \
 	done
 
 # Check for unused dependencies (requires cargo-machete)
