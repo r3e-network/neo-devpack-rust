@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 //! Unified offset handling for jump and call instructions
 //!
 //! This module provides common functionality for emitting and patching

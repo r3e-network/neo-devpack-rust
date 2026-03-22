@@ -1,4 +1,4 @@
-// Copyright (c) 2025 R3E Network
+// Copyright (c) 2025-2026 R3E Network
 // Licensed under the MIT License
 
 //! Primitive type wrappers for WASM/NeoVM translation

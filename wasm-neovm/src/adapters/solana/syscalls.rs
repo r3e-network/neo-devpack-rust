@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 /// Map Solana syscall names to Neo syscall descriptors.
 pub(super) fn map_solana_syscall(name: &str) -> Option<&'static str> {
     match name {

@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 // Loop control flow tests
 
 use wasm_neovm::{opcodes, translate_module};

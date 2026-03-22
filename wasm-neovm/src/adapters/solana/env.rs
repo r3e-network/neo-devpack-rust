@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 /// Map common env imports from Solana programs.
 pub(super) fn map_env_import(name: &str) -> Option<&'static str> {
     match name {

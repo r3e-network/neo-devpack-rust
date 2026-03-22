@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 pub(super) struct OpcodeBytes {
     pub(super) pushint8: Option<u8>,
     pub(super) pushint16: Option<u8>,

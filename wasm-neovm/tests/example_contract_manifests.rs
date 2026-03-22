@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 use anyhow::Result;
 use serde_json::{json, Value};
 use std::borrow::Cow;

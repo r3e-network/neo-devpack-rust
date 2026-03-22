@@ -1,5 +1,7 @@
-// Copyright (c) 2025 R3E Network
+// Copyright (c) 2025-2026 R3E Network
 // Licensed under the MIT License
+
+#![warn(missing_docs)]
 
 //! wasm-neovm: WebAssembly to NeoVM translator
 //!
@@ -58,9 +60,13 @@ pub mod metadata;
 pub mod nef;
 
 // Definition modules
+/// Neo-specific syscall aliases and fingerprint mappings
 pub mod neo_syscalls;
+/// Numeric encoding utilities for NeoVM scripts
 pub mod numeric;
+/// NeoVM opcode definitions and lookup tables
 pub mod opcodes;
+/// NeoVM syscall definitions and lookup functions
 pub mod syscalls;
 
 // Re-exports for convenient access

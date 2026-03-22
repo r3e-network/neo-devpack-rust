@@ -13,5 +13,9 @@ This repository focuses on the Wasm → NeoVM translator, the Rust DevPack, and 
 - **[nef-format-specification.md](nef-format-specification.md)** – Reference for the NEF container format.
 - **[c-smart-contract-quickstart.md](c-smart-contract-quickstart.md)** – Step-by-step guide for compiling C contracts to NEF.
 - **[manifest-overlay-guide.md](manifest-overlay-guide.md)** – Shared reference for authoring manifest overlays (Rust macros, external JSON, `translate_with_config`).
+- **[rust-smart-contract-quickstart.md](rust-smart-contract-quickstart.md)** – Step-by-step guide for writing your first Rust contract.
+- **[neoexpress-integration.md](neoexpress-integration.md)** – Neo Express deployment and integration testing guide.
+- **[neo-n3-conformance-matrix.md](neo-n3-conformance-matrix.md)** – Neo N3 conformance verification matrix.
+- **[refactor-plan.md](refactor-plan.md)** – Refactoring roadmap and design notes.
 
 These documents evolve with the translator and DevPack; please keep them in sync with code changes.

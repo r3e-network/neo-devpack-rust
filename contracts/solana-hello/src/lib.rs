@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 //! Example Solana-style contract that compiles to NeoVM via WASM
 //!
 //! This demonstrates how contracts written using Solana-compatible APIs

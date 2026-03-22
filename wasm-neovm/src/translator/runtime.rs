@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 

@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 /// Solana account info layout constants.
 #[allow(dead_code)]
 pub mod account_layout {

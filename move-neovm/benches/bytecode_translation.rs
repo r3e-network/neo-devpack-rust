@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use move_neovm::{parse_move_bytecode, translate_to_wasm};
 

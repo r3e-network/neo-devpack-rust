@@ -1,9 +1,13 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 use anyhow::{bail, Result};
 use serde_json::Value;
 
 use super::{NefMetadata, SOURCE_EXTRA_KEY, SOURCE_TOP_LEVEL_KEY, TOKEN_COLLECTION_KEY};
 use crate::nef::MethodToken;
 
+/// Extract NEF metadata (source URL and method tokens) from a manifest JSON value.
 pub fn extract_nef_metadata(manifest: &Value) -> Result<NefMetadata> {
     let source = extract_source(manifest);
     let method_tokens = extract_method_tokens(manifest)?;

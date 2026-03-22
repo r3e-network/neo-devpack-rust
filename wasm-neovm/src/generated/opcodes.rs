@@ -1,8 +1,16 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
+/// NeoVM opcode metadata.
 #[derive(Debug, Copy, Clone)]
 pub struct OpcodeInfo {
+    /// Opcode mnemonic name.
     pub name: &'static str,
+    /// Single-byte opcode value.
     pub byte: u8,
+    /// Fixed operand size in bytes.
     pub operand_size: u8,
+    /// Variable-length operand size prefix in bytes.
     pub operand_size_prefix: u8,
 }
 

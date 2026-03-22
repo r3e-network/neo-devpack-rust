@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 use super::*;
 
 pub(in super::super) fn emit_table_fill_helper(

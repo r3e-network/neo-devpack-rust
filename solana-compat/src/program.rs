@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 //! Program invocation utilities
 //!
 //! Provides cross-program invocation (CPI) support mapped to Neo contract calls.

@@ -1,4 +1,4 @@
-// Copyright (c) 2025 R3E Network
+// Copyright (c) 2025-2026 R3E Network
 // Licensed under the MIT License
 
 use std::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Not, Rem, Shl, Shr, Sub};
@@ -62,30 +62,22 @@ impl NeoInteger {
 
     /// Convert to i32, returning `Result` for ergonomic `?` usage.
     pub fn try_into_i32(&self) -> crate::NeoResult<i32> {
-        self.0
-            .to_i32()
-            .ok_or(crate::NeoError::Overflow)
+        self.0.to_i32().ok_or(crate::NeoError::Overflow)
     }
 
     /// Convert to u32, returning `Result` for ergonomic `?` usage.
     pub fn try_into_u32(&self) -> crate::NeoResult<u32> {
-        self.0
-            .to_u32()
-            .ok_or(crate::NeoError::Overflow)
+        self.0.to_u32().ok_or(crate::NeoError::Overflow)
     }
 
     /// Convert to i64, returning `Result` for ergonomic `?` usage.
     pub fn try_into_i64(&self) -> crate::NeoResult<i64> {
-        self.0
-            .to_i64()
-            .ok_or(crate::NeoError::Overflow)
+        self.0.to_i64().ok_or(crate::NeoError::Overflow)
     }
 
     /// Convert to u64, returning `Result` for ergonomic `?` usage.
     pub fn try_into_u64(&self) -> crate::NeoResult<u64> {
-        self.0
-            .to_u64()
-            .ok_or(crate::NeoError::Overflow)
+        self.0.to_u64().ok_or(crate::NeoError::Overflow)
     }
 
     /// Convert to i32, saturating at the boundaries if the value is out of range.

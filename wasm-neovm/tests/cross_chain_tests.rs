@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 //! Cross-chain compilation integration tests
 //!
 //! Tests end-to-end compilation of contracts from different source chains.

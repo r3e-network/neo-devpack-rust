@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 //! Move runtime support for NeoVM
 //!
 //! This module provides runtime helpers that emulate Move-specific

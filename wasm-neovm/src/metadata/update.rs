@@ -1,9 +1,13 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 use anyhow::{anyhow, Result};
 use serde_json::{json, Map, Value};
 
 use super::{method_tokens_to_json, SOURCE_EXTRA_KEY, TOKEN_COLLECTION_KEY};
 use crate::nef::MethodToken;
 
+/// Update a manifest JSON with source and method token metadata.
 pub fn update_manifest_metadata(
     manifest: &mut Value,
     source: Option<&str>,

@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 //! Entrypoint macros and types for Solana compatibility
 //!
 //! Provides the `entrypoint!` macro that maps to Neo contract entry points.

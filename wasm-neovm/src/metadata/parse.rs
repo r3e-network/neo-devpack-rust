@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 use anyhow::{anyhow, bail, ensure, Context, Result};
 use serde_json::{Map, Value};
 
@@ -9,6 +12,7 @@ use crate::nef::{MethodToken, HASH160_LENGTH};
 
 const MAX_TOKEN_METHOD_LENGTH: usize = 32;
 
+/// Parse a `neo.methodtokens` WASM custom section into [`NefMetadata`].
 pub fn parse_method_token_section(bytes: &[u8]) -> Result<NefMetadata> {
     let value: Value = serde_json::from_slice(bytes)
         .context("failed to parse neo.methodtokens custom section as JSON")?;

@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 //! Core WASM to NeoVM translation engine
 //!
 //! This module contains the main translation logic that converts WebAssembly

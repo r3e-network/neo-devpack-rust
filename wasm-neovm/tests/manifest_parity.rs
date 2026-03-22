@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 use wasm_neovm::manifest::{build_manifest, ManifestMethod, ManifestParameter};
 
 fn method(name: &str, params: &[&str], return_type: &str) -> ManifestMethod {

@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 use anyhow::Result;
 
 use super::super::constants::{
@@ -35,8 +38,7 @@ pub(crate) fn emit_push_int(buffer: &mut Vec<u8>, value: i128) -> StackValue {
 
     // Fast path for most common values: -1 to 16 (Round 64 optimization)
     // These account for ~80% of integer constants in typical WASM
-    #[allow(clippy::manual_range_contains)]
-    if value >= -1 && value <= 16 {
+    if (-1..=16).contains(&value) {
         buffer.push(SMALL_VALUES[(value + 1) as usize]);
         return StackValue {
             const_value: Some(value),

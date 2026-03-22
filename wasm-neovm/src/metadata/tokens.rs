@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 use std::collections::HashSet;
 
 use serde_json::{Map, Value};
@@ -8,6 +11,7 @@ use super::{
 };
 use crate::nef::MethodToken;
 
+/// Serialize method tokens to a JSON array value.
 pub fn method_tokens_to_json(tokens: &[MethodToken]) -> Value {
     let entries: Vec<Value> = tokens
         .iter()

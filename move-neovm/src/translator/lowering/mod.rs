@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 //! Move to WASM lowering module
 //!
 //! This module orchestrates the translation of Move bytecode to WASM by

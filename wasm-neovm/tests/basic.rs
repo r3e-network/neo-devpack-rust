@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 #[path = "basic/arithmetic.rs"]
 mod arithmetic;
 #[path = "basic/calls.rs"]

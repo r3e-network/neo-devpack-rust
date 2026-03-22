@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 // Comprehensive stack management tests for WASM-NeoVM translator
 // Phase 1: Critical coverage additions - Stack operations are COMPLETELY UNTESTED (0%)
 

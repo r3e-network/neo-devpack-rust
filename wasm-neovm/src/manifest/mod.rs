@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 //! Contract manifest generation for Neo N3
 //!
 //! This module handles the creation and manipulation of Neo N3 contract manifests,

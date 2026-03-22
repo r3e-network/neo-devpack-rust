@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 use wasm_neovm::translate_module;
 
 fn translate_import(module: &str, import: &str, contract_name: &str) -> wasm_neovm::Translation {

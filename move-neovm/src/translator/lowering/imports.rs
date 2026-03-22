@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 //! Import section generation for storage syscalls
 //!
 //! This module handles the generation of WASM imports for Neo storage operations:

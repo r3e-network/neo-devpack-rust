@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 use super::lowering::{SCRATCH_KEY_OFFSET, SCRATCH_VALUE_OFFSET};
 use crate::bytecode::{AbilitySet, MoveModule, MoveOpcode, StructDef, TypeTag};
 use anyhow::{anyhow, bail, Result};

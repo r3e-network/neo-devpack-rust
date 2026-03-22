@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 //! Function lowering orchestration
 //!
 //! This module handles the translation of Move functions to WASM, including:

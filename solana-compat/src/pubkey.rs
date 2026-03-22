@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 //! Pubkey type representing a 32-byte public key
 //!
 //! Maps to Neo's `UInt160` (contract hash) or `UInt256` as appropriate.

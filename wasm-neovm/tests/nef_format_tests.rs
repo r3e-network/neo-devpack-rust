@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 // Comprehensive NEF (Neo Executable Format) tests for WASM-NeoVM translator
 // Phase 2: High-priority coverage additions - NEF format generation and validation
 

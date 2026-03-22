@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 //! Arena allocator for temporary translation objects (Round 83)
 //!
 //! This module provides a fast bump-pointer allocator for short-lived objects
@@ -30,6 +33,7 @@ impl Default for Arena {
 }
 
 impl Arena {
+    /// Create a new empty arena.
     pub fn new() -> Self {
         Self {
             current: Cell::new(None),
@@ -40,6 +44,7 @@ impl Arena {
         }
     }
 
+    /// Allocate a value in the arena, returning a mutable reference.
     #[inline]
     #[allow(clippy::mut_from_ref)]
     pub fn alloc<T>(&self, value: T) -> &mut T {
@@ -119,6 +124,7 @@ impl Arena {
         }
     }
 
+    /// Deallocate all arena blocks and reset state.
     pub fn reset(&self) {
         for (ptr, layout) in self.blocks.borrow_mut().drain(..) {
             unsafe {
@@ -131,10 +137,12 @@ impl Arena {
         self.total_allocated.set(0);
     }
 
+    /// Total bytes allocated through this arena.
     pub fn total_allocated(&self) -> usize {
         self.total_allocated.get()
     }
 
+    /// Number of memory blocks backing this arena.
     pub fn block_count(&self) -> usize {
         self.blocks.borrow().len()
     }

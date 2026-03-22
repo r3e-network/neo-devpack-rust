@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 //! Move bytecode parsing module
 //!
 //! This module handles parsing of Move compiled bytecode.

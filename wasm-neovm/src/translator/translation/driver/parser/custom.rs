@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 use super::super::overlay::collect_safe_methods;
 use super::super::*;
 

@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 //! Build script for wasm-neovm
 //!
 //! This build script generates opcode and syscall tables from the Neo source code.
@@ -240,7 +243,7 @@ fn generate_opcodes(opcode_path: &Path) -> Result<()> {
 
     writeln!(
         file,
-        "#[derive(Debug, Copy, Clone)]\npub struct OpcodeInfo {{\n    pub name: &'static str,\n    pub byte: u8,\n    pub operand_size: u8,\n    pub operand_size_prefix: u8,\n}}\n"
+        "/// NeoVM opcode metadata.\n#[derive(Debug, Copy, Clone)]\npub struct OpcodeInfo {{\n    /// Opcode mnemonic name.\n    pub name: &'static str,\n    /// Single-byte opcode value.\n    pub byte: u8,\n    /// Fixed operand size in bytes.\n    pub operand_size: u8,\n    /// Variable-length operand size prefix in bytes.\n    pub operand_size_prefix: u8,\n}}\n"
     )?;
     writeln!(file, "pub static OPCODES: &[OpcodeInfo] = &[")?;
     for entry in &entries {
@@ -296,7 +299,7 @@ fn generate_syscalls(smart_contract_dir: &Path) -> Result<()> {
 
     writeln!(
         file,
-        "#[derive(Debug, Copy, Clone)]\npub struct SyscallInfo {{\n    pub name: &'static str,\n    pub hash: u32,\n}}\n"
+        "/// Neo N3 syscall metadata.\n#[derive(Debug, Copy, Clone)]\npub struct SyscallInfo {{\n    /// Canonical syscall name (e.g. `System.Storage.Get`).\n    pub name: &'static str,\n    /// First 4 bytes of SHA-256 hash, little-endian.\n    pub hash: u32,\n}}\n"
     )?;
     writeln!(file, "pub static SYSCALLS: &[SyscallInfo] = &[")?;
     for (name, hash) in &infos {

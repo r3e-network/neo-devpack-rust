@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 use super::super::super::*;
 
 pub(in crate::translator::runtime) fn emit_memory_fill_helper(script: &mut Vec<u8>) -> Result<()> {

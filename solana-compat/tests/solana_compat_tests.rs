@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 //! Comprehensive unit tests for Solana compatibility layer
 //!
 //! Tests cover all major components of the neo-solana-compat crate.

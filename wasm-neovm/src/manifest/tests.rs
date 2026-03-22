@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 use super::{
     build_manifest, collect_method_names, ensure_manifest_methods_match, merge_manifest,
     ManifestMethod, ManifestParameter,

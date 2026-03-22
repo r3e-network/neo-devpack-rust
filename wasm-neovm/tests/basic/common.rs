@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 use sha2::{Digest, Sha256};
 
 pub fn double_sha256_checksum(data: &[u8]) -> u32 {

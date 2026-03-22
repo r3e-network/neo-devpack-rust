@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 //! Solana and Move cross-chain integration tests
 //!
 //! Tests end-to-end compilation of cross-chain contracts.

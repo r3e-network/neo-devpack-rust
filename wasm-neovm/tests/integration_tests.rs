@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 use serde_json::json;
 use wasm_neovm::{
     opcodes, translate_module, translate_with_config, write_nef_with_metadata, ManifestOverlay,

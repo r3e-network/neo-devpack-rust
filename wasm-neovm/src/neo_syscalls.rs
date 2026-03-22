@@ -1,5 +1,9 @@
-// Neo N3 syscall mappings for WASM imports
-// Maps friendly import names from (import "neo" "function_name") to actual Neo syscall names
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
+//! Neo N3 syscall mappings for WASM imports.
+//!
+//! Maps friendly import names from `(import "neo" "function_name")` to actual Neo syscall names.
 
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
@@ -204,6 +208,7 @@ pub static NEO_SYSCALL_MAP: Lazy<HashMap<String, &'static str>> = Lazy::new(|| {
     map
 });
 
+/// Fingerprint-based fallback map for fuzzy syscall resolution.
 pub static NEO_SYSCALL_FINGERPRINT_MAP: Lazy<HashMap<String, &'static str>> = Lazy::new(|| {
     let mut map: HashMap<String, &'static str> = HashMap::new();
 

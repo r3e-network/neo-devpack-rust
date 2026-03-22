@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 use serde_json::json;
 use std::collections::HashSet;
 
@@ -24,6 +27,7 @@ impl<'a> Default for ManifestConfig<'a> {
     }
 }
 
+/// Build a manifest with default configuration for the given contract name and methods.
 pub fn build_manifest(contract_name: &str, methods: &[ManifestMethod]) -> RenderedManifest {
     build_manifest_with_config(
         ManifestConfig {

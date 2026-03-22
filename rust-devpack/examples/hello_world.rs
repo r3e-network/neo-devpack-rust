@@ -1,4 +1,4 @@
-// Copyright (c) 2025 R3E Network
+// Copyright (c) 2025-2026 R3E Network
 // Licensed under the MIT License
 
 //! Hello World Neo N3 Smart Contract

@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 //! NEF (Neo Executable Format) file generation
 //!
 //! This module handles the creation of NEF files, which are the standard format
@@ -118,10 +121,15 @@ pub fn write_nef_with_metadata<P: AsRef<Path>>(
 /// Method token for NEF files
 #[derive(Debug, Clone)]
 pub struct MethodToken {
+    /// 20-byte script hash of the target contract.
     pub contract_hash: [u8; 20],
+    /// Name of the method to call.
     pub method: String,
+    /// Number of parameters the method expects.
     pub parameters_count: u16,
+    /// Whether the method returns a value.
     pub has_return_value: bool,
+    /// Call flags controlling allowed operations.
     pub call_flags: u8,
 }
 

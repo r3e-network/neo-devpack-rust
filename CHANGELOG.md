@@ -20,6 +20,7 @@ this repository follow independent versioning (currently 0.1.x).
 
 ### Changed
 
+- Renamed project from `neo-llvm` to `neo-devpack-rust` across all files, URLs, and metadata.
 - Consolidated manifest permission deduplication logic into a shared `dedup_permissions()` function (DRY refactor in `wasm-neovm`).
 - `neo-devpack::codec` now uses `postcard` instead of `bincode`, preserving the public helper API while removing the unmaintained serializer dependency.
 - `neo-runtime` contract and crypto helpers now use deterministic local implementations that package correctly against the published `neo-syscalls 0.1.0` surface.

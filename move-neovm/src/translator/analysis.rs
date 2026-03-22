@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 use super::lowering::ValueKind;
 use super::resources::{ensure_copy_allowed, ensure_has_key, struct_for_index};
 use crate::bytecode::{AbilitySet, FunctionDef, MoveModule, MoveOpcode, TypeTag};

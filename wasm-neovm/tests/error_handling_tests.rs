@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 // Comprehensive error handling tests for WASM-NeoVM translator
 // Phase 1: Critical coverage additions - Error paths are <20% tested
 

@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 use crate::manifest::{ManifestMethod, RenderedManifest};
 use crate::nef::MethodToken;
 use crate::types::ContractName;
@@ -90,7 +93,9 @@ impl Translation {
 }
 
 #[derive(Debug)]
+/// Intermediate manifest data collected during translation.
 pub struct ManifestData {
+    /// ABI methods extracted from WASM exports.
     pub methods: Vec<ManifestMethod>,
 }
 

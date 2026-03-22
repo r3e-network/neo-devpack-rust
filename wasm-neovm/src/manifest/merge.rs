@@ -1,6 +1,10 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 
+/// Recursively merge an overlay JSON value into a base manifest.
 pub fn merge_manifest(base: &mut Value, overlay: &Value) {
     if let (Some(base_map), Some(overlay_map)) = (base.as_object_mut(), overlay.as_object()) {
         for (key, value) in overlay_map {
@@ -23,6 +27,7 @@ pub fn merge_manifest(base: &mut Value, overlay: &Value) {
     *base = overlay.clone();
 }
 
+/// Propagate `safe: true` flags to all occurrences of matching method names.
 pub fn propagate_safe_flags(manifest: &mut Value) {
     let Some(abi) = manifest
         .get_mut("abi")

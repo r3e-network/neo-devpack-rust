@@ -1,16 +1,22 @@
 [package]
 name = "neo-test"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
 description = "Testing framework for Neo N3 Rust smart contracts"
-authors = ["R3E Network <team@r3e.network>"]
-license = "MIT"
-repository = "https://github.com/r3e-network/neo-devpack-rust"
+documentation = "https://docs.rs/neo-test"
+rust-version.workspace = true
+keywords = ["neo", "neovm", "blockchain", "smart-contracts", "testing"]
+categories = ["cryptography::cryptocurrencies", "development-tools::testing"]
+include = ["src/**/*", "Cargo.toml", "README.md", "../../LICENSE"]
 
 [dependencies]
-neo-devpack = { path = "..", version = "0.1.0" }
-neo-types = { path = "../neo-types", version = "0.1.0" }
-neo-syscalls = { path = "../neo-syscalls", version = "0.1.0" }
+neo-devpack = { workspace = true }
+neo-types = { workspace = true }
+neo-syscalls = { workspace = true }
 num-traits = "0.2"
 
 [dev-dependencies]

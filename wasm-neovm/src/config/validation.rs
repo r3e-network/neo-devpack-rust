@@ -1,4 +1,4 @@
-// Copyright (c) 2025 R3E Network
+// Copyright (c) 2025-2026 R3E Network
 // Licensed under the MIT License
 
 //! Configuration validation
@@ -159,15 +159,7 @@ pub fn sanitize_config(mut config: TranslationConfig) -> TranslationConfig {
     }
 
     // Ensure stack size is reasonable
-    #[allow(clippy::manual_clamp)]
-    {
-        if config.behavior.stack_size_limit < 16 {
-            config.behavior.stack_size_limit = 16;
-        }
-        if config.behavior.stack_size_limit > 65536 {
-            config.behavior.stack_size_limit = 65536;
-        }
-    }
+    config.behavior.stack_size_limit = config.behavior.stack_size_limit.clamp(16, 65536);
 
     config
 }

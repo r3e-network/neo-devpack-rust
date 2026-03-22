@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 use wasm_neovm::{
     metadata::{extract_nef_metadata, method_tokens_to_json, update_manifest_metadata},
     translate_module, write_nef_with_metadata,

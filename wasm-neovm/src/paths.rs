@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 use std::path::{Path, PathBuf};
 
 pub(crate) fn derive_output_path(input: &Path, extension: &str) -> PathBuf {

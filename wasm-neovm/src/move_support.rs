@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 use anyhow::{Context, Result};
 
 use move_neovm::{is_move_bytecode, translate_move_to_wasm};

@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 use super::reachability::analyze_reachable_defined_functions;
 use super::*;
 use crate::config::{BehaviorConfig, ManifestOverlay};

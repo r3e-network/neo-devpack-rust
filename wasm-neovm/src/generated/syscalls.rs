@@ -1,6 +1,12 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
+/// Neo N3 syscall metadata.
 #[derive(Debug, Copy, Clone)]
 pub struct SyscallInfo {
+    /// Canonical syscall name (e.g. `System.Storage.Get`).
     pub name: &'static str,
+    /// First 4 bytes of SHA-256 hash, little-endian.
     pub hash: u32,
 }
 

@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 //! Move to WASM/NeoVM translator
 //!
 //! This module lowers a parsed `MoveModule` into a plain WASM module that can

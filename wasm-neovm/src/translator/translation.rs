@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 // Required imports
 use anyhow::{anyhow, bail, Context, Result};
 use serde_json::Value;

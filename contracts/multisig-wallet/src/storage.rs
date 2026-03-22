@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 use neo_devpack::prelude::*;
 
 pub const CONFIG_THRESHOLD_KEY: &[u8] = b"cfg:threshold";

@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 use once_cell::sync::Lazy;
 
 mod generated {
@@ -25,6 +28,7 @@ static OPCODE_BYTE_LOOKUP: Lazy<[Option<&'static OpcodeInfo>; 256]> = Lazy::new(
     table
 });
 
+/// Return all NeoVM opcodes.
 pub fn all() -> &'static [OpcodeInfo] {
     generated::OPCODES
 }
@@ -40,6 +44,7 @@ pub fn lookup(name: &str) -> Option<&'static OpcodeInfo> {
     OPCODE_LOOKUP.get(upper_name.as_str()).copied()
 }
 
+/// Look up an opcode by its byte value.
 pub fn lookup_by_byte(byte: u8) -> Option<&'static OpcodeInfo> {
     OPCODE_BYTE_LOOKUP[byte as usize]
 }

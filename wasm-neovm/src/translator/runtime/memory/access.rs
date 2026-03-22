@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 use super::super::*;
 
 pub(crate) fn ensure_memory_access(runtime: &RuntimeHelpers, mem_index: u32) -> Result<()> {

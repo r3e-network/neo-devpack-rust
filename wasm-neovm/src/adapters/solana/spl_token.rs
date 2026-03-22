@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 /// Map SPL Token program calls to Neo equivalents.
 pub(super) fn map_spl_token_syscall(name: &str) -> Option<&'static str> {
     match name {

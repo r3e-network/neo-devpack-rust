@@ -1,7 +1,11 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 use anyhow::{anyhow, bail, Result};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 
+/// Collect all method names from a manifest's ABI section.
 pub fn collect_method_names(manifest: &Value) -> HashSet<String> {
     manifest
         .get("abi")
@@ -71,6 +75,7 @@ pub(super) fn collect_method_shapes(manifest: &Value) -> Result<HashMap<String, 
     Ok(shapes)
 }
 
+/// Ensure the final manifest methods match the baseline set, detecting additions or removals.
 pub fn ensure_manifest_methods_match(
     manifest: &Value,
     baseline: &HashSet<String>,

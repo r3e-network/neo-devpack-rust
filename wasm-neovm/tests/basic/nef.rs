@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 use crate::common::{double_sha256_checksum, read_var_uint};
 use std::convert::TryInto;
 use std::fs;

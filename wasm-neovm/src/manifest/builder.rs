@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 //! Manifest builder for Neo N3 contract manifests
 //!
 //! This module provides a builder pattern for constructing and modifying
@@ -53,6 +56,7 @@ impl ManifestBuilder {
         }
     }
 
+    /// Merge an overlay JSON value into the manifest.
     pub fn merge_overlay(&mut self, overlay: &Value, label: Option<String>) {
         merge_manifest(&mut self.manifest, overlay);
         if let Some(label) = label {
@@ -60,10 +64,12 @@ impl ManifestBuilder {
         }
     }
 
+    /// Propagate safe flags from overlay into matching ABI methods.
     pub fn propagate_safe_flags(&mut self) {
         propagate_safe_flags(&mut self.manifest);
     }
 
+    /// Verify that the final manifest has the same methods as the baseline.
     pub fn ensure_method_parity(&self) -> Result<()> {
         ensure_manifest_methods_match(
             &self.manifest,
@@ -105,6 +111,7 @@ impl ManifestBuilder {
         Ok(())
     }
 
+    /// Enable a feature flag in the manifest.
     pub fn enable_feature(&mut self, feature: &str) -> Result<()> {
         let manifest_obj = self
             .manifest
@@ -122,14 +129,17 @@ impl ManifestBuilder {
         Ok(())
     }
 
+    /// Return a shared reference to the underlying manifest JSON.
     pub fn manifest_value(&self) -> &Value {
         &self.manifest
     }
 
+    /// Return a mutable reference to the underlying manifest JSON.
     pub fn manifest_value_mut(&mut self) -> &mut Value {
         &mut self.manifest
     }
 
+    /// Consume the builder and return a `RenderedManifest`.
     pub fn into_rendered(self) -> super::RenderedManifest {
         let mut manifest = self.manifest;
         if let Some(features) = manifest

@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};

@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 mod generated {
     include!(concat!(env!("OUT_DIR"), "/syscalls.rs"));
 }
@@ -46,14 +49,17 @@ static EXTENDED_SYSCALLS: &[SyscallInfo] = &[
     // Do NOT add duplicate entries with incorrect hashes here.
 ];
 
+/// Return all generated Neo N3 syscalls.
 pub fn all() -> &'static [SyscallInfo] {
     generated::SYSCALLS
 }
 
+/// Return the extended syscall table (native contract methods).
 pub fn extended() -> &'static [SyscallInfo] {
     EXTENDED_SYSCALLS
 }
 
+/// Look up a syscall by its canonical name (case-insensitive).
 pub fn lookup(name: &str) -> Option<&'static SyscallInfo> {
     generated::SYSCALLS
         .iter()
@@ -72,6 +78,7 @@ pub fn lookup_extended(name: &str) -> Option<&'static SyscallInfo> {
         .find(|info| info.name.eq_ignore_ascii_case(name))
 }
 
+/// Look up a syscall by its 4-byte hash.
 pub fn lookup_by_hash(hash: u32) -> Option<&'static SyscallInfo> {
     generated::SYSCALLS
         .iter()

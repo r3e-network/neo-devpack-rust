@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 use super::super::*;
 use super::util::{mask_top_bits, sign_extend_const, truncate_to_bits};
 

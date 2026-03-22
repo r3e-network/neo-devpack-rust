@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 use anyhow::{anyhow, bail, Result};
 
 use crate::translator::helpers::{emit_call_placeholder, emit_call_to, patch_call};

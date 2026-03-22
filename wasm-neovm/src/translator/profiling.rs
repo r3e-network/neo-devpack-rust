@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 //! Profiling instrumentation for translation performance analysis (Rounds 70, 90)
 //!
 //! This module provides:
@@ -26,9 +29,11 @@ pub struct TranslationProfile {
     pub opcode_histogram: Mutex<HashMap<String, u64>>,
     /// Round 90: PGO - branch prediction stats
     pub branch_hits: AtomicU64,
+    /// Branch prediction misses
     pub branch_misses: AtomicU64,
     /// Round 90: PGO - cache performance
     pub cache_hits: AtomicU64,
+    /// Cache misses
     pub cache_misses: AtomicU64,
 }
 
@@ -39,6 +44,7 @@ impl Default for TranslationProfile {
 }
 
 impl TranslationProfile {
+    /// Create a new profile with zeroed counters.
     pub fn new() -> Self {
         Self {
             parse_time_ns: AtomicU64::new(0),
@@ -154,16 +160,24 @@ impl TranslationProfile {
 /// Profile statistics snapshot
 #[derive(Debug, Clone, Copy)]
 pub struct ProfileStats {
+    /// Time spent parsing in milliseconds.
     pub parse_time_ms: f64,
+    /// Time spent translating in milliseconds.
     pub translate_time_ms: f64,
+    /// Time spent finalizing in milliseconds.
     pub finalize_time_ms: f64,
+    /// Total opcodes translated.
     pub opcode_count: u64,
+    /// Total functions translated.
     pub function_count: u64,
+    /// Approximate memory allocations.
     pub allocation_count: u64,
+    /// Branch prediction hit rate (0.0 to 1.0).
     pub branch_hit_rate: f64,
 }
 
 impl ProfileStats {
+    /// Total wall-clock time across all phases.
     pub fn total_time_ms(&self) -> f64 {
         self.parse_time_ms + self.translate_time_ms + self.finalize_time_ms
     }
@@ -171,6 +185,7 @@ impl ProfileStats {
 
 /// Global profile instance (lazy initialization)
 use once_cell::sync::Lazy;
+/// Global singleton holding cumulative translation profiling counters.
 pub static PROFILE: Lazy<TranslationProfile> = Lazy::new(TranslationProfile::new);
 
 /// Scoped timer for measuring operation duration
@@ -182,6 +197,7 @@ pub struct ScopeTimer<'a> {
 
 #[cfg(feature = "profile")]
 impl<'a> ScopeTimer<'a> {
+    /// Create a new scoped timer that records elapsed nanoseconds into `counter` on drop.
     #[inline]
     pub fn new(counter: &'a AtomicU64) -> Self {
         Self {
@@ -206,6 +222,7 @@ pub struct ScopeTimer;
 
 #[cfg(not(feature = "profile"))]
 impl ScopeTimer {
+    /// Create a no-op timer (profiling disabled).
     #[inline(always)]
     pub fn new(_counter: &AtomicU64) -> Self {
         Self

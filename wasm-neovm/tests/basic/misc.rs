@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 use std::collections::HashSet;
 use wasm_neovm::translate_module;
 
