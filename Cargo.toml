@@ -24,7 +24,7 @@ exclude = [
 resolver = "2"
 
 [workspace.package]
-version = "0.4.9"
+version = "0.5.0"
 edition = "2021"
 authors = ["R3E Network <team@r3e.network>"]
 license = "MIT"

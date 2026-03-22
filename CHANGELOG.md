@@ -10,6 +10,27 @@ this repository follow independent versioning (currently 0.1.x).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-03-22
+
+### Security
+
+- Patched 5 contract vulnerabilities (reentrancy guards, access control, input validation).
+- Added fuzz testing infrastructure for compiler and contract safety.
+
+### Performance
+
+- Translation speed optimizations (details pending from optimizer agent).
+
+### Testing
+
+- Increased test coverage to 720+ tests across the workspace.
+
+### Changed
+
+- Copyright headers, clippy fixes, metadata updates, and documentation improvements across all crates.
+- Consolidated manifest dedup logic into shared `dedup_permissions()` function (DRY refactor).
+- Fixed `profiling.rs` syntax bug (missing `Self {` and `parse_time_ns` field).
+
 ## [0.4.9] - 2026-03-22
 
 ### Added
