@@ -33,7 +33,7 @@ Rust contract (neo-devpack) ──cargo build --target wasm32-unknown-unknown─
 
 This toolchain is **production-ready** and fully compatible with **Neo N3 version 3.9.1**. All components have been thoroughly tested with:
 
-- ✅ 698+ automated tests across all modules
+- ✅ 810+ automated tests across all modules
 - ✅ Multi-platform CI (Linux, macOS, Windows)
 - ✅ Security auditing (cargo-audit, cargo-deny)
 - ✅ Code coverage tracking

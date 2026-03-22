@@ -23,7 +23,7 @@ this repository follow independent versioning (currently 0.1.x).
 
 ### Testing
 
-- Increased test coverage to 720+ tests across the workspace.
+- Increased test coverage to 810+ tests across the workspace.
 
 ### Changed
 
