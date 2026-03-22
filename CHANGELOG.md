@@ -19,7 +19,8 @@ this repository follow independent versioning (currently 0.1.x).
 
 ### Performance
 
-- Translation speed optimizations (details pending from optimizer agent).
+- Verified translation performance: no regressions (113 MiB/s memory, 6.6 MiB/s 10-func, 6.5 MiB/s 50-func).
+- 51 pre-allocated buffers (`with_capacity`) already in place; `TranslationMemoryPool` with bucket-based reuse.
 
 ### Testing
 
