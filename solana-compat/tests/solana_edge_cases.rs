@@ -5,7 +5,7 @@
 
 use neo_solana_compat::{
     account_info::{next_account_info, AccountInfo},
-    program::{invoke, AccountMeta, Instruction},
+    program::{AccountMeta, Instruction},
     program_error::ProgramError,
     pubkey::{Pubkey, PubkeyError, SYSTEM_PROGRAM_ID, TOKEN_PROGRAM_ID},
 };
