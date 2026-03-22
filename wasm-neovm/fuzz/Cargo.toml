@@ -1,0 +1,36 @@
+[package]
+name = "wasm-neovm-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[workspace]
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+arbitrary = { version = "1", features = ["derive"] }
+tempfile = "3"
+wasm-neovm = { path = ".." }
+
+[[bin]]
+name = "fuzz_translate"
+path = "fuzz_targets/fuzz_translate.rs"
+doc = false
+
+[[bin]]
+name = "fuzz_translate_config"
+path = "fuzz_targets/fuzz_translate_config.rs"
+doc = false
+
+[[bin]]
+name = "fuzz_nef"
+path = "fuzz_targets/fuzz_nef.rs"
+doc = false
+
+[[bin]]
+name = "fuzz_numeric"
+path = "fuzz_targets/fuzz_numeric.rs"
+doc = false

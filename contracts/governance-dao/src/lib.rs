@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 use neo_devpack::prelude::*;
 
 mod config;
@@ -180,6 +183,9 @@ impl NeoGovernanceDaoContract {
     }
 
     /// Cast a vote on a proposal. `side`: 0 = yes, 1 = no.
+    ///
+    /// Validates that the current block time falls within the proposal's
+    /// voting window (`start_time..=end_time`).
     #[neo_method]
     pub fn vote(
         proposal_id: i64,
@@ -214,6 +220,13 @@ impl NeoGovernanceDaoContract {
             None => return false,
         };
         if proposal.executed {
+            return false;
+        }
+        // Enforce voting window: reject votes before start or after end.
+        let now: i64 = NeoRuntime::get_time()
+            .map(|t| t.try_as_i64().unwrap_or(0))
+            .unwrap_or(0);
+        if now < proposal.start_time || now > proposal.end_time {
             return false;
         }
         let support = side == 0;
@@ -275,6 +288,9 @@ impl NeoGovernanceDaoContract {
     }
 
     /// Unstake tokens from the DAO.
+    ///
+    /// Transfer is attempted BEFORE updating storage to prevent
+    /// state corruption if the external transfer call fails.
     #[neo_method]
     pub fn unstake(staker_ptr: i64, staker_len: i64, amount: i64) -> bool {
         if amount <= 0 {
@@ -299,12 +315,14 @@ impl NeoGovernanceDaoContract {
         if current < amount {
             return false;
         }
-        let new_total = current - amount;
-        if store_stake(&ctx, &staker, new_total).is_err() {
-            return false;
-        }
+        // Transfer tokens FIRST — only update storage on success to prevent
+        // accounting corruption if the external call fails.
         let contract_hash = NeoRuntime::get_executing_script_hash().unwrap_or_default();
         if !call_transfer(&cfg.token, &contract_hash, &staker, amount) {
+            return false;
+        }
+        let new_total = current - amount;
+        if store_stake(&ctx, &staker, new_total).is_err() {
             return false;
         }
         let _ = (StakeDecreasedEvt {
@@ -365,6 +383,9 @@ impl NeoGovernanceDaoContract {
     }
 
     /// Handle incoming NEP-17 token payments as stake deposits.
+    ///
+    /// Only accepts the configured governance token; rejects payments
+    /// from any other NEP-17 contract.
     #[neo_method(name = "onNEP17Payment")]
     pub fn on_nep17_payment(from_ptr: i64, from_len: i64, amount: i64, _data: i64) {
         if amount <= 0 {
@@ -378,6 +399,16 @@ impl NeoGovernanceDaoContract {
             Some(c) => c,
             None => return,
         };
+        // Verify the calling contract is the configured governance token.
+        let cfg = match load_config(&ctx) {
+            Some(c) => c,
+            None => return,
+        };
+        let caller = NeoRuntime::get_calling_script_hash()
+            .unwrap_or_else(|_| NeoByteString::new(vec![]));
+        if caller.as_slice() != cfg.token.as_slice() {
+            return;
+        }
         let current = load_stake(&ctx, &from);
         let new_total = current + amount;
         let _ = store_stake(&ctx, &from, new_total);

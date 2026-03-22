@@ -76,7 +76,7 @@ PACKAGE_MANIFESTS := \
 	move-neovm/Cargo.toml \
 	solana-compat/Cargo.toml
 
-.PHONY: help examples cross-chain hello-world nep17-token constant-product nep11-nft uniswap-v2 staking-rewards timelock-vault flashloan-pool multisig-wallet escrow crowdfunding governance-dao oracle-consumer nft-marketplace solana-hello move-coin c-hello fmt lint test verify-contract-tests test-contracts test-cross-chain integration-tests smoke-neoxp security-check package-check spec clean
+.PHONY: help examples cross-chain hello-world nep17-token constant-product nep11-nft uniswap-v2 staking-rewards timelock-vault flashloan-pool multisig-wallet escrow crowdfunding governance-dao oracle-consumer nft-marketplace solana-hello move-coin c-hello fmt lint test verify-contract-tests test-contracts test-cross-chain integration-tests smoke-neoxp security-check package-check spec clean fuzz fuzz-translate fuzz-translate-config fuzz-nef fuzz-numeric fuzz-all
 
 help:
 	@echo "Usage: make <target>"
@@ -121,6 +121,14 @@ help:
 	@echo "  quality-check   Run all quality checks (fmt, lint, test, security, version)"
 	@echo "  spec            Build the LaTeX specification in spec/"
 	@echo "  clean           Remove generated build artefacts"
+	@echo
+	@echo "Fuzz targets (requires cargo-fuzz + nightly):"
+	@echo "  fuzz             Run primary fuzz target (translate) for 5 minutes"
+	@echo "  fuzz-translate   Fuzz the WASM translator with arbitrary bytes"
+	@echo "  fuzz-translate-config  Fuzz translator with varied config fields"
+	@echo "  fuzz-nef         Fuzz NEF serialization"
+	@echo "  fuzz-numeric     Fuzz numeric encoding (push_biginteger/push_bytevec)"
+	@echo "  fuzz-all         Run all fuzz targets sequentially"
 
 examples: hello-world nep17-token constant-product nep11-nft uniswap-v2 staking-rewards timelock-vault flashloan-pool multisig-wallet escrow crowdfunding governance-dao oracle-consumer nft-marketplace c-hello-optional cross-chain
 
@@ -468,6 +476,17 @@ quality-check: fmt lint test security-check package-check version-check
 
 spec:
 	$(MAKE) -C spec
+
+fuzz: fuzz-translate  ## Run primary fuzz target (translate) for 5 minutes
+fuzz-translate:
+	cd wasm-neovm && cargo +nightly fuzz run fuzz_translate -- -max_total_time=300
+fuzz-translate-config:
+	cd wasm-neovm && cargo +nightly fuzz run fuzz_translate_config -- -max_total_time=300
+fuzz-nef:
+	cd wasm-neovm && cargo +nightly fuzz run fuzz_nef -- -max_total_time=300
+fuzz-numeric:
+	cd wasm-neovm && cargo +nightly fuzz run fuzz_numeric -- -max_total_time=300
+fuzz-all: fuzz-translate fuzz-translate-config fuzz-nef fuzz-numeric  ## Run all fuzz targets sequentially
 
 clean:
 	rm -rf $(OUTDIR)

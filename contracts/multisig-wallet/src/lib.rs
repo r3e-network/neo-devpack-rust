@@ -1,3 +1,6 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
 use neo_devpack::prelude::*;
 
 mod config;
@@ -45,6 +48,7 @@ impl SampleMultisigContract {
     }
 
     /// Configure the multisig wallet with owners and threshold.
+    /// Can only be called once — rejects reconfiguration after initial setup.
     #[neo_method]
     pub fn configure(owner_ptr: i64, owner_count: i64, threshold: i64) -> bool {
         if threshold <= 0 || owner_count <= 0 || threshold > owner_count {
@@ -61,6 +65,10 @@ impl SampleMultisigContract {
             Some(c) => c,
             None => return false,
         };
+        // Prevent reconfiguration — reject if already configured.
+        if load_config(&ctx).is_some() {
+            return false;
+        }
         let cfg = WalletConfig { owners, threshold };
         store_config(&ctx, &cfg).is_ok()
     }

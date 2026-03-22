@@ -19,21 +19,21 @@ Rust contract (neo-devpack) ──cargo build --target wasm32-unknown-unknown─
 
 ## 📚 Quick Links
 
-| Resource | Description |
-|----------|-------------|
+| Resource                                                       | Description                                           |
+| -------------------------------------------------------------- | ----------------------------------------------------- |
 | [📖 Quick Start Guide](docs/rust-smart-contract-quickstart.md) | Step-by-step tutorial for writing your first contract |
-| [📋 Contract Examples](contracts/) | 17 production-ready example contracts |
-| [🔧 API Documentation](https://docs.rs/wasm-neovm) | Rust API docs for wasm-neovm |
-| [🌉 Cross-Chain Spec](docs/CROSS_CHAIN_SPEC.md) | Technical specification for Solana/Move compatibility |
-| [🏗️ Architecture](docs/wasm-pipeline.md) | WebAssembly to NeoVM translation pipeline |
-| [🐛 Contributing](CONTRIBUTING.md) | Guidelines for contributors |
-| [🔒 Security](SECURITY.md) | Security policy and vulnerability reporting |
+| [📋 Contract Examples](contracts/)                             | 17 production-ready example contracts                 |
+| [🔧 API Documentation](https://docs.rs/wasm-neovm)             | Rust API docs for wasm-neovm                          |
+| [🌉 Cross-Chain Spec](docs/CROSS_CHAIN_SPEC.md)                | Technical specification for Solana/Move compatibility |
+| [🏗️ Architecture](docs/wasm-pipeline.md)                       | WebAssembly to NeoVM translation pipeline             |
+| [🐛 Contributing](CONTRIBUTING.md)                             | Guidelines for contributors                           |
+| [🔒 Security](SECURITY.md)                                     | Security policy and vulnerability reporting           |
 
 ## 🚀 Production Ready
 
 This toolchain is **production-ready** and fully compatible with **Neo N3 version 3.9.1**. All components have been thoroughly tested with:
 
-- ✅ 500+ automated tests across all modules
+- ✅ 698+ automated tests across all modules
 - ✅ Multi-platform CI (Linux, macOS, Windows)
 - ✅ Security auditing (cargo-audit, cargo-deny)
 - ✅ Code coverage tracking
@@ -237,21 +237,22 @@ Use `--compare-manifest <file>` to assert that the generated manifest matches a 
    ```
 
 10. To deploy a generated contract to a running Neo Express instance you can use the
-   helper script:
-   ```bash
-   export NEO_EXPRESS_RPC=http://localhost:50012
-   scripts/neoexpress_deploy.sh build/HelloWorld.nef build/HelloWorld.manifest.json HelloWorld
-   ```
+    helper script:
 
-   For a local end-to-end smoke pass (build + deploy/invoke checks), run:
+```bash
+export NEO_EXPRESS_RPC=http://localhost:50012
+scripts/neoexpress_deploy.sh build/HelloWorld.nef build/HelloWorld.manifest.json HelloWorld
+```
 
-   ```bash
-   make smoke-neoxp
-   ```
+For a local end-to-end smoke pass (build + deploy/invoke checks), run:
 
-   CI runs the same `Neo Express Smoke` suite on every run.
-   This adds CI time because it performs full Neo Express provisioning and
-   deploy/invoke validation for the sample suite.
+```bash
+make smoke-neoxp
+```
+
+CI runs the same `Neo Express Smoke` suite on every run.
+This adds CI time because it performs full Neo Express provisioning and
+deploy/invoke validation for the sample suite.
 
 Rust contracts can now embed manifest metadata directly via DevPack macros:
 
@@ -308,7 +309,7 @@ The accompanying Rust contract can declare the imports with `#[link(wasm_import_
 - [x] Manifest overlay merge + permission deduplication
 - [x] Method-token inference for `System.Contract.Call` and syscall usage
 - [x] Comprehensive unit tests for translator modules
-- [x] Production-grade Rust contract examples (14 templates covering NEP‑17, NEP‑11, AMM/Uniswap-style routing, staking, timelocks, flashloans, multisig, escrow, DAO, oracle, NFT marketplace, etc.)
+- [x] Production-grade Rust contract examples (17 templates covering NEP‑17, NEP‑11, AMM/Uniswap-style routing, staking, timelocks, flashloans, multisig, escrow, DAO, oracle, NFT marketplace, cross-chain Solana/Move, etc.)
 - [x] Makefile automation (`make examples`) to build and translate every contract
 - [x] Documentation for quick start, contract catalogue, and Neo Express deployment
 - [x] **Solana compatibility layer** (`neo-solana-compat`) with full API support (Pubkey, AccountInfo, ProgramError, invoke)

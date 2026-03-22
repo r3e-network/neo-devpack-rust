@@ -18,6 +18,7 @@ exclude = [
     "spec",
     "docs",
     "scripts",
+    "wasm-neovm/fuzz",
 ]
 
 resolver = "2"
