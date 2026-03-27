@@ -21,8 +21,8 @@ pub(crate) const PUSHINT32: u8 = 0x02;
 pub(crate) const PUSHINT64: u8 = 0x03;
 pub(crate) const PUSHINT128: u8 = 0x04;
 
-/// CONVERT opcode for type conversions
-pub(crate) const CONVERT: u8 = 0xD3;
+/// CONVERT opcode for type conversions (0xDB in NeoVM spec)
+pub(crate) const CONVERT: u8 = 0xDB;
 
 /// Stack item type constants for CONVERT
 pub(crate) const STACKITEMTYPE_INTEGER: u8 = 0x21;

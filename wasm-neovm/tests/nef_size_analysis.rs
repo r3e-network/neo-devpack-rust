@@ -219,3 +219,42 @@ fn nef_size_details() {
         }
     }
 }
+
+#[test]
+fn nef_size_memory_detail() {
+    let wasm = wat::parse_str(
+        r#"(module (memory 1)
+            (func (export "load") (result i32) i32.const 0 i32.load)
+            (func (export "store") (param i32 i32) local.get 0 local.get 1 i32.store))"#,
+    ).expect("valid wat");
+    let t = translate_module(&wasm, "memory_load_store").expect("translate");
+    let table = build_opcode_table();
+    eprintln!("\n=== memory_load_store detail ({} bytes) ===", t.script.len());
+    let mut pc = 0usize;
+    while pc < t.script.len() {
+        let byte = t.script[pc];
+        let info = table[byte as usize];
+        let (iname, size) = match info {
+            Some(i) => {
+                let s = if i.operand_size_prefix == 0 {
+                    1 + i.operand_size as usize
+                } else {
+                    let ps = pc + 1;
+                    let prefix = i.operand_size_prefix as usize;
+                    let ol = match prefix {
+                        1 => t.script.get(ps).copied().unwrap_or(0) as usize,
+                        2 => { let a = t.script.get(ps).copied().unwrap_or(0); let b = t.script.get(ps+1).copied().unwrap_or(0); u16::from_le_bytes([a, b]) as usize }
+                        _ => 0,
+                    };
+                    1 + prefix + ol
+                };
+                (i.name, s)
+            }
+            None => ("???", 1),
+        };
+        let hex: String = t.script[pc..pc + size.min(t.script.len() - pc)]
+            .iter().map(|b| format!("{b:02X}")).collect::<Vec<_>>().join(" ");
+        eprintln!("  {pc:4}: {hex:20} {iname}");
+        pc += size;
+    }
+}

@@ -15,6 +15,30 @@ impl RuntimeHelpers {
         features: &mut FeatureTracker,
         adapter: &dyn ChainAdapter,
     ) -> Result<()> {
+        // Pre-emit mask_u32 helper if memory/table helpers that USE mask_u32 are registered.
+        // Load/Store/Grow don't use mask_u32, so only check Fill/Copy/Env* and table ops.
+        let needs_mask_u32 = self.memory_helpers.keys().any(|k| matches!(k,
+            MemoryHelperKind::Fill | MemoryHelperKind::Copy |
+            MemoryHelperKind::EnvMemcpy | MemoryHelperKind::EnvMemmove | MemoryHelperKind::EnvMemset
+        )) || self.table_helpers.keys().any(|k| matches!(k,
+            TableHelperKind::Get(_) | TableHelperKind::Set(_) |
+            TableHelperKind::Fill(_) | TableHelperKind::Copy { .. } |
+            TableHelperKind::InitFromPassive { .. }
+        ));
+        let mask_u32_offset = if needs_mask_u32 {
+            let offset = script.len();
+            // mask_u32 body: (1 << 32) - 1, AND, RET
+            let _ = emit_push_int(script, 1);
+            let _ = emit_push_int(script, 32);
+            script.push(lookup_opcode("SHL")?.byte);
+            script.push(lookup_opcode("DEC")?.byte);
+            script.push(lookup_opcode("AND")?.byte);
+            script.push(lookup_opcode("RET")?.byte);
+            Some(offset)
+        } else {
+            None
+        };
+
         let memory_kinds: Vec<MemoryHelperKind> = self
             .memory_helpers
             .iter()
@@ -22,7 +46,7 @@ impl RuntimeHelpers {
             .map(|(kind, _)| *kind)
             .collect();
         for kind in memory_kinds {
-            let offset = self.realize_memory_helper(script, kind)?;
+            let offset = self.realize_memory_helper(script, kind, mask_u32_offset)?;
             if let Some(record) = self.memory_helpers.get_mut(&kind) {
                 for &call_pos in &record.calls {
                     patch_call(script, call_pos, offset)?;
@@ -52,7 +76,7 @@ impl RuntimeHelpers {
             .map(|(kind, _)| *kind)
             .collect();
         for kind in table_kinds {
-            let offset = self.realize_table_helper(script, kind)?;
+            let offset = self.realize_table_helper(script, kind, mask_u32_offset)?;
             if let Some(record) = self.table_helpers.get_mut(&kind) {
                 for &call_pos in &record.calls {
                     patch_call(script, call_pos, offset)?;
@@ -82,6 +106,7 @@ impl RuntimeHelpers {
                 functions,
                 features,
                 adapter,
+                mask_u32_offset,
             )?;
             if let Some(record) = self.call_indirect_helpers.get_mut(&key) {
                 for &call_pos in &record.calls {
@@ -209,6 +234,7 @@ impl RuntimeHelpers {
         &mut self,
         script: &mut Vec<u8>,
         kind: MemoryHelperKind,
+        mask_u32_offset: Option<usize>,
     ) -> Result<usize> {
         let record = self.memory_helpers.entry(kind).or_default();
         if let Some(offset) = record.offset {
@@ -219,11 +245,11 @@ impl RuntimeHelpers {
             MemoryHelperKind::Load(bytes) => emit_memory_load_helper(script, bytes)?,
             MemoryHelperKind::Store(bytes) => emit_memory_store_helper(script, bytes)?,
             MemoryHelperKind::Grow => emit_memory_grow_helper(script, &self.memory_config)?,
-            MemoryHelperKind::Fill => emit_memory_fill_helper(script)?,
-            MemoryHelperKind::Copy => emit_memory_copy_helper(script)?,
-            MemoryHelperKind::EnvMemcpy => emit_env_memcpy_helper(script)?,
-            MemoryHelperKind::EnvMemmove => emit_env_memmove_helper(script)?,
-            MemoryHelperKind::EnvMemset => emit_env_memset_helper(script)?,
+            MemoryHelperKind::Fill => emit_memory_fill_helper(script, mask_u32_offset)?,
+            MemoryHelperKind::Copy => emit_memory_copy_helper(script, mask_u32_offset)?,
+            MemoryHelperKind::EnvMemcpy => emit_env_memcpy_helper(script, mask_u32_offset)?,
+            MemoryHelperKind::EnvMemmove => emit_env_memmove_helper(script, mask_u32_offset)?,
+            MemoryHelperKind::EnvMemset => emit_env_memset_helper(script, mask_u32_offset)?,
         }
         record.offset = Some(helper_offset);
         Ok(helper_offset)
@@ -248,6 +274,7 @@ impl RuntimeHelpers {
         &mut self,
         script: &mut Vec<u8>,
         kind: TableHelperKind,
+        mask_u32_offset: Option<usize>,
     ) -> Result<usize> {
         if let Some(record) = self.table_helpers.get(&kind) {
             if let Some(offset) = record.offset {
@@ -259,11 +286,11 @@ impl RuntimeHelpers {
         match kind {
             TableHelperKind::Get(table) => {
                 let slot = self.table_slot(table)?;
-                emit_table_get_helper(script, slot)?;
+                emit_table_get_helper(script, slot, mask_u32_offset)?;
             }
             TableHelperKind::Set(table) => {
                 let slot = self.table_slot(table)?;
-                emit_table_set_helper(script, slot)?;
+                emit_table_set_helper(script, slot, mask_u32_offset)?;
             }
             TableHelperKind::Size(table) => {
                 let slot = self.table_slot(table)?;
@@ -271,7 +298,7 @@ impl RuntimeHelpers {
             }
             TableHelperKind::Fill(table) => {
                 let slot = self.table_slot(table)?;
-                emit_table_fill_helper(script, slot)?;
+                emit_table_fill_helper(script, slot, mask_u32_offset)?;
             }
             TableHelperKind::Grow(table) => {
                 let slot = self.table_slot(table)?;
@@ -281,12 +308,12 @@ impl RuntimeHelpers {
             TableHelperKind::Copy { dst, src } => {
                 let dst_slot = self.table_slot(dst)?;
                 let src_slot = self.table_slot(src)?;
-                emit_table_copy_helper(script, dst_slot, src_slot)?;
+                emit_table_copy_helper(script, dst_slot, src_slot, mask_u32_offset)?;
             }
             TableHelperKind::InitFromPassive { table, segment } => {
                 let slot = self.table_slot(table)?;
                 let (value_slot, drop_slot) = self.passive_element_slots_const(segment)?;
-                emit_table_init_from_passive_helper(script, slot, value_slot, drop_slot)?;
+                emit_table_init_from_passive_helper(script, slot, value_slot, drop_slot, mask_u32_offset)?;
             }
             TableHelperKind::ElemDrop(segment) => {
                 let drop_slot = self.passive_element_drop_slot_const(segment)?;
@@ -319,6 +346,7 @@ impl RuntimeHelpers {
         functions: &mut FunctionRegistry,
         features: &mut FeatureTracker,
         adapter: &dyn ChainAdapter,
+        mask_u32_offset: Option<usize>,
     ) -> Result<usize> {
         if let Some(record) = self.call_indirect_helpers.get(&key) {
             if let Some(offset) = record.offset {
@@ -334,7 +362,7 @@ impl RuntimeHelpers {
         })?;
 
         let table_helper_offset =
-            self.realize_table_helper(script, TableHelperKind::Get(key.table_index))?;
+            self.realize_table_helper(script, TableHelperKind::Get(key.table_index), mask_u32_offset)?;
         let helper_offset = script.len();
 
         let table_get_call = emit_call_placeholder(script)?;

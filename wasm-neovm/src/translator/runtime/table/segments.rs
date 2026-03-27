@@ -8,6 +8,7 @@ pub(in super::super) fn emit_table_init_from_passive_helper(
     table_slot: usize,
     value_slot: usize,
     drop_slot: usize,
+    mask_u32_offset: Option<usize>,
 ) -> Result<()> {
     script.push(lookup_opcode("INITSLOT")?.byte);
     script.push(7);
@@ -44,15 +45,15 @@ pub(in super::super) fn emit_table_init_from_passive_helper(
     patch_jump(script, continue_len, len_ready_label)?;
 
     script.push(lookup_opcode("LDLOC2")?.byte);
-    emit_mask_u32(script)?;
+    if let Some(off) = mask_u32_offset { emit_call_to(script, off)?; } else { emit_mask_u32(script)?; }
     script.push(lookup_opcode("STLOC2")?.byte);
 
     script.push(lookup_opcode("LDLOC0")?.byte);
-    emit_mask_u32(script)?;
+    if let Some(off) = mask_u32_offset { emit_call_to(script, off)?; } else { emit_mask_u32(script)?; }
     script.push(lookup_opcode("STLOC0")?.byte);
 
     script.push(lookup_opcode("LDLOC1")?.byte);
-    emit_mask_u32(script)?;
+    if let Some(off) = mask_u32_offset { emit_call_to(script, off)?; } else { emit_mask_u32(script)?; }
     script.push(lookup_opcode("STLOC1")?.byte);
 
     script.push(lookup_opcode("LDLOC0")?.byte);
@@ -146,7 +147,7 @@ mod tests {
     #[test]
     fn table_init_helper_treats_dropped_segment_as_empty() {
         let mut script = Vec::new();
-        emit_table_init_from_passive_helper(&mut script, 0, 1, 2).expect("emit helper");
+        emit_table_init_from_passive_helper(&mut script, 0, 1, 2, None).expect("emit helper");
 
         let push0 = lookup_opcode("PUSH0").unwrap().byte;
         let size = lookup_opcode("SIZE").unwrap().byte;

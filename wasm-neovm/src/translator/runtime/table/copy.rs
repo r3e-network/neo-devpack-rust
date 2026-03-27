@@ -7,6 +7,7 @@ pub(in super::super) fn emit_table_copy_helper(
     script: &mut Vec<u8>,
     dst_slot: usize,
     src_slot: usize,
+    mask_u32_offset: Option<usize>,
 ) -> Result<()> {
     script.push(lookup_opcode("INITSLOT")?.byte);
     script.push(7);
@@ -25,15 +26,15 @@ pub(in super::super) fn emit_table_copy_helper(
     script.push(lookup_opcode("STLOC6")?.byte);
 
     script.push(lookup_opcode("LDLOC2")?.byte);
-    emit_mask_u32(script)?;
+    if let Some(off) = mask_u32_offset { emit_call_to(script, off)?; } else { emit_mask_u32(script)?; }
     script.push(lookup_opcode("STLOC2")?.byte);
 
     script.push(lookup_opcode("LDLOC0")?.byte);
-    emit_mask_u32(script)?;
+    if let Some(off) = mask_u32_offset { emit_call_to(script, off)?; } else { emit_mask_u32(script)?; }
     script.push(lookup_opcode("STLOC0")?.byte);
 
     script.push(lookup_opcode("LDLOC1")?.byte);
-    emit_mask_u32(script)?;
+    if let Some(off) = mask_u32_offset { emit_call_to(script, off)?; } else { emit_mask_u32(script)?; }
     script.push(lookup_opcode("STLOC1")?.byte);
 
     script.push(lookup_opcode("LDLOC0")?.byte);

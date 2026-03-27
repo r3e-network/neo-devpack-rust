@@ -6,6 +6,7 @@ use super::*;
 pub(in super::super) fn emit_table_get_helper(
     script: &mut Vec<u8>,
     table_slot: usize,
+    mask_u32_offset: Option<usize>,
 ) -> Result<()> {
     script.push(lookup_opcode("INITSLOT")?.byte);
     script.push(2);
@@ -16,7 +17,7 @@ pub(in super::super) fn emit_table_get_helper(
     script.push(lookup_opcode("STLOC1")?.byte);
 
     script.push(lookup_opcode("LDLOC0")?.byte);
-    emit_mask_u32(script)?;
+    if let Some(off) = mask_u32_offset { emit_call_to(script, off)?; } else { emit_mask_u32(script)?; }
     script.push(lookup_opcode("STLOC0")?.byte);
 
     script.push(lookup_opcode("LDLOC0")?.byte);
@@ -40,6 +41,7 @@ pub(in super::super) fn emit_table_get_helper(
 pub(in super::super) fn emit_table_set_helper(
     script: &mut Vec<u8>,
     table_slot: usize,
+    mask_u32_offset: Option<usize>,
 ) -> Result<()> {
     script.push(lookup_opcode("INITSLOT")?.byte);
     script.push(3);
@@ -51,7 +53,7 @@ pub(in super::super) fn emit_table_set_helper(
     script.push(lookup_opcode("STLOC2")?.byte);
 
     script.push(lookup_opcode("LDLOC1")?.byte);
-    emit_mask_u32(script)?;
+    if let Some(off) = mask_u32_offset { emit_call_to(script, off)?; } else { emit_mask_u32(script)?; }
     script.push(lookup_opcode("STLOC1")?.byte);
 
     script.push(lookup_opcode("LDLOC1")?.byte);
@@ -90,8 +92,8 @@ mod tests {
     #[test]
     fn table_access_helpers_do_not_drop_after_conditional_jump() {
         let mut script = Vec::new();
-        emit_table_get_helper(&mut script, 0).expect("emit get helper");
-        emit_table_set_helper(&mut script, 0).expect("emit set helper");
+        emit_table_get_helper(&mut script, 0, None).expect("emit get helper");
+        emit_table_set_helper(&mut script, 0, None).expect("emit set helper");
 
         let jmpifnot_l = lookup_opcode("JMPIFNOT_L").unwrap().byte;
         let drop = lookup_opcode("DROP").unwrap().byte;

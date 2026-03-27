@@ -6,6 +6,7 @@ use super::*;
 pub(in super::super) fn emit_table_fill_helper(
     script: &mut Vec<u8>,
     table_slot: usize,
+    mask_u32_offset: Option<usize>,
 ) -> Result<()> {
     script.push(lookup_opcode("INITSLOT")?.byte);
     script.push(5);
@@ -18,11 +19,11 @@ pub(in super::super) fn emit_table_fill_helper(
     script.push(lookup_opcode("STLOC3")?.byte);
 
     script.push(lookup_opcode("LDLOC2")?.byte);
-    emit_mask_u32(script)?;
+    if let Some(off) = mask_u32_offset { emit_call_to(script, off)?; } else { emit_mask_u32(script)?; }
     script.push(lookup_opcode("STLOC2")?.byte);
 
     script.push(lookup_opcode("LDLOC0")?.byte);
-    emit_mask_u32(script)?;
+    if let Some(off) = mask_u32_offset { emit_call_to(script, off)?; } else { emit_mask_u32(script)?; }
     script.push(lookup_opcode("STLOC0")?.byte);
 
     script.push(lookup_opcode("LDLOC0")?.byte);
