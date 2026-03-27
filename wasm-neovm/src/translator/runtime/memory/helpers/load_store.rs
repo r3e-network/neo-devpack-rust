@@ -59,21 +59,29 @@ pub(in crate::translator::runtime) fn emit_memory_store_helper(
     let trap_oob = emit_jump_placeholder(script, "JMPIF_L")?;
 
     script.push(lookup_opcode("SWAP")?.byte);
-    let mask = (1i128 << (bytes * 8)) - 1;
-    let _ = emit_push_int(script, mask);
+    // Mask value to byte width: compute (1 << (bytes*8)) - 1 inline
+    let bit_width = bytes * 8;
+    let _ = emit_push_int(script, 1);
+    let _ = emit_push_int(script, bit_width as i128);
+    script.push(lookup_opcode("SHL")?.byte);
+    script.push(lookup_opcode("DEC")?.byte);
     script.push(lookup_opcode("AND")?.byte);
     script.push(lookup_opcode("SWAP")?.byte);
 
     for i in 0..bytes {
         script.push(lookup_opcode("OVER")?.byte);
-        let shift = (i * 8) as i128;
-        let _ = emit_push_int(script, shift);
-        script.push(lookup_opcode("SHR")?.byte);
+        let shift = i * 8;
+        if shift > 0 {
+            let _ = emit_push_int(script, shift as i128);
+            script.push(lookup_opcode("SHR")?.byte);
+        }
         let _ = emit_push_int(script, 0xFF);
         script.push(lookup_opcode("AND")?.byte);
         script.push(lookup_opcode("OVER")?.byte);
-        let _ = emit_push_int(script, i as i128);
-        script.push(lookup_opcode("ADD")?.byte);
+        if i > 0 {
+            let _ = emit_push_int(script, i as i128);
+            script.push(lookup_opcode("ADD")?.byte);
+        }
         script.push(lookup_opcode("SWAP")?.byte);
         script.push(lookup_opcode("LDSFLD0")?.byte);
         script.push(lookup_opcode("ROT")?.byte);
@@ -96,11 +104,25 @@ pub(in crate::translator::runtime) fn emit_memory_store_helper(
 mod tests {
     use super::*;
 
-    fn assert_no_conditional_jump_drop_pair(script: &[u8], jump: u8, drop: u8) {
-        assert!(
-            !script.windows(2).any(|window| window == [jump, drop]),
-            "unexpected conditional jump followed by DROP (jump opcode 0x{jump:02x})"
-        );
+    fn assert_no_conditional_jump_drop_pair(script: &[u8], jump_opcode: u8, drop_opcode: u8) {
+        // Walk instruction boundaries to check if a conditional jump is followed by DROP.
+        // JMPIF_L is 5 bytes (opcode + 4-byte offset), so we skip the operand.
+        let mut pc = 0usize;
+        while pc < script.len() {
+            let op = script[pc];
+            let info = crate::opcodes::lookup_by_byte(op);
+            let size = match info {
+                Some(i) if i.operand_size_prefix == 0 => 1 + i.operand_size as usize,
+                _ => 1,
+            };
+            if op == jump_opcode && pc + size < script.len() && script[pc + size] == drop_opcode {
+                panic!(
+                    "conditional jump 0x{jump_opcode:02x} at offset {pc} followed by DROP at offset {}",
+                    pc + size
+                );
+            }
+            pc += size;
+        }
     }
 
     #[test]
