@@ -153,6 +153,8 @@ pub(crate) struct RuntimeHelpers {
     memory_init_offset: Option<usize>,
     memory_init_calls: Vec<usize>,
     memory_init_suppressed: bool,
+    /// Whether an init guard has been emitted in the current function.
+    function_init_emitted: bool,
     memory_defined: bool,
 
     // Memory helper cache (Round 88: Static dispatch via direct indexing)
@@ -198,6 +200,7 @@ impl RuntimeHelpers {
             memory_init_offset: None,
             memory_init_calls: Vec::with_capacity(4),
             memory_init_suppressed: false,
+            function_init_emitted: false,
             memory_defined: false,
             // Pre-sized HashMaps to avoid rehashing (Round 63 optimization)
             memory_helpers: HashMap::with_capacity(16),

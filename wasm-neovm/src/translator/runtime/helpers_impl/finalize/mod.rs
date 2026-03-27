@@ -24,6 +24,15 @@ impl RuntimeHelpers {
         if self.memory_init_suppressed {
             return Ok(());
         }
+        // After the first init guard in a function, the init helper has been called
+        // (or the flag was already set from a prior invocation). Subsequent guards
+        // within the same function are redundant — the flag check always succeeds.
+        // We still emit the first one per function; callers should call
+        // reset_function_init_emitted() at the start of each new function.
+        if self.function_init_emitted {
+            return Ok(());
+        }
+        self.function_init_emitted = true;
         emit_load_static(script, INIT_FLAG_SLOT)?;
         let skip_call = emit_jump_placeholder(script, "JMPIF_L")?;
         let call_pos = emit_call_placeholder(script)?;
@@ -31,6 +40,11 @@ impl RuntimeHelpers {
         patch_jump(script, skip_call, after_call)?;
         self.memory_init_calls.push(call_pos);
         Ok(())
+    }
+
+    /// Reset the per-function init guard tracking. Call at the start of each new function.
+    pub(crate) fn reset_function_init_emitted(&mut self) {
+        self.function_init_emitted = false;
     }
 
     pub(crate) fn set_memory_init_suppressed(&mut self, suppressed: bool) -> bool {

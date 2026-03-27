@@ -88,6 +88,7 @@ impl DriverState {
 
         let suppress_init = self.start_function == Some(func_index as u32);
         let was_suppressed = self.runtime.set_memory_init_suppressed(suppress_init);
+        self.runtime.reset_function_init_emitted();
 
         let mut ctx = TranslationContext {
             func_type,
