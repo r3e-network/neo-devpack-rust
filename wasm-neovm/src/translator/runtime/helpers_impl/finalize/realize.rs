@@ -115,47 +115,67 @@ impl RuntimeHelpers {
             }
         }
 
-        // Realize param normalization helpers (must come before sign-extend so they can reference it)
-        if !self.param_normalize_i32_helper.calls.is_empty() {
-            let offset = self.realize_param_normalize_helper(script, 32)?;
-            for &call_pos in &self.param_normalize_i32_helper.calls.clone() {
-                patch_call(script, call_pos, offset)?;
-            }
-        }
-        if !self.param_normalize_i64_helper.calls.is_empty() {
-            let offset = self.realize_param_normalize_helper(script, 64)?;
-            for &call_pos in &self.param_normalize_i64_helper.calls.clone() {
-                patch_call(script, call_pos, offset)?;
-            }
-        }
+        // Realize param normalization + sign-extension helpers.
+        // Param normalize falls through to sign-extend (no JMP needed) when
+        // emitted immediately before it. The sign-extend entry point is also
+        // used by arithmetic operations.
+        for bits in [32u32, 64] {
+            let has_normalize = if bits == 32 {
+                !self.param_normalize_i32_helper.calls.is_empty()
+            } else {
+                !self.param_normalize_i64_helper.calls.is_empty()
+            };
+            let has_sign_ext = if bits == 32 {
+                !self.sign_extend_32_helper.calls.is_empty()
+            } else {
+                !self.sign_extend_64_helper.calls.is_empty()
+            };
 
-        // Realize sign-extension helpers
-        if !self.sign_extend_32_helper.calls.is_empty() {
-            let offset = self.realize_sign_extend_helper(script, 32)?;
-            for &call_pos in &self.sign_extend_32_helper.calls.clone() {
-                patch_call(script, call_pos, offset)?;
-            }
-        }
-        if !self.sign_extend_64_helper.calls.is_empty() {
-            let offset = self.realize_sign_extend_helper(script, 64)?;
-            for &call_pos in &self.sign_extend_64_helper.calls.clone() {
-                patch_call(script, call_pos, offset)?;
+            if has_normalize {
+                // Emit param normalize body that falls through to sign-extend
+                let normalize_offset = self.realize_param_normalize_inline(script, bits)?;
+                let normalize_calls = if bits == 32 {
+                    self.param_normalize_i32_helper.calls.clone()
+                } else {
+                    self.param_normalize_i64_helper.calls.clone()
+                };
+                for &call_pos in &normalize_calls {
+                    patch_call(script, call_pos, normalize_offset)?;
+                }
+
+                // Sign-extend body immediately follows (param normalize falls through)
+                let sign_ext_offset = self.realize_sign_extend_helper(script, bits)?;
+                let sign_ext_calls = if bits == 32 {
+                    self.sign_extend_32_helper.calls.clone()
+                } else {
+                    self.sign_extend_64_helper.calls.clone()
+                };
+                for &call_pos in &sign_ext_calls {
+                    patch_call(script, call_pos, sign_ext_offset)?;
+                }
+            } else if has_sign_ext {
+                // Only sign-extend needed (no param normalize)
+                let offset = self.realize_sign_extend_helper(script, bits)?;
+                let calls = if bits == 32 {
+                    self.sign_extend_32_helper.calls.clone()
+                } else {
+                    self.sign_extend_64_helper.calls.clone()
+                };
+                for &call_pos in &calls {
+                    patch_call(script, call_pos, offset)?;
+                }
             }
         }
 
         Ok(())
     }
 
-    /// Emit the body for the param normalization helper.
-    /// Input: top-of-stack is the raw parameter value.
-    /// Output: top-of-stack is the normalized integer value.
-    ///
-    /// Sequence: DUP, ISNULL, JMPIFNOT, DROP, PUSH0, JMP, DUP, ISTYPE ByteString,
-    ///           JMPIFNOT, CONVERT Integer, CALL sign_extend_helper, RET
-    fn realize_param_normalize_helper(
+    /// Emit param normalize body that falls through to sign-extend (no JMP at end).
+    /// Must be immediately followed by realize_sign_extend_helper.
+    fn realize_param_normalize_inline(
         &mut self,
         script: &mut Vec<u8>,
-        bits: u32,
+        _bits: u32,
     ) -> Result<usize> {
         let offset = script.len();
 
@@ -164,7 +184,7 @@ impl RuntimeHelpers {
         script.push(lookup_opcode("ISNULL")?.byte);
         let not_null_fixup = emit_jump_placeholder(script, "JMPIFNOT_L")?;
 
-        // Null path: DROP, PUSH0, RET (0 is already sign-extended, skip sign-extend)
+        // Null path: DROP, PUSH0, RET (0 is already sign-extended)
         script.push(lookup_opcode("DROP")?.byte);
         let _ = emit_push_int(script, 0);
         script.push(lookup_opcode("RET")?.byte);
@@ -173,21 +193,11 @@ impl RuntimeHelpers {
         let not_null_label = script.len();
         patch_jump(script, not_null_fixup, not_null_label)?;
 
-        // Convert to Integer unconditionally. This handles ByteString→Integer conversion
-        // and is a no-op for values already of type Integer. Other types will throw,
-        // which is correct behavior for numeric parameters.
+        // Convert to Integer unconditionally, then fall through to sign-extend
         script.push(lookup_opcode("CONVERT")?.byte);
         script.push(0x21); // StackItemType.Integer
 
-        // Tail-call to sign-extend helper via JMP (saves 1 byte vs CALL+RET).
-        // The sign-extend helper's RET returns directly to our caller.
-        let sign_ext_jump = emit_jump_placeholder(script, "JMP_L")?;
-        if bits == 32 {
-            self.sign_extend_32_helper.calls.push(sign_ext_jump);
-        } else {
-            self.sign_extend_64_helper.calls.push(sign_ext_jump);
-        }
-
+        // No JMP or RET — execution falls through to the sign-extend body
         Ok(offset)
     }
 
