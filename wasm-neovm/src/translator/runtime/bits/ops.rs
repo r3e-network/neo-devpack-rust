@@ -133,9 +133,8 @@ pub(crate) fn emit_sign_extend(
         return Ok(emit_push_int(script, result));
     }
 
-    mask_top_bits(script, from_bits)?;
-
     if from_bits == 0 || from_bits >= 128 {
+        mask_top_bits(script, from_bits)?;
         return Ok(StackValue {
             const_value: const_result,
             bytecode_start: None,
@@ -143,18 +142,31 @@ pub(crate) fn emit_sign_extend(
         });
     }
 
-    // Branchless sign extension using XOR-SUB trick:
-    //   result = (masked_value XOR sign_bit) - sign_bit
-    // where sign_bit = 2^(from_bits-1).
-    // This is equivalent to the conditional subtraction but avoids a branch,
-    // saving 4 bytes per call and improving execution speed.
-    // Stack: [..., masked_value]
-    super::util::emit_pow2(script, from_bits - 1)?; // push sign_bit
-    script.push(lookup_opcode("SWAP")?.byte); // [..., sign_bit, masked_value]
-    script.push(lookup_opcode("OVER")?.byte); // [..., sign_bit, masked_value, sign_bit]
-    script.push(lookup_opcode("XOR")?.byte); // [..., sign_bit, (masked_value XOR sign_bit)]
-    script.push(lookup_opcode("SWAP")?.byte); // [..., (masked_value XOR sign_bit), sign_bit]
-    script.push(lookup_opcode("SUB")?.byte); // [..., result]
+    // For bit widths >= 9, use TUCK-based algorithm (compute sign_bit first, derive mask).
+    // This is 1 byte smaller because mask_top_bits uses the 5-byte SHL+DEC+AND path for >= 9 bits.
+    // For bit widths <= 8, use the old approach since mask_top_bits uses a shorter literal push.
+    if from_bits >= 9 {
+        super::util::emit_pow2(script, from_bits - 1)?;
+        script.push(lookup_opcode("TUCK")?.byte);
+        script.push(lookup_opcode("DUP")?.byte);
+        let _ = emit_push_int(script, 1);
+        script.push(lookup_opcode("SHL")?.byte);
+        script.push(lookup_opcode("DEC")?.byte);
+        script.push(lookup_opcode("ROT")?.byte);
+        script.push(lookup_opcode("AND")?.byte);
+        script.push(lookup_opcode("XOR")?.byte);
+        script.push(lookup_opcode("SWAP")?.byte);
+        script.push(lookup_opcode("SUB")?.byte);
+    } else {
+        // Old approach: mask first, then XOR-SUB with separate sign_bit push
+        mask_top_bits(script, from_bits)?;
+        super::util::emit_pow2(script, from_bits - 1)?;
+        script.push(lookup_opcode("SWAP")?.byte);
+        script.push(lookup_opcode("OVER")?.byte);
+        script.push(lookup_opcode("XOR")?.byte);
+        script.push(lookup_opcode("SWAP")?.byte);
+        script.push(lookup_opcode("SUB")?.byte);
+    }
 
     Ok(StackValue {
         const_value: const_result,
