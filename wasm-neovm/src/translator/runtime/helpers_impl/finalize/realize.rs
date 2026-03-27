@@ -173,16 +173,11 @@ impl RuntimeHelpers {
         let not_null_label = script.len();
         patch_jump(script, not_null_fixup, not_null_label)?;
 
-        // Type check: DUP, ISTYPE ByteString, JMPIFNOT (skip convert)
-        script.push(lookup_opcode("DUP")?.byte);
-        script.push(lookup_opcode("ISTYPE")?.byte);
-        script.push(0x28); // StackItemType.ByteString
-        let not_bytes_fixup = emit_jump_placeholder(script, "JMPIFNOT_L")?;
+        // Convert to Integer unconditionally. This handles ByteString→Integer conversion
+        // and is a no-op for values already of type Integer. Other types will throw,
+        // which is correct behavior for numeric parameters.
         script.push(lookup_opcode("CONVERT")?.byte);
         script.push(0x21); // StackItemType.Integer
-
-        let not_bytes_label = script.len();
-        patch_jump(script, not_bytes_fixup, not_bytes_label)?;
 
         // Tail-call to sign-extend helper via JMP (saves 1 byte vs CALL+RET).
         // The sign-extend helper's RET returns directly to our caller.
@@ -199,6 +194,12 @@ impl RuntimeHelpers {
     /// Emit the body for the sign-extension helper.
     /// Input: top-of-stack is the value to sign-extend.
     /// Output: top-of-stack is the sign-extended value.
+    ///
+    /// Uses an optimized sequence that computes sign_bit first, derives mask from it:
+    ///   sign_bit = 1 << (bits-1)
+    ///   mask = (sign_bit << 1) - 1
+    ///   result = ((value AND mask) XOR sign_bit) - sign_bit
+    /// This is 1 byte smaller than computing mask and sign_bit independently.
     fn realize_sign_extend_helper(
         &self,
         script: &mut Vec<u8>,
@@ -206,24 +207,20 @@ impl RuntimeHelpers {
     ) -> Result<usize> {
         let offset = script.len();
 
-        // mask_top_bits: value AND ((1 << bits) - 1)
-        let _ = emit_push_int(script, 1);
-        let _ = emit_push_int(script, bits as i128);
-        script.push(lookup_opcode("SHL")?.byte);
-        script.push(lookup_opcode("DEC")?.byte);
-        script.push(lookup_opcode("AND")?.byte);
-
-        // sign extension: (masked XOR sign_bit) - sign_bit
-        // where sign_bit = 1 << (bits - 1)
+        // Stack: [value]
         let _ = emit_push_int(script, 1);
         let _ = emit_push_int(script, (bits - 1) as i128);
-        script.push(lookup_opcode("SHL")?.byte);
-        // Stack: [masked_value, sign_bit]
-        script.push(lookup_opcode("SWAP")?.byte);
-        script.push(lookup_opcode("OVER")?.byte);
-        script.push(lookup_opcode("XOR")?.byte);
-        script.push(lookup_opcode("SWAP")?.byte);
-        script.push(lookup_opcode("SUB")?.byte);
+        script.push(lookup_opcode("SHL")?.byte);         // [value, sign_bit]
+        script.push(lookup_opcode("TUCK")?.byte);         // [sign_bit, value, sign_bit]
+        script.push(lookup_opcode("DUP")?.byte);          // [sign_bit, value, sign_bit, sign_bit]
+        let _ = emit_push_int(script, 1);
+        script.push(lookup_opcode("SHL")?.byte);          // [sign_bit, value, sign_bit, mask+1]
+        script.push(lookup_opcode("DEC")?.byte);          // [sign_bit, value, sign_bit, mask]
+        script.push(lookup_opcode("ROT")?.byte);          // [sign_bit, sign_bit, mask, value]
+        script.push(lookup_opcode("AND")?.byte);          // [sign_bit, sign_bit, masked]
+        script.push(lookup_opcode("XOR")?.byte);          // [sign_bit, masked^sign]
+        script.push(lookup_opcode("SWAP")?.byte);         // [masked^sign, sign_bit]
+        script.push(lookup_opcode("SUB")?.byte);          // [result]
 
         script.push(lookup_opcode("RET")?.byte);
 
