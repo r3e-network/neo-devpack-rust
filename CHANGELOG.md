@@ -10,6 +10,34 @@ this repository follow independent versioning (currently 0.1.x).
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-03-27
+
+### Performance — NEF Size Optimization (continued)
+
+Further bytecode reductions bringing total to **38% smaller NEF output** from the v0.5.0 baseline.
+The `multi_function` benchmark dropped from 99 to 37 bytes (63% reduction).
+
+- **Shared mask_u32 helper**: threaded `mask_u32_offset` through 8 memory/table helper emit functions, replacing 24 inline 6-byte sequences with 2-byte CALL to a shared 7-byte body.
+- **Skip param normalization for non-exported functions**: internal functions are only called from Wasm code with correct types, eliminating null-check + type-convert + sign-extend overhead.
+- **Remove TRY/CATCH from init helper**: the init guard ensures single-invocation; INITSSLOT cannot throw on first call. Saves 10–14 bytes per contract with runtime initialization.
+- **Remove redundant init flag zero-set**: INITSSLOT initializes slots to null (falsy), so explicit zero-set before setting to 1 was redundant.
+- **Optimized sign-extend helper body**: TUCK-based algorithm computes sign_bit first and derives mask, saving 1 byte on the shared 15-byte body.
+- **Unconditional CONVERT in param normalize**: replace DUP+ISTYPE+JMPIFNOT+CONVERT (6B) with just CONVERT Integer (2B). No-op on Integer inputs, correctly handles ByteString.
+- **Fall-through layout**: param normalize body falls directly into sign-extend body, eliminating 2-byte JMP tail-call.
+- **Power-of-2 push optimization**: `emit_push_int` emits PUSH1+PUSH{n}+SHL (3B) for powers of 2 that would need PUSHINT32 (5B) or PUSHINT64 (9B).
+- **DUP initial_bytes in init helper**: reuse the pushed value for both NEWBUFFER and STSFLD.
+- **Inline mask in store helper**: replaced PUSHINT64 0xFFFFFFFF (9B) with SHL+DEC (6B), skip SHR 0/ADD 0 for first byte iteration.
+- **Deduplicate init guards per function**: skip redundant LDSFLD+JMPIF+CALL within the same function.
+
+### Fixed
+
+- **CONVERT opcode constant**: was 0xD3 (CLEARITEMS), corrected to 0xDB (CONVERT). Critical fix for NeoVM execution of memory loads.
+
+### Testing
+
+- Increased test coverage to 858+ tests across the workspace.
+- Added NEF size analysis benchmarks with detailed bytecode dumps and opcode histograms.
+
 ## [0.5.1] - 2026-03-27
 
 ### Performance — NEF Size Optimization
@@ -21,7 +49,6 @@ contracts. The `simple_add(i32, i32) -> i32` benchmark dropped from 86 to 49 byt
 - **Peephole optimizer** (`peephole.rs`): eliminates redundant SWAP+SWAP and duplicate CONVERT Integer sequences while preserving jump targets.
 - **Shared sign-extension helper**: extracts the 16-byte i32/i64 mask+XOR-SUB sequence into a shared function called via 2-byte CALL, saving ~14 bytes per additional call site.
 - **Shared param normalization helper**: deduplicates the null-check + type-check + sign-extend parameter prologue across all exported function parameters.
-- **Tail-call optimization in param normalize**: JMP to sign-extend body instead of CALL+RET, saving 5 bytes on the helper body.
 - **Early return for null params**: null values return 0 directly without going through sign-extension.
 - **Compact mask_u32**: inline `(1 << 32) - 1` computation (6 bytes) replaces PUSHINT64 literal (10 bytes).
 - **Optimized mask_top_bits/emit_pow2**: inline SHL+DEC computation for 9–127 bit widths.
