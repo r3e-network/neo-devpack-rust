@@ -47,6 +47,31 @@ pub(crate) fn emit_push_int(buffer: &mut Vec<u8>, value: i128) -> StackValue {
         };
     }
 
+    // Check if value is a power of 2 in the PUSHINT32+ range.
+    // Emit as PUSH1 + PUSH{exponent} + SHL (3 bytes) instead of PUSHINT32 (5) or PUSHINT64 (9).
+    if value > 0 && (value & (value - 1)) == 0 {
+        let exp = value.trailing_zeros();
+        // Only profitable for values that would otherwise need PUSHINT32 or larger
+        // (i.e., value > i16::MAX = 32767, meaning exp >= 15)
+        if (15..=64).contains(&exp) {
+            buffer.push(SMALL_VALUES[2]); // PUSH1
+            if exp <= 16 {
+                buffer.push(SMALL_VALUES[(exp as i128 + 1) as usize]); // PUSH{exp} for exp 15-16
+            } else {
+                buffer.push(PUSHINT8);
+                buffer.push(exp as u8);
+            }
+            if let Ok(shl) = lookup_opcode("SHL") {
+                buffer.push(shl.byte);
+            }
+            return StackValue {
+                const_value: Some(value),
+                bytecode_start: Some(start),
+                pending_sign_extend: None,
+            };
+        }
+    }
+
     match value {
         v if v >= i8::MIN as i128 && v <= i8::MAX as i128 => {
             buffer.push(PUSHINT8);
@@ -54,7 +79,6 @@ pub(crate) fn emit_push_int(buffer: &mut Vec<u8>, value: i128) -> StackValue {
         }
         v if v >= i16::MIN as i128 && v <= i16::MAX as i128 => {
             buffer.push(PUSHINT16);
-            // Use SIMD-friendly unaligned write when available (Round 67 hint)
             buffer.extend_from_slice(&(v as i16).to_le_bytes());
         }
         v if v >= i32::MIN as i128 && v <= i32::MAX as i128 => {

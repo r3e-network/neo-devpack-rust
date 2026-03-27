@@ -33,16 +33,15 @@ pub(super) fn emit_runtime_init_helper(
         let initial_bytes = (config.initial_pages as i128) * 65_536i128;
         if initial_bytes == 0 {
             script.push(lookup_opcode("PUSH0")?.byte);
-        } else {
-            let _ = emit_push_int(script, initial_bytes);
-        }
-        script.push(lookup_opcode("NEWBUFFER")?.byte);
-        script.push(lookup_opcode("STSFLD0")?.byte);
-
-        if initial_bytes == 0 {
+            script.push(lookup_opcode("NEWBUFFER")?.byte);
+            script.push(lookup_opcode("STSFLD0")?.byte);
             script.push(lookup_opcode("PUSH0")?.byte);
         } else {
             let _ = emit_push_int(script, initial_bytes);
+            script.push(lookup_opcode("DUP")?.byte); // reuse initial_bytes for STSFLD1
+            script.push(lookup_opcode("NEWBUFFER")?.byte);
+            script.push(lookup_opcode("STSFLD0")?.byte);
+            // DUP'd value is still on stack for STSFLD1
         }
         script.push(lookup_opcode("STSFLD1")?.byte);
 
