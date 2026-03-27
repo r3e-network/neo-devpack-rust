@@ -258,3 +258,47 @@ fn nef_size_memory_detail() {
         pc += size;
     }
 }
+
+#[test]
+fn nef_opcode_histogram() {
+    let cases = vec![
+        ("memory_fill_copy", r#"(module (memory 1)
+            (func (export "fill") (param i32 i32 i32)
+                local.get 0 local.get 1 local.get 2 memory.fill)
+            (func (export "copy") (param i32 i32 i32)
+                local.get 0 local.get 1 local.get 2 memory.copy))"#),
+    ];
+    let table = build_opcode_table();
+    for (name, wat) in &cases {
+        let wasm = wat::parse_str(wat).expect("valid wat");
+        let t = translate_module(&wasm, name).expect("translate");
+        let s = &t.script;
+        let mut hist: std::collections::BTreeMap<&str, (usize, usize)> = std::collections::BTreeMap::new();
+        let mut pc = 0usize;
+        while pc < s.len() {
+            let info = table[s[pc] as usize];
+            let (iname, size) = match info {
+                Some(i) => {
+                    let sz = if i.operand_size_prefix == 0 { 1 + i.operand_size as usize }
+                    else {
+                        let ps = pc + 1; let pf = i.operand_size_prefix as usize;
+                        let ol = match pf { 1 => s.get(ps).copied().unwrap_or(0) as usize, _ => 0 };
+                        1 + pf + ol
+                    };
+                    (i.name, sz)
+                }
+                None => ("???", 1),
+            };
+            let e = hist.entry(iname).or_insert((0, 0));
+            e.0 += 1;
+            e.1 += size;
+            pc += size;
+        }
+        eprintln!("\n=== {name} opcode histogram ({} bytes) ===", s.len());
+        let mut sorted: Vec<_> = hist.into_iter().collect();
+        sorted.sort_by(|a, b| b.1.1.cmp(&a.1.1));
+        for (op, (count, bytes)) in sorted.iter().take(15) {
+            eprintln!("  {op:15} {count:3}x  {bytes:4}B");
+        }
+    }
+}
