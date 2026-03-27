@@ -7,6 +7,7 @@ use super::*;
 pub(super) fn emit_runtime_init_helper(
     script: &mut Vec<u8>,
     static_slot_count: usize,
+    has_memory: bool,
     config: &MemoryConfig,
     globals: &[GlobalLayout],
     tables: &[TableLayout<'_>],
@@ -26,38 +27,42 @@ pub(super) fn emit_runtime_init_helper(
     script.push(lookup_opcode("INITSSLOT")?.byte);
     script.push(static_slot_count as u8);
 
-    let initial_bytes = (config.initial_pages as i128) * 65_536i128;
-    if initial_bytes == 0 {
-        script.push(lookup_opcode("PUSH0")?.byte);
-    } else {
-        let _ = emit_push_int(script, initial_bytes);
-    }
-    script.push(lookup_opcode("NEWBUFFER")?.byte);
-    script.push(lookup_opcode("STSFLD0")?.byte);
-
-    if initial_bytes == 0 {
-        script.push(lookup_opcode("PUSH0")?.byte);
-    } else {
-        let _ = emit_push_int(script, initial_bytes);
-    }
-    script.push(lookup_opcode("STSFLD1")?.byte);
-
-    if config.initial_pages == 0 {
-        script.push(lookup_opcode("PUSH0")?.byte);
-    } else {
-        let _ = emit_push_int(script, config.initial_pages as i128);
-    }
-    script.push(lookup_opcode("STSFLD2")?.byte);
-
-    match config.maximum_pages {
-        Some(max) => {
-            let _ = emit_push_int(script, max as i128);
+    // Only emit memory-related slot initialization when memory is actually declared.
+    // This saves ~10 bytes for contracts that don't use linear memory.
+    if has_memory {
+        let initial_bytes = (config.initial_pages as i128) * 65_536i128;
+        if initial_bytes == 0 {
+            script.push(lookup_opcode("PUSH0")?.byte);
+        } else {
+            let _ = emit_push_int(script, initial_bytes);
         }
-        None => {
-            let _ = emit_push_int(script, -1);
+        script.push(lookup_opcode("NEWBUFFER")?.byte);
+        script.push(lookup_opcode("STSFLD0")?.byte);
+
+        if initial_bytes == 0 {
+            script.push(lookup_opcode("PUSH0")?.byte);
+        } else {
+            let _ = emit_push_int(script, initial_bytes);
         }
+        script.push(lookup_opcode("STSFLD1")?.byte);
+
+        if config.initial_pages == 0 {
+            script.push(lookup_opcode("PUSH0")?.byte);
+        } else {
+            let _ = emit_push_int(script, config.initial_pages as i128);
+        }
+        script.push(lookup_opcode("STSFLD2")?.byte);
+
+        match config.maximum_pages {
+            Some(max) => {
+                let _ = emit_push_int(script, max as i128);
+            }
+            None => {
+                let _ = emit_push_int(script, -1);
+            }
+        }
+        script.push(lookup_opcode("STSFLD3")?.byte);
     }
-    script.push(lookup_opcode("STSFLD3")?.byte);
 
     script.push(lookup_opcode("PUSH0")?.byte);
     emit_store_static(script, INIT_FLAG_SLOT)?;

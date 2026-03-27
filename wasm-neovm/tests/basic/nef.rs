@@ -119,7 +119,7 @@ fn translate_simple_constant_addition() {
 
     let manifest = translation
         .manifest
-        .to_string()
+        .to_json_string()
         .expect("manifest serialises");
     assert!(manifest.contains("\"name\": \"Adder\""));
     assert!(manifest.contains("\"returntype\": \"Integer\""));

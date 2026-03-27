@@ -17,9 +17,13 @@ pub(crate) fn handle_import_call(
     features: &mut FeatureTracker,
     adapter: &dyn ChainAdapter,
 ) -> Result<()> {
-    let import = imports
-        .get(function_index as usize)
-        .ok_or_else(|| anyhow!("calls to user-defined functions are not supported"))?;
+    let import = imports.get(function_index as usize).ok_or_else(|| {
+        anyhow!(
+            "function index {} is out of range for {} imports (call targets a defined function, not an import)",
+            function_index,
+            imports.len()
+        )
+    })?;
     let type_index = get_import_type_index(import)?;
     let func_type = types.get(type_index as usize).ok_or_else(|| {
         anyhow!(

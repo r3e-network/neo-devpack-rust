@@ -126,6 +126,7 @@ pub struct NeoContractABI {
 pub struct NeoContractMethod {
     pub name: String,
     pub parameters: Vec<NeoContractParameter>,
+    #[cfg_attr(feature = "serde", serde(rename = "returntype"))]
     pub return_type: String,
     pub offset: u32,
     pub safe: bool,

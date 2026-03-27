@@ -516,41 +516,13 @@ pub(super) fn translate_function(ctx: &mut TranslationContext<'_>) -> Result<Str
         for (index, ty) in params.iter().enumerate() {
             emit_load_arg(ctx.script, index as u32)?;
 
-            // Neo entry wrappers may pass `Hash160`/`ByteString`/`Any`.
-            // Canonicalize those into integers before Wasm i32/i64 sign extension.
-            ctx.script.push(lookup_opcode("DUP")?.byte);
-            ctx.script.push(lookup_opcode("ISNULL")?.byte);
-            let not_null_fixup = emit_jump_placeholder(ctx.script, "JMPIFNOT_L")?;
-            ctx.script.push(lookup_opcode("DROP")?.byte);
-            let _ = emit_push_int(ctx.script, 0);
-            let null_done_fixup = emit_jump_placeholder(ctx.script, "JMP_L")?;
-
-            let not_null_label = ctx.script.len();
-            patch_jump(ctx.script, not_null_fixup, not_null_label)?;
-
-            ctx.script.push(lookup_opcode("DUP")?.byte);
-            ctx.script.push(lookup_opcode("ISTYPE")?.byte);
-            ctx.script.push(STACKITEMTYPE_BYTESTRING);
-            let not_bytes_fixup = emit_jump_placeholder(ctx.script, "JMPIFNOT_L")?;
-            ctx.script.push(lookup_opcode("CONVERT")?.byte);
-            ctx.script.push(STACKITEMTYPE_INTEGER);
-
-            let not_bytes_label = ctx.script.len();
-            patch_jump(ctx.script, not_bytes_fixup, not_bytes_label)?;
-
-            let null_done_label = ctx.script.len();
-            patch_jump(ctx.script, null_done_fixup, null_done_label)?;
-
-            let value = StackValue {
-                const_value: None,
-                bytecode_start: None,
-            };
+            // Normalize parameter via shared helper: null→0, ByteString→Integer, sign-extend.
             match ty {
                 ValType::I32 => {
-                    let _ = emit_sign_extend(ctx.script, value, 32, 32)?;
+                    ctx.runtime.emit_param_normalize_i32_helper(ctx.script)?;
                 }
                 ValType::I64 => {
-                    let _ = emit_sign_extend(ctx.script, value, 64, 64)?;
+                    ctx.runtime.emit_param_normalize_i64_helper(ctx.script)?;
                 }
                 _ => unreachable!("parameter types validated earlier"),
             }
@@ -739,6 +711,7 @@ fn pop_value_maybe_unreachable(
         return Ok(StackValue {
             const_value: None,
             bytecode_start: None,
+            pending_sign_extend: None,
         });
     }
     Err(anyhow!("stack underflow while processing {}", context))
@@ -749,6 +722,7 @@ fn set_stack_height_polymorphic(stack: &mut Vec<StackValue>, height: usize) {
         stack.push(StackValue {
             const_value: None,
             bytecode_start: None,
+            pending_sign_extend: None,
         });
     }
     stack.truncate(height);

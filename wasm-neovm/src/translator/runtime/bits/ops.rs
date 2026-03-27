@@ -31,6 +31,7 @@ pub(crate) fn emit_select(
     Ok(StackValue {
         const_value,
         bytecode_start: None,
+        pending_sign_extend: None,
     })
 }
 
@@ -52,6 +53,7 @@ pub(crate) fn emit_zero_extend(
     Ok(StackValue {
         const_value: const_result,
         bytecode_start: None,
+        pending_sign_extend: None,
     })
 }
 
@@ -79,6 +81,7 @@ pub(crate) fn emit_bit_count(
     Ok(StackValue {
         const_value: None,
         bytecode_start: None,
+        pending_sign_extend: None,
     })
 }
 
@@ -136,22 +139,70 @@ pub(crate) fn emit_sign_extend(
         return Ok(StackValue {
             const_value: const_result,
             bytecode_start: None,
+            pending_sign_extend: None,
         });
     }
 
-    // Convert the masked unsigned value into a signed two's-complement integer:
-    // if value >= 2^(from_bits-1) then value -= 2^from_bits.
-    script.push(lookup_opcode("DUP")?.byte);
-    super::util::emit_pow2(script, from_bits - 1)?;
-    script.push(lookup_opcode("GE")?.byte);
-    let skip_subtract = emit_jump_placeholder_short(script, "JMPIFNOT")?;
-    super::util::emit_pow2(script, from_bits)?;
-    script.push(lookup_opcode("SUB")?.byte);
-    let end = script.len();
-    patch_jump_short(script, skip_subtract, end)?;
+    // Branchless sign extension using XOR-SUB trick:
+    //   result = (masked_value XOR sign_bit) - sign_bit
+    // where sign_bit = 2^(from_bits-1).
+    // This is equivalent to the conditional subtraction but avoids a branch,
+    // saving 4 bytes per call and improving execution speed.
+    // Stack: [..., masked_value]
+    super::util::emit_pow2(script, from_bits - 1)?; // push sign_bit
+    script.push(lookup_opcode("SWAP")?.byte); // [..., sign_bit, masked_value]
+    script.push(lookup_opcode("OVER")?.byte); // [..., sign_bit, masked_value, sign_bit]
+    script.push(lookup_opcode("XOR")?.byte); // [..., sign_bit, (masked_value XOR sign_bit)]
+    script.push(lookup_opcode("SWAP")?.byte); // [..., (masked_value XOR sign_bit), sign_bit]
+    script.push(lookup_opcode("SUB")?.byte); // [..., result]
 
     Ok(StackValue {
         const_value: const_result,
         bytecode_start: None,
+        pending_sign_extend: None,
     })
+}
+
+/// Like `emit_sign_extend`, but emits a CALL to a shared helper instead of
+/// inlining the mask+XOR-SUB sequence. Only supports from_bits == 32 or 64,
+/// and only when the value is NOT a compile-time constant.
+///
+/// Falls back to inline `emit_sign_extend` for constants or unsupported bit widths.
+pub(crate) fn emit_sign_extend_via_helper(
+    script: &mut Vec<u8>,
+    runtime: &mut super::super::RuntimeHelpers,
+    value: StackValue,
+    from_bits: u32,
+    total_bits: u32,
+) -> Result<StackValue> {
+    // Constants are always folded inline (cheaper than a call)
+    let const_result = value
+        .const_value
+        .map(|c| sign_extend_const(truncate_to_bits(c, from_bits), from_bits));
+
+    if let (Some(result), Some(_start)) = (const_result, value.bytecode_start) {
+        script.push(lookup_opcode("DROP")?.byte);
+        return Ok(emit_push_int(script, result));
+    }
+
+    // Use helper for 32-bit or 64-bit full sign extension
+    if from_bits == 32 && total_bits == 32 {
+        runtime.emit_sign_extend_32_helper(script)?;
+        return Ok(StackValue {
+            const_value: None,
+            bytecode_start: None,
+            pending_sign_extend: None,
+        });
+    }
+    if from_bits == 64 && total_bits == 64 {
+        runtime.emit_sign_extend_64_helper(script)?;
+        return Ok(StackValue {
+            const_value: None,
+            bytecode_start: None,
+            pending_sign_extend: None,
+        });
+    }
+
+    // Fall back to inline for other bit widths
+    emit_sign_extend(script, value, from_bits, total_bits)
 }

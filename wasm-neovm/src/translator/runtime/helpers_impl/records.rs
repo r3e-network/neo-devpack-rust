@@ -45,6 +45,48 @@ impl RuntimeHelpers {
         Ok(())
     }
 
+    /// Emit a CALL placeholder for the shared i32 sign-extension helper.
+    /// The top-of-stack value will be sign-extended in place.
+    pub(crate) fn emit_sign_extend_32_helper(
+        &mut self,
+        script: &mut Vec<u8>,
+    ) -> Result<()> {
+        let call_pos = emit_call_placeholder(script)?;
+        self.sign_extend_32_helper.calls.push(call_pos);
+        Ok(())
+    }
+
+    /// Emit a CALL placeholder for the shared i64 sign-extension helper.
+    pub(crate) fn emit_sign_extend_64_helper(
+        &mut self,
+        script: &mut Vec<u8>,
+    ) -> Result<()> {
+        let call_pos = emit_call_placeholder(script)?;
+        self.sign_extend_64_helper.calls.push(call_pos);
+        Ok(())
+    }
+
+    /// Emit a CALL placeholder for the shared i32 param normalization helper.
+    /// Top-of-stack value is normalized (null→0, ByteString→Integer, sign-extended).
+    pub(crate) fn emit_param_normalize_i32_helper(
+        &mut self,
+        script: &mut Vec<u8>,
+    ) -> Result<()> {
+        let call_pos = emit_call_placeholder(script)?;
+        self.param_normalize_i32_helper.calls.push(call_pos);
+        Ok(())
+    }
+
+    /// Emit a CALL placeholder for the shared i64 param normalization helper.
+    pub(crate) fn emit_param_normalize_i64_helper(
+        &mut self,
+        script: &mut Vec<u8>,
+    ) -> Result<()> {
+        let call_pos = emit_call_placeholder(script)?;
+        self.param_normalize_i64_helper.calls.push(call_pos);
+        Ok(())
+    }
+
     pub(crate) fn emit_call_indirect_helper(
         &mut self,
         script: &mut Vec<u8>,

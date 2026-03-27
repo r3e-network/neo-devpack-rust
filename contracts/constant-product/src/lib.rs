@@ -19,14 +19,21 @@ fn quote_internal(amount_in: i64) -> i64 {
         return 0;
     }
 
-    let amount_in_with_fee = amount_in * FEE_NUMERATOR;
-    let numerator = amount_in_with_fee * RESERVE_Y;
-    let denominator = RESERVE_X * FEE_DENOMINATOR + amount_in_with_fee;
-    if denominator <= 0 {
-        0
-    } else {
-        numerator / denominator
-    }
+    let amount_in_with_fee = match amount_in.checked_mul(FEE_NUMERATOR) {
+        Some(v) => v,
+        None => return 0,
+    };
+    let numerator = match amount_in_with_fee.checked_mul(RESERVE_Y) {
+        Some(v) => v,
+        None => return 0,
+    };
+    let denominator = match (RESERVE_X.checked_mul(FEE_DENOMINATOR))
+        .and_then(|v| v.checked_add(amount_in_with_fee))
+    {
+        Some(v) if v > 0 => v,
+        _ => return 0,
+    };
+    numerator / denominator
 }
 
 fn init_internal(initial_x: i64, initial_y: i64) -> bool {

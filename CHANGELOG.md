@@ -10,6 +10,29 @@ this repository follow independent versioning (currently 0.1.x).
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-03-27
+
+### Performance — NEF Size Optimization
+
+Systematic bytecode size reduction achieving **24% smaller NEF output** across representative
+contracts. The `simple_add(i32, i32) -> i32` benchmark dropped from 86 to 49 bytes (43%).
+
+- **Jump/call relaxation pass** (`relax.rs`): converts 5-byte long-form branches to 2-byte short-form when offset fits in `i8`. Iterative fixed-point algorithm handles cascading relaxation.
+- **Peephole optimizer** (`peephole.rs`): eliminates redundant SWAP+SWAP and duplicate CONVERT Integer sequences while preserving jump targets.
+- **Shared sign-extension helper**: extracts the 16-byte i32/i64 mask+XOR-SUB sequence into a shared function called via 2-byte CALL, saving ~14 bytes per additional call site.
+- **Shared param normalization helper**: deduplicates the null-check + type-check + sign-extend parameter prologue across all exported function parameters.
+- **Tail-call optimization in param normalize**: JMP to sign-extend body instead of CALL+RET, saving 5 bytes on the helper body.
+- **Early return for null params**: null values return 0 directly without going through sign-extension.
+- **Compact mask_u32**: inline `(1 << 32) - 1` computation (6 bytes) replaces PUSHINT64 literal (10 bytes).
+- **Optimized mask_top_bits/emit_pow2**: inline SHL+DEC computation for 9–127 bit widths.
+- **Skip memory init for non-memory contracts**: saves ~9 bytes when no linear memory is declared.
+
+### Testing
+
+- Increased test coverage to 854+ tests across the workspace.
+- Added NEF size analysis benchmark test (`nef_size_analysis.rs`) for regression detection.
+- Updated test assertions to accept both long-form and short-form opcodes after relaxation.
+
 ## [0.5.0] - 2026-03-22
 
 ### Security

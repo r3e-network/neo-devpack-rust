@@ -27,6 +27,7 @@ pub(crate) fn emit_binary_op(
     Ok(StackValue {
         const_value,
         bytecode_start: None,
+        pending_sign_extend: None,
     })
 }
 

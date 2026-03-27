@@ -40,6 +40,7 @@ fn push_placeholder_value(value_stack: &mut Vec<StackValue>) {
     value_stack.push(StackValue {
         const_value: None,
         bytecode_start: None,
+        pending_sign_extend: None,
     });
 }
 

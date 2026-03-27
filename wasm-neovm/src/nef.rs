@@ -25,13 +25,17 @@ const COMPILER: &str = concat!("neo-devpack-rust wasm-neovm ", env!("CARGO_PKG_V
 const MAX_SOURCE_LENGTH: usize = 256;
 const MAX_METHOD_NAME_LENGTH: usize = 32;
 
-// NEF serialization constants
+// NEF VarUint serialization constants.
+// Values below SINGLE_BYTE_MAX are encoded as a single byte.
+// Values up to U16_MAX use a 0xFD prefix + 2 LE bytes.
+// Values up to U32_MAX use a 0xFE prefix + 4 LE bytes.
+// Larger values use a 0xFF prefix + 8 LE bytes.
 const VAR_UINT_16BIT_PREFIX: u8 = 0xFD;
 const VAR_UINT_32BIT_PREFIX: u8 = 0xFE;
 const VAR_UINT_64BIT_PREFIX: u8 = 0xFF;
-const VAR_UINT_THRESHOLD_16BIT: u64 = 0xFD;
-const VAR_UINT_THRESHOLD_32BIT: u64 = 0xFFFF;
-const VAR_UINT_THRESHOLD_64BIT: u64 = 0xFFFF_FFFF;
+const VAR_UINT_SINGLE_BYTE_MAX: u64 = 0xFC;
+const VAR_UINT_U16_MAX: u64 = 0xFFFF;
+const VAR_UINT_U32_MAX: u64 = 0xFFFF_FFFF;
 const COMPILER_FIELD_SIZE: usize = 64;
 pub(crate) const HASH160_LENGTH: usize = 20;
 const CHECKSUM_LENGTH: usize = 4;
@@ -44,12 +48,12 @@ pub fn write_nef<P: AsRef<Path>>(script: &[u8], output_path: P) -> Result<()> {
 }
 
 fn write_var_uint(buffer: &mut Vec<u8>, value: u64) {
-    if value < VAR_UINT_THRESHOLD_16BIT {
+    if value <= VAR_UINT_SINGLE_BYTE_MAX {
         buffer.push(value as u8);
-    } else if value <= VAR_UINT_THRESHOLD_32BIT {
+    } else if value <= VAR_UINT_U16_MAX {
         buffer.push(VAR_UINT_16BIT_PREFIX);
         buffer.extend_from_slice(&(value as u16).to_le_bytes());
-    } else if value <= VAR_UINT_THRESHOLD_64BIT {
+    } else if value <= VAR_UINT_U32_MAX {
         buffer.push(VAR_UINT_32BIT_PREFIX);
         buffer.extend_from_slice(&(value as u32).to_le_bytes());
     } else {

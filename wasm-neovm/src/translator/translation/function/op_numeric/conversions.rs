@@ -6,13 +6,13 @@ use super::*;
 pub(super) fn try_handle(
     op: &Operator,
     script: &mut Vec<u8>,
-    _runtime: &mut RuntimeHelpers,
+    runtime: &mut RuntimeHelpers,
     value_stack: &mut Vec<StackValue>,
 ) -> Result<bool> {
     match op {
         Operator::I32WrapI64 => {
             let value = super::pop_value(value_stack, "i32.wrap_i64 operand")?;
-            let result = emit_sign_extend(script, value, 32, 32)?;
+            let result = emit_sign_extend_via_helper(script, runtime, value, 32, 32)?;
             value_stack.push(result);
             Ok(true)
         }

@@ -19,12 +19,12 @@ pub use neo_runtime::{
 };
 pub use neo_syscalls::*;
 pub use neo_types::{
-    Hash160, Hash256, NeoArray, NeoBoolean, NeoByteString, NeoContract,
-    NeoContract as NeoContractTrait, NeoContractABI, NeoContractEntry, NeoContractEvent,
-    NeoContractManifest, NeoContractMethod, NeoContractMethodTrait, NeoContractParameter,
-    NeoContractPermission, NeoError, NeoInteger, NeoIterator, NeoMap, NeoResult, NeoStorageContext,
-    NeoString, NeoStruct, NeoValue,
+    Hash160, Hash256, NeoArray, NeoBoolean, NeoByteString, NeoContract, NeoContractABI,
+    NeoContractEntry, NeoContractEvent, NeoContractManifest, NeoContractMethod,
+    NeoContractMethodTrait, NeoContractParameter, NeoContractPermission, NeoError, NeoInteger,
+    NeoIterator, NeoMap, NeoResult, NeoStorageContext, NeoString, NeoStruct, NeoValue,
 };
+
 pub use serde;
 pub use standards::*;
 
@@ -36,9 +36,8 @@ pub mod prelude {
         standards::*, Hash160, Hash256, NeoArray, NeoBoolean, NeoByteString, NeoContract,
         NeoContractABI, NeoContractEntry, NeoContractEvent, NeoContractManifest, NeoContractMethod,
         NeoContractMethodTrait, NeoContractParameter, NeoContractPermission, NeoContractRuntime,
-        NeoContractTrait, NeoCrypto, NeoError, NeoInteger, NeoIterator, NeoJSON, NeoMap, NeoResult,
-        NeoRuntime, NeoRuntimeContext, NeoStorage, NeoStorageContext, NeoString, NeoStruct,
-        NeoValue,
+        NeoCrypto, NeoError, NeoInteger, NeoIterator, NeoJSON, NeoMap, NeoResult, NeoRuntime,
+        NeoRuntimeContext, NeoStorage, NeoStorageContext, NeoString, NeoStruct, NeoValue,
     };
 }
 

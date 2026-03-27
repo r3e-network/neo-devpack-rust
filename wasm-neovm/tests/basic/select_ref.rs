@@ -18,39 +18,51 @@ fn translate_select_dynamic() {
 
     let translation = translate_module(&wasm, "Select").expect("translation succeeds");
 
-    let jmp_if_not = wasm_neovm::opcodes::lookup("JMPIFNOT_L").unwrap().byte;
+    let jmp_if_not_l = wasm_neovm::opcodes::lookup("JMPIFNOT_L").unwrap().byte;
+    let jmp_if_not_s = wasm_neovm::opcodes::lookup("JMPIFNOT").unwrap().byte;
     let drop = wasm_neovm::opcodes::lookup("DROP").unwrap().byte;
-    let jmp = wasm_neovm::opcodes::lookup("JMP_L").unwrap().byte;
+    let jmp_l = wasm_neovm::opcodes::lookup("JMP_L").unwrap().byte;
+    let jmp_s = wasm_neovm::opcodes::lookup("JMP").unwrap().byte;
     let nip = wasm_neovm::opcodes::lookup("NIP").unwrap().byte;
 
     let script = &translation.script;
+    // Find JMPIFNOT (long or short) followed by DROP
     let jmp_if_pos = script
         .iter()
         .enumerate()
         .find_map(|(pos, &byte)| {
-            if byte == jmp_if_not && script.get(pos + 5) == Some(&drop) {
-                Some(pos)
+            if byte == jmp_if_not_l && script.get(pos + 5) == Some(&drop) {
+                Some((pos, true))
+            } else if byte == jmp_if_not_s && script.get(pos + 2) == Some(&drop) {
+                Some((pos, false))
             } else {
                 None
             }
         })
-        .expect("select emits JMPIFNOT_L followed by DROP");
-    assert_eq!(script[jmp_if_pos + 5], drop);
+        .expect("select emits JMPIFNOT followed by DROP");
+    let (jmp_if_pos, is_long_jmpifnot) = jmp_if_pos;
+    let drop_offset = if is_long_jmpifnot { 5 } else { 2 };
+    assert_eq!(script[jmp_if_pos + drop_offset], drop);
 
+    // Find JMP (long or short) followed by NIP
     let jmp_pos = script
         .iter()
         .enumerate()
         .skip(jmp_if_pos + 1)
         .find_map(|(pos, &byte)| {
-            if byte == jmp && script.get(pos + 5) == Some(&nip) {
-                Some(pos)
+            if byte == jmp_l && script.get(pos + 5) == Some(&nip) {
+                Some((pos, true))
+            } else if byte == jmp_s && script.get(pos + 2) == Some(&nip) {
+                Some((pos, false))
             } else {
                 None
             }
         })
-        .expect("select emits JMP_L to skip else body");
+        .expect("select emits JMP to skip else body");
+    let (jmp_pos, is_long_jmp) = jmp_pos;
     assert!(jmp_pos > jmp_if_pos);
-    assert_eq!(script[jmp_pos + 5], nip);
+    let nip_offset = if is_long_jmp { 5 } else { 2 };
+    assert_eq!(script[jmp_pos + nip_offset], nip);
 
     assert_eq!(script.last().copied(), Some(0x40));
 }
@@ -113,22 +125,24 @@ fn translate_ref_as_non_null_dynamic_guard() {
     let dup = wasm_neovm::opcodes::lookup("DUP").unwrap().byte;
     let pushm1 = wasm_neovm::opcodes::lookup("PUSHM1").unwrap().byte;
     let equal = wasm_neovm::opcodes::lookup("EQUAL").unwrap().byte;
-    let jmpifnot = wasm_neovm::opcodes::lookup("JMPIFNOT_L").unwrap().byte;
+    let jmpifnot_l = wasm_neovm::opcodes::lookup("JMPIFNOT_L").unwrap().byte;
+    let jmpifnot_s = wasm_neovm::opcodes::lookup("JMPIFNOT").unwrap().byte;
     let drop = wasm_neovm::opcodes::lookup("DROP").unwrap().byte;
     let abort = wasm_neovm::opcodes::lookup("ABORT").unwrap().byte;
 
-    let pattern = [dup, pushm1, equal, jmpifnot];
+    let pattern_l = [dup, pushm1, equal, jmpifnot_l];
+    let pattern_s = [dup, pushm1, equal, jmpifnot_s];
     let pos = translation
         .script
-        .windows(pattern.len())
-        .position(|window| window == pattern)
+        .windows(pattern_l.len())
+        .position(|window| window == pattern_l || window == pattern_s)
         .expect("ref.as_non_null guard sequence present");
 
     let abort_pos = translation
         .script
         .iter()
         .enumerate()
-        .skip(pos + pattern.len())
+        .skip(pos + pattern_l.len())
         .find(|(_, &byte)| byte == abort)
         .map(|(idx, _)| idx)
         .expect("abort present in trap path");

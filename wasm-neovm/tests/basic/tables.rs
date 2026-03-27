@@ -117,7 +117,7 @@ fn translate_table_helpers_cover_operations() {
 
     let manifest = translation
         .manifest
-        .to_string()
+        .to_json_string()
         .expect("manifest serialises");
     assert!(manifest.contains("\"name\": \"TableOps\""));
     assert!(manifest.contains("\"name\": \"ops\""));

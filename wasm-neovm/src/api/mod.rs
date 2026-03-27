@@ -110,16 +110,12 @@ impl WasmFeatures {
 /// Statistics about a translation
 #[derive(Debug, Clone, Default)]
 pub struct TranslationStats {
-    /// Number of functions translated
-    pub function_count: usize,
+    /// Number of exported methods in the ABI
+    pub export_count: usize,
     /// Size of the generated script in bytes
     pub script_size: usize,
     /// Number of method tokens
     pub token_count: usize,
-    /// Number of exported functions
-    pub export_count: usize,
-    /// Number of imports
-    pub import_count: usize,
     /// Translation time in milliseconds (if measured)
     pub translation_time_ms: Option<u64>,
 }
@@ -138,11 +134,9 @@ impl TranslationStats {
             .unwrap_or(0);
 
         Self {
-            function_count: method_count,
+            export_count: method_count,
             script_size: translation.script.len(),
             token_count: translation.method_tokens.len(),
-            export_count: method_count,
-            import_count: 0, // Would need to track this during translation
             translation_time_ms: None,
         }
     }
@@ -302,15 +296,13 @@ mod tests {
     #[test]
     fn test_translation_stats() {
         let stats = TranslationStats {
-            function_count: 5,
+            export_count: 5,
             script_size: 1024,
             token_count: 3,
-            export_count: 5,
-            import_count: 2,
             translation_time_ms: Some(100),
         };
 
-        assert_eq!(stats.function_count, 5);
+        assert_eq!(stats.export_count, 5);
         assert_eq!(stats.script_size, 1024);
     }
 

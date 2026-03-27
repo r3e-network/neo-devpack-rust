@@ -111,6 +111,7 @@ impl DriverState {
             .with_context(|| format!("failed to translate function '{}'", function_name))?;
 
         if let Some(entry) = maybe_export {
+            // Fallback to "Any" for unmappable Wasm types (floats, SIMD, etc.)
             let parameter_defs: Vec<ManifestParameter> = func_type
                 .params()
                 .iter()

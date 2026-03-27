@@ -54,7 +54,7 @@ pub(crate) struct Cli {
 
 impl Cli {
     pub(crate) fn parse_source_chain(&self) -> Result<SourceChain> {
-        SourceChain::from_str(&self.source_chain).ok_or_else(|| {
+        SourceChain::parse_chain(&self.source_chain).ok_or_else(|| {
             anyhow!(
                 "unknown source chain '{}' (expected one of: neo, native, solana, sol, move, aptos, sui)",
                 self.source_chain

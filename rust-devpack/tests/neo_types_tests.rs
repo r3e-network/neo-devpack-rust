@@ -405,7 +405,7 @@ fn test_neo_result() {
 fn test_neo_contract_trait() {
     struct TestContract;
 
-    impl NeoContractTrait for TestContract {
+    impl NeoContract for TestContract {
         fn name() -> &'static str {
             "TestContract"
         }

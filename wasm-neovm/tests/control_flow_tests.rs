@@ -54,11 +54,11 @@ fn translate_deeply_nested_blocks() {
 
     let translation = translate_module(&wasm, "NestedBlocks").expect("translation succeeds");
 
-    let jmp_if = opcodes::lookup("JMPIF_L").unwrap().byte;
-    let _jmp = opcodes::lookup("JMP_L").unwrap().byte;
+    let jmp_if_l = opcodes::lookup("JMPIF_L").unwrap().byte;
+    let jmp_if_s = opcodes::lookup("JMPIF").unwrap().byte;
 
-    // Should have multiple conditional jumps for br_if
-    let jmp_if_count = translation.script.iter().filter(|&&b| b == jmp_if).count();
+    // Should have multiple conditional jumps for br_if (long or short form)
+    let jmp_if_count = translation.script.iter().filter(|&&b| b == jmp_if_l || b == jmp_if_s).count();
     assert!(jmp_if_count >= 4, "expected at least 4 conditional jumps");
 
     // Verify final RET
@@ -201,12 +201,14 @@ fn translate_complex_if_else_chain() {
 
     let translation = translate_module(&wasm, "IfChain").expect("translation succeeds");
 
-    // Multiple nested if/else should generate multiple jumps
-    let jmpifnot = opcodes::lookup("JMPIFNOT_L").unwrap().byte;
-    let jmp = opcodes::lookup("JMP_L").unwrap().byte;
+    // Multiple nested if/else should generate multiple jumps (long or short form)
+    let jmpifnot_l = opcodes::lookup("JMPIFNOT_L").unwrap().byte;
+    let jmpifnot_s = opcodes::lookup("JMPIFNOT").unwrap().byte;
+    let jmp_l = opcodes::lookup("JMP_L").unwrap().byte;
+    let jmp_s = opcodes::lookup("JMP").unwrap().byte;
 
-    assert!(translation.script.contains(&jmpifnot));
-    assert!(translation.script.contains(&jmp));
+    assert!(translation.script.contains(&jmpifnot_l) || translation.script.contains(&jmpifnot_s));
+    assert!(translation.script.contains(&jmp_l) || translation.script.contains(&jmp_s));
 }
 
 #[test]
@@ -257,12 +259,13 @@ fn translate_br_table_large() {
 
     let translation = translate_module(&wasm, "LargeBrTable").expect("translation succeeds");
 
-    // Should have multiple conditional jumps for br_table dispatch
+    // Should have multiple conditional jumps for br_table dispatch (long or short)
     let dup = opcodes::lookup("DUP").unwrap().byte;
-    let jmp_if = opcodes::lookup("JMPIF_L").unwrap().byte;
+    let jmp_if_l = opcodes::lookup("JMPIF_L").unwrap().byte;
+    let jmp_if_s = opcodes::lookup("JMPIF").unwrap().byte;
 
     assert!(translation.script.iter().filter(|&&b| b == dup).count() >= 4);
-    assert!(translation.script.iter().filter(|&&b| b == jmp_if).count() >= 4);
+    assert!(translation.script.iter().filter(|&&b| b == jmp_if_l || b == jmp_if_s).count() >= 4);
 }
 
 #[test]

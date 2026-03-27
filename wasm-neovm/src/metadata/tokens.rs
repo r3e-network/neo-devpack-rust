@@ -50,15 +50,9 @@ pub fn method_tokens_to_json(tokens: &[MethodToken]) -> Value {
 pub fn dedup_method_tokens(tokens: &mut Vec<MethodToken>) {
     let mut seen = HashSet::with_capacity(tokens.len());
     tokens.retain(|token| {
-        // Use the method string's hash instead of the string itself to avoid clones
-        use std::hash::{Hash, Hasher};
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        token.method.hash(&mut hasher);
-        let method_hash = hasher.finish();
-
         let key = (
             token.contract_hash,
-            method_hash,
+            token.method.clone(),
             token.parameters_count,
             token.has_return_value,
             token.call_flags,

@@ -78,10 +78,11 @@ fn translate_complete_nep17_token_pattern() {
     let translation = translate_module(&wasm, "NEP17Token").expect("translation succeeds");
 
     let call_l = opcodes::lookup("CALL_L").unwrap().byte;
+    let call_s = opcodes::lookup("CALL").unwrap().byte;
     let ret = opcodes::lookup("RET").unwrap().byte;
 
     assert!(
-        translation.script.contains(&call_l),
+        translation.script.contains(&call_l) || translation.script.contains(&call_s),
         "should have function calls"
     );
     assert!(
@@ -347,8 +348,9 @@ fn translate_nft_contract_pattern() {
     let translation = translate_module(&wasm, "NFTContract").expect("translation succeeds");
 
     let call_l = opcodes::lookup("CALL_L").unwrap().byte;
+    let call_s = opcodes::lookup("CALL").unwrap().byte;
     assert!(
-        translation.script.contains(&call_l),
+        translation.script.contains(&call_l) || translation.script.contains(&call_s),
         "should have function calls"
     );
 }
@@ -535,9 +537,10 @@ fn translate_complex_state_machine() {
 
     let translation = translate_module(&wasm, "StateMachine").expect("translation succeeds");
 
-    let jmpifnot = opcodes::lookup("JMPIFNOT_L").unwrap().byte;
+    let jmpifnot_l = opcodes::lookup("JMPIFNOT_L").unwrap().byte;
+    let jmpifnot_s = opcodes::lookup("JMPIFNOT").unwrap().byte;
     assert!(
-        translation.script.contains(&jmpifnot),
+        translation.script.contains(&jmpifnot_l) || translation.script.contains(&jmpifnot_s),
         "should have conditional branches"
     );
 

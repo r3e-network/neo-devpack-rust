@@ -3,7 +3,16 @@
 
 use neo_types::*;
 
-/// Crypto helpers with deterministic local implementations for tests/examples.
+/// Crypto helpers for Neo N3 smart contracts.
+///
+/// **Hash functions** (`sha256`, `ripemd160`, `keccak256`, `keccak512`) are
+/// fully implemented using standard crates and produce correct output.
+///
+/// **Signature verification functions** (`verify_signature`, `verify_with_ecdsa`,
+/// `verify_signature_with_recovery`) are **test stubs only**. They validate input
+/// shapes (lengths) but do **not** perform real cryptographic verification.
+/// In a deployed contract these map to NeoVM syscalls (`Neo.Crypto.CheckSig`,
+/// `Neo.Crypto.VerifyWithECDsa`) which perform real verification on-chain.
 pub struct NeoCrypto;
 
 impl NeoCrypto {
@@ -51,6 +60,11 @@ impl NeoCrypto {
         Ok(NeoInteger::new(hash as i64))
     }
 
+    /// **Test stub only.** Validates input shapes but does NOT perform real
+    /// ECDSA verification. On-chain this maps to `Neo.Crypto.CheckSig`.
+    ///
+    /// Returns `TRUE` if message is non-empty, signature is 64 bytes, and
+    /// public key is 33 bytes (compressed SEC1 format).
     pub fn verify_signature(
         message: &NeoByteString,
         signature: &NeoByteString,
@@ -64,6 +78,11 @@ impl NeoCrypto {
         })
     }
 
+    /// **Test stub only.** Validates input shapes but does NOT perform real
+    /// ECDSA verification. On-chain this maps to `Neo.Crypto.VerifyWithECDsa`.
+    ///
+    /// Returns `TRUE` if curve is secp256r1 (1), message is non-empty,
+    /// public key is 33 bytes, and signature is 64 bytes.
     pub fn verify_with_ecdsa(
         message: &NeoByteString,
         public_key: &NeoByteString,
@@ -79,6 +98,8 @@ impl NeoCrypto {
         })
     }
 
+    /// **Test stub only.** Returns a zero-padded 33-byte "public key" derived
+    /// from the signature bytes. Does NOT perform real ECDSA recovery.
     pub fn verify_signature_with_recovery(
         _message: &NeoByteString,
         signature: &NeoByteString,

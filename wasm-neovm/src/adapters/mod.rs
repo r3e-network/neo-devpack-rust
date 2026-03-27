@@ -39,9 +39,8 @@ impl FromStr for SourceChain {
 }
 
 impl SourceChain {
-    /// Parse from string
-    #[allow(clippy::should_implement_trait)]
-    pub fn from_str(s: &str) -> Option<Self> {
+    /// Parse from string, returning `None` if unrecognized.
+    pub fn parse_chain(s: &str) -> Option<Self> {
         s.parse().ok()
     }
 }

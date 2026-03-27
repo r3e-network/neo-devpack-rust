@@ -27,7 +27,10 @@ fn manifest_and_nef_generation_round_trip() -> anyhow::Result<()> {
         methods.as_array().unwrap().len() >= 2,
         "expected exported methods"
     );
-    assert!(translation.manifest.to_string()?.contains("MyContract"));
+    assert!(translation
+        .manifest
+        .to_json_string()?
+        .contains("MyContract"));
 
     // Extract metadata from manifest and ensure it feeds into NEF generation.
     let mut manifest_value = translation.manifest.value.clone();

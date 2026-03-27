@@ -118,10 +118,11 @@ fn codec_rejects_oversized_payloads() {
 
 #[test]
 fn json_helpers_propagate_serialization_errors() {
+    // utils::json_to_bytes delegates to storage::write_json, so both produce the same error
     let utils_err = neo_devpack::utils::json_to_bytes(&FailingSerialize).unwrap_err();
     assert!(utils_err
         .message()
-        .contains("failed to serialize JSON bytes"));
+        .contains("failed to serialize storage JSON"));
 
     let storage_err = neo_devpack::storage::write_json(&FailingSerialize).unwrap_err();
     assert!(storage_err
@@ -204,6 +205,39 @@ fn neo_manifest_serde_accepts_translator_extra_metadata() {
     assert_eq!(parsed.author, "Neo");
     assert_eq!(parsed.email, "dev@neo.org");
     assert_eq!(parsed.description, "Generated");
+}
+
+#[test]
+fn neo_manifest_serde_method_returntype_round_trips() {
+    let manifest_json = serde_json::json!({
+        "name": "Demo",
+        "abi": {
+            "hash": "0x00",
+            "methods": [{
+                "name": "balanceOf",
+                "parameters": [{"name": "account", "type": "Hash160"}],
+                "returntype": "Integer",
+                "offset": 0,
+                "safe": true
+            }],
+            "events": []
+        },
+        "permissions": [],
+        "trusts": [],
+        "supported_standards": []
+    });
+
+    let parsed: NeoContractManifest =
+        serde_json::from_value(manifest_json).expect("manifest should deserialize");
+    assert_eq!(parsed.abi.methods.len(), 1);
+    assert_eq!(parsed.abi.methods[0].name, "balanceOf");
+    assert_eq!(parsed.abi.methods[0].return_type, "Integer");
+    assert_eq!(parsed.abi.methods[0].parameters[0].r#type, "Hash160");
+
+    // Verify serialization uses "returntype" (no underscore) per Neo N3 spec
+    let serialized = serde_json::to_value(&parsed).expect("manifest should serialize");
+    assert!(serialized["abi"]["methods"][0].get("returntype").is_some());
+    assert!(serialized["abi"]["methods"][0].get("return_type").is_none());
 }
 
 #[test]

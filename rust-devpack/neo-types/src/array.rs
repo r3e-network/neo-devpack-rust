@@ -1,6 +1,7 @@
 // Copyright (c) 2025-2026 R3E Network
 // Licensed under the MIT License
 
+use std::ops::Index;
 use std::vec::Vec;
 
 #[cfg(feature = "serde")]
@@ -84,6 +85,29 @@ impl<T> FromIterator<T> for NeoArray<T> {
 impl<T> Extend<T> for NeoArray<T> {
     fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
         self.data.extend(iter);
+    }
+}
+
+impl<T> Index<usize> for NeoArray<T> {
+    type Output = T;
+    fn index(&self, index: usize) -> &T {
+        &self.data[index]
+    }
+}
+
+impl<T> IntoIterator for NeoArray<T> {
+    type Item = T;
+    type IntoIter = std::vec::IntoIter<T>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.data.into_iter()
+    }
+}
+
+impl<'a, T> IntoIterator for &'a NeoArray<T> {
+    type Item = &'a T;
+    type IntoIter = std::slice::Iter<'a, T>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.data.iter()
     }
 }
 

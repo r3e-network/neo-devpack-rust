@@ -6,7 +6,7 @@ use super::*;
 pub(super) fn try_handle(
     op: &Operator,
     script: &mut Vec<u8>,
-    _runtime: &mut RuntimeHelpers,
+    runtime: &mut RuntimeHelpers,
     value_stack: &mut Vec<StackValue>,
 ) -> Result<bool> {
     match op {
@@ -18,7 +18,7 @@ pub(super) fn try_handle(
                 let rhs = b as i32;
                 Some(lhs.wrapping_add(rhs) as i128)
             })?;
-            let result = emit_sign_extend(script, result, 32, 32)?;
+            let result = emit_sign_extend_via_helper(script, runtime, result, 32, 32)?;
             value_stack.push(result);
             Ok(true)
         }
@@ -30,7 +30,7 @@ pub(super) fn try_handle(
                 let rhs = b as i64;
                 Some(lhs.wrapping_add(rhs) as i128)
             })?;
-            let result = emit_sign_extend(script, result, 64, 64)?;
+            let result = emit_sign_extend_via_helper(script, runtime, result, 64, 64)?;
             value_stack.push(result);
             Ok(true)
         }
@@ -42,7 +42,7 @@ pub(super) fn try_handle(
                 let rhs = b as i32;
                 Some(lhs.wrapping_sub(rhs) as i128)
             })?;
-            let result = emit_sign_extend(script, result, 32, 32)?;
+            let result = emit_sign_extend_via_helper(script, runtime, result, 32, 32)?;
             value_stack.push(result);
             Ok(true)
         }
@@ -54,7 +54,7 @@ pub(super) fn try_handle(
                 let rhs = b as i64;
                 Some(lhs.wrapping_sub(rhs) as i128)
             })?;
-            let result = emit_sign_extend(script, result, 64, 64)?;
+            let result = emit_sign_extend_via_helper(script, runtime, result, 64, 64)?;
             value_stack.push(result);
             Ok(true)
         }
@@ -66,7 +66,7 @@ pub(super) fn try_handle(
                 let rhs = b as i32;
                 Some(lhs.wrapping_mul(rhs) as i128)
             })?;
-            let result = emit_sign_extend(script, result, 32, 32)?;
+            let result = emit_sign_extend_via_helper(script, runtime, result, 32, 32)?;
             value_stack.push(result);
             Ok(true)
         }
@@ -78,7 +78,7 @@ pub(super) fn try_handle(
                 let rhs = b as i64;
                 Some(lhs.wrapping_mul(rhs) as i128)
             })?;
-            let result = emit_sign_extend(script, result, 64, 64)?;
+            let result = emit_sign_extend_via_helper(script, runtime, result, 64, 64)?;
             value_stack.push(result);
             Ok(true)
         }

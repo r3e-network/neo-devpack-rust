@@ -3,7 +3,5 @@
 
 // Re-export unified offset functions for backward compatibility
 pub use super::offsets::{
-    emit_jump_to, emit_placeholder as emit_jump_placeholder,
-    emit_placeholder_short as emit_jump_placeholder_short, patch_offset as patch_jump,
-    patch_offset_short as patch_jump_short,
+    emit_jump_to, emit_placeholder as emit_jump_placeholder, patch_offset as patch_jump,
 };

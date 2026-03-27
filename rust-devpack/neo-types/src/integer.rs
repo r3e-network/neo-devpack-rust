@@ -1,6 +1,7 @@
 // Copyright (c) 2025-2026 R3E Network
 // Licensed under the MIT License
 
+use std::fmt;
 use std::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Not, Rem, Shl, Shr, Sub};
 
 use num_bigint::BigInt;
@@ -118,7 +119,7 @@ impl NeoInteger {
 
     /// Deprecated compatibility helper that converts to `i32` using saturating semantics.
     #[deprecated(
-        since = "0.4.1",
+        since = "0.1.0",
         note = "Use try_as_i32() or as_i32_saturating() explicitly"
     )]
     pub fn as_i32(&self) -> i32 {
@@ -127,23 +128,35 @@ impl NeoInteger {
 
     /// Deprecated compatibility helper that converts to `u32` using saturating semantics.
     #[deprecated(
-        since = "0.4.1",
+        since = "0.1.0",
         note = "Use try_as_u32() or as_u32_saturating() explicitly"
     )]
     pub fn as_u32(&self) -> u32 {
         self.as_u32_saturating()
     }
 
+    /// Deprecated: use `try_as_i32()` instead.
+    #[deprecated(since = "0.1.0", note = "Use try_as_i32() instead")]
     pub fn to_i32(&self) -> Option<i32> {
         self.0.to_i32()
     }
 
+    /// Deprecated: use `try_as_u32()` instead.
+    #[deprecated(since = "0.1.0", note = "Use try_as_u32() instead")]
     pub fn to_u32(&self) -> Option<u32> {
         self.0.to_u32()
     }
 
+    /// Deprecated: use `try_as_i64()` instead.
+    #[deprecated(since = "0.1.0", note = "Use try_as_i64() instead")]
     pub fn to_i64(&self) -> Option<i64> {
         self.0.to_i64()
+    }
+}
+
+impl fmt::Display for NeoInteger {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
@@ -182,8 +195,38 @@ impl Shr<u32> for &NeoInteger {
     }
 }
 
+impl From<i8> for NeoInteger {
+    fn from(value: i8) -> Self {
+        NeoInteger::new(value)
+    }
+}
+
+impl From<u8> for NeoInteger {
+    fn from(value: u8) -> Self {
+        NeoInteger::new(value)
+    }
+}
+
+impl From<i16> for NeoInteger {
+    fn from(value: i16) -> Self {
+        NeoInteger::new(value)
+    }
+}
+
+impl From<u16> for NeoInteger {
+    fn from(value: u16) -> Self {
+        NeoInteger::new(value)
+    }
+}
+
 impl From<i32> for NeoInteger {
     fn from(value: i32) -> Self {
+        NeoInteger::new(value)
+    }
+}
+
+impl From<u32> for NeoInteger {
+    fn from(value: u32) -> Self {
         NeoInteger::new(value)
     }
 }
@@ -194,8 +237,20 @@ impl From<i64> for NeoInteger {
     }
 }
 
-impl From<u32> for NeoInteger {
-    fn from(value: u32) -> Self {
+impl From<u64> for NeoInteger {
+    fn from(value: u64) -> Self {
+        NeoInteger::new(value)
+    }
+}
+
+impl From<i128> for NeoInteger {
+    fn from(value: i128) -> Self {
+        NeoInteger::new(value)
+    }
+}
+
+impl From<u128> for NeoInteger {
+    fn from(value: u128) -> Self {
         NeoInteger::new(value)
     }
 }

@@ -7,7 +7,8 @@ use std::vec::Vec;
 ///
 /// This iterator efficiently traverses elements using an internal cursor,
 /// avoiding O(n) overhead of Vec::remove(0) that would occur with a naive
-/// implementation.
+/// implementation. Implements `std::iter::Iterator` for use with `for` loops
+/// and iterator combinators.
 #[derive(Debug, Clone)]
 pub struct NeoIterator<T> {
     data: Vec<T>,
@@ -18,24 +19,6 @@ impl<T> NeoIterator<T> {
     /// Creates a new iterator from a vector.
     pub fn new(data: Vec<T>) -> Self {
         Self { data, cursor: 0 }
-    }
-
-    /// Returns the next element and advances the iterator.
-    ///
-    /// # Performance
-    /// This operation is O(1) due to cursor-based iteration.
-    #[allow(clippy::should_implement_trait)]
-    pub fn next(&mut self) -> Option<T>
-    where
-        T: Clone,
-    {
-        if self.cursor >= self.data.len() {
-            None
-        } else {
-            let item = self.data[self.cursor].clone();
-            self.cursor += 1;
-            Some(item)
-        }
     }
 
     /// Returns true if there are more elements to iterate.
@@ -63,3 +46,24 @@ impl<T> NeoIterator<T> {
         self.data.len()
     }
 }
+
+impl<T: Clone> Iterator for NeoIterator<T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<T> {
+        if self.cursor >= self.data.len() {
+            None
+        } else {
+            let item = self.data[self.cursor].clone();
+            self.cursor += 1;
+            Some(item)
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self.len();
+        (remaining, Some(remaining))
+    }
+}
+
+impl<T: Clone> ExactSizeIterator for NeoIterator<T> {}

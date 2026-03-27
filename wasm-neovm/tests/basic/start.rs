@@ -36,22 +36,32 @@ fn translate_emits_start_call() {
         .and_then(|offset| offset.as_u64())
         .expect("start offset present") as isize;
 
-    let call_opcode = opcodes::lookup("CALL_L")
+    let call_l_byte = opcodes::lookup("CALL_L")
         .expect("CALL_L opcode available")
+        .byte;
+    let call_s_byte = opcodes::lookup("CALL")
+        .expect("CALL opcode available")
         .byte;
     let mut found_call = false;
     let script = &translation.script;
     let mut i = 0usize;
-    while i + 4 < script.len() {
-        if script[i] == call_opcode {
+    while i < script.len() {
+        if script[i] == call_l_byte && i + 4 < script.len() {
             let delta = i32::from_le_bytes(script[i + 1..i + 5].try_into().unwrap());
-            // NeoVM CALL_L uses a signed offset from the beginning of the current instruction.
             let target = i as isize + delta as isize;
             if target == start_offset {
                 found_call = true;
                 break;
             }
             i += 5;
+        } else if script[i] == call_s_byte && i + 1 < script.len() {
+            let delta = script[i + 1] as i8 as isize;
+            let target = i as isize + delta;
+            if target == start_offset {
+                found_call = true;
+                break;
+            }
+            i += 2;
         } else {
             i += 1;
         }
@@ -59,7 +69,7 @@ fn translate_emits_start_call() {
 
     assert!(
         found_call,
-        "expected CALL_L to start function at offset {start_offset}"
+        "expected CALL/CALL_L to start function at offset {start_offset}"
     );
 }
 

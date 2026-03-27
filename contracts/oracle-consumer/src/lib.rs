@@ -17,71 +17,51 @@ const RESPONSE_PREFIX: &[u8] = b"oracle:resp:";
 const RESPONSE_STATUS_SUFFIX: &[u8] = b":status";
 const RESPONSE_DATA_SUFFIX: &[u8] = b":data";
 
-fn response_key(id: i64, suffix: &[u8]) -> Vec<u8> {
+fn response_status_key(id: i64) -> Vec<u8> {
     let mut key = RESPONSE_PREFIX.to_vec();
     key.extend_from_slice(&id.to_le_bytes());
-    key.extend_from_slice(suffix);
+    key.extend_from_slice(RESPONSE_STATUS_SUFFIX);
     key
 }
 
-fn storage_put_bytes(ctx: &NeoStorageContext, key: &[u8], value: &[u8]) -> bool {
+fn response_data_key(id: i64) -> Vec<u8> {
+    let mut key = RESPONSE_PREFIX.to_vec();
+    key.extend_from_slice(&id.to_le_bytes());
+    key.extend_from_slice(RESPONSE_DATA_SUFFIX);
+    key
+}
+
+fn storage_put_i64(ctx: &NeoStorageContext, key: &[u8], value: i64) -> bool {
     NeoStorage::put(
         ctx,
         &NeoByteString::from_slice(key),
-        &NeoByteString::from_slice(value),
+        &NeoByteString::from_slice(&value.to_le_bytes()),
     )
     .is_ok()
 }
 
-fn storage_get_bytes(ctx: &NeoStorageContext, key: &[u8]) -> Option<Vec<u8>> {
-    let data = NeoStorage::get(ctx, &NeoByteString::from_slice(key)).ok()?;
-    if data.is_empty() {
-        return None;
-    }
-    Some(data.as_slice().to_vec())
-}
-
-fn storage_put_i64(ctx: &NeoStorageContext, key: &[u8], value: i64) -> bool {
-    storage_put_bytes(ctx, key, &value.to_le_bytes())
-}
-
 fn storage_get_i64(ctx: &NeoStorageContext, key: &[u8]) -> Option<i64> {
-    let bytes = storage_get_bytes(ctx, key)?;
-    if bytes.len() != 8 {
+    let data = NeoStorage::get(ctx, &NeoByteString::from_slice(key)).ok()?;
+    if data.len() != 8 {
         return None;
     }
+    let s = data.as_slice();
     let mut buf = [0u8; 8];
-    buf.copy_from_slice(&bytes);
+    buf.copy_from_slice(s);
     Some(i64::from_le_bytes(buf))
 }
 
-fn ensure_witness(account: &NeoByteString) -> bool {
-    NeoRuntime::check_witness(account)
-        .map(|flag| flag.as_bool())
+fn storage_has_key(ctx: &NeoStorageContext, key: &[u8]) -> bool {
+    NeoStorage::get(ctx, &NeoByteString::from_slice(key))
+        .map(|d| !d.is_empty())
         .unwrap_or(false)
-}
-
-fn read_address(ptr: i64, len: i64) -> Option<NeoByteString> {
-    if ptr == 0 || len != 20 {
-        return None;
-    }
-    let slice = unsafe { core::slice::from_raw_parts(ptr as *const u8, len as usize) };
-    Some(NeoByteString::from_slice(slice))
-}
-
-fn read_bytes(ptr: i64, len: i64) -> Option<Vec<u8>> {
-    if ptr == 0 || len <= 0 {
-        return None;
-    }
-    let slice = unsafe { core::slice::from_raw_parts(ptr as *const u8, len as usize) };
-    Some(slice.to_vec())
 }
 
 // Events
 #[neo_event]
 pub struct OracleConfigured {
-    pub owner: NeoByteString,
-    pub oracle: NeoByteString,
+    pub owner: NeoInteger,
+    pub oracle: NeoInteger,
 }
 
 #[neo_event]
@@ -105,56 +85,32 @@ impl NeoOracleConsumerContract {
     }
 
     #[neo_method]
-    pub fn configure(owner_ptr: i64, owner_len: i64, oracle_ptr: i64, oracle_len: i64) -> bool {
-        let owner = match read_address(owner_ptr, owner_len) {
-            Some(a) => a,
-            None => return false,
-        };
-        if !ensure_witness(&owner) {
+    pub fn configure(owner_id: i64, oracle_id: i64) -> bool {
+        if owner_id == 0 || oracle_id == 0 {
             return false;
         }
-        let oracle = match read_address(oracle_ptr, oracle_len) {
-            Some(a) => a,
-            None => return false,
-        };
         let ctx = match NeoStorage::get_context().ok() {
             Some(c) => c,
             None => return false,
         };
-        if storage_get_bytes(&ctx, CONFIG_OWNER_KEY).is_some() {
+        if storage_has_key(&ctx, CONFIG_OWNER_KEY) {
             return false;
         }
-        storage_put_bytes(&ctx, CONFIG_OWNER_KEY, owner.as_slice());
-        storage_put_bytes(&ctx, CONFIG_ORACLE_KEY, oracle.as_slice());
+        storage_put_i64(&ctx, CONFIG_OWNER_KEY, owner_id);
+        storage_put_i64(&ctx, CONFIG_ORACLE_KEY, oracle_id);
         let _ = (OracleConfigured {
-            owner,
-            oracle,
+            owner: NeoInteger::new(owner_id),
+            oracle: NeoInteger::new(oracle_id),
         })
         .emit();
         true
     }
 
     #[neo_method]
-    pub fn request(
-        url_ptr: i64,
-        url_len: i64,
-        filter_ptr: i64,
-        filter_len: i64,
-        user_data_ptr: i64,
-        user_data_len: i64,
-    ) -> i64 {
-        let _url = match read_bytes(url_ptr, url_len) {
-            Some(b) => b,
-            None => return 0,
-        };
-        let _filter = match read_bytes(filter_ptr, filter_len) {
-            Some(b) => b,
-            None => return 0,
-        };
-        let _user_data = match read_bytes(user_data_ptr, user_data_len) {
-            Some(b) => b,
-            None => return 0,
-        };
+    pub fn request(url_id: i64, filter_id: i64, user_data_id: i64) -> i64 {
+        if url_id == 0 || filter_id == 0 || user_data_id == 0 {
+            return 0;
+        }
         let ctx = match NeoStorage::get_context().ok() {
             Some(c) => c,
             None => return 0,
@@ -170,25 +126,16 @@ impl NeoOracleConsumerContract {
     }
 
     #[neo_method(name = "onOracleResponse")]
-    pub fn on_oracle_response(
-        request_id: i64,
-        status_code: i64,
-        data_ptr: i64,
-        data_len: i64,
-    ) -> bool {
+    pub fn on_oracle_response(request_id: i64, status_code: i64, data_id: i64) -> bool {
         if request_id <= 0 {
             return false;
         }
-        let data = match read_bytes(data_ptr, data_len) {
-            Some(b) => b,
-            None => return false,
-        };
         let ctx = match NeoStorage::get_context().ok() {
             Some(c) => c,
             None => return false,
         };
-        storage_put_i64(&ctx, &response_key(request_id, RESPONSE_STATUS_SUFFIX), status_code);
-        storage_put_bytes(&ctx, &response_key(request_id, RESPONSE_DATA_SUFFIX), &data);
+        storage_put_i64(&ctx, &response_status_key(request_id), status_code);
+        storage_put_i64(&ctx, &response_data_key(request_id), data_id);
         let _ = (OracleResponseReceived {
             request_id: NeoInteger::new(request_id),
             status_code: NeoInteger::new(status_code),
@@ -197,7 +144,7 @@ impl NeoOracleConsumerContract {
         true
     }
 
-    #[neo_method(name = "lastRequestId")]
+    #[neo_method(safe, name = "lastRequestId")]
     pub fn last_request_id() -> i64 {
         let ctx = match NeoStorage::get_context().ok() {
             Some(c) => c,
@@ -206,44 +153,44 @@ impl NeoOracleConsumerContract {
         storage_get_i64(&ctx, REQUEST_COUNTER_KEY).unwrap_or(0)
     }
 
-    /// Return config via notify: [owner_hex, oracle_hex]
-    #[neo_method(name = "getConfig")]
+    /// Return config via notify: [owner_id, oracle_id]
+    #[neo_method(safe, name = "getConfig")]
     pub fn get_config() {
         let ctx = match NeoStorage::get_context().ok() {
             Some(c) => c,
             None => return,
         };
-        let owner = match storage_get_bytes(&ctx, CONFIG_OWNER_KEY) {
-            Some(b) => b,
+        let owner = match storage_get_i64(&ctx, CONFIG_OWNER_KEY) {
+            Some(v) => v,
             None => return,
         };
-        let oracle = match storage_get_bytes(&ctx, CONFIG_ORACLE_KEY) {
-            Some(b) => b,
+        let oracle = match storage_get_i64(&ctx, CONFIG_ORACLE_KEY) {
+            Some(v) => v,
             None => return,
         };
         let label = NeoString::from_str("getConfig");
         let mut state = NeoArray::new();
-        state.push(NeoValue::from(NeoByteString::from_slice(&owner)));
-        state.push(NeoValue::from(NeoByteString::from_slice(&oracle)));
+        state.push(NeoValue::from(NeoInteger::new(owner)));
+        state.push(NeoValue::from(NeoInteger::new(oracle)));
         let _ = NeoRuntime::notify(&label, &state);
     }
 
-    /// Return response via notify: [status, data]
-    #[neo_method(name = "getResponse")]
+    /// Return response via notify: [status, data_id]
+    #[neo_method(safe, name = "getResponse")]
     pub fn get_response(request_id: i64) {
         let ctx = match NeoStorage::get_context().ok() {
             Some(c) => c,
             None => return,
         };
-        let status = match storage_get_i64(&ctx, &response_key(request_id, RESPONSE_STATUS_SUFFIX)) {
+        let status = match storage_get_i64(&ctx, &response_status_key(request_id)) {
             Some(s) => s,
             None => return,
         };
-        let data = storage_get_bytes(&ctx, &response_key(request_id, RESPONSE_DATA_SUFFIX)).unwrap_or_default();
+        let data_id = storage_get_i64(&ctx, &response_data_key(request_id)).unwrap_or(0);
         let label = NeoString::from_str("getResponse");
         let mut state = NeoArray::new();
         state.push(NeoValue::from(NeoInteger::new(status)));
-        state.push(NeoValue::from(NeoByteString::from_slice(&data)));
+        state.push(NeoValue::from(NeoInteger::new(data_id)));
         let _ = NeoRuntime::notify(&label, &state);
     }
 }

@@ -28,6 +28,7 @@ pub(super) fn emit_local_get(script: &mut Vec<u8>, state: &LocalState) -> Result
     Ok(StackValue {
         const_value: None,
         bytecode_start: None,
+        pending_sign_extend: None,
     })
 }
 

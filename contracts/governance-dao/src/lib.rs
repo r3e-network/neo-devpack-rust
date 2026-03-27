@@ -3,39 +3,251 @@
 
 use neo_devpack::prelude::*;
 
-mod config;
-mod events;
-mod proposals;
-mod storage;
-mod types;
-mod utils;
-mod voting;
-
-use config::{load_config, load_stake, store_config, store_stake};
-use proposals::{execute_proposal, load_proposal, next_proposal_id, store_proposal};
-use storage::{serialize_value, storage_context};
-use types::{DaoConfig, Proposal};
-use utils::{ensure_witness, read_address, read_bytes, read_string};
-use voting::{call_transfer, has_voted, record_vote};
-
 neo_manifest_overlay!(
     r#"{
     "name": "NeoGovernanceDAO"
 }"#
 );
 
+// Storage keys
+const CONFIG_OWNER_KEY: &[u8] = b"dao:cfg:owner";
+const CONFIG_TOKEN_KEY: &[u8] = b"dao:cfg:token";
+const CONFIG_QUORUM_KEY: &[u8] = b"dao:cfg:quorum";
+const PROPOSAL_COUNTER_KEY: &[u8] = b"dao:counter";
+const PROPOSAL_PREFIX: &[u8] = b"dao:p:";
+const STAKE_PREFIX: &[u8] = b"dao:stake:";
+const VOTE_PREFIX: &[u8] = b"dao:vote:";
+
+// Proposal field suffixes
+const P_PROPOSER: &[u8] = b":proposer";
+const P_TARGET: &[u8] = b":target";
+const P_METHOD: &[u8] = b":method";
+const P_ARGS: &[u8] = b":args";
+const P_TITLE: &[u8] = b":title";
+const P_START: &[u8] = b":start";
+const P_END: &[u8] = b":end";
+const P_YES: &[u8] = b":yes";
+const P_NO: &[u8] = b":no";
+const P_EXECUTED: &[u8] = b":executed";
+
+// --- Storage helpers ---
+
+fn storage_ctx() -> Option<NeoStorageContext> {
+    NeoStorage::get_context().ok()
+}
+
+fn put_i64(ctx: &NeoStorageContext, key: &[u8], value: i64) -> bool {
+    NeoStorage::put(
+        ctx,
+        &NeoByteString::from_slice(key),
+        &NeoByteString::from_slice(&value.to_le_bytes()),
+    )
+    .is_ok()
+}
+
+fn get_i64(ctx: &NeoStorageContext, key: &[u8]) -> Option<i64> {
+    let data = NeoStorage::get(ctx, &NeoByteString::from_slice(key)).ok()?;
+    if data.len() != 8 {
+        return None;
+    }
+    let s = data.as_slice();
+    let mut buf = [0u8; 8];
+    buf.copy_from_slice(s);
+    Some(i64::from_le_bytes(buf))
+}
+
+fn put_bool(ctx: &NeoStorageContext, key: &[u8], value: bool) -> bool {
+    NeoStorage::put(
+        ctx,
+        &NeoByteString::from_slice(key),
+        &NeoByteString::from_slice(&[value as u8]),
+    )
+    .is_ok()
+}
+
+fn get_bool(ctx: &NeoStorageContext, key: &[u8]) -> Option<bool> {
+    let data = NeoStorage::get(ctx, &NeoByteString::from_slice(key)).ok()?;
+    if data.len() != 1 {
+        return None;
+    }
+    Some(data.as_slice()[0] != 0)
+}
+
+fn delete_key(ctx: &NeoStorageContext, key: &[u8]) {
+    let _ = NeoStorage::delete(ctx, &NeoByteString::from_slice(key));
+}
+
+// --- Key builders ---
+
+fn proposal_key(id: i64, suffix: &[u8]) -> Vec<u8> {
+    let mut key = PROPOSAL_PREFIX.to_vec();
+    key.extend_from_slice(&id.to_le_bytes());
+    key.extend_from_slice(suffix);
+    key
+}
+
+fn stake_key(account_id: i64) -> Vec<u8> {
+    let mut key = STAKE_PREFIX.to_vec();
+    key.extend_from_slice(&account_id.to_le_bytes());
+    key
+}
+
+fn vote_key(proposal_id: i64, voter_id: i64) -> Vec<u8> {
+    let mut key = VOTE_PREFIX.to_vec();
+    key.extend_from_slice(&proposal_id.to_le_bytes());
+    key.push(b':');
+    key.extend_from_slice(&voter_id.to_le_bytes());
+    key
+}
+
+// --- Config ---
+
+fn load_config_owner(ctx: &NeoStorageContext) -> Option<i64> {
+    get_i64(ctx, CONFIG_OWNER_KEY)
+}
+
+fn load_config_token(ctx: &NeoStorageContext) -> Option<i64> {
+    get_i64(ctx, CONFIG_TOKEN_KEY)
+}
+
+fn load_config_quorum(ctx: &NeoStorageContext) -> Option<i64> {
+    get_i64(ctx, CONFIG_QUORUM_KEY)
+}
+
+fn config_exists(ctx: &NeoStorageContext) -> bool {
+    load_config_owner(ctx).is_some()
+}
+
+fn store_config(ctx: &NeoStorageContext, owner: i64, token: i64, quorum: i64) -> bool {
+    put_i64(ctx, CONFIG_OWNER_KEY, owner)
+        && put_i64(ctx, CONFIG_TOKEN_KEY, token)
+        && put_i64(ctx, CONFIG_QUORUM_KEY, quorum)
+}
+
+fn load_stake(ctx: &NeoStorageContext, account_id: i64) -> i64 {
+    get_i64(ctx, &stake_key(account_id)).unwrap_or(0)
+}
+
+fn store_stake(ctx: &NeoStorageContext, account_id: i64, amount: i64) -> bool {
+    if amount == 0 {
+        delete_key(ctx, &stake_key(account_id));
+        true
+    } else {
+        put_i64(ctx, &stake_key(account_id), amount)
+    }
+}
+
+// --- Proposal data ---
+
+struct ProposalData {
+    proposer: i64,
+    target: i64,
+    method: i64,
+    arg_data: i64,
+    title: i64,
+    start_time: i64,
+    end_time: i64,
+    yes_votes: i64,
+    no_votes: i64,
+    executed: bool,
+}
+
+fn next_proposal_id(ctx: &NeoStorageContext) -> Option<i64> {
+    let current = get_i64(ctx, PROPOSAL_COUNTER_KEY).unwrap_or(0);
+    let next = current.checked_add(1)?;
+    if !put_i64(ctx, PROPOSAL_COUNTER_KEY, next) {
+        return None;
+    }
+    Some(next)
+}
+
+fn load_proposal(ctx: &NeoStorageContext, id: i64) -> Option<ProposalData> {
+    let proposer = get_i64(ctx, &proposal_key(id, P_PROPOSER))?;
+    let target = get_i64(ctx, &proposal_key(id, P_TARGET))?;
+    let method = get_i64(ctx, &proposal_key(id, P_METHOD)).unwrap_or(0);
+    let arg_data = get_i64(ctx, &proposal_key(id, P_ARGS)).unwrap_or(0);
+    let title = get_i64(ctx, &proposal_key(id, P_TITLE)).unwrap_or(0);
+    let start_time = get_i64(ctx, &proposal_key(id, P_START)).unwrap_or(0);
+    let end_time = get_i64(ctx, &proposal_key(id, P_END)).unwrap_or(0);
+    let yes_votes = get_i64(ctx, &proposal_key(id, P_YES)).unwrap_or(0);
+    let no_votes = get_i64(ctx, &proposal_key(id, P_NO)).unwrap_or(0);
+    let executed = get_bool(ctx, &proposal_key(id, P_EXECUTED)).unwrap_or(false);
+    Some(ProposalData {
+        proposer,
+        target,
+        method,
+        arg_data,
+        title,
+        start_time,
+        end_time,
+        yes_votes,
+        no_votes,
+        executed,
+    })
+}
+
+fn store_proposal(ctx: &NeoStorageContext, id: i64, p: &ProposalData) -> bool {
+    put_i64(ctx, &proposal_key(id, P_PROPOSER), p.proposer)
+        && put_i64(ctx, &proposal_key(id, P_TARGET), p.target)
+        && put_i64(ctx, &proposal_key(id, P_METHOD), p.method)
+        && put_i64(ctx, &proposal_key(id, P_ARGS), p.arg_data)
+        && put_i64(ctx, &proposal_key(id, P_TITLE), p.title)
+        && put_i64(ctx, &proposal_key(id, P_START), p.start_time)
+        && put_i64(ctx, &proposal_key(id, P_END), p.end_time)
+        && put_i64(ctx, &proposal_key(id, P_YES), p.yes_votes)
+        && put_i64(ctx, &proposal_key(id, P_NO), p.no_votes)
+        && put_bool(ctx, &proposal_key(id, P_EXECUTED), p.executed)
+}
+
+// --- Voting helpers ---
+
+fn has_voted(ctx: &NeoStorageContext, proposal_id: i64, voter_id: i64) -> bool {
+    get_bool(ctx, &vote_key(proposal_id, voter_id)).unwrap_or(false)
+}
+
+fn record_vote(ctx: &NeoStorageContext, proposal_id: i64, voter_id: i64) -> bool {
+    put_bool(ctx, &vote_key(proposal_id, voter_id), true)
+}
+
+fn execute_proposal_call(target: i64, method: i64, arg_data: i64) -> bool {
+    let target_bytes = target.to_le_bytes();
+    let target_bs = NeoByteString::from_slice(&target_bytes);
+    let method_str = method.to_string();
+    let mut args = NeoArray::<NeoValue>::new();
+    if arg_data != 0 {
+        args.push(NeoValue::from(NeoInteger::new(arg_data)));
+    }
+    NeoContractRuntime::call(&target_bs, &NeoString::from_str(&method_str), &args).is_ok()
+}
+
+fn call_transfer(token: i64, from_id: i64, to_id: i64, amount: i64) -> bool {
+    let token_bytes = token.to_le_bytes();
+    let token_bs = NeoByteString::from_slice(&token_bytes);
+    let mut args = NeoArray::new();
+    args.push(NeoValue::from(NeoInteger::new(from_id)));
+    args.push(NeoValue::from(NeoInteger::new(to_id)));
+    args.push(NeoValue::from(NeoInteger::new(amount)));
+    match NeoContractRuntime::call(&token_bs, &NeoString::from_str("transfer"), &args) {
+        Ok(value) => value
+            .as_boolean()
+            .map(|flag| flag.as_bool())
+            .unwrap_or(false),
+        Err(_) => false,
+    }
+}
+
 // Events
 #[neo_event]
 pub struct ProposalCreatedEvt {
     pub proposal_id: NeoInteger,
-    pub proposer: NeoByteString,
-    pub title: NeoString,
+    pub proposer: NeoInteger,
+    pub title: NeoInteger,
 }
 
 #[neo_event]
 pub struct VoteCastEvt {
     pub proposal_id: NeoInteger,
-    pub voter: NeoByteString,
+    pub voter: NeoInteger,
     pub support: NeoBoolean,
     pub weight: NeoInteger,
 }
@@ -47,14 +259,14 @@ pub struct ProposalExecutedEvt {
 
 #[neo_event]
 pub struct StakeIncreasedEvt {
-    pub staker: NeoByteString,
+    pub staker: NeoInteger,
     pub amount: NeoInteger,
     pub new_total: NeoInteger,
 }
 
 #[neo_event]
 pub struct StakeDecreasedEvt {
-    pub staker: NeoByteString,
+    pub staker: NeoInteger,
     pub amount: NeoInteger,
     pub new_total: NeoInteger,
 }
@@ -70,113 +282,64 @@ impl NeoGovernanceDaoContract {
 
     /// Initialize the DAO configuration. Only callable once.
     #[neo_method]
-    pub fn configure(
-        owner_ptr: i64,
-        owner_len: i64,
-        token_ptr: i64,
-        token_len: i64,
-        quorum: i64,
-    ) -> bool {
-        if quorum <= 0 {
+    pub fn configure(owner_id: i64, token_id: i64, quorum: i64) -> bool {
+        if quorum <= 0 || owner_id == 0 || token_id == 0 {
             return false;
         }
-        let owner = match read_address(owner_ptr, owner_len) {
-            Some(a) => a,
-            None => return false,
-        };
-        if !ensure_witness(&owner) {
-            return false;
-        }
-        let token = match read_address(token_ptr, token_len) {
-            Some(a) => a,
-            None => return false,
-        };
-        let ctx = match storage_context() {
+        let ctx = match storage_ctx() {
             Some(c) => c,
             None => return false,
         };
-        if load_config(&ctx).is_some() {
+        if config_exists(&ctx) {
             return false;
         }
-        let cfg = DaoConfig {
-            owner,
-            token,
-            quorum,
-        };
-        store_config(&ctx, &cfg).is_ok()
+        store_config(&ctx, owner_id, token_id, quorum)
     }
 
     /// Create a governance proposal.
     #[neo_method]
     pub fn propose(
-        proposer_ptr: i64,
-        proposer_len: i64,
-        target_ptr: i64,
-        target_len: i64,
-        method_ptr: i64,
-        method_len: i64,
-        args_ptr: i64,
-        args_len: i64,
-        title_ptr: i64,
-        title_len: i64,
+        proposer_id: i64,
+        target_id: i64,
+        method_id: i64,
+        arg_data: i64,
+        title_id: i64,
         start_time: i64,
         end_time: i64,
     ) -> bool {
-        if end_time <= start_time {
+        if end_time <= start_time || proposer_id == 0 || target_id == 0 {
             return false;
         }
-        let proposer = match read_address(proposer_ptr, proposer_len) {
-            Some(a) => a,
-            None => return false,
-        };
-        if !ensure_witness(&proposer) {
-            return false;
-        }
-        let ctx = match storage_context() {
+        let ctx = match storage_ctx() {
             Some(c) => c,
             None => return false,
         };
-        if load_config(&ctx).is_none() {
+        if !config_exists(&ctx) {
             return false;
         }
-        let target = match read_address(target_ptr, target_len) {
-            Some(a) => a,
-            None => return false,
-        };
-        let method = match read_string(method_ptr, method_len) {
-            Some(s) => s,
-            None => return false,
-        };
-        let arguments = read_bytes(args_ptr, args_len).unwrap_or_default();
-        let title = match read_string(title_ptr, title_len) {
-            Some(s) => s,
-            None => return false,
-        };
         let id = match next_proposal_id(&ctx) {
             Some(i) => i,
             None => return false,
         };
-        let proposal = Proposal {
-            id,
-            proposer: proposer.clone(),
-            target,
-            method,
-            arguments,
-            title: title.clone(),
-            description: String::new(),
+        let proposal = ProposalData {
+            proposer: proposer_id,
+            target: target_id,
+            method: method_id,
+            arg_data,
+            title: title_id,
             start_time,
             end_time,
             yes_votes: 0,
             no_votes: 0,
             executed: false,
         };
-        if store_proposal(&ctx, id, &proposal).is_err() {
+        if !store_proposal(&ctx, id, &proposal) {
             return false;
         }
         let _ = (ProposalCreatedEvt {
             proposal_id: NeoInteger::new(id),
-            proposer,
-            title: NeoString::from_str(&title),
+            proposer: NeoInteger::new(proposer_id),
+            title: NeoInteger::new(title_id),
         })
         .emit();
         true
@@ -187,31 +350,18 @@ impl NeoGovernanceDaoContract {
     /// Validates that the current block time falls within the proposal's
     /// voting window (`start_time..=end_time`).
     #[neo_method]
-    pub fn vote(
-        proposal_id: i64,
-        voter_ptr: i64,
-        voter_len: i64,
-        side: i64,
-        weight: i64,
-    ) -> bool {
-        if weight <= 0 || !(0..=1).contains(&side) {
+    pub fn vote(proposal_id: i64, voter_id: i64, side: i64, weight: i64) -> bool {
+        if weight <= 0 || !(0..=1).contains(&side) || voter_id == 0 {
             return false;
         }
-        let voter = match read_address(voter_ptr, voter_len) {
-            Some(a) => a,
-            None => return false,
-        };
-        if !ensure_witness(&voter) {
-            return false;
-        }
-        let ctx = match storage_context() {
+        let ctx = match storage_ctx() {
             Some(c) => c,
             None => return false,
         };
-        if has_voted(&ctx, proposal_id, &voter) {
+        if has_voted(&ctx, proposal_id, voter_id) {
             return false;
         }
-        let stake = load_stake(&ctx, &voter);
+        let stake = load_stake(&ctx, voter_id);
         if stake <= 0 || weight > stake {
             return false;
         }
@@ -222,7 +372,7 @@ impl NeoGovernanceDaoContract {
         if proposal.executed {
             return false;
         }
-        // Enforce voting window: reject votes before start or after end.
+        // Enforce voting window
         let now: i64 = NeoRuntime::get_time()
             .map(|t| t.try_as_i64().unwrap_or(0))
             .unwrap_or(0);
@@ -231,19 +381,25 @@ impl NeoGovernanceDaoContract {
         }
         let support = side == 0;
         if support {
-            proposal.yes_votes += weight;
+            proposal.yes_votes = match proposal.yes_votes.checked_add(weight) {
+                Some(v) => v,
+                None => return false,
+            };
         } else {
-            proposal.no_votes += weight;
+            proposal.no_votes = match proposal.no_votes.checked_add(weight) {
+                Some(v) => v,
+                None => return false,
+            };
         }
-        if store_proposal(&ctx, proposal_id, &proposal).is_err() {
+        if !store_proposal(&ctx, proposal_id, &proposal) {
             return false;
         }
-        if record_vote(&ctx, proposal_id, &voter).is_err() {
+        if !record_vote(&ctx, proposal_id, voter_id) {
             return false;
         }
         let _ = (VoteCastEvt {
             proposal_id: NeoInteger::new(proposal_id),
-            voter,
+            voter: NeoInteger::new(voter_id),
             support: NeoBoolean::new(support),
             weight: NeoInteger::new(weight),
         })
@@ -254,12 +410,12 @@ impl NeoGovernanceDaoContract {
     /// Execute a proposal if quorum is met and yes > no.
     #[neo_method]
     pub fn execute(proposal_id: i64) -> bool {
-        let ctx = match storage_context() {
+        let ctx = match storage_ctx() {
             Some(c) => c,
             None => return false,
         };
-        let cfg = match load_config(&ctx) {
-            Some(c) => c,
+        let quorum = match load_config_quorum(&ctx) {
+            Some(q) => q,
             None => return false,
         };
         let mut proposal = match load_proposal(&ctx, proposal_id) {
@@ -270,14 +426,14 @@ impl NeoGovernanceDaoContract {
             return false;
         }
         let total_votes = proposal.yes_votes + proposal.no_votes;
-        if total_votes < cfg.quorum || proposal.yes_votes <= proposal.no_votes {
+        if total_votes < quorum || proposal.yes_votes <= proposal.no_votes {
             return false;
         }
-        if execute_proposal(&proposal.target, &proposal.method, &proposal.arguments).is_err() {
+        if !execute_proposal_call(proposal.target, proposal.method, proposal.arg_data) {
             return false;
         }
         proposal.executed = true;
-        if store_proposal(&ctx, proposal_id, &proposal).is_err() {
+        if !store_proposal(&ctx, proposal_id, &proposal) {
             return false;
         }
         let _ = (ProposalExecutedEvt {
@@ -292,41 +448,44 @@ impl NeoGovernanceDaoContract {
     /// Transfer is attempted BEFORE updating storage to prevent
     /// state corruption if the external transfer call fails.
     #[neo_method]
-    pub fn unstake(staker_ptr: i64, staker_len: i64, amount: i64) -> bool {
-        if amount <= 0 {
+    pub fn unstake(staker_id: i64, amount: i64) -> bool {
+        if amount <= 0 || staker_id == 0 {
             return false;
         }
-        let staker = match read_address(staker_ptr, staker_len) {
-            Some(a) => a,
-            None => return false,
-        };
-        if !ensure_witness(&staker) {
-            return false;
-        }
-        let ctx = match storage_context() {
+        let ctx = match storage_ctx() {
             Some(c) => c,
             None => return false,
         };
-        let cfg = match load_config(&ctx) {
-            Some(c) => c,
+        let token = match load_config_token(&ctx) {
+            Some(t) => t,
             None => return false,
         };
-        let current = load_stake(&ctx, &staker);
+        let current = load_stake(&ctx, staker_id);
         if current < amount {
             return false;
         }
-        // Transfer tokens FIRST — only update storage on success to prevent
-        // accounting corruption if the external call fails.
-        let contract_hash = NeoRuntime::get_executing_script_hash().unwrap_or_default();
-        if !call_transfer(&cfg.token, &contract_hash, &staker, amount) {
+        let contract_id: i64 = NeoRuntime::get_executing_script_hash()
+            .map(|h| {
+                let s = h.as_slice();
+                if s.len() >= 8 {
+                    let mut buf = [0u8; 8];
+                    buf.copy_from_slice(&s[..8]);
+                    i64::from_le_bytes(buf)
+                } else {
+                    0
+                }
+            })
+            .unwrap_or(0);
+        // Transfer tokens FIRST
+        if !call_transfer(token, contract_id, staker_id, amount) {
             return false;
         }
         let new_total = current - amount;
-        if store_stake(&ctx, &staker, new_total).is_err() {
+        if !store_stake(&ctx, staker_id, new_total) {
             return false;
         }
         let _ = (StakeDecreasedEvt {
-            staker,
+            staker: NeoInteger::new(staker_id),
             amount: NeoInteger::new(amount),
             new_total: NeoInteger::new(new_total),
         })
@@ -334,41 +493,50 @@ impl NeoGovernanceDaoContract {
         true
     }
 
-    /// Return the stake balance for a given address.
-    #[neo_method(name = "stakeOf")]
-    pub fn stake_of(staker_ptr: i64, staker_len: i64) -> i64 {
-        let staker = match read_address(staker_ptr, staker_len) {
-            Some(a) => a,
-            None => return 0,
-        };
-        let ctx = match storage_context() {
+    /// Return the stake balance for a given account.
+    #[neo_method(safe, name = "stakeOf")]
+    pub fn stake_of(staker_id: i64) -> i64 {
+        if staker_id == 0 {
+            return 0;
+        }
+        let ctx = match storage_ctx() {
             Some(c) => c,
             None => return 0,
         };
-        load_stake(&ctx, &staker)
+        load_stake(&ctx, staker_id)
     }
 
     /// Return the DAO configuration via notify event.
-    #[neo_method(name = "getConfig")]
+    #[neo_method(safe, name = "getConfig")]
     pub fn get_config() {
-        let ctx = match storage_context() {
+        let ctx = match storage_ctx() {
             Some(c) => c,
             None => return,
         };
-        let cfg = match load_config(&ctx) {
-            Some(c) => c,
+        let owner = match load_config_owner(&ctx) {
+            Some(v) => v,
+            None => return,
+        };
+        let token = match load_config_token(&ctx) {
+            Some(v) => v,
+            None => return,
+        };
+        let quorum = match load_config_quorum(&ctx) {
+            Some(v) => v,
             None => return,
         };
         let label = NeoString::from_str("getConfig");
         let mut state = NeoArray::new();
-        state.push(NeoValue::from(serialize_value(&cfg)));
+        state.push(NeoValue::from(NeoInteger::new(owner)));
+        state.push(NeoValue::from(NeoInteger::new(token)));
+        state.push(NeoValue::from(NeoInteger::new(quorum)));
         let _ = NeoRuntime::notify(&label, &state);
     }
 
     /// Return a proposal's data via notify event.
-    #[neo_method(name = "getProposal")]
+    #[neo_method(safe, name = "getProposal")]
     pub fn get_proposal(proposal_id: i64) {
-        let ctx = match storage_context() {
+        let ctx = match storage_ctx() {
             Some(c) => c,
             None => return,
         };
@@ -378,7 +546,16 @@ impl NeoGovernanceDaoContract {
         };
         let label = NeoString::from_str("getProposal");
         let mut state = NeoArray::new();
-        state.push(NeoValue::from(serialize_value(&p)));
+        state.push(NeoValue::from(NeoInteger::new(p.proposer)));
+        state.push(NeoValue::from(NeoInteger::new(p.target)));
+        state.push(NeoValue::from(NeoInteger::new(p.method)));
+        state.push(NeoValue::from(NeoInteger::new(p.arg_data)));
+        state.push(NeoValue::from(NeoInteger::new(p.title)));
+        state.push(NeoValue::from(NeoInteger::new(p.start_time)));
+        state.push(NeoValue::from(NeoInteger::new(p.end_time)));
+        state.push(NeoValue::from(NeoInteger::new(p.yes_votes)));
+        state.push(NeoValue::from(NeoInteger::new(p.no_votes)));
+        state.push(NeoValue::from(NeoBoolean::new(p.executed)));
         let _ = NeoRuntime::notify(&label, &state);
     }
 
@@ -387,33 +564,42 @@ impl NeoGovernanceDaoContract {
     /// Only accepts the configured governance token; rejects payments
     /// from any other NEP-17 contract.
     #[neo_method(name = "onNEP17Payment")]
-    pub fn on_nep17_payment(from_ptr: i64, from_len: i64, amount: i64, _data: i64) {
-        if amount <= 0 {
+    pub fn on_nep17_payment(from_id: i64, amount: i64, _data: i64) {
+        if amount <= 0 || from_id == 0 {
             return;
         }
-        let from = match read_address(from_ptr, from_len) {
-            Some(a) => a,
-            None => return,
-        };
-        let ctx = match storage_context() {
+        let ctx = match storage_ctx() {
             Some(c) => c,
             None => return,
         };
         // Verify the calling contract is the configured governance token.
-        let cfg = match load_config(&ctx) {
-            Some(c) => c,
+        let token = match load_config_token(&ctx) {
+            Some(t) => t,
             None => return,
         };
-        let caller = NeoRuntime::get_calling_script_hash()
-            .unwrap_or_else(|_| NeoByteString::new(vec![]));
-        if caller.as_slice() != cfg.token.as_slice() {
+        let caller_id: i64 = NeoRuntime::get_calling_script_hash()
+            .map(|h| {
+                let s = h.as_slice();
+                if s.len() >= 8 {
+                    let mut buf = [0u8; 8];
+                    buf.copy_from_slice(&s[..8]);
+                    i64::from_le_bytes(buf)
+                } else {
+                    0
+                }
+            })
+            .unwrap_or(0);
+        if caller_id != token {
             return;
         }
-        let current = load_stake(&ctx, &from);
-        let new_total = current + amount;
-        let _ = store_stake(&ctx, &from, new_total);
+        let current = load_stake(&ctx, from_id);
+        let new_total = match current.checked_add(amount) {
+            Some(v) => v,
+            None => return,
+        };
+        let _ = store_stake(&ctx, from_id, new_total);
         let _ = (StakeIncreasedEvt {
-            staker: from,
+            staker: NeoInteger::new(from_id),
             amount: NeoInteger::new(amount),
             new_total: NeoInteger::new(new_total),
         })

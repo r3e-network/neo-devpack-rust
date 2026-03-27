@@ -20,7 +20,7 @@ fn translate_marks_storage_feature_when_storage_syscall_used() {
     let manifest_json: Value = serde_json::from_str(
         &translation
             .manifest
-            .to_string()
+            .to_json_string()
             .expect("manifest serialises"),
     )
     .expect("manifest parses");
@@ -40,7 +40,7 @@ fn translate_marks_payable_feature_for_on_nep17_payment() {
     let manifest_json: Value = serde_json::from_str(
         &translation
             .manifest
-            .to_string()
+            .to_json_string()
             .expect("manifest serialises"),
     )
     .expect("manifest parses");

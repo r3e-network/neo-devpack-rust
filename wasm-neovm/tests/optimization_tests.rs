@@ -253,7 +253,9 @@ fn translate_unreachable_after_return() {
 }
 
 #[test]
-fn translate_branch_to_same_location() {
+fn translate_branch_drops_excess_stack_values() {
+    // Valid Wasm: br out of a block drops excess values (Wasm spec §4.4.8).
+    // wasm-opt produces this pattern when optimizing if-else to block+br.
     let wasm = wat::parse_str(
         r#"(module
               (func (export "test") (param i32) (result i32)
@@ -264,13 +266,9 @@ fn translate_branch_to_same_location() {
     )
     .expect("valid wat");
 
-    let err = translate_module(&wasm, "BranchOpt")
-        .expect_err("translator should reject invalid branch depth");
-    let has_stack_error = err.chain().any(|cause| {
-        let msg = cause.to_string();
-        msg.contains("stack height") || msg.contains("branch requires")
-    });
-    assert!(has_stack_error, "unexpected error: {err}");
+    let translation =
+        translate_module(&wasm, "BranchOpt").expect("branch with excess values should translate");
+    assert!(!translation.script.is_empty());
 }
 
 // ============================================================================

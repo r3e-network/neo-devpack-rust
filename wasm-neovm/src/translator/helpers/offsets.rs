@@ -79,6 +79,7 @@ pub fn patch_offset(script: &mut [u8], position: usize, target: usize) -> Result
 }
 
 /// Emit a short jump instruction (1-byte relative offset) with a placeholder target
+#[allow(dead_code)]
 pub fn emit_placeholder_short(script: &mut Vec<u8>, opcode: &str) -> Result<usize> {
     let opcode_byte = lookup_opcode(opcode)?.byte;
     script.push(opcode_byte);
@@ -88,6 +89,7 @@ pub fn emit_placeholder_short(script: &mut Vec<u8>, opcode: &str) -> Result<usiz
 }
 
 /// Patch a short jump instruction (1-byte relative offset)
+#[allow(dead_code)]
 pub fn patch_offset_short(script: &mut [u8], position: usize, target: usize) -> Result<()> {
     if position == 0 || position >= script.len() {
         bail!(

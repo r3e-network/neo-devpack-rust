@@ -25,8 +25,9 @@ fn translate_table_grow() {
     let translation = translate_module(&wasm, "TableGrow").expect("translation succeeds");
 
     let call_l = opcodes::lookup("CALL_L").unwrap().byte;
+    let call_s = opcodes::lookup("CALL").unwrap().byte;
     assert!(
-        translation.script.contains(&call_l),
+        translation.script.contains(&call_l) || translation.script.contains(&call_s),
         "table.grow should use helper"
     );
 }
@@ -78,8 +79,9 @@ fn translate_table_fill() {
     let translation = translate_module(&wasm, "TableFill").expect("translation succeeds");
 
     let call_l = opcodes::lookup("CALL_L").unwrap().byte;
+    let call_s = opcodes::lookup("CALL").unwrap().byte;
     assert!(
-        translation.script.contains(&call_l),
+        translation.script.contains(&call_l) || translation.script.contains(&call_s),
         "table.fill should use helper"
     );
 }
@@ -105,11 +107,12 @@ fn translate_table_fill_allows_len_reaching_end_of_table() {
     let size = opcodes::lookup("SIZE").unwrap().byte;
     let gt = opcodes::lookup("GT").unwrap().byte;
     let jmpif_l = opcodes::lookup("JMPIF_L").unwrap().byte;
+    let jmpif_s = opcodes::lookup("JMPIF").unwrap().byte;
     assert!(
         translation
             .script
             .windows(3)
-            .any(|window| window == [size, gt, jmpif_l]),
+            .any(|window| window == [size, gt, jmpif_l] || window == [size, gt, jmpif_s]),
         "expected table.fill bounds check to trap only when dest+len > size"
     );
 }
@@ -170,8 +173,9 @@ fn translate_table_copy() {
     let translation = translate_module(&wasm, "TableCopy").expect("translation succeeds");
 
     let call_l = opcodes::lookup("CALL_L").unwrap().byte;
+    let call_s = opcodes::lookup("CALL").unwrap().byte;
     assert!(
-        translation.script.contains(&call_l),
+        translation.script.contains(&call_l) || translation.script.contains(&call_s),
         "table.copy should use helper"
     );
 }
@@ -202,11 +206,12 @@ fn translate_table_copy_allows_len_reaching_end_of_table() {
     let size = opcodes::lookup("SIZE").unwrap().byte;
     let gt = opcodes::lookup("GT").unwrap().byte;
     let jmpif_l = opcodes::lookup("JMPIF_L").unwrap().byte;
+    let jmpif_s = opcodes::lookup("JMPIF").unwrap().byte;
     assert!(
         translation
             .script
             .windows(3)
-            .any(|window| window == [size, gt, jmpif_l]),
+            .any(|window| window == [size, gt, jmpif_l] || window == [size, gt, jmpif_s]),
         "expected table.copy bounds check to trap only when end > size"
     );
 }

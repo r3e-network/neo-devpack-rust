@@ -29,6 +29,7 @@ pub(crate) fn translate_memory_load(
     let mut raw_value = StackValue {
         const_value: None,
         bytecode_start: None,
+        pending_sign_extend: None,
     };
 
     let load_bits = bytes * 8;
@@ -56,6 +57,7 @@ fn apply_memory_offset(script: &mut Vec<u8>, base: StackValue, offset: u64) -> R
     let base = StackValue {
         const_value: base.const_value,
         bytecode_start: None,
+        pending_sign_extend: None,
     };
 
     if offset == 0 {
@@ -85,6 +87,7 @@ fn apply_memory_offset(script: &mut Vec<u8>, base: StackValue, offset: u64) -> R
     let added = StackValue {
         const_value: added.const_value,
         bytecode_start: None,
+        pending_sign_extend: None,
     };
     emit_zero_extend(script, added, 32)
 }

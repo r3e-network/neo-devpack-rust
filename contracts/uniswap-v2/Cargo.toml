@@ -1,6 +1,6 @@
 [package]
 name = "uniswap-v2-neo"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Uniswap V2 style AMM example contract for Neo N3"
 keywords = ["neo", "n3", "smart-contract", "defi", "uniswap"]

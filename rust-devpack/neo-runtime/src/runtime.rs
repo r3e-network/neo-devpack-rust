@@ -77,4 +77,23 @@ impl NeoRuntime {
     pub fn get_storage_context() -> NeoResult<NeoStorageContext> {
         NeoStorage::get_context()
     }
+
+    /// Burn the specified amount of GAS from the calling contract.
+    pub fn burn_gas(gas: &NeoInteger) -> NeoResult<()> {
+        NeoVMSyscall::burn_gas(gas)
+    }
+
+    /// Get the signers of the current transaction.
+    pub fn current_signers() -> NeoResult<NeoArray<NeoValue>> {
+        NeoVMSyscall::current_signers()
+    }
+
+    /// Load and execute a script dynamically.
+    pub fn load_script(
+        script: &NeoByteString,
+        call_flags: &NeoInteger,
+        args: &NeoArray<NeoValue>,
+    ) -> NeoResult<()> {
+        NeoVMSyscall::load_script(script, call_flags, args)
+    }
 }

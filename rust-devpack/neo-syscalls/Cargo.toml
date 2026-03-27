@@ -10,7 +10,7 @@ description = "Neo N3 Syscall Definitions"
 documentation = "https://docs.rs/neo-syscalls"
 rust-version.workspace = true
 keywords = ["neo", "neovm", "blockchain", "smart-contracts", "syscalls"]
-categories = ["cryptography::cryptocurrencies", "no-std"]
+categories = ["cryptography::cryptocurrencies"]
 include = ["src/**/*", "Cargo.toml", "README.md", "../../LICENSE"]
 
 [dependencies]

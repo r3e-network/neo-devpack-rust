@@ -405,6 +405,8 @@ lint:
 
 test:
 	cargo test --manifest-path wasm-neovm/Cargo.toml
+	cargo test --manifest-path move-neovm/Cargo.toml
+	cargo test --manifest-path solana-compat/Cargo.toml
 	cargo test --manifest-path rust-devpack/Cargo.toml
 	cargo test --manifest-path rust-devpack/neo-test/Cargo.toml
 	$(MAKE) test-contracts

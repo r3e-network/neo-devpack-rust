@@ -1,16 +1,17 @@
 // Copyright (c) 2025-2026 R3E Network
 // Licensed under the MIT License
 
+use std::fmt;
 use std::ops::{BitAnd, BitOr, BitXor, Not};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 /// Neo N3 Boolean type
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[repr(transparent)]
-pub struct NeoBoolean(pub bool);
+pub struct NeoBoolean(bool);
 
 impl NeoBoolean {
     pub const TRUE: Self = Self(true);
@@ -22,6 +23,24 @@ impl NeoBoolean {
 
     pub fn as_bool(self) -> bool {
         self.0
+    }
+}
+
+impl fmt::Display for NeoBoolean {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<bool> for NeoBoolean {
+    fn from(value: bool) -> Self {
+        Self(value)
+    }
+}
+
+impl From<NeoBoolean> for bool {
+    fn from(value: NeoBoolean) -> Self {
+        value.0
     }
 }
 

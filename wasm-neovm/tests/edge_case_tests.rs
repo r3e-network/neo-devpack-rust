@@ -211,8 +211,9 @@ fn translate_memory_edge_cases() {
     let translation = translate_module(&wasm, "MemoryEdge").expect("translation succeeds");
 
     let call_l = opcodes::lookup("CALL_L").unwrap().byte;
+    let call_s = opcodes::lookup("CALL").unwrap().byte;
     assert!(
-        translation.script.contains(&call_l),
+        translation.script.contains(&call_l) || translation.script.contains(&call_s),
         "bounds checking should use helper"
     );
 }

@@ -186,19 +186,24 @@ pub(crate) fn neo_serialize(input: DeriveInput) -> TokenStream2 {
 
 pub(crate) fn neo_error(input: DeriveInput) -> TokenStream2 {
     let name = &input.ident;
+    let name_str = name.to_string();
 
     quote! {
         #input
 
         impl ::core::convert::From<#name> for ::neo_devpack::NeoError {
-            fn from(_: #name) -> Self {
-                ::neo_devpack::NeoError::InvalidArgument
+            fn from(err: #name) -> Self {
+                ::neo_devpack::NeoError::Custom(
+                    ::std::format!("{}: {:?}", #name_str, err)
+                )
             }
         }
 
         impl #name {
             pub fn as_neo_error(&self) -> ::neo_devpack::NeoError {
-                ::neo_devpack::NeoError::InvalidArgument
+                ::neo_devpack::NeoError::Custom(
+                    ::std::format!("{}: {:?}", #name_str, self)
+                )
             }
         }
     }

@@ -55,7 +55,7 @@ impl ResourceTracker {
                 type_name: type_name.to_string(),
             });
         }
-        self.resources.insert(key, false);
+        self.resources.remove(&key);
         Ok(())
     }
 

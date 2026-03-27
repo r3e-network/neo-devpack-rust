@@ -56,7 +56,7 @@ impl MethodCallResult {
         let integer = value
             .as_integer()
             .unwrap_or_else(|| panic!("Expected integer return value, got {:?}", value));
-        let actual = saturating_i64(&integer);
+        let actual = saturating_i64(integer);
         assert_eq!(
             actual, expected,
             "Expected return value {}, got {}",

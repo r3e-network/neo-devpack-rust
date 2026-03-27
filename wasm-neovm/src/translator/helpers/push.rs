@@ -43,6 +43,7 @@ pub(crate) fn emit_push_int(buffer: &mut Vec<u8>, value: i128) -> StackValue {
         return StackValue {
             const_value: Some(value),
             bytecode_start: Some(start),
+            pending_sign_extend: None,
         };
     }
 
@@ -73,6 +74,7 @@ pub(crate) fn emit_push_int(buffer: &mut Vec<u8>, value: i128) -> StackValue {
     StackValue {
         const_value: Some(value),
         bytecode_start: Some(start),
+        pending_sign_extend: None,
     }
 }
 

@@ -17,18 +17,20 @@ fn translate_memory_size_uses_runtime_helper() {
     let translation = translate_module(&wasm, "MemSize").expect("translation succeeds");
 
     let guard_ldsfld = wasm_neovm::opcodes::lookup("LDSFLD4").unwrap().byte;
-    let guard_jump = wasm_neovm::opcodes::lookup("JMPIF_L").unwrap().byte;
+    let guard_jump_l = wasm_neovm::opcodes::lookup("JMPIF_L").unwrap().byte;
+    let guard_jump_s = wasm_neovm::opcodes::lookup("JMPIF").unwrap().byte;
     let call_l = wasm_neovm::opcodes::lookup("CALL_L").unwrap().byte;
+    let call_s = wasm_neovm::opcodes::lookup("CALL").unwrap().byte;
     assert_eq!(translation.script[0], guard_ldsfld);
-    assert_eq!(translation.script[1], guard_jump);
-    assert!(translation.script.contains(&call_l));
+    assert!(translation.script[1] == guard_jump_l || translation.script[1] == guard_jump_s);
+    assert!(translation.script.contains(&call_l) || translation.script.contains(&call_s));
 
     let ldsfld2 = wasm_neovm::opcodes::lookup("LDSFLD2").unwrap().byte;
     assert!(translation.script.contains(&ldsfld2));
 
     let manifest = translation
         .manifest
-        .to_string()
+        .to_json_string()
         .expect("manifest serialises");
     assert!(manifest.contains("\"returntype\": \"Integer\""));
 }
@@ -50,19 +52,21 @@ fn translate_i32_load_uses_helper() {
 
     let push0 = wasm_neovm::opcodes::lookup("PUSH0").unwrap().byte;
     let guard_ldsfld = wasm_neovm::opcodes::lookup("LDSFLD4").unwrap().byte;
-    let guard_jump = wasm_neovm::opcodes::lookup("JMPIF_L").unwrap().byte;
+    let guard_jump_l = wasm_neovm::opcodes::lookup("JMPIF_L").unwrap().byte;
+    let guard_jump_s = wasm_neovm::opcodes::lookup("JMPIF").unwrap().byte;
     let call_l = wasm_neovm::opcodes::lookup("CALL_L").unwrap().byte;
+    let call_s = wasm_neovm::opcodes::lookup("CALL").unwrap().byte;
     let ret = wasm_neovm::opcodes::lookup("RET").unwrap().byte;
 
     assert_eq!(translation.script[0], push0);
     assert_eq!(translation.script[1], guard_ldsfld);
-    assert_eq!(translation.script[2], guard_jump);
+    assert!(translation.script[2] == guard_jump_l || translation.script[2] == guard_jump_s);
 
     let call_sites: Vec<_> = translation
         .script
         .iter()
         .enumerate()
-        .filter(|(_, &byte)| byte == call_l)
+        .filter(|(_, &byte)| byte == call_l || byte == call_s)
         .map(|(idx, _)| idx)
         .collect();
     assert!(call_sites.len() >= 2, "expected helper calls to be emitted");
@@ -91,13 +95,14 @@ fn translate_i32_store_uses_helper() {
     let translation = translate_module(&wasm, "MemStore").expect("translation succeeds");
 
     let call_l = wasm_neovm::opcodes::lookup("CALL_L").unwrap().byte;
+    let call_s = wasm_neovm::opcodes::lookup("CALL").unwrap().byte;
     let setitem = wasm_neovm::opcodes::lookup("SETITEM").unwrap().byte;
 
     assert!(
         translation
             .script
-            .windows(1)
-            .filter(|window| window[0] == call_l)
+            .iter()
+            .filter(|&&b| b == call_l || b == call_s)
             .count()
             >= 2
     );
@@ -123,9 +128,10 @@ fn translate_memory_grow_returns_prev_or_fail() {
     let translation = translate_module(&wasm, "MemGrow").expect("translation succeeds");
 
     let call_l = wasm_neovm::opcodes::lookup("CALL_L").unwrap().byte;
+    let call_s = wasm_neovm::opcodes::lookup("CALL").unwrap().byte;
     let pushm1 = wasm_neovm::opcodes::lookup("PUSHM1").unwrap().byte;
 
-    assert!(translation.script.contains(&call_l));
+    assert!(translation.script.contains(&call_l) || translation.script.contains(&call_s));
     assert!(translation.script.contains(&pushm1));
 }
 
@@ -144,11 +150,12 @@ fn translate_memory_fill_and_copy_helpers() {
 
     let fill_translation = translate_module(&fill_wasm, "MemFill").expect("translate fill");
     let call_l = wasm_neovm::opcodes::lookup("CALL_L").unwrap().byte;
+    let call_s = wasm_neovm::opcodes::lookup("CALL").unwrap().byte;
     assert!(
         fill_translation
             .script
             .iter()
-            .filter(|&&b| b == call_l)
+            .filter(|&&b| b == call_l || b == call_s)
             .count()
             >= 2
     );

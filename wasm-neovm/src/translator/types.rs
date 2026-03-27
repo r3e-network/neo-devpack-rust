@@ -14,12 +14,17 @@ use crate::types::ContractName;
 /// Total: 40 bytes (padded to 40 on 64-bit)
 ///
 /// Previous layout had worse cache behavior due to field ordering.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub(crate) struct StackValue {
     /// Constant value if known at compile time
     pub(crate) const_value: Option<i128>,
     /// Bytecode offset where this value starts (for backtracking optimizations)
     pub(crate) bytecode_start: Option<usize>,
+    /// Reserved for future deferred sign-extension optimization.
+    /// When Some(bits), sign-extension hasn't been emitted yet and must be
+    /// materialized before the value is consumed by comparisons, stores, or returns.
+    #[allow(dead_code)]
+    pub(crate) pending_sign_extend: Option<u32>,
 }
 
 impl StackValue {
@@ -29,6 +34,7 @@ impl StackValue {
         Self {
             const_value: None,
             bytecode_start: None,
+            pending_sign_extend: None,
         }
     }
 
@@ -39,6 +45,7 @@ impl StackValue {
         Self {
             const_value: Some(value),
             bytecode_start: None,
+            pending_sign_extend: None,
         }
     }
 }

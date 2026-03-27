@@ -356,7 +356,7 @@ impl NeoVMSyscall {
 
     fn call_integer(name: &str) -> NeoResult<NeoInteger> {
         let value = Self::call_value(name, &[])?;
-        value.as_integer().ok_or(NeoError::InvalidType)
+        value.as_integer().cloned().ok_or(NeoError::InvalidType)
     }
 
     fn call_boolean(name: &str, args: &[NeoValue]) -> NeoResult<NeoBoolean> {

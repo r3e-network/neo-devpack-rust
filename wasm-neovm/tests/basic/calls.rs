@@ -24,7 +24,7 @@ fn translate_syscall_import() {
 
     let manifest = translation
         .manifest
-        .to_string()
+        .to_json_string()
         .expect("manifest serialises");
     assert!(manifest.contains("\"name\": \"Clock\""));
     assert!(manifest.contains("\"returntype\": \"Integer\""));

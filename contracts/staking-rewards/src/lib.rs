@@ -14,76 +14,67 @@ const BPS_DENOMINATOR: i64 = 10_000;
 const DAYS_PER_YEAR: i64 = 365;
 const MAX_DAYS: i64 = 3_650;
 
-// Storage keys
-const STAKE_PREFIX: &[u8] = b"stake:";
-
-fn stake_key(account: &NeoByteString) -> Vec<u8> {
-    let mut key = STAKE_PREFIX.to_vec();
-    key.extend_from_slice(account.as_slice());
+/// Build a fixed-size storage key from a prefix byte and an i64 staker ID.
+/// Layout: [prefix_byte | 8 bytes of staker_id in LE] = 9 bytes total.
+/// No heap allocation -- uses a stack-allocated array.
+fn stake_key(staker: i64) -> [u8; 9] {
+    let mut key = [0u8; 9];
+    key[0] = b's'; // "s" for stake
+    let bytes = staker.to_le_bytes();
+    key[1] = bytes[0];
+    key[2] = bytes[1];
+    key[3] = bytes[2];
+    key[4] = bytes[3];
+    key[5] = bytes[4];
+    key[6] = bytes[5];
+    key[7] = bytes[6];
+    key[8] = bytes[7];
     key
 }
 
-fn storage_put_bytes(ctx: &NeoStorageContext, key: &[u8], value: &[u8]) -> bool {
+fn storage_put_i64(ctx: &NeoStorageContext, key: &[u8], value: i64) -> bool {
     NeoStorage::put(
         ctx,
         &NeoByteString::from_slice(key),
-        &NeoByteString::from_slice(value),
+        &NeoByteString::from_slice(&value.to_le_bytes()),
     )
     .is_ok()
 }
 
-fn storage_get_bytes(ctx: &NeoStorageContext, key: &[u8]) -> Option<Vec<u8>> {
-    let data = NeoStorage::get(ctx, &NeoByteString::from_slice(key)).ok()?;
-    if data.is_empty() {
-        return None;
-    }
-    Some(data.as_slice().to_vec())
-}
-
-fn storage_put_i64(ctx: &NeoStorageContext, key: &[u8], value: i64) -> bool {
-    storage_put_bytes(ctx, key, &value.to_le_bytes())
-}
-
 fn storage_get_i64(ctx: &NeoStorageContext, key: &[u8]) -> Option<i64> {
-    let bytes = storage_get_bytes(ctx, key)?;
-    if bytes.len() != 8 {
+    let data = NeoStorage::get(ctx, &NeoByteString::from_slice(key)).ok()?;
+    let slice = data.as_slice();
+    if slice.len() != 8 {
         return None;
     }
     let mut buf = [0u8; 8];
-    buf.copy_from_slice(&bytes);
+    buf.copy_from_slice(slice);
     Some(i64::from_le_bytes(buf))
 }
 
-fn ensure_witness(account: &NeoByteString) -> bool {
-    NeoRuntime::check_witness(account)
+fn ensure_witness_i64(staker: i64) -> bool {
+    let bytes = staker.to_le_bytes();
+    NeoRuntime::check_witness(&NeoByteString::from_slice(&bytes))
         .map(|flag| flag.as_bool())
         .unwrap_or(false)
-}
-
-fn read_address(ptr: i64, len: i64) -> Option<NeoByteString> {
-    if ptr == 0 || len != 20 {
-        return None;
-    }
-    let slice = unsafe { core::slice::from_raw_parts(ptr as *const u8, len as usize) };
-    Some(NeoByteString::from_slice(slice))
 }
 
 // Events
 #[neo_event]
 pub struct Staked {
-    pub staker: NeoByteString,
+    pub staker: NeoInteger,
     pub amount: NeoInteger,
 }
 
 #[neo_event]
 pub struct Unstaked {
-    pub staker: NeoByteString,
+    pub staker: NeoInteger,
     pub amount: NeoInteger,
 }
 
 #[neo_event]
 pub struct RewardClaimed {
-    pub staker: NeoByteString,
+    pub staker: NeoInteger,
     pub reward: NeoInteger,
 }
 
@@ -101,29 +92,35 @@ impl StakingRewardsContract {
             return 0;
         }
 
-        (amount * APR_BPS * days_staked) / (BPS_DENOMINATOR * DAYS_PER_YEAR)
+        // Reorder to minimize intermediate values: (amount * days_staked / 365) * APR / 10000
+        amount
+            .checked_mul(days_staked)
+            .and_then(|v| v.checked_mul(APR_BPS))
+            .map(|v| v / (BPS_DENOMINATOR * DAYS_PER_YEAR))
+            .unwrap_or(0)
     }
 
     #[neo_method]
-    pub fn stake(staker_ptr: i64, staker_len: i64, amount: i64) -> bool {
-        if amount <= 0 {
+    pub fn stake(staker: i64, amount: i64) -> bool {
+        if amount <= 0 || staker == 0 {
             return false;
         }
-        let staker = match read_address(staker_ptr, staker_len) {
-            Some(a) => a,
-            None => return false,
-        };
-        if !ensure_witness(&staker) {
+        if !ensure_witness_i64(staker) {
             return false;
         }
         let ctx = match NeoStorage::get_context().ok() {
             Some(c) => c,
             None => return false,
         };
-        let current = storage_get_i64(&ctx, &stake_key(&staker)).unwrap_or(0);
-        storage_put_i64(&ctx, &stake_key(&staker), current + amount);
+        let key = stake_key(staker);
+        let current = storage_get_i64(&ctx, &key).unwrap_or(0);
+        let new_total = match current.checked_add(amount) {
+            Some(v) => v,
+            None => return false,
+        };
+        storage_put_i64(&ctx, &key, new_total);
         let _ = (Staked {
-            staker,
+            staker: NeoInteger::new(staker),
             amount: NeoInteger::new(amount),
         })
         .emit();
@@ -131,28 +128,25 @@ impl StakingRewardsContract {
     }
 
     #[neo_method]
-    pub fn unstake(staker_ptr: i64, staker_len: i64, amount: i64) -> bool {
-        if amount <= 0 {
+    pub fn unstake(staker: i64, amount: i64) -> bool {
+        if amount <= 0 || staker == 0 {
             return false;
         }
-        let staker = match read_address(staker_ptr, staker_len) {
-            Some(a) => a,
-            None => return false,
-        };
-        if !ensure_witness(&staker) {
+        if !ensure_witness_i64(staker) {
             return false;
         }
         let ctx = match NeoStorage::get_context().ok() {
             Some(c) => c,
             None => return false,
         };
-        let current = storage_get_i64(&ctx, &stake_key(&staker)).unwrap_or(0);
+        let key = stake_key(staker);
+        let current = storage_get_i64(&ctx, &key).unwrap_or(0);
         if current < amount {
             return false;
         }
-        storage_put_i64(&ctx, &stake_key(&staker), current - amount);
+        storage_put_i64(&ctx, &key, current - amount);
         let _ = (Unstaked {
-            staker,
+            staker: NeoInteger::new(staker),
             amount: NeoInteger::new(amount),
         })
         .emit();
@@ -165,18 +159,17 @@ impl StakingRewardsContract {
     }
 
     #[neo_method]
-    pub fn claim(staker_ptr: i64, staker_len: i64, amount: i64, days_staked: i64) -> i64 {
-        let staker = match read_address(staker_ptr, staker_len) {
-            Some(a) => a,
-            None => return 0,
-        };
-        if !ensure_witness(&staker) {
+    pub fn claim(staker: i64, amount: i64, days_staked: i64) -> i64 {
+        if staker == 0 {
+            return 0;
+        }
+        if !ensure_witness_i64(staker) {
             return 0;
         }
         let reward = Self::preview_reward_internal(amount, days_staked);
         if reward > 0 {
             let _ = (RewardClaimed {
-                staker,
+                staker: NeoInteger::new(staker),
                 reward: NeoInteger::new(reward),
             })
             .emit();

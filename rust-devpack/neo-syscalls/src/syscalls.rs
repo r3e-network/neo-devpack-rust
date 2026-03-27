@@ -83,7 +83,7 @@ pub const SYSCALLS: &[NeoVMSyscallInfo] = &[
         parameters: &["ByteString", "ByteString", "ByteString", "Integer"],
         return_type: "Boolean",
         gas_cost: 32768,
-        description: "",
+        description: "Verifies an ECDSA signature with an explicit curve parameter. Takes the message hash, public key, signature, and a curve identifier (0 = secp256k1, 1 = secp256r1).",
     },
     NeoVMSyscallInfo {
         name: "System.Iterator.Next",

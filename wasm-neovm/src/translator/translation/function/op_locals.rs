@@ -51,6 +51,7 @@ pub(super) fn try_handle(
                 value_stack.push(StackValue {
                     const_value: None,
                     bytecode_start: None,
+                    pending_sign_extend: None,
                 });
             }
             Ok(true)

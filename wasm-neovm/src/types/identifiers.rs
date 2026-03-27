@@ -10,8 +10,15 @@ use std::fmt;
 use std::ops::Deref;
 
 /// A contract name (validated, non-empty string)
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ContractName(String);
+
+impl Default for ContractName {
+    /// Returns a default contract name of `"Contract"`.
+    fn default() -> Self {
+        Self("Contract".to_string())
+    }
+}
 
 impl ContractName {
     /// Create a new contract name
@@ -375,12 +382,6 @@ impl From<&str> for SyscallDescriptor {
 impl From<String> for SyscallDescriptor {
     fn from(s: String) -> Self {
         Self::new(s)
-    }
-}
-
-impl Default for SyscallDescriptor {
-    fn default() -> Self {
-        Self("System.Runtime.GetTime".to_string())
     }
 }
 

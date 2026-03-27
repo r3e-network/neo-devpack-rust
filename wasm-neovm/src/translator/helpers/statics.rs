@@ -1,11 +1,13 @@
 // Copyright (c) 2025-2026 R3E Network
 // SPDX-License-Identifier: MIT
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 
 use super::lookup_opcode;
 
-/// Emit a load from a static field slot
+/// Emit a load from a static field slot.
+///
+/// NeoVM's LDSFLD operand is a single byte, so slots must be in 0..=255.
 pub(crate) fn emit_load_static(script: &mut Vec<u8>, slot: usize) -> Result<()> {
     // NeoVM has optimized opcodes for slots 0-6
     let opcode = match slot {
@@ -17,6 +19,9 @@ pub(crate) fn emit_load_static(script: &mut Vec<u8>, slot: usize) -> Result<()> 
         5 => "LDSFLD5",
         6 => "LDSFLD6",
         _ => {
+            if slot > u8::MAX as usize {
+                bail!("static field slot {} exceeds NeoVM maximum (255)", slot);
+            }
             // For slots >= 7, use LDSFLD with explicit slot index
             script.push(lookup_opcode("LDSFLD")?.byte);
             script.push(slot as u8);
@@ -28,7 +33,9 @@ pub(crate) fn emit_load_static(script: &mut Vec<u8>, slot: usize) -> Result<()> 
     Ok(())
 }
 
-/// Emit a store to a static field slot
+/// Emit a store to a static field slot.
+///
+/// NeoVM's STSFLD operand is a single byte, so slots must be in 0..=255.
 pub(crate) fn emit_store_static(script: &mut Vec<u8>, slot: usize) -> Result<()> {
     // NeoVM has optimized opcodes for slots 0-6
     let opcode = match slot {
@@ -40,6 +47,9 @@ pub(crate) fn emit_store_static(script: &mut Vec<u8>, slot: usize) -> Result<()>
         5 => "STSFLD5",
         6 => "STSFLD6",
         _ => {
+            if slot > u8::MAX as usize {
+                bail!("static field slot {} exceeds NeoVM maximum (255)", slot);
+            }
             // For slots >= 7, use STSFLD with explicit slot index
             script.push(lookup_opcode("STSFLD")?.byte);
             script.push(slot as u8);

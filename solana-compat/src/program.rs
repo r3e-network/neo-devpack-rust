@@ -22,7 +22,7 @@ pub struct Instruction {
 
 impl Instruction {
     /// Create a new instruction
-    pub const fn new(program_id: Pubkey, data: Vec<u8>, accounts: Vec<AccountMeta>) -> Self {
+    pub fn new(program_id: Pubkey, data: Vec<u8>, accounts: Vec<AccountMeta>) -> Self {
         Self {
             program_id,
             accounts,
@@ -131,17 +131,20 @@ pub fn invoke_signed(
     invoke(instruction, account_infos)
 }
 
-/// Set return data for the current instruction
-pub const fn set_return_data(data: &[u8]) {
-    // In NeoVM, return values are pushed to the stack
-    // This is handled automatically by the function return
+/// Set return data for the current instruction.
+///
+/// **Note:** NeoVM pushes return values to the evaluation stack automatically.
+/// This function is a no-op in the Neo compatibility layer; return data set
+/// here will not be retrievable via `get_return_data()`.
+pub fn set_return_data(data: &[u8]) {
     let _ = data;
 }
 
-/// Get return data from the last CPI
-pub const fn get_return_data() -> Option<(Pubkey, Vec<u8>)> {
-    // Return data would be captured from the contract call result
-    // Implementation depends on how wasm-neovm handles contract call returns
+/// Get return data from the last CPI.
+///
+/// **Note:** NeoVM contract call return values are captured on the evaluation stack,
+/// not via a return-data buffer. This always returns `None` in the current implementation.
+pub fn get_return_data() -> Option<(Pubkey, alloc::vec::Vec<u8>)> {
     None
 }
 

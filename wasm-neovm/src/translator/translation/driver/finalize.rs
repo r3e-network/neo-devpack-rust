@@ -56,6 +56,8 @@ impl DriverState {
                 );
             }
 
+            // Fallback to "Any" for unmappable Wasm types (floats, SIMD, etc.)
+            // since manifests are generated best-effort for all exports.
             let parameter_defs: Vec<ManifestParameter> = func_type
                 .params()
                 .iter()
@@ -192,6 +194,38 @@ impl DriverState {
                             method.offset = stub_offset as u32;
                         }
                     }
+                }
+            }
+        }
+
+        // Peephole optimization pass: remove redundant instruction patterns.
+        {
+            let mut method_offsets: Vec<u32> =
+                self.methods.iter().map(|m| m.offset).collect();
+            let optimized =
+                crate::translator::helpers::peephole::peephole_optimize(&self.script, &mut method_offsets);
+            if optimized.len() < self.script.len() {
+                self.script = optimized;
+                for (method, &new_offset) in
+                    self.methods.iter_mut().zip(method_offsets.iter())
+                {
+                    method.offset = new_offset;
+                }
+            }
+        }
+
+        // Relaxation pass: convert long-form jumps/calls to short-form where possible.
+        {
+            let mut method_offsets: Vec<u32> =
+                self.methods.iter().map(|m| m.offset).collect();
+            let relaxed =
+                crate::translator::helpers::relax::relax_script(&self.script, &mut method_offsets);
+            if relaxed.len() < self.script.len() {
+                self.script = relaxed;
+                for (method, &new_offset) in
+                    self.methods.iter_mut().zip(method_offsets.iter())
+                {
+                    method.offset = new_offset;
                 }
             }
         }

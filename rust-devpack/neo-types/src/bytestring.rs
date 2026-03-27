@@ -1,13 +1,14 @@
 // Copyright (c) 2025-2026 R3E Network
 // Licensed under the MIT License
 
+use std::fmt;
 use std::vec::Vec;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 /// Neo N3 ByteString type
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct NeoByteString {
     data: Vec<u8>,
@@ -42,6 +43,15 @@ impl NeoByteString {
 
     pub fn extend_from_slice(&mut self, slice: &[u8]) {
         self.data.extend_from_slice(slice);
+    }
+}
+
+impl fmt::Display for NeoByteString {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for byte in &self.data {
+            write!(f, "{:02x}", byte)?;
+        }
+        Ok(())
     }
 }
 

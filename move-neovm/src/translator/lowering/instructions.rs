@@ -91,23 +91,26 @@ pub fn emit_case_body(
             f.instruction(&Instruction::I64Mul);
         }
         MoveOpcode::Div => {
-            f.instruction(&Instruction::I64DivS);
+            // Move integers are unsigned; use unsigned division
+            f.instruction(&Instruction::I64DivU);
         }
         MoveOpcode::Mod => {
-            f.instruction(&Instruction::I64RemS);
+            // Move integers are unsigned; use unsigned remainder
+            f.instruction(&Instruction::I64RemU);
         }
 
         MoveOpcode::Lt => {
-            f.instruction(&Instruction::I64LtS);
+            // Move integers are unsigned; use unsigned comparison
+            f.instruction(&Instruction::I64LtU);
         }
         MoveOpcode::Gt => {
-            f.instruction(&Instruction::I64GtS);
+            f.instruction(&Instruction::I64GtU);
         }
         MoveOpcode::Le => {
-            f.instruction(&Instruction::I64LeS);
+            f.instruction(&Instruction::I64LeU);
         }
         MoveOpcode::Ge => {
-            f.instruction(&Instruction::I64GeS);
+            f.instruction(&Instruction::I64GeU);
         }
         MoveOpcode::Eq => {
             f.instruction(&Instruction::I64Eq);

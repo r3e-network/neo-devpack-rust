@@ -36,6 +36,6 @@ impl Default for HelloWorldContract {
 mod tests {
     #[test]
     fn hello_returns_42() {
-        assert_eq!(super::hello(), 42);
+        assert_eq!(super::HelloWorldContract::hello(), 42);
     }
 }

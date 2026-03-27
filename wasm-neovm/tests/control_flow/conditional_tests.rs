@@ -47,10 +47,12 @@ fn translate_complex_if_else_chain() {
 
     // Multiple nested if/else should generate multiple jumps
     let jmpifnot = opcodes::lookup("JMPIFNOT_L").unwrap().byte;
+    let jmpifnot_s = opcodes::lookup("JMPIFNOT").unwrap().byte;
     let jmp = opcodes::lookup("JMP_L").unwrap().byte;
+    let jmp_s = opcodes::lookup("JMP").unwrap().byte;
 
-    assert!(translation.script.contains(&jmpifnot));
-    assert!(translation.script.contains(&jmp));
+    assert!(translation.script.contains(&jmpifnot) || translation.script.contains(&jmpifnot_s));
+    assert!(translation.script.contains(&jmp) || translation.script.contains(&jmp_s));
 }
 
 #[test]

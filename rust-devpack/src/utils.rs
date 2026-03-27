@@ -2,56 +2,39 @@
 // Licensed under the MIT License
 
 //! General utility functions for Neo N3 smart contracts.
+//!
+//! For JSON serialization helpers, prefer the canonical functions in
+//! [`crate::storage`] (`read_json`, `write_json`, `struct_entry`, `value_to_json`).
+//! The functions here are thin wrappers kept for backward compatibility.
 
-use neo_types::{NeoByteString, NeoStruct, NeoValue};
+use neo_types::{NeoByteString, NeoValue};
 use serde::{Deserialize, Serialize};
-use serde_json::{self, Value as JsonValue};
+use serde_json::Value as JsonValue;
 
 /// Deserializes a NeoByteString as JSON.
 ///
-/// # Type Parameters
-/// * `T` - The target type for deserialization
-///
-/// # Returns
-/// * `Some(T)` if deserialization succeeds
-/// * `None` if the bytes are not valid JSON for the target type
+/// This is equivalent to [`crate::storage::read_json`].
 pub fn bytes_to_json<T: for<'de> Deserialize<'de>>(bytes: &NeoByteString) -> Option<T> {
-    serde_json::from_slice(bytes.as_slice()).ok()
+    crate::storage::read_json(bytes)
 }
 
 /// Serializes a value to JSON and returns it as a NeoByteString.
 ///
-/// # Type Parameters
-/// * `T` - The type to serialize
-///
-/// # Returns
-/// * `Ok(NeoByteString)` containing JSON bytes
-/// * `Err(NeoError)` if serialization fails
+/// This is equivalent to [`crate::storage::write_json`].
 pub fn json_to_bytes<T: Serialize>(value: &T) -> neo_types::NeoResult<NeoByteString> {
-    let data = serde_json::to_vec(value).map_err(|err| {
-        neo_types::NeoError::new(&format!("failed to serialize JSON bytes: {err}"))
-    })?;
-    Ok(NeoByteString::from_slice(&data))
+    crate::storage::write_json(value)
 }
 
 /// Creates a storage entry struct with key and value fields.
 ///
-/// This is a convenience function for creating the standard storage
-/// entry format used by Neo N3 storage find operations.
+/// This is equivalent to [`crate::storage::struct_entry`].
 pub fn storage_struct(key: &NeoByteString, value: &NeoByteString) -> NeoValue {
-    let mut entry = NeoStruct::new();
-    entry.set_field("key", NeoValue::from(key.clone()));
-    entry.set_field("value", NeoValue::from(value.clone()));
-    NeoValue::from(entry)
+    crate::storage::struct_entry(key.clone(), value.clone())
 }
 
 /// Extracts JSON from a NeoValue containing a ByteString.
 ///
-/// # Returns
-/// * `Some(JsonValue)` if the value is a ByteString containing valid JSON
-/// * `None` otherwise
+/// This is equivalent to [`crate::storage::value_to_json`].
 pub fn json_from_value(value: &NeoValue) -> Option<JsonValue> {
-    value
-        .as_byte_string()
-        .and_then(|bytes| serde_json::from_slice(bytes.as_slice()).ok())
+    crate::storage::value_to_json(value)
 }

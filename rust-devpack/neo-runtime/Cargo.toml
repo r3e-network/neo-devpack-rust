@@ -10,7 +10,7 @@ description = "Neo N3 Runtime Stubs"
 documentation = "https://docs.rs/neo-runtime"
 rust-version.workspace = true
 keywords = ["neo", "neovm", "blockchain", "smart-contracts", "runtime"]
-categories = ["cryptography::cryptocurrencies", "no-std"]
+categories = ["cryptography::cryptocurrencies"]
 include = ["src/**/*", "Cargo.toml", "README.md", "../../LICENSE"]
 
 [dependencies]

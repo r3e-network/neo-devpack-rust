@@ -95,9 +95,9 @@ impl NeoValue {
         matches!(self, NeoValue::Null)
     }
 
-    pub fn as_integer(&self) -> Option<NeoInteger> {
+    pub fn as_integer(&self) -> Option<&NeoInteger> {
         match self {
-            NeoValue::Integer(i) => Some(i.clone()),
+            NeoValue::Integer(i) => Some(i),
             _ => None,
         }
     }

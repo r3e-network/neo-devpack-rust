@@ -100,8 +100,6 @@ name = "governance-dao-neo"
 version = "0.2.0"
 dependencies = [
  "neo-devpack",
- "serde",
- "serde_json",
 ]
 
 [[package]]

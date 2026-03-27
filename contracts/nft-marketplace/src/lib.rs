@@ -27,68 +27,31 @@ fn listing_key(id: i64, suffix: &[u8]) -> Vec<u8> {
     key
 }
 
-fn storage_put_bytes(ctx: &NeoStorageContext, key: &[u8], value: &[u8]) -> bool {
+fn storage_put_i64(ctx: &NeoStorageContext, key: &[u8], value: i64) -> bool {
     NeoStorage::put(
         ctx,
         &NeoByteString::from_slice(key),
-        &NeoByteString::from_slice(value),
+        &NeoByteString::from_slice(&value.to_le_bytes()),
     )
     .is_ok()
 }
 
-fn storage_get_bytes(ctx: &NeoStorageContext, key: &[u8]) -> Option<Vec<u8>> {
-    let data = NeoStorage::get(ctx, &NeoByteString::from_slice(key)).ok()?;
-    if data.is_empty() {
-        return None;
-    }
-    Some(data.as_slice().to_vec())
-}
-
-fn storage_put_i64(ctx: &NeoStorageContext, key: &[u8], value: i64) -> bool {
-    storage_put_bytes(ctx, key, &value.to_le_bytes())
-}
-
 fn storage_get_i64(ctx: &NeoStorageContext, key: &[u8]) -> Option<i64> {
-    let bytes = storage_get_bytes(ctx, key)?;
-    if bytes.len() != 8 {
+    let data = NeoStorage::get(ctx, &NeoByteString::from_slice(key)).ok()?;
+    if data.len() != 8 {
         return None;
     }
+    let s = data.as_slice();
     let mut buf = [0u8; 8];
-    buf.copy_from_slice(&bytes);
+    buf.copy_from_slice(s);
     Some(i64::from_le_bytes(buf))
-}
-
-fn storage_put_bool(ctx: &NeoStorageContext, key: &[u8], value: bool) -> bool {
-    storage_put_bytes(ctx, key, &[value as u8])
-}
-
-fn storage_get_bool(ctx: &NeoStorageContext, key: &[u8]) -> Option<bool> {
-    let bytes = storage_get_bytes(ctx, key)?;
-    if bytes.len() != 1 {
-        return None;
-    }
-    Some(bytes[0] != 0)
-}
-
-fn ensure_witness(account: &NeoByteString) -> bool {
-    NeoRuntime::check_witness(account)
-        .map(|flag| flag.as_bool())
-        .unwrap_or(false)
-}
-
-fn read_address(ptr: i64, len: i64) -> Option<NeoByteString> {
-    if ptr == 0 || len != 20 {
-        return None;
-    }
-    let slice = unsafe { core::slice::from_raw_parts(ptr as *const u8, len as usize) };
-    Some(NeoByteString::from_slice(slice))
 }
 
 // Events
 #[neo_event]
 pub struct ListingCreated {
     pub listing_id: NeoInteger,
-    pub seller: NeoByteString,
+    pub seller: NeoInteger,
     pub price: NeoInteger,
 }
 
@@ -108,13 +71,10 @@ impl NeoNftMarketplaceContract {
 
     #[neo_method(name = "createListing")]
     pub fn create_listing(
-        seller_ptr: i64,
-        seller_len: i64,
-        token_contract_ptr: i64,
-        token_contract_len: i64,
+        seller_id: i64,
+        token_contract_id: i64,
         token_id: i64,
-        payment_token_ptr: i64,
-        payment_token_len: i64,
+        payment_token_id: i64,
         price: i64,
         fee_bps: i64,
         expiry: i64,
@@ -123,39 +83,28 @@ impl NeoNftMarketplaceContract {
         if price <= 0 || fee_bps < 0 || expiry <= 0 || listing_id < 0 || token_id < 0 {
             return false;
         }
-        let seller = match read_address(seller_ptr, seller_len) {
-            Some(a) => a,
-            None => return false,
-        };
-        if !ensure_witness(&seller) {
+        if seller_id == 0 || token_contract_id == 0 || payment_token_id == 0 {
             return false;
         }
-        let token_contract = match read_address(token_contract_ptr, token_contract_len) {
-            Some(a) => a,
-            None => return false,
-        };
-        let payment_token = match read_address(payment_token_ptr, payment_token_len) {
-            Some(a) => a,
-            None => return false,
-        };
         let ctx = match NeoStorage::get_context().ok() {
             Some(c) => c,
             None => return false,
         };
-        if storage_get_bool(&ctx, &listing_key(listing_id, ACTIVE_SUFFIX)).is_some() {
+        // Check listing not already active
+        if storage_get_i64(&ctx, &listing_key(listing_id, ACTIVE_SUFFIX)).is_some() {
             return false;
         }
-        storage_put_bytes(&ctx, &listing_key(listing_id, SELLER_SUFFIX), seller.as_slice());
-        storage_put_bytes(&ctx, &listing_key(listing_id, TOKEN_CONTRACT_SUFFIX), token_contract.as_slice());
+        storage_put_i64(&ctx, &listing_key(listing_id, SELLER_SUFFIX), seller_id);
+        storage_put_i64(&ctx, &listing_key(listing_id, TOKEN_CONTRACT_SUFFIX), token_contract_id);
         storage_put_i64(&ctx, &listing_key(listing_id, TOKEN_ID_SUFFIX), token_id);
-        storage_put_bytes(&ctx, &listing_key(listing_id, PAYMENT_TOKEN_SUFFIX), payment_token.as_slice());
+        storage_put_i64(&ctx, &listing_key(listing_id, PAYMENT_TOKEN_SUFFIX), payment_token_id);
         storage_put_i64(&ctx, &listing_key(listing_id, PRICE_SUFFIX), price);
         storage_put_i64(&ctx, &listing_key(listing_id, FEE_BPS_SUFFIX), fee_bps);
         storage_put_i64(&ctx, &listing_key(listing_id, EXPIRY_SUFFIX), expiry);
-        storage_put_bool(&ctx, &listing_key(listing_id, ACTIVE_SUFFIX), true);
+        storage_put_i64(&ctx, &listing_key(listing_id, ACTIVE_SUFFIX), 1);
         let _ = (ListingCreated {
             listing_id: NeoInteger::new(listing_id),
-            seller,
+            seller: NeoInteger::new(seller_id),
             price: NeoInteger::new(price),
         })
         .emit();
@@ -163,33 +112,26 @@ impl NeoNftMarketplaceContract {
     }
 
     #[neo_method(name = "cancelListing")]
-    pub fn cancel_listing(listing_id: i64, caller_ptr: i64, caller_len: i64) -> bool {
-        if listing_id < 0 {
-            return false;
-        }
-        let caller = match read_address(caller_ptr, caller_len) {
-            Some(a) => a,
-            None => return false,
-        };
-        if !ensure_witness(&caller) {
+    pub fn cancel_listing(listing_id: i64, caller_id: i64) -> bool {
+        if listing_id < 0 || caller_id == 0 {
             return false;
         }
         let ctx = match NeoStorage::get_context().ok() {
             Some(c) => c,
             None => return false,
         };
-        let active = storage_get_bool(&ctx, &listing_key(listing_id, ACTIVE_SUFFIX)).unwrap_or(false);
-        if !active {
+        let active = storage_get_i64(&ctx, &listing_key(listing_id, ACTIVE_SUFFIX)).unwrap_or(0);
+        if active != 1 {
             return false;
         }
-        let seller_bytes = match storage_get_bytes(&ctx, &listing_key(listing_id, SELLER_SUFFIX)) {
-            Some(b) => b,
+        let seller = match storage_get_i64(&ctx, &listing_key(listing_id, SELLER_SUFFIX)) {
+            Some(s) => s,
             None => return false,
         };
-        if caller.as_slice() != seller_bytes.as_slice() {
+        if caller_id != seller {
             return false;
         }
-        storage_put_bool(&ctx, &listing_key(listing_id, ACTIVE_SUFFIX), false);
+        storage_put_i64(&ctx, &listing_key(listing_id, ACTIVE_SUFFIX), 0);
         let _ = (ListingCancelled {
             listing_id: NeoInteger::new(listing_id),
         })
@@ -208,7 +150,7 @@ impl NeoNftMarketplaceContract {
     }
 
     /// Return listing data via notify: [price, fee_bps, expiry, token_id, active]
-    #[neo_method(name = "getListing")]
+    #[neo_method(safe, name = "getListing")]
     pub fn get_listing(listing_id: i64) {
         let ctx = match NeoStorage::get_context().ok() {
             Some(c) => c,
@@ -221,14 +163,14 @@ impl NeoNftMarketplaceContract {
         let fee_bps = storage_get_i64(&ctx, &listing_key(listing_id, FEE_BPS_SUFFIX)).unwrap_or(0);
         let expiry = storage_get_i64(&ctx, &listing_key(listing_id, EXPIRY_SUFFIX)).unwrap_or(0);
         let token_id = storage_get_i64(&ctx, &listing_key(listing_id, TOKEN_ID_SUFFIX)).unwrap_or(0);
-        let active = storage_get_bool(&ctx, &listing_key(listing_id, ACTIVE_SUFFIX)).unwrap_or(false);
+        let active = storage_get_i64(&ctx, &listing_key(listing_id, ACTIVE_SUFFIX)).unwrap_or(0);
         let label = NeoString::from_str("getListing");
         let mut state = NeoArray::new();
         state.push(NeoValue::from(NeoInteger::new(price)));
         state.push(NeoValue::from(NeoInteger::new(fee_bps)));
         state.push(NeoValue::from(NeoInteger::new(expiry)));
         state.push(NeoValue::from(NeoInteger::new(token_id)));
-        state.push(NeoValue::from(NeoBoolean::new(active)));
+        state.push(NeoValue::from(NeoBoolean::new(active != 0)));
         let _ = NeoRuntime::notify(&label, &state);
     }
 }

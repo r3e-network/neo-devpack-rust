@@ -87,6 +87,7 @@ pub(in super::super) fn try_handle_env_import(
         value_stack.push(StackValue {
             const_value: dest_value,
             bytecode_start: None,
+            pending_sign_extend: None,
         });
     }
 

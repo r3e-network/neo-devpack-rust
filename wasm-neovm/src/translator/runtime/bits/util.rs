@@ -42,7 +42,20 @@ pub(super) fn mask_top_bits(script: &mut Vec<u8>, bits: u32) -> Result<()> {
         return Ok(());
     }
 
-    // Round 87: Use const-evaluated mask from lookup table
+    // Compute (1 << bits) - 1 inline: PUSH1 + PUSH{bits} + SHL + DEC + AND = 5-6 bytes.
+    // This is profitable when the literal mask would need PUSHINT32 or larger (5+ bytes + AND).
+    // For bits <= 8, the mask fits in PUSHINT16 (3 bytes + AND = 4 bytes), so literal is cheaper.
+    // For bits >= 9, inline computation (5 bytes) beats or matches literal.
+    if (9..=127).contains(&bits) {
+        let _ = emit_push_int(script, 1);
+        let _ = emit_push_int(script, bits as i128);
+        script.push(lookup_opcode("SHL")?.byte);
+        script.push(lookup_opcode("DEC")?.byte);
+        script.push(lookup_opcode("AND")?.byte);
+        return Ok(());
+    }
+
+    // For other bit widths, use the pre-computed mask table
     let mask = MASKS[bits as usize];
     let _ = emit_push_int(script, mask);
     script.push(lookup_opcode("AND")?.byte);
@@ -65,11 +78,17 @@ pub(super) fn emit_pow2(script: &mut Vec<u8>, bits: u32) -> Result<()> {
         table
     };
 
-    // Round 85: Common case is bits <= 64
-    if likely!(bits <= 64) {
+    // For bits >= 8, compute 1 << bits inline: PUSH1 + PUSH{bits} + SHL = 3 bytes.
+    // This beats or matches pushing the literal for bits >= 8 (literal needs PUSHINT16+).
+    // For bits 0-7, the literal fits in PUSH0-PUSH16 range (1 byte) or PUSHINT8 (2 bytes),
+    // which is cheaper than the 3-byte inline computation.
+    if bits >= 8 {
+        let _ = emit_push_int(script, 1);
+        let _ = emit_push_int(script, bits as i128);
+        script.push(lookup_opcode("SHL")?.byte);
+    } else if bits <= 64 {
         let _ = emit_push_int(script, POW2_TABLE[bits as usize]);
     } else {
-        // Fallback: compute at runtime
         let _ = emit_push_int(script, 1);
         let _ = emit_push_int(script, bits as i128);
         script.push(lookup_opcode("SHL")?.byte);

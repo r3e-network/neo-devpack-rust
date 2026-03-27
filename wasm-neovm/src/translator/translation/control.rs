@@ -110,13 +110,24 @@ pub(super) fn handle_branch(
 
     // Only validate stack height if we're not already in unreachable code.
     // For Function frames: branching means providing return values, validate against result_count.
-    // For other frames: branching means jumping to end of block, validate against entry height + results.
+    // For Loop frames: branching (continue) must match the loop entry stack exactly.
+    // For Block/If frames: branching (break) targets the end label; wasm-opt may leave
+    // extra values on the stack that should be dropped before the branch.
     if !*is_unreachable {
         let expected = match frame.kind {
             ControlKind::Function => frame.result_count,
             ControlKind::Loop => frame.stack_height,
             _ => frame.stack_height + frame.result_count,
         };
+        // For Block/If branches, drop excess stack values before branching.
+        // This handles wasm-opt transformations that leave intermediate values
+        // on the stack before a break. Loop continues must match exactly.
+        if !matches!(frame.kind, ControlKind::Loop) {
+            while value_stack.len() > expected {
+                value_stack.pop();
+                script.push(lookup_opcode("DROP")?.byte);
+            }
+        }
         if value_stack.len() != expected {
             bail!(
                 "branch requires {} values but current stack has {}",

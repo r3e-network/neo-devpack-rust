@@ -8,8 +8,8 @@ use serde::Serialize;
 pub struct ManifestParameter {
     /// Parameter name.
     pub name: String,
-    #[serde(rename = "type")]
     /// Parameter type (e.g. `"Hash160"`, `"Integer"`).
+    #[serde(rename = "type")]
     pub kind: String,
 }
 
@@ -20,8 +20,8 @@ pub struct ManifestMethod {
     pub name: String,
     /// Method parameters.
     pub parameters: Vec<ManifestParameter>,
-    #[serde(rename = "returntype")]
     /// Return type (e.g. `"Void"`, `"Boolean"`).
+    #[serde(rename = "returntype")]
     pub return_type: String,
     /// Bytecode offset of the method entry point.
     pub offset: u32,
@@ -38,7 +38,7 @@ pub struct RenderedManifest {
 
 impl RenderedManifest {
     /// Serialize the manifest to a pretty-printed JSON string.
-    pub fn to_string(&self) -> serde_json::Result<String> {
+    pub fn to_json_string(&self) -> serde_json::Result<String> {
         serde_json::to_string_pretty(&self.value)
     }
 }

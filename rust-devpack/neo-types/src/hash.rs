@@ -1,6 +1,8 @@
 // Copyright (c) 2025-2026 R3E Network
 // Licensed under the MIT License
 
+use std::fmt;
+
 use crate::error::{NeoError, NeoResult};
 use crate::NeoByteString;
 
@@ -111,6 +113,26 @@ impl Hash256 {
     /// Converts this Hash256 into a `NeoByteString`.
     pub fn to_byte_string(&self) -> NeoByteString {
         NeoByteString::from_slice(&self.0)
+    }
+}
+
+impl fmt::Display for Hash160 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "0x")?;
+        for byte in &self.0 {
+            write!(f, "{:02x}", byte)?;
+        }
+        Ok(())
+    }
+}
+
+impl fmt::Display for Hash256 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "0x")?;
+        for byte in &self.0 {
+            write!(f, "{:02x}", byte)?;
+        }
+        Ok(())
     }
 }
 

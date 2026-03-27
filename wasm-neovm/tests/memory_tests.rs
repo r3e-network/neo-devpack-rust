@@ -23,8 +23,9 @@ fn translate_memory_bounds_checks() {
 
     // Should contain bounds checking logic
     let call_l = opcodes::lookup("CALL_L").unwrap().byte;
+    let call_s = opcodes::lookup("CALL").unwrap().byte;
     assert!(
-        translation.script.contains(&call_l),
+        translation.script.contains(&call_l) || translation.script.contains(&call_s),
         "expected helper calls for bounds checking"
     );
 }
@@ -65,23 +66,29 @@ fn translate_memory_store_masks_address_to_u32() {
     let pushint8 = opcodes::lookup("PUSHINT8").unwrap().byte;
     let pushint64 = opcodes::lookup("PUSHINT64").unwrap().byte;
     let shl = opcodes::lookup("SHL").unwrap().byte;
+    let dec = opcodes::lookup("DEC").unwrap().byte;
     let sub = opcodes::lookup("SUB").unwrap().byte;
     let and = opcodes::lookup("AND").unwrap().byte;
 
-    // Pattern 1: Runtime computation (1 << 32) - 1
+    // Pattern 1: Compact inline computation: PUSH1, PUSH 32, SHL, DEC, AND (5 bytes)
+    let pattern_compact = [push1, pushint8, 32, shl, dec, and];
+    // Pattern 2: Legacy runtime computation: PUSH1, PUSH 32, SHL, PUSH1, SUB, AND
     let pattern_runtime = [push1, pushint8, 32, shl, push1, sub, and];
-    // Pattern 2: Pre-computed constant 0xFFFFFFFF (optimization)
+    // Pattern 3: Pre-computed constant 0xFFFFFFFF
     let pattern_const = [
         pushint64, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, and,
     ];
 
     assert!(
-        body.windows(pattern_runtime.len())
-            .any(|window| window == pattern_runtime)
+        body.windows(pattern_compact.len())
+            .any(|window| window == pattern_compact)
+            || body
+                .windows(pattern_runtime.len())
+                .any(|window| window == pattern_runtime)
             || body
                 .windows(pattern_const.len())
                 .any(|window| window == pattern_const),
-        "expected u32 mask sequence (runtime or const-optimized) in store body"
+        "expected u32 mask sequence in store body"
     );
 }
 
@@ -312,10 +319,11 @@ fn translate_memory_grow_shrink() {
     let translation = translate_module(&wasm, "MemGrowTest").expect("translation succeeds");
 
     let call_l = opcodes::lookup("CALL_L").unwrap().byte;
+    let call_s = opcodes::lookup("CALL").unwrap().byte;
     let ldsfld2 = opcodes::lookup("LDSFLD2").unwrap().byte;
 
     assert!(
-        translation.script.contains(&call_l),
+        translation.script.contains(&call_l) || translation.script.contains(&call_s),
         "memory.grow should use helper"
     );
     assert!(
@@ -342,10 +350,12 @@ fn translate_memory_grow_enforces_maximum_without_operand_swap() {
     let pushm1 = opcodes::lookup("PUSHM1").unwrap().byte;
     let equal = opcodes::lookup("EQUAL").unwrap().byte;
     let jmpif_l = opcodes::lookup("JMPIF_L").unwrap().byte;
+    let jmpif_s = opcodes::lookup("JMPIF").unwrap().byte;
     let gt = opcodes::lookup("GT").unwrap().byte;
 
     // The memory.grow helper checks max pages by loading LDSFLD3, testing for -1 (unlimited),
     // then comparing new_pages > max with GT (no SWAP between max and new_pages).
+    // JMPIF may be long (5 bytes) or short (2 bytes) after relaxation.
     let pattern_found = translation.script.windows(10).any(|window| {
         window[0] == ldsfld3
             && window[1] == dup
@@ -353,6 +363,13 @@ fn translate_memory_grow_enforces_maximum_without_operand_swap() {
             && window[3] == equal
             && window[4] == jmpif_l
             && window[9] == gt
+    }) || translation.script.windows(7).any(|window| {
+        window[0] == ldsfld3
+            && window[1] == dup
+            && window[2] == pushm1
+            && window[3] == equal
+            && window[4] == jmpif_s
+            && window[6] == gt
     });
 
     assert!(

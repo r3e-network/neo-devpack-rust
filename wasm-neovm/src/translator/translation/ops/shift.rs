@@ -56,6 +56,7 @@ pub(in super::super) fn emit_shift_right(
     Ok(StackValue {
         const_value,
         bytecode_start: None,
+        pending_sign_extend: None,
     })
 }
 
@@ -221,6 +222,7 @@ fn stack_pick(script: &mut Vec<u8>, stack: &mut Vec<StackValue>, index: usize) -
     stack.push(StackValue {
         const_value: picked.const_value,
         bytecode_start: None,
+        pending_sign_extend: None,
     });
     Ok(())
 }

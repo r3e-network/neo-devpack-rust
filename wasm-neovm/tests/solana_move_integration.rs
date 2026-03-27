@@ -485,14 +485,17 @@ fn test_equivalent_contracts_compile_similarly() {
 #[test]
 fn test_source_chain_parsing() {
     // Verify SourceChain enum works correctly
-    assert_eq!(SourceChain::from_str("neo"), Some(SourceChain::Neo));
-    assert_eq!(SourceChain::from_str("native"), Some(SourceChain::Neo));
-    assert_eq!(SourceChain::from_str("solana"), Some(SourceChain::Solana));
-    assert_eq!(SourceChain::from_str("sol"), Some(SourceChain::Solana));
-    assert_eq!(SourceChain::from_str("move"), Some(SourceChain::Move));
-    assert_eq!(SourceChain::from_str("aptos"), Some(SourceChain::Move));
-    assert_eq!(SourceChain::from_str("sui"), Some(SourceChain::Move));
-    assert_eq!(SourceChain::from_str("unknown"), None);
+    assert_eq!(SourceChain::parse_chain("neo"), Some(SourceChain::Neo));
+    assert_eq!(SourceChain::parse_chain("native"), Some(SourceChain::Neo));
+    assert_eq!(
+        SourceChain::parse_chain("solana"),
+        Some(SourceChain::Solana)
+    );
+    assert_eq!(SourceChain::parse_chain("sol"), Some(SourceChain::Solana));
+    assert_eq!(SourceChain::parse_chain("move"), Some(SourceChain::Move));
+    assert_eq!(SourceChain::parse_chain("aptos"), Some(SourceChain::Move));
+    assert_eq!(SourceChain::parse_chain("sui"), Some(SourceChain::Move));
+    assert_eq!(SourceChain::parse_chain("unknown"), None);
 }
 
 #[test]

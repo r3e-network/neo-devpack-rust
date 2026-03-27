@@ -140,6 +140,7 @@ pub(in super::super) fn emit_unsigned_binary_op(
     let result = StackValue {
         const_value,
         bytecode_start: None,
+        pending_sign_extend: None,
     };
     emit_sign_extend(script, result, bits, bits)
 }

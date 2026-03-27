@@ -51,6 +51,7 @@ pub(super) fn emit_import_export_stub(
         params_stack.push(StackValue {
             const_value: None,
             bytecode_start: None,
+            pending_sign_extend: None,
         });
     }
 

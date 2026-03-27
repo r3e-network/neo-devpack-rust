@@ -87,12 +87,20 @@ impl<K, V> NeoMap<K, V> {
         self.data.iter().map(|(k, v)| (k, v))
     }
 
-    /// Returns an iterator over the keys of the map
+    /// Returns true if the map contains the given key.
+    pub fn contains_key(&self, key: &K) -> bool
+    where
+        K: PartialEq,
+    {
+        self.data.iter().any(|(k, _)| k == key)
+    }
+
+    /// Returns an iterator over the keys of the map.
     pub fn keys(&self) -> impl Iterator<Item = &K> {
         self.data.iter().map(|(k, _)| k)
     }
 
-    /// Returns an iterator over the values of the map
+    /// Returns an iterator over the values of the map.
     pub fn values(&self) -> impl Iterator<Item = &V> {
         self.data.iter().map(|(_, v)| v)
     }
@@ -101,5 +109,21 @@ impl<K, V> NeoMap<K, V> {
 impl<K, V> Default for NeoMap<K, V> {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl<K, V> IntoIterator for NeoMap<K, V> {
+    type Item = (K, V);
+    type IntoIter = std::vec::IntoIter<(K, V)>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.data.into_iter()
+    }
+}
+
+impl<'a, K, V> IntoIterator for &'a NeoMap<K, V> {
+    type Item = &'a (K, V);
+    type IntoIter = std::slice::Iter<'a, (K, V)>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.data.iter()
     }
 }

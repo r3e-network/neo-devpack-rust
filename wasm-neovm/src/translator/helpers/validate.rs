@@ -180,8 +180,13 @@ pub(crate) fn validate_script(script: &[u8]) -> Result<()> {
                         pc
                     );
                 }
-                validate_target("TRY (catch)", pc, catch_offset)?;
-                validate_target("TRY (finally)", pc, finally_offset)?;
+                // Zero offset means "no handler" in NeoVM — only validate non-zero targets
+                if catch_offset != 0 {
+                    validate_target("TRY (catch)", pc, catch_offset)?;
+                }
+                if finally_offset != 0 {
+                    validate_target("TRY (finally)", pc, finally_offset)?;
+                }
             }
             "TRY_L" => {
                 let catch_bytes: [u8; 4] = script[pc + 1..pc + 5].try_into().map_err(|_| {
@@ -204,8 +209,13 @@ pub(crate) fn validate_script(script: &[u8]) -> Result<()> {
                         pc
                     );
                 }
-                validate_target("TRY_L (catch)", pc, catch_offset)?;
-                validate_target("TRY_L (finally)", pc, finally_offset)?;
+                // Zero offset means "no handler" in NeoVM — only validate non-zero targets
+                if catch_offset != 0 {
+                    validate_target("TRY_L (catch)", pc, catch_offset)?;
+                }
+                if finally_offset != 0 {
+                    validate_target("TRY_L (finally)", pc, finally_offset)?;
+                }
             }
             _ => {}
         }

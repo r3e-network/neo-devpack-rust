@@ -172,6 +172,7 @@ impl RuntimeHelpers {
                     let start_call = emit_runtime_init_helper(
                         script,
                         static_slot_count,
+                        self.memory_defined,
                         &self.memory_config,
                         &global_layouts,
                         &table_layouts,

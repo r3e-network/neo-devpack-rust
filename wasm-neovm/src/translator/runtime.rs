@@ -104,7 +104,9 @@ mod table;
 mod tokens;
 mod types;
 
-pub(crate) use bits::{emit_bit_count, emit_select, emit_sign_extend, emit_zero_extend};
+pub(crate) use bits::{
+    emit_bit_count, emit_select, emit_sign_extend, emit_sign_extend_via_helper, emit_zero_extend,
+};
 pub(crate) use helpers_impl::finalize::FinalizeParams;
 pub(crate) use memory::{
     ensure_memory_access, evaluate_global_init, evaluate_offset_expr, translate_data_drop,
@@ -159,6 +161,14 @@ pub(crate) struct RuntimeHelpers {
     // === Warm fields (accessed per memory operation) ===
     memory_config: MemoryConfig,
     bit_helpers: HashMap<BitHelperKind, HelperRecord>,
+    /// Shared i32 sign-extension helper: called at each use site instead of inlining.
+    sign_extend_32_helper: HelperRecord,
+    /// Shared i64 sign-extension helper.
+    sign_extend_64_helper: HelperRecord,
+    /// Shared i32 parameter normalization helper (null-check + type-check + sign-extend).
+    param_normalize_i32_helper: HelperRecord,
+    /// Shared i64 parameter normalization helper.
+    param_normalize_i64_helper: HelperRecord,
     table_helpers: HashMap<TableHelperKind, HelperRecord>,
     call_indirect_helpers: HashMap<CallIndirectHelperKey, HelperRecord>,
 
@@ -195,6 +205,10 @@ impl RuntimeHelpers {
             bit_helpers: HashMap::with_capacity(8),
             table_helpers: HashMap::with_capacity(8),
             call_indirect_helpers: HashMap::with_capacity(8),
+            sign_extend_32_helper: HelperRecord::default(),
+            sign_extend_64_helper: HelperRecord::default(),
+            param_normalize_i32_helper: HelperRecord::default(),
+            param_normalize_i64_helper: HelperRecord::default(),
             data_segments: Vec::with_capacity(expected_data_segments),
             element_segments: Vec::with_capacity(expected_element_segments),
             next_data_index: 0,

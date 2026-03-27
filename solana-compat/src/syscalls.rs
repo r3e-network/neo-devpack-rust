@@ -228,17 +228,19 @@ pub fn storage_read(key: &[u8], buffer: &mut [u8]) -> Option<usize> {
         // SAFETY: key.as_ptr() comes from a valid reference.
         let result = unsafe { neo_storage_get(key.as_ptr() as i32, key.len() as i32) };
         let _ = buffer;
-        // Without a concrete storage bridge we cannot safely populate the buffer yet.
+        // The NeoVM syscall returns the value on the evaluation stack rather than
+        // writing to a buffer. We cannot populate `buffer` without a concrete
+        // storage bridge, but we can report whether the key existed.
         if result < 0 {
             None
         } else {
-            None
+            Some(0)
         }
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
         let _ = (key, buffer);
-        None
+        Some(0)
     }
 }
 

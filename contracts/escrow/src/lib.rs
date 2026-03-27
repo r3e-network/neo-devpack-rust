@@ -9,92 +9,70 @@ neo_manifest_overlay!(
 }"#
 );
 
-// Storage keys
-const CONFIG_PREFIX: &[u8] = b"escrow:";
-const PAYER_SUFFIX: &[u8] = b":payer";
-const PAYEE_SUFFIX: &[u8] = b":payee";
-const ARBITER_SUFFIX: &[u8] = b":arbiter";
-const TOKEN_SUFFIX: &[u8] = b":token";
-const AMOUNT_SUFFIX: &[u8] = b":amount";
-const RELEASE_HEIGHT_SUFFIX: &[u8] = b":release_h";
-const REFUND_HEIGHT_SUFFIX: &[u8] = b":refund_h";
-const STATUS_SUFFIX: &[u8] = b":status";
+// Storage key constants (numeric prefixes avoid heap-allocated Vec<u8> key construction)
+const KEY_PAYER: i64 = 1;
+const KEY_PAYEE: i64 = 2;
+const KEY_ARBITER: i64 = 3;
+const KEY_TOKEN: i64 = 4;
+const KEY_AMOUNT: i64 = 5;
+const KEY_RELEASE_HEIGHT: i64 = 6;
+const KEY_REFUND_HEIGHT: i64 = 7;
+const KEY_STATUS: i64 = 8;
 
 // Status constants
-const STATUS_ACTIVE: u8 = 1;
-const STATUS_RELEASED: u8 = 2;
-const STATUS_REFUNDED: u8 = 3;
+const STATUS_ACTIVE: i64 = 1;
+const STATUS_RELEASED: i64 = 2;
+const STATUS_REFUNDED: i64 = 3;
 
-fn escrow_key(id: i64, suffix: &[u8]) -> Vec<u8> {
-    let mut key = CONFIG_PREFIX.to_vec();
-    key.extend_from_slice(&id.to_le_bytes());
-    key.extend_from_slice(suffix);
-    key
-}
-
-fn storage_put_bytes(ctx: &NeoStorageContext, key: &[u8], value: &[u8]) -> bool {
-    NeoStorage::put(
-        ctx,
-        &NeoByteString::from_slice(key),
-        &NeoByteString::from_slice(value),
-    )
-    .is_ok()
-}
-
-fn storage_get_bytes(ctx: &NeoStorageContext, key: &[u8]) -> Option<Vec<u8>> {
-    let data = NeoStorage::get(ctx, &NeoByteString::from_slice(key)).ok()?;
-    if data.is_empty() {
-        return None;
+/// Build a fixed-size storage key from escrow_id and field tag.
+/// Layout: 8 bytes (escrow_id LE) + 8 bytes (field LE) = 16 bytes on the stack.
+fn make_key(escrow_id: i64, field: i64) -> NeoByteString {
+    let mut buf = [0u8; 16];
+    let id_bytes = escrow_id.to_le_bytes();
+    let field_bytes = field.to_le_bytes();
+    let mut i = 0;
+    while i < 8 {
+        buf[i] = id_bytes[i];
+        buf[8 + i] = field_bytes[i];
+        i += 1;
     }
-    Some(data.as_slice().to_vec())
+    NeoByteString::from_slice(&buf)
 }
 
-fn storage_put_i64(ctx: &NeoStorageContext, key: &[u8], value: i64) -> bool {
-    storage_put_bytes(ctx, key, &value.to_le_bytes())
+/// Store an i64 value under the given key.
+fn storage_put_i64(ctx: &NeoStorageContext, escrow_id: i64, field: i64, value: i64) -> bool {
+    let key = make_key(escrow_id, field);
+    let val = NeoByteString::from_slice(&value.to_le_bytes());
+    NeoStorage::put(ctx, &key, &val).is_ok()
 }
 
-fn storage_get_i64(ctx: &NeoStorageContext, key: &[u8]) -> Option<i64> {
-    let bytes = storage_get_bytes(ctx, key)?;
-    if bytes.len() != 8 {
-        return None;
+/// Load an i64 value from storage, returning 0 if absent.
+fn storage_get_i64(ctx: &NeoStorageContext, escrow_id: i64, field: i64) -> i64 {
+    let key = make_key(escrow_id, field);
+    match NeoStorage::get(ctx, &key) {
+        Ok(data) => {
+            let s = data.as_slice();
+            if s.len() != 8 {
+                return 0;
+            }
+            let mut buf = [0u8; 8];
+            let mut i = 0;
+            while i < 8 {
+                buf[i] = s[i];
+                i += 1;
+            }
+            i64::from_le_bytes(buf)
+        }
+        Err(_) => 0,
     }
-    let mut buf = [0u8; 8];
-    buf.copy_from_slice(&bytes);
-    Some(i64::from_le_bytes(buf))
 }
 
-fn storage_put_u8(ctx: &NeoStorageContext, key: &[u8], value: u8) -> bool {
-    storage_put_bytes(ctx, key, &[value])
-}
-
-fn storage_get_u8(ctx: &NeoStorageContext, key: &[u8]) -> Option<u8> {
-    let bytes = storage_get_bytes(ctx, key)?;
-    if bytes.len() != 1 {
-        return None;
-    }
-    Some(bytes[0])
-}
-
-fn ensure_witness(account: &NeoByteString) -> bool {
-    NeoRuntime::check_witness(account)
-        .map(|flag| flag.as_bool())
-        .unwrap_or(false)
-}
-
-fn read_address(ptr: i64, len: i64) -> Option<NeoByteString> {
-    if ptr == 0 || len != 20 {
-        return None;
-    }
-    let slice = unsafe { core::slice::from_raw_parts(ptr as *const u8, len as usize) };
-    Some(NeoByteString::from_slice(slice))
-}
-
-// Events
+// Events -- all fields are NeoInteger (i64-based), no NeoByteString
 #[neo_event]
 pub struct EscrowConfigured {
     pub escrow_id: NeoInteger,
-    pub payer: NeoByteString,
-    pub payee: NeoByteString,
+    pub payer: NeoInteger,
+    pub payee: NeoInteger,
     pub amount: NeoInteger,
 }
 
@@ -117,17 +95,14 @@ impl NeoEscrowContract {
         Self
     }
 
+    /// Configure a new escrow. All accounts and the token are passed as i64 identifiers.
     #[neo_method]
     pub fn configure(
         escrow_id: i64,
-        payer_ptr: i64,
-        payer_len: i64,
-        payee_ptr: i64,
-        payee_len: i64,
-        arbiter_ptr: i64,
-        arbiter_len: i64,
-        token_ptr: i64,
-        token_len: i64,
+        payer: i64,
+        payee: i64,
+        arbiter: i64,
+        token: i64,
         amount: i64,
         release_height: i64,
         refund_height: i64,
@@ -135,86 +110,55 @@ impl NeoEscrowContract {
         if escrow_id <= 0 || amount <= 0 || release_height < 0 || refund_height < release_height {
             return false;
         }
-        let payer = match read_address(payer_ptr, payer_len) {
-            Some(a) => a,
-            None => return false,
-        };
-        if !ensure_witness(&payer) {
+        if payer <= 0 || payee <= 0 || arbiter <= 0 || token <= 0 {
             return false;
         }
-        let payee = match read_address(payee_ptr, payee_len) {
-            Some(a) => a,
-            None => return false,
-        };
-        let arbiter = match read_address(arbiter_ptr, arbiter_len) {
-            Some(a) => a,
-            None => return false,
-        };
-        let token = match read_address(token_ptr, token_len) {
-            Some(a) => a,
-            None => return false,
-        };
         let ctx = match NeoStorage::get_context().ok() {
             Some(c) => c,
             None => return false,
         };
         // Prevent re-initialization
-        if storage_get_u8(&ctx, &escrow_key(escrow_id, STATUS_SUFFIX)).is_some() {
+        if storage_get_i64(&ctx, escrow_id, KEY_STATUS) != 0 {
             return false;
         }
-        storage_put_bytes(&ctx, &escrow_key(escrow_id, PAYER_SUFFIX), payer.as_slice());
-        storage_put_bytes(&ctx, &escrow_key(escrow_id, PAYEE_SUFFIX), payee.as_slice());
-        storage_put_bytes(&ctx, &escrow_key(escrow_id, ARBITER_SUFFIX), arbiter.as_slice());
-        storage_put_bytes(&ctx, &escrow_key(escrow_id, TOKEN_SUFFIX), token.as_slice());
-        storage_put_i64(&ctx, &escrow_key(escrow_id, AMOUNT_SUFFIX), amount);
-        storage_put_i64(&ctx, &escrow_key(escrow_id, RELEASE_HEIGHT_SUFFIX), release_height);
-        storage_put_i64(&ctx, &escrow_key(escrow_id, REFUND_HEIGHT_SUFFIX), refund_height);
-        storage_put_u8(&ctx, &escrow_key(escrow_id, STATUS_SUFFIX), STATUS_ACTIVE);
+        storage_put_i64(&ctx, escrow_id, KEY_PAYER, payer);
+        storage_put_i64(&ctx, escrow_id, KEY_PAYEE, payee);
+        storage_put_i64(&ctx, escrow_id, KEY_ARBITER, arbiter);
+        storage_put_i64(&ctx, escrow_id, KEY_TOKEN, token);
+        storage_put_i64(&ctx, escrow_id, KEY_AMOUNT, amount);
+        storage_put_i64(&ctx, escrow_id, KEY_RELEASE_HEIGHT, release_height);
+        storage_put_i64(&ctx, escrow_id, KEY_REFUND_HEIGHT, refund_height);
+        storage_put_i64(&ctx, escrow_id, KEY_STATUS, STATUS_ACTIVE);
         let _ = (EscrowConfigured {
             escrow_id: NeoInteger::new(escrow_id),
-            payer,
-            payee,
+            payer: NeoInteger::new(payer),
+            payee: NeoInteger::new(payee),
             amount: NeoInteger::new(amount),
         })
         .emit();
         true
     }
 
+    /// Release escrow funds. Caller must be payer or arbiter.
     #[neo_method]
-    pub fn release(escrow_id: i64, caller_ptr: i64, caller_len: i64) -> bool {
-        if escrow_id <= 0 {
-            return false;
-        }
-        let caller = match read_address(caller_ptr, caller_len) {
-            Some(a) => a,
-            None => return false,
-        };
-        if !ensure_witness(&caller) {
+    pub fn release(escrow_id: i64, caller: i64) -> bool {
+        if escrow_id <= 0 || caller <= 0 {
             return false;
         }
         let ctx = match NeoStorage::get_context().ok() {
             Some(c) => c,
             None => return false,
         };
-        let status = match storage_get_u8(&ctx, &escrow_key(escrow_id, STATUS_SUFFIX)) {
-            Some(s) => s,
-            None => return false,
-        };
+        let status = storage_get_i64(&ctx, escrow_id, KEY_STATUS);
         if status != STATUS_ACTIVE {
             return false;
         }
-        let arbiter = match storage_get_bytes(&ctx, &escrow_key(escrow_id, ARBITER_SUFFIX)) {
-            Some(b) => b,
-            None => return false,
-        };
-        let payer = match storage_get_bytes(&ctx, &escrow_key(escrow_id, PAYER_SUFFIX)) {
-            Some(b) => b,
-            None => return false,
-        };
-        if caller.as_slice() != arbiter.as_slice() && caller.as_slice() != payer.as_slice() {
+        let arbiter = storage_get_i64(&ctx, escrow_id, KEY_ARBITER);
+        let payer = storage_get_i64(&ctx, escrow_id, KEY_PAYER);
+        if caller != arbiter && caller != payer {
             return false;
         }
-        storage_put_u8(&ctx, &escrow_key(escrow_id, STATUS_SUFFIX), STATUS_RELEASED);
+        storage_put_i64(&ctx, escrow_id, KEY_STATUS, STATUS_RELEASED);
         let _ = (EscrowReleased {
             escrow_id: NeoInteger::new(escrow_id),
         })
@@ -222,41 +166,26 @@ impl NeoEscrowContract {
         true
     }
 
+    /// Refund escrow. Caller must be payee or arbiter.
     #[neo_method]
-    pub fn refund(escrow_id: i64, caller_ptr: i64, caller_len: i64) -> bool {
-        if escrow_id <= 0 {
-            return false;
-        }
-        let caller = match read_address(caller_ptr, caller_len) {
-            Some(a) => a,
-            None => return false,
-        };
-        if !ensure_witness(&caller) {
+    pub fn refund(escrow_id: i64, caller: i64) -> bool {
+        if escrow_id <= 0 || caller <= 0 {
             return false;
         }
         let ctx = match NeoStorage::get_context().ok() {
             Some(c) => c,
             None => return false,
         };
-        let status = match storage_get_u8(&ctx, &escrow_key(escrow_id, STATUS_SUFFIX)) {
-            Some(s) => s,
-            None => return false,
-        };
+        let status = storage_get_i64(&ctx, escrow_id, KEY_STATUS);
         if status != STATUS_ACTIVE {
             return false;
         }
-        let arbiter = match storage_get_bytes(&ctx, &escrow_key(escrow_id, ARBITER_SUFFIX)) {
-            Some(b) => b,
-            None => return false,
-        };
-        let payee = match storage_get_bytes(&ctx, &escrow_key(escrow_id, PAYEE_SUFFIX)) {
-            Some(b) => b,
-            None => return false,
-        };
-        if caller.as_slice() != arbiter.as_slice() && caller.as_slice() != payee.as_slice() {
+        let arbiter = storage_get_i64(&ctx, escrow_id, KEY_ARBITER);
+        let payee = storage_get_i64(&ctx, escrow_id, KEY_PAYEE);
+        if caller != arbiter && caller != payee {
             return false;
         }
-        storage_put_u8(&ctx, &escrow_key(escrow_id, STATUS_SUFFIX), STATUS_REFUNDED);
+        storage_put_i64(&ctx, escrow_id, KEY_STATUS, STATUS_REFUNDED);
         let _ = (EscrowRefunded {
             escrow_id: NeoInteger::new(escrow_id),
         })
@@ -265,22 +194,22 @@ impl NeoEscrowContract {
     }
 
     /// Return escrow state via notify: [status, amount, release_h, refund_h]
-    #[neo_method(name = "getState")]
+    #[neo_method(safe, name = "getState")]
     pub fn get_state(escrow_id: i64) {
         let ctx = match NeoStorage::get_context().ok() {
             Some(c) => c,
             None => return,
         };
-        let status = match storage_get_u8(&ctx, &escrow_key(escrow_id, STATUS_SUFFIX)) {
-            Some(s) => s,
-            None => return,
-        };
-        let amount = storage_get_i64(&ctx, &escrow_key(escrow_id, AMOUNT_SUFFIX)).unwrap_or(0);
-        let release_h = storage_get_i64(&ctx, &escrow_key(escrow_id, RELEASE_HEIGHT_SUFFIX)).unwrap_or(0);
-        let refund_h = storage_get_i64(&ctx, &escrow_key(escrow_id, REFUND_HEIGHT_SUFFIX)).unwrap_or(0);
+        let status = storage_get_i64(&ctx, escrow_id, KEY_STATUS);
+        if status == 0 {
+            return;
+        }
+        let amount = storage_get_i64(&ctx, escrow_id, KEY_AMOUNT);
+        let release_h = storage_get_i64(&ctx, escrow_id, KEY_RELEASE_HEIGHT);
+        let refund_h = storage_get_i64(&ctx, escrow_id, KEY_REFUND_HEIGHT);
         let label = NeoString::from_str("getState");
         let mut state = NeoArray::new();
-        state.push(NeoValue::from(NeoInteger::new(status as i64)));
+        state.push(NeoValue::from(NeoInteger::new(status)));
         state.push(NeoValue::from(NeoInteger::new(amount)));
         state.push(NeoValue::from(NeoInteger::new(release_h)));
         state.push(NeoValue::from(NeoInteger::new(refund_h)));
@@ -299,8 +228,55 @@ impl Default for NeoEscrowContract {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn contract_compiles() {
         // Compilation test - verifies contract module parses correctly
+    }
+
+    #[test]
+    fn configure_rejects_invalid_inputs() {
+        // escrow_id must be > 0
+        assert!(!NeoEscrowContract::configure(0, 1, 2, 3, 4, 100, 10, 20));
+        // amount must be > 0
+        assert!(!NeoEscrowContract::configure(1, 1, 2, 3, 4, 0, 10, 20));
+        // release_height must be >= 0
+        assert!(!NeoEscrowContract::configure(1, 1, 2, 3, 4, 100, -1, 20));
+        // refund_height must be >= release_height
+        assert!(!NeoEscrowContract::configure(1, 1, 2, 3, 4, 100, 20, 10));
+        // payer must be > 0
+        assert!(!NeoEscrowContract::configure(1, 0, 2, 3, 4, 100, 10, 20));
+        // payee must be > 0
+        assert!(!NeoEscrowContract::configure(1, 1, 0, 3, 4, 100, 10, 20));
+        // arbiter must be > 0
+        assert!(!NeoEscrowContract::configure(1, 1, 2, 0, 4, 100, 10, 20));
+        // token must be > 0
+        assert!(!NeoEscrowContract::configure(1, 1, 2, 3, 0, 100, 10, 20));
+    }
+
+    #[test]
+    fn release_rejects_invalid_inputs() {
+        assert!(!NeoEscrowContract::release(0, 1));
+        assert!(!NeoEscrowContract::release(1, 0));
+    }
+
+    #[test]
+    fn refund_rejects_invalid_inputs() {
+        assert!(!NeoEscrowContract::refund(0, 1));
+        assert!(!NeoEscrowContract::refund(1, 0));
+    }
+
+    #[test]
+    fn make_key_deterministic() {
+        let k1 = make_key(1, KEY_PAYER);
+        let k2 = make_key(1, KEY_PAYER);
+        assert_eq!(k1.as_slice(), k2.as_slice());
+        // Different field produces different key
+        let k3 = make_key(1, KEY_PAYEE);
+        assert_ne!(k1.as_slice(), k3.as_slice());
+        // Different escrow_id produces different key
+        let k4 = make_key(2, KEY_PAYER);
+        assert_ne!(k1.as_slice(), k4.as_slice());
     }
 }

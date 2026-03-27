@@ -90,7 +90,119 @@ impl RuntimeHelpers {
             }
         }
 
+        // Realize param normalization helpers (must come before sign-extend so they can reference it)
+        if !self.param_normalize_i32_helper.calls.is_empty() {
+            let offset = self.realize_param_normalize_helper(script, 32)?;
+            for &call_pos in &self.param_normalize_i32_helper.calls.clone() {
+                patch_call(script, call_pos, offset)?;
+            }
+        }
+        if !self.param_normalize_i64_helper.calls.is_empty() {
+            let offset = self.realize_param_normalize_helper(script, 64)?;
+            for &call_pos in &self.param_normalize_i64_helper.calls.clone() {
+                patch_call(script, call_pos, offset)?;
+            }
+        }
+
+        // Realize sign-extension helpers
+        if !self.sign_extend_32_helper.calls.is_empty() {
+            let offset = self.realize_sign_extend_helper(script, 32)?;
+            for &call_pos in &self.sign_extend_32_helper.calls.clone() {
+                patch_call(script, call_pos, offset)?;
+            }
+        }
+        if !self.sign_extend_64_helper.calls.is_empty() {
+            let offset = self.realize_sign_extend_helper(script, 64)?;
+            for &call_pos in &self.sign_extend_64_helper.calls.clone() {
+                patch_call(script, call_pos, offset)?;
+            }
+        }
+
         Ok(())
+    }
+
+    /// Emit the body for the param normalization helper.
+    /// Input: top-of-stack is the raw parameter value.
+    /// Output: top-of-stack is the normalized integer value.
+    ///
+    /// Sequence: DUP, ISNULL, JMPIFNOT, DROP, PUSH0, JMP, DUP, ISTYPE ByteString,
+    ///           JMPIFNOT, CONVERT Integer, CALL sign_extend_helper, RET
+    fn realize_param_normalize_helper(
+        &mut self,
+        script: &mut Vec<u8>,
+        bits: u32,
+    ) -> Result<usize> {
+        let offset = script.len();
+
+        // DUP + ISNULL + JMPIFNOT (skip null path)
+        script.push(lookup_opcode("DUP")?.byte);
+        script.push(lookup_opcode("ISNULL")?.byte);
+        let not_null_fixup = emit_jump_placeholder(script, "JMPIFNOT_L")?;
+
+        // Null path: DROP, PUSH0, RET (0 is already sign-extended, skip sign-extend)
+        script.push(lookup_opcode("DROP")?.byte);
+        let _ = emit_push_int(script, 0);
+        script.push(lookup_opcode("RET")?.byte);
+
+        // Not-null label
+        let not_null_label = script.len();
+        patch_jump(script, not_null_fixup, not_null_label)?;
+
+        // Type check: DUP, ISTYPE ByteString, JMPIFNOT (skip convert)
+        script.push(lookup_opcode("DUP")?.byte);
+        script.push(lookup_opcode("ISTYPE")?.byte);
+        script.push(0x28); // StackItemType.ByteString
+        let not_bytes_fixup = emit_jump_placeholder(script, "JMPIFNOT_L")?;
+        script.push(lookup_opcode("CONVERT")?.byte);
+        script.push(0x21); // StackItemType.Integer
+
+        let not_bytes_label = script.len();
+        patch_jump(script, not_bytes_fixup, not_bytes_label)?;
+
+        // Tail-call to sign-extend helper via JMP (saves 1 byte vs CALL+RET).
+        // The sign-extend helper's RET returns directly to our caller.
+        let sign_ext_jump = emit_jump_placeholder(script, "JMP_L")?;
+        if bits == 32 {
+            self.sign_extend_32_helper.calls.push(sign_ext_jump);
+        } else {
+            self.sign_extend_64_helper.calls.push(sign_ext_jump);
+        }
+
+        Ok(offset)
+    }
+
+    /// Emit the body for the sign-extension helper.
+    /// Input: top-of-stack is the value to sign-extend.
+    /// Output: top-of-stack is the sign-extended value.
+    fn realize_sign_extend_helper(
+        &self,
+        script: &mut Vec<u8>,
+        bits: u32,
+    ) -> Result<usize> {
+        let offset = script.len();
+
+        // mask_top_bits: value AND ((1 << bits) - 1)
+        let _ = emit_push_int(script, 1);
+        let _ = emit_push_int(script, bits as i128);
+        script.push(lookup_opcode("SHL")?.byte);
+        script.push(lookup_opcode("DEC")?.byte);
+        script.push(lookup_opcode("AND")?.byte);
+
+        // sign extension: (masked XOR sign_bit) - sign_bit
+        // where sign_bit = 1 << (bits - 1)
+        let _ = emit_push_int(script, 1);
+        let _ = emit_push_int(script, (bits - 1) as i128);
+        script.push(lookup_opcode("SHL")?.byte);
+        // Stack: [masked_value, sign_bit]
+        script.push(lookup_opcode("SWAP")?.byte);
+        script.push(lookup_opcode("OVER")?.byte);
+        script.push(lookup_opcode("XOR")?.byte);
+        script.push(lookup_opcode("SWAP")?.byte);
+        script.push(lookup_opcode("SUB")?.byte);
+
+        script.push(lookup_opcode("RET")?.byte);
+
+        Ok(offset)
     }
 
     fn realize_memory_helper(
@@ -292,6 +404,7 @@ impl RuntimeHelpers {
             StackValue {
                 const_value: None,
                 bytecode_start: None,
+                pending_sign_extend: None,
             };
             helper_type.params().len()
         ];

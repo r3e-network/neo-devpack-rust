@@ -57,31 +57,44 @@ fn translate_if_else_structure() {
     .expect("valid wat");
 
     let translation = translate_module(&wasm, "Cond").expect("translation succeeds");
-    let jmp_if_not = wasm_neovm::opcodes::lookup("JMPIFNOT_L").unwrap().byte;
-    let jmp = wasm_neovm::opcodes::lookup("JMP_L").unwrap().byte;
+    let jmp_if_not_l = wasm_neovm::opcodes::lookup("JMPIFNOT_L").unwrap().byte;
+    let jmp_if_not_s = wasm_neovm::opcodes::lookup("JMPIFNOT").unwrap().byte;
+    let jmp_l = wasm_neovm::opcodes::lookup("JMP_L").unwrap().byte;
+    let jmp_s = wasm_neovm::opcodes::lookup("JMP").unwrap().byte;
 
+    // Find the JMPIFNOT (long or short form) emitted by the if construct
     let jmp_if_not_pos = translation
         .script
         .iter()
-        .position(|&b| b == jmp_if_not)
-        .expect("if should emit JMPIFNOT_L");
+        .position(|&b| b == jmp_if_not_l || b == jmp_if_not_s)
+        .expect("if should emit JMPIFNOT");
+    let is_long_jmpifnot = translation.script[jmp_if_not_pos] == jmp_if_not_l;
+
+    // Find the JMP (long or short) for else branch
+    let skip = if is_long_jmpifnot { jmp_if_not_pos + 5 } else { jmp_if_not_pos + 2 };
     let jmp_pos = translation
         .script
         .iter()
         .enumerate()
-        .skip(jmp_if_not_pos + 1)
-        .find_map(|(idx, &byte)| if byte == jmp { Some(idx) } else { None })
-        .expect("then branch should emit JMP_L over else body");
+        .skip(skip)
+        .find_map(|(idx, &byte)| if byte == jmp_l || byte == jmp_s { Some(idx) } else { None })
+        .expect("then branch should emit JMP over else body");
+    let is_long_jmp = translation.script[jmp_pos] == jmp_l;
 
-    let if_not_offset = i32::from_le_bytes(
-        translation.script[jmp_if_not_pos + 1..jmp_if_not_pos + 5]
-            .try_into()
-            .expect("valid JMPIFNOT_L operand"),
-    );
+    let if_not_offset = if is_long_jmpifnot {
+        i32::from_le_bytes(
+            translation.script[jmp_if_not_pos + 1..jmp_if_not_pos + 5]
+                .try_into()
+                .expect("valid JMPIFNOT_L operand"),
+        )
+    } else {
+        translation.script[jmp_if_not_pos + 1] as i8 as i32
+    };
     let if_not_target = (jmp_if_not_pos as i32 + if_not_offset) as usize;
+    let jmp_instr_size = if is_long_jmp { 5 } else { 2 };
     assert_eq!(
         if_not_target,
-        jmp_pos + 5,
+        jmp_pos + jmp_instr_size,
         "if-false jump must land at ELSE body start"
     );
     assert_eq!(translation.script.last().copied(), Some(0x40));
@@ -105,11 +118,12 @@ fn translate_br_table_dynamic() {
     let translation = translate_module(&wasm, "Dispatch").expect("translation succeeds");
 
     let dup = wasm_neovm::opcodes::lookup("DUP").unwrap().byte;
-    let jmp_if = wasm_neovm::opcodes::lookup("JMPIF_L").unwrap().byte;
+    let jmp_if_l = wasm_neovm::opcodes::lookup("JMPIF_L").unwrap().byte;
+    let jmp_if_s = wasm_neovm::opcodes::lookup("JMPIF").unwrap().byte;
     let drop = wasm_neovm::opcodes::lookup("DROP").unwrap().byte;
 
     assert!(translation.script.contains(&dup));
-    assert!(translation.script.contains(&jmp_if));
+    assert!(translation.script.contains(&jmp_if_l) || translation.script.contains(&jmp_if_s));
 
     // Ensure there is at least one DROP to clear the index before branching.
     assert!(translation.script.iter().filter(|&&b| b == drop).count() >= 2);

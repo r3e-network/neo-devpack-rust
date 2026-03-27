@@ -44,8 +44,9 @@ fn translate_table_multiple_tables_supported() {
     );
 
     let call_l = opcodes::lookup("CALL_L").unwrap().byte;
+    let call_s = opcodes::lookup("CALL").unwrap().byte;
     assert!(
-        translation.script.contains(&call_l),
+        translation.script.contains(&call_l) || translation.script.contains(&call_s),
         "expected helper calls for table operations in script"
     );
 }

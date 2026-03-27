@@ -6,7 +6,7 @@ use super::*;
 pub(super) fn try_handle(
     op: &Operator,
     script: &mut Vec<u8>,
-    _runtime: &mut RuntimeHelpers,
+    runtime: &mut RuntimeHelpers,
     value_stack: &mut Vec<StackValue>,
 ) -> Result<bool> {
     match op {
@@ -18,7 +18,7 @@ pub(super) fn try_handle(
                 let shift = (b as u32) & 31;
                 Some(((a as i32) << shift) as i128)
             })?;
-            let result = emit_sign_extend(script, result, 32, 32)?;
+            let result = emit_sign_extend_via_helper(script, runtime, result, 32, 32)?;
             value_stack.push(result);
             Ok(true)
         }
@@ -33,7 +33,7 @@ pub(super) fn try_handle(
             let rhs = super::pop_value(value_stack, "i32.shr_u rhs")?;
             let lhs = super::pop_value(value_stack, "i32.shr_u lhs")?;
             let result = emit_shift_right(script, lhs, rhs, 32, ShiftKind::Logical)?;
-            let result = emit_sign_extend(script, result, 32, 32)?;
+            let result = emit_sign_extend_via_helper(script, runtime, result, 32, 32)?;
             value_stack.push(result);
             Ok(true)
         }
@@ -41,7 +41,7 @@ pub(super) fn try_handle(
             let rhs = super::pop_value(value_stack, "i32.rotl rhs")?;
             let lhs = super::pop_value(value_stack, "i32.rotl lhs")?;
             let result = emit_rotate(script, lhs, rhs, 32, true)?;
-            let result = emit_sign_extend(script, result, 32, 32)?;
+            let result = emit_sign_extend_via_helper(script, runtime, result, 32, 32)?;
             value_stack.push(result);
             Ok(true)
         }
@@ -49,7 +49,7 @@ pub(super) fn try_handle(
             let rhs = super::pop_value(value_stack, "i32.rotr rhs")?;
             let lhs = super::pop_value(value_stack, "i32.rotr lhs")?;
             let result = emit_rotate(script, lhs, rhs, 32, false)?;
-            let result = emit_sign_extend(script, result, 32, 32)?;
+            let result = emit_sign_extend_via_helper(script, runtime, result, 32, 32)?;
             value_stack.push(result);
             Ok(true)
         }
@@ -61,7 +61,7 @@ pub(super) fn try_handle(
                 let shift = (b as u32) & 63;
                 Some(((a as i64) << shift) as i128)
             })?;
-            let result = emit_sign_extend(script, result, 64, 64)?;
+            let result = emit_sign_extend_via_helper(script, runtime, result, 64, 64)?;
             value_stack.push(result);
             Ok(true)
         }
@@ -76,7 +76,7 @@ pub(super) fn try_handle(
             let rhs = super::pop_value(value_stack, "i64.shr_u rhs")?;
             let lhs = super::pop_value(value_stack, "i64.shr_u lhs")?;
             let result = emit_shift_right(script, lhs, rhs, 64, ShiftKind::Logical)?;
-            let result = emit_sign_extend(script, result, 64, 64)?;
+            let result = emit_sign_extend_via_helper(script, runtime, result, 64, 64)?;
             value_stack.push(result);
             Ok(true)
         }
@@ -84,7 +84,7 @@ pub(super) fn try_handle(
             let rhs = super::pop_value(value_stack, "i64.rotl rhs")?;
             let lhs = super::pop_value(value_stack, "i64.rotl lhs")?;
             let result = emit_rotate(script, lhs, rhs, 64, true)?;
-            let result = emit_sign_extend(script, result, 64, 64)?;
+            let result = emit_sign_extend_via_helper(script, runtime, result, 64, 64)?;
             value_stack.push(result);
             Ok(true)
         }
@@ -92,7 +92,7 @@ pub(super) fn try_handle(
             let rhs = super::pop_value(value_stack, "i64.rotr rhs")?;
             let lhs = super::pop_value(value_stack, "i64.rotr lhs")?;
             let result = emit_rotate(script, lhs, rhs, 64, false)?;
-            let result = emit_sign_extend(script, result, 64, 64)?;
+            let result = emit_sign_extend_via_helper(script, runtime, result, 64, 64)?;
             value_stack.push(result);
             Ok(true)
         }

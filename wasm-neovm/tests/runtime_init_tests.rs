@@ -73,9 +73,10 @@ fn start_only_export_uses_init_stub() {
     };
 
     let jmpif_l = opcodes::lookup("JMPIF_L").unwrap().byte;
-    assert_eq!(
-        script.get(jump_pos),
-        Some(&jmpif_l),
+    let jmpif_s = opcodes::lookup("JMPIF").unwrap().byte;
+    let jump_byte = script.get(jump_pos).copied();
+    assert!(
+        jump_byte == Some(jmpif_l) || jump_byte == Some(jmpif_s),
         "stub should gate init/start on INIT_FLAG"
     );
 }
