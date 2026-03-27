@@ -90,6 +90,7 @@ impl DriverState {
         let was_suppressed = self.runtime.set_memory_init_suppressed(suppress_init);
         self.runtime.reset_function_init_emitted();
 
+        let is_exported = maybe_export.is_some();
         let mut ctx = TranslationContext {
             func_type,
             body: &body,
@@ -105,6 +106,7 @@ impl DriverState {
             function_name,
             features: &mut self.feature_tracker,
             adapter: self.adapter.as_ref(),
+            is_exported,
         };
         let translation_result = translate_function(&mut ctx);
         self.runtime.set_memory_init_suppressed(was_suppressed);

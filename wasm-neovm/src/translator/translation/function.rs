@@ -32,6 +32,9 @@ pub struct TranslationContext<'a> {
     pub function_name: &'a str,
     pub features: &'a mut FeatureTracker,
     pub adapter: &'a dyn ChainAdapter,
+    /// Whether this function is exported (callable by Neo runtime with arbitrary types).
+    /// Non-exported functions are only called from Wasm code and can skip param normalization.
+    pub is_exported: bool,
 }
 
 const ON_NEP17_PAYMENT_CONFIG_SLOT_COUNT: u32 = 1;
@@ -510,7 +513,10 @@ pub(super) fn translate_function(ctx: &mut TranslationContext<'_>) -> Result<Str
     //
     // Some Neo entry points carry non-integer stack items (`Any`/`Hash160`) in practice.
     // For those methods, integer coercion can fault before contract logic runs.
-    let skip_param_normalization = is_deploy_entry || is_on_nep17_payment || is_check_witness_probe;
+    let skip_param_normalization = !ctx.is_exported
+        || is_deploy_entry
+        || is_on_nep17_payment
+        || is_check_witness_probe;
 
     if !skip_param_normalization {
         for (index, ty) in params.iter().enumerate() {
