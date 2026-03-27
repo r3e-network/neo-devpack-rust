@@ -66,8 +66,9 @@ pub(super) fn emit_runtime_init_helper(
         script.push(lookup_opcode("STSFLD3")?.byte);
     }
 
-    script.push(lookup_opcode("PUSH0")?.byte);
-    emit_store_static(script, INIT_FLAG_SLOT)?;
+    // NeoVM's INITSSLOT initializes all static slots to null, which is falsy.
+    // The init guard (LDSFLD + JMPIF) correctly treats null as "not initialized".
+    // No need to explicitly set init_flag = 0.
 
     for table in tables {
         let len = table.entries.len();
