@@ -10,6 +10,20 @@ this repository follow independent versioning (currently 0.1.x).
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-03-27
+
+### Performance — NEF Size Optimization (final)
+
+Completes the NEF optimization campaign with **42% total bytecode reduction** from v0.5.0.
+21 optimizations implemented. `simple_add(i32,i32)->i32` dropped from 86 to 34 bytes (60%).
+
+- **Remove redundant null check**: NeoVM's CONVERT Integer already handles Null→Integer(0), making the explicit DUP+ISNULL+JMPIFNOT+DROP+PUSH0+RET check (7 bytes) completely redundant. Param normalize helper shrinks from 8B to 2B.
+- **TUCK-based inline sign-extend for 9+ bit widths**: apply the same TUCK optimization from the shared helper to inline `emit_sign_extend`, saving 1 byte per 16/32/64-bit inline sign-extension.
+
+### Testing
+
+- 859+ tests across the workspace.
+
 ## [0.5.2] - 2026-03-27
 
 ### Performance — NEF Size Optimization (continued)
