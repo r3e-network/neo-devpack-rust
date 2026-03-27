@@ -179,25 +179,15 @@ impl RuntimeHelpers {
     ) -> Result<usize> {
         let offset = script.len();
 
-        // DUP + ISNULL + JMPIFNOT (skip null path)
-        script.push(lookup_opcode("DUP")?.byte);
-        script.push(lookup_opcode("ISNULL")?.byte);
-        let not_null_fixup = emit_jump_placeholder(script, "JMPIFNOT_L")?;
-
-        // Null path: DROP, PUSH0, RET (0 is already sign-extended)
-        script.push(lookup_opcode("DROP")?.byte);
-        let _ = emit_push_int(script, 0);
-        script.push(lookup_opcode("RET")?.byte);
-
-        // Not-null label
-        let not_null_label = script.len();
-        patch_jump(script, not_null_fixup, not_null_label)?;
-
-        // Convert to Integer unconditionally, then fall through to sign-extend
+        // CONVERT Integer handles all type coercions:
+        //   Null → Integer(0)
+        //   ByteString → Integer (little-endian decode)
+        //   Integer → Integer (no-op)
+        // No explicit null check needed — NeoVM CONVERT does it all.
         script.push(lookup_opcode("CONVERT")?.byte);
         script.push(0x21); // StackItemType.Integer
 
-        // No JMP or RET — execution falls through to the sign-extend body
+        // Falls through to sign-extend body
         Ok(offset)
     }
 
