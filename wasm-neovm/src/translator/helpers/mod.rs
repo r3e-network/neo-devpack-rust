@@ -19,6 +19,7 @@ pub(crate) use mask::emit_mask_u32;
 pub(crate) use opcode::lookup_opcode;
 pub(crate) use push::{emit_push_data, emit_push_int};
 pub(crate) use statics::{emit_load_static, emit_store_static};
+#[allow(unused_imports)]
 pub(crate) use try_instructions::{
     emit_endtry_placeholder, emit_try_placeholder, patch_endtry, patch_try_catch,
 };

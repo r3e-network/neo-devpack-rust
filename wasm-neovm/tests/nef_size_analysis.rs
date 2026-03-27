@@ -326,3 +326,29 @@ fn nef_multi_function_detail() {
         pc += size;
     }
 }
+
+#[test]
+fn nef_factorial_detail() {
+    let wasm = wat::parse_str(r#"(module
+        (func $fac (param i32) (result i32)
+            local.get 0 i32.const 1 i32.le_s
+            if (result i32) i32.const 1
+            else local.get 0 local.get 0 i32.const 1 i32.sub call $fac i32.mul end)
+        (func (export "main") (result i32) i32.const 10 call $fac))"#)
+    .expect("valid wat");
+    let t = translate_module(&wasm, "recursive_factorial").expect("translate");
+    let table = build_opcode_table();
+    eprintln!("\n=== recursive_factorial detail ({} bytes) ===", t.script.len());
+    let mut pc = 0usize;
+    while pc < t.script.len() {
+        let byte = t.script[pc];
+        let info = table[byte as usize];
+        let (iname, size) = match info {
+            Some(i) => { let s = if i.operand_size_prefix == 0 { 1 + i.operand_size as usize } else { let ps = pc+1; let pf = i.operand_size_prefix as usize; let ol = match pf { 1 => t.script.get(ps).copied().unwrap_or(0) as usize, _ => 0 }; 1 + pf + ol }; (i.name, s) }
+            None => ("???", 1),
+        };
+        let hex: String = t.script[pc..pc+size.min(t.script.len()-pc)].iter().map(|b| format!("{b:02X}")).collect::<Vec<_>>().join(" ");
+        eprintln!("  {pc:4}: {hex:20} {iname}");
+        pc += size;
+    }
+}

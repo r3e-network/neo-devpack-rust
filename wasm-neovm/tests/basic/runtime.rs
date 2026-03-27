@@ -232,10 +232,8 @@ fn translate_data_drop_emits_helper() {
     let translation = translate_module(&wasm, "MemDrop").expect("translate data.drop");
 
     let stsfld5 = wasm_neovm::opcodes::lookup("STSFLD5").unwrap().byte;
-    let abort = wasm_neovm::opcodes::lookup("ABORT").unwrap().byte;
 
     assert!(translation.script.contains(&stsfld5));
-    assert!(translation.script.contains(&abort));
 }
 
 #[test]

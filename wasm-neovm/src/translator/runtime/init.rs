@@ -1,6 +1,7 @@
 // Copyright (c) 2025-2026 R3E Network
 // SPDX-License-Identifier: MIT
 
+#[allow(unused_imports)]
 use super::*;
 
 #[allow(clippy::too_many_arguments)]
@@ -19,7 +20,9 @@ pub(super) fn emit_runtime_init_helper(
     types: &[FuncType],
     adapter: &dyn ChainAdapter,
 ) -> Result<Option<usize>> {
-    let try_pos = emit_try_placeholder(script)?;
+    // No TRY/CATCH wrapper needed: the init guard (LDSFLD + JMPIF) at each call site
+    // ensures this helper runs exactly once. INITSSLOT cannot throw on first call, and
+    // the guard prevents subsequent calls after the init flag is set.
     if static_slot_count > u8::MAX as usize {
         bail!("too many static slots required for runtime initialisation");
     }
@@ -167,21 +170,6 @@ pub(super) fn emit_runtime_init_helper(
         let skip_label = script.len();
         patch_jump(script, skip_start, skip_label)?;
     }
-
-    let endtry_pos = emit_endtry_placeholder(script)?;
-    let skip_catch_jump = emit_jump_placeholder(script, "JMP_L")?;
-
-    let catch_pos = script.len();
-    script.push(lookup_opcode("DROP")?.byte);
-    let catch_endtry_pos = emit_endtry_placeholder(script)?;
-    script.push(lookup_opcode("ABORT")?.byte);
-
-    let end_label = script.len();
-
-    patch_try_catch(script, try_pos, catch_pos)?;
-    patch_endtry(script, endtry_pos, end_label)?;
-    patch_endtry(script, catch_endtry_pos, end_label)?;
-    patch_jump(script, skip_catch_jump, end_label)?;
 
     let _ = emit_push_int(script, 1);
     emit_store_static(script, INIT_FLAG_SLOT)?;

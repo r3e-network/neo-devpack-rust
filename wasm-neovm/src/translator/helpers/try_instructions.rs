@@ -1,6 +1,8 @@
 // Copyright (c) 2025-2026 R3E Network
 // SPDX-License-Identifier: MIT
 
+#![allow(dead_code)]
+
 use anyhow::{bail, Result};
 
 use super::lookup_opcode;
