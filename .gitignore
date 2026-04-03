@@ -3,6 +3,8 @@ target/
 **/target/
 build/
 artifacts/
+dist/
+.astro/
 *.nef
 *.manifest.json
 
@@ -37,3 +39,10 @@ neo/
 .claude-flow/
 .hive-mind/
 .worktrees/
+/package.json
+/package-lock.json
+
+# Generated package-manager artefacts
+node_modules/
+**/node_modules/
+/website/package-lock.json
