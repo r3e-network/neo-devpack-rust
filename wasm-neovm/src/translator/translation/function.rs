@@ -513,10 +513,8 @@ pub(super) fn translate_function(ctx: &mut TranslationContext<'_>) -> Result<Str
     //
     // Some Neo entry points carry non-integer stack items (`Any`/`Hash160`) in practice.
     // For those methods, integer coercion can fault before contract logic runs.
-    let skip_param_normalization = !ctx.is_exported
-        || is_deploy_entry
-        || is_on_nep17_payment
-        || is_check_witness_probe;
+    let skip_param_normalization =
+        !ctx.is_exported || is_deploy_entry || is_on_nep17_payment || is_check_witness_probe;
 
     if !skip_param_normalization {
         for (index, ty) in params.iter().enumerate() {

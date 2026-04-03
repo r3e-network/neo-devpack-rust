@@ -5,6 +5,7 @@ MAKEFLAGS += --no-builtin-rules
 
 WASM_TARGET       := wasm32-unknown-unknown
 OUTDIR            := build
+CONTRACT_TEST_TARGET_ROOT := $(CURDIR)/target/contract-tests
 TRANSLATOR        := cargo run --manifest-path wasm-neovm/Cargo.toml --quiet --
 
 CONTRACT_RUSTFLAGS := -C opt-level=z -C strip=symbols -C panic=abort -C target-feature=-simd128,-reference-types,-multivalue,-tail-call
@@ -76,7 +77,7 @@ PACKAGE_MANIFESTS := \
 	move-neovm/Cargo.toml \
 	solana-compat/Cargo.toml
 
-.PHONY: help examples cross-chain hello-world nep17-token constant-product nep11-nft uniswap-v2 staking-rewards timelock-vault flashloan-pool multisig-wallet escrow crowdfunding governance-dao oracle-consumer nft-marketplace solana-hello move-coin c-hello fmt lint test verify-contract-tests test-contracts test-cross-chain integration-tests smoke-neoxp security-check package-check spec clean fuzz fuzz-translate fuzz-translate-config fuzz-nef fuzz-numeric fuzz-all
+.PHONY: help examples cross-chain hello-world nep17-token constant-product nep11-nft uniswap-v2 staking-rewards timelock-vault flashloan-pool multisig-wallet escrow crowdfunding governance-dao oracle-consumer nft-marketplace solana-hello move-coin c-hello fmt lint test verify-contract-tests test-contracts test-cross-chain integration-tests smoke-neoxp security-check package-check spec clean fuzz fuzz-compiler fuzz-translate fuzz-translate-config fuzz-pipeline fuzz-nef fuzz-numeric fuzz-devpack-codec fuzz-syscall-surface fuzz-all
 
 help:
 	@echo "Usage: make <target>"
@@ -123,12 +124,16 @@ help:
 	@echo "  clean           Remove generated build artefacts"
 	@echo
 	@echo "Fuzz targets (requires cargo-fuzz + nightly):"
-	@echo "  fuzz             Run primary fuzz target (translate) for 5 minutes"
+	@echo "  fuzz             Run the primary structured pipeline fuzzer for 5 minutes"
+	@echo "  fuzz-compiler    Run compiler-focused fuzzers sequentially"
 	@echo "  fuzz-translate   Fuzz the WASM translator with arbitrary bytes"
 	@echo "  fuzz-translate-config  Fuzz translator with varied config fields"
+	@echo "  fuzz-pipeline    Fuzz structured contract pipeline templates + NEF/manifest invariants"
 	@echo "  fuzz-nef         Fuzz NEF serialization"
-	@echo "  fuzz-numeric     Fuzz numeric encoding (push_biginteger/push_bytevec)"
-	@echo "  fuzz-all         Run all fuzz targets sequentially"
+	@echo "  fuzz-numeric     Fuzz integer/varint/string/byte encoding helpers"
+	@echo "  fuzz-devpack-codec  Fuzz neo-devpack codec roundtrips and decoder failure paths"
+	@echo "  fuzz-syscall-surface Fuzz syscall alias/hash parity across translator and devpack"
+	@echo "  fuzz-all         Run the full fuzz bundle sequentially"
 
 examples: hello-world nep17-token constant-product nep11-nft uniswap-v2 staking-rewards timelock-vault flashloan-pool multisig-wallet escrow crowdfunding governance-dao oracle-consumer nft-marketplace c-hello-optional cross-chain
 
@@ -421,8 +426,11 @@ test-contracts:
 	$(MAKE) verify-contract-tests
 	@set -e; \
 	for manifest in $$(find contracts -name Cargo.toml ! -path 'contracts/Cargo.toml' | sort); do \
+		crate_dir="$$(dirname "$$manifest")"; \
+		crate_name="$$(basename "$$crate_dir")"; \
+		target_dir="$(CONTRACT_TEST_TARGET_ROOT)/$$crate_name"; \
 		echo "==> cargo test --manifest-path $$manifest"; \
-		cargo test --manifest-path "$$manifest" --quiet; \
+		CARGO_TARGET_DIR="$$target_dir" cargo test --manifest-path "$$manifest" --quiet; \
 	done
 
 test-cross-chain:
@@ -479,19 +487,27 @@ quality-check: fmt lint test security-check package-check version-check
 spec:
 	$(MAKE) -C spec
 
-fuzz: fuzz-translate  ## Run primary fuzz target (translate) for 5 minutes
+fuzz: fuzz-pipeline  ## Run primary structured pipeline fuzz target for 5 minutes
+fuzz-compiler: fuzz-translate fuzz-translate-config fuzz-pipeline fuzz-nef fuzz-numeric  ## Run compiler-focused fuzz bundle
 fuzz-translate:
 	cd wasm-neovm && cargo +nightly fuzz run fuzz_translate -- -max_total_time=300
 fuzz-translate-config:
 	cd wasm-neovm && cargo +nightly fuzz run fuzz_translate_config -- -max_total_time=300
+fuzz-pipeline:
+	cd wasm-neovm && cargo +nightly fuzz run fuzz_structured_pipeline -- -max_total_time=300
 fuzz-nef:
 	cd wasm-neovm && cargo +nightly fuzz run fuzz_nef -- -max_total_time=300
 fuzz-numeric:
 	cd wasm-neovm && cargo +nightly fuzz run fuzz_numeric -- -max_total_time=300
-fuzz-all: fuzz-translate fuzz-translate-config fuzz-nef fuzz-numeric  ## Run all fuzz targets sequentially
+fuzz-devpack-codec:
+	cd wasm-neovm && cargo +nightly fuzz run fuzz_devpack_codec -- -max_total_time=300
+fuzz-syscall-surface:
+	cd wasm-neovm && cargo +nightly fuzz run fuzz_syscall_surface -- -max_total_time=300
+fuzz-all: fuzz-compiler fuzz-devpack-codec fuzz-syscall-surface  ## Run all fuzz targets sequentially
 
 clean:
 	rm -rf $(OUTDIR)
+	rm -rf $(CONTRACT_TEST_TARGET_ROOT)
 	rm -rf contracts/hello-world/target contracts/nep17-token/target contracts/constant-product/target \
 	       contracts/nep11-nft/target contracts/uniswap-v2/target contracts/staking-rewards/target \
 	       contracts/timelock-vault/target contracts/flashloan-pool/target contracts/multisig-wallet/target contracts/escrow/target \

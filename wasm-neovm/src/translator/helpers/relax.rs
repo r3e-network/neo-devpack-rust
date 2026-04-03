@@ -68,8 +68,13 @@ fn instr_size(script: &[u8], pc: usize, table: &[Option<&opcodes::OpcodeInfo>; 2
         1 => script[ps] as usize,
         2 => u16::from_le_bytes([script[ps], script[ps + 1]]) as usize,
         4 => {
-            let raw = i32::from_le_bytes([script[ps], script[ps + 1], script[ps + 2], script[ps + 3]]);
-            if raw < 0 { 0 } else { raw as usize }
+            let raw =
+                i32::from_le_bytes([script[ps], script[ps + 1], script[ps + 2], script[ps + 3]]);
+            if raw < 0 {
+                0
+            } else {
+                raw as usize
+            }
         }
         _ => 0,
     };
@@ -77,7 +82,12 @@ fn instr_size(script: &[u8], pc: usize, table: &[Option<&opcodes::OpcodeInfo>; 2
 }
 
 fn read_i32_le(script: &[u8], pos: usize) -> i32 {
-    i32::from_le_bytes([script[pos], script[pos + 1], script[pos + 2], script[pos + 3]])
+    i32::from_le_bytes([
+        script[pos],
+        script[pos + 1],
+        script[pos + 2],
+        script[pos + 3],
+    ])
 }
 
 /// Build a per-byte shift table: shift[i] = total bytes removed by relaxed
@@ -120,7 +130,12 @@ pub fn relax_script(script: &[u8], method_offsets: &mut [u32]) -> Vec<u8> {
     while pc < script.len() {
         let size = instr_size(script, pc, &table);
         if let Some((_short_byte, short_size)) = long_to_short(script[pc]) {
-            candidates.push(Candidate { pc, orig_size: size, short_size, relaxed: false });
+            candidates.push(Candidate {
+                pc,
+                orig_size: size,
+                short_size,
+                relaxed: false,
+            });
         }
         pc += size;
     }
@@ -201,9 +216,8 @@ pub fn relax_script(script: &[u8], method_offsets: &mut [u32]) -> Vec<u8> {
         let opcode = script[pc];
 
         // Is this a relaxed candidate?
-        let is_relaxed_candidate = ci < candidates.len()
-            && candidates[ci].pc == pc
-            && candidates[ci].relaxed;
+        let is_relaxed_candidate =
+            ci < candidates.len() && candidates[ci].pc == pc && candidates[ci].relaxed;
         let is_candidate = ci < candidates.len() && candidates[ci].pc == pc;
         if is_candidate {
             ci += 1;
@@ -218,11 +232,15 @@ pub fn relax_script(script: &[u8], method_offsets: &mut [u32]) -> Vec<u8> {
                 let new_pc_i32 = remap(pc) as i32;
 
                 out.push(short_byte);
-                out.push(if catch_off == 0 { 0 } else {
+                out.push(if catch_off == 0 {
+                    0
+                } else {
                     let t = (pc as i32 + catch_off) as usize;
                     (remap(t) as i32 - new_pc_i32) as i8 as u8
                 });
-                out.push(if finally_off == 0 { 0 } else {
+                out.push(if finally_off == 0 {
+                    0
+                } else {
                     let t = (pc as i32 + finally_off) as usize;
                     (remap(t) as i32 - new_pc_i32) as i8 as u8
                 });
@@ -236,8 +254,14 @@ pub fn relax_script(script: &[u8], method_offsets: &mut [u32]) -> Vec<u8> {
             }
         } else {
             // Emit instruction, rewriting any offsets it contains.
-            let is_long = matches!(opcode, 0x23|0x25|0x27|0x29|0x2B|0x2D|0x2F|0x31|0x33|0x35|0x3E);
-            let is_short = matches!(opcode, 0x22|0x24|0x26|0x28|0x2A|0x2C|0x2E|0x30|0x32|0x34|0x3D);
+            let is_long = matches!(
+                opcode,
+                0x23 | 0x25 | 0x27 | 0x29 | 0x2B | 0x2D | 0x2F | 0x31 | 0x33 | 0x35 | 0x3E
+            );
+            let is_short = matches!(
+                opcode,
+                0x22 | 0x24 | 0x26 | 0x28 | 0x2A | 0x2C | 0x2E | 0x30 | 0x32 | 0x34 | 0x3D
+            );
 
             if is_long {
                 let off = read_i32_le(script, pc + 1);
@@ -275,11 +299,15 @@ pub fn relax_script(script: &[u8], method_offsets: &mut [u32]) -> Vec<u8> {
                 let finally_off = script[pc + 2] as i8 as i32;
                 let np = remap(pc) as i32;
                 out.push(opcode);
-                if catch_off == 0 { out.push(0); } else {
+                if catch_off == 0 {
+                    out.push(0);
+                } else {
                     let t = (pc as i32 + catch_off) as usize;
                     out.push((remap(t) as i32 - np) as i8 as u8);
                 }
-                if finally_off == 0 { out.push(0); } else {
+                if finally_off == 0 {
+                    out.push(0);
+                } else {
                     let t = (pc as i32 + finally_off) as usize;
                     out.push((remap(t) as i32 - np) as i8 as u8);
                 }

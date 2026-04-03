@@ -200,15 +200,14 @@ impl DriverState {
 
         // Peephole optimization pass: remove redundant instruction patterns.
         {
-            let mut method_offsets: Vec<u32> =
-                self.methods.iter().map(|m| m.offset).collect();
-            let optimized =
-                crate::translator::helpers::peephole::peephole_optimize(&self.script, &mut method_offsets);
+            let mut method_offsets: Vec<u32> = self.methods.iter().map(|m| m.offset).collect();
+            let optimized = crate::translator::helpers::peephole::peephole_optimize(
+                &self.script,
+                &mut method_offsets,
+            );
             if optimized.len() < self.script.len() {
                 self.script = optimized;
-                for (method, &new_offset) in
-                    self.methods.iter_mut().zip(method_offsets.iter())
-                {
+                for (method, &new_offset) in self.methods.iter_mut().zip(method_offsets.iter()) {
                     method.offset = new_offset;
                 }
             }
@@ -216,15 +215,12 @@ impl DriverState {
 
         // Relaxation pass: convert long-form jumps/calls to short-form where possible.
         {
-            let mut method_offsets: Vec<u32> =
-                self.methods.iter().map(|m| m.offset).collect();
+            let mut method_offsets: Vec<u32> = self.methods.iter().map(|m| m.offset).collect();
             let relaxed =
                 crate::translator::helpers::relax::relax_script(&self.script, &mut method_offsets);
             if relaxed.len() < self.script.len() {
                 self.script = relaxed;
-                for (method, &new_offset) in
-                    self.methods.iter_mut().zip(method_offsets.iter())
-                {
+                for (method, &new_offset) in self.methods.iter_mut().zip(method_offsets.iter()) {
                     method.offset = new_offset;
                 }
             }

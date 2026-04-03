@@ -39,7 +39,8 @@ fn translate_table_indirect_calls() {
     let call_indirect = opcodes::lookup("CALL_L").unwrap().byte;
     let call_indirect_s = opcodes::lookup("CALL").unwrap().byte;
     assert!(
-        translation.script.contains(&call_indirect) || translation.script.contains(&call_indirect_s),
+        translation.script.contains(&call_indirect)
+            || translation.script.contains(&call_indirect_s),
         "expected indirect call instruction"
     );
 }

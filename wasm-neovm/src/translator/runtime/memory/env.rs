@@ -3,7 +3,10 @@
 
 use super::super::*;
 
-pub(in crate::translator::runtime) fn emit_env_memcpy_helper(script: &mut Vec<u8>, mask_u32_offset: Option<usize>) -> Result<()> {
+pub(in crate::translator::runtime) fn emit_env_memcpy_helper(
+    script: &mut Vec<u8>,
+    mask_u32_offset: Option<usize>,
+) -> Result<()> {
     script.push(lookup_opcode("INITSLOT")?.byte);
     script.push(3);
     script.push(0);
@@ -13,15 +16,27 @@ pub(in crate::translator::runtime) fn emit_env_memcpy_helper(script: &mut Vec<u8
     script.push(lookup_opcode("STLOC0")?.byte);
 
     script.push(lookup_opcode("LDLOC2")?.byte);
-    if let Some(off) = mask_u32_offset { emit_call_to(script, off)?; } else { emit_mask_u32(script)?; }
+    if let Some(off) = mask_u32_offset {
+        emit_call_to(script, off)?;
+    } else {
+        emit_mask_u32(script)?;
+    }
     script.push(lookup_opcode("STLOC2")?.byte);
 
     script.push(lookup_opcode("LDLOC1")?.byte);
-    if let Some(off) = mask_u32_offset { emit_call_to(script, off)?; } else { emit_mask_u32(script)?; }
+    if let Some(off) = mask_u32_offset {
+        emit_call_to(script, off)?;
+    } else {
+        emit_mask_u32(script)?;
+    }
     script.push(lookup_opcode("STLOC1")?.byte);
 
     script.push(lookup_opcode("LDLOC0")?.byte);
-    if let Some(off) = mask_u32_offset { emit_call_to(script, off)?; } else { emit_mask_u32(script)?; }
+    if let Some(off) = mask_u32_offset {
+        emit_call_to(script, off)?;
+    } else {
+        emit_mask_u32(script)?;
+    }
     script.push(lookup_opcode("LDLOC2")?.byte);
     script.push(lookup_opcode("ADD")?.byte);
     script.push(lookup_opcode("LDSFLD1")?.byte);
@@ -37,7 +52,11 @@ pub(in crate::translator::runtime) fn emit_env_memcpy_helper(script: &mut Vec<u8
 
     script.push(lookup_opcode("LDSFLD0")?.byte);
     script.push(lookup_opcode("LDLOC0")?.byte);
-    if let Some(off) = mask_u32_offset { emit_call_to(script, off)?; } else { emit_mask_u32(script)?; }
+    if let Some(off) = mask_u32_offset {
+        emit_call_to(script, off)?;
+    } else {
+        emit_mask_u32(script)?;
+    }
     script.push(lookup_opcode("LDSFLD0")?.byte);
     script.push(lookup_opcode("LDLOC1")?.byte);
     script.push(lookup_opcode("LDLOC2")?.byte);
@@ -53,7 +72,10 @@ pub(in crate::translator::runtime) fn emit_env_memcpy_helper(script: &mut Vec<u8
     Ok(())
 }
 
-pub(in crate::translator::runtime) fn emit_env_memmove_helper(script: &mut Vec<u8>, mask_u32_offset: Option<usize>) -> Result<()> {
+pub(in crate::translator::runtime) fn emit_env_memmove_helper(
+    script: &mut Vec<u8>,
+    mask_u32_offset: Option<usize>,
+) -> Result<()> {
     script.push(lookup_opcode("INITSLOT")?.byte);
     script.push(6);
     script.push(0);
@@ -66,15 +88,27 @@ pub(in crate::translator::runtime) fn emit_env_memmove_helper(script: &mut Vec<u
     script.push(lookup_opcode("STLOC5")?.byte);
 
     script.push(lookup_opcode("LDLOC2")?.byte);
-    if let Some(off) = mask_u32_offset { emit_call_to(script, off)?; } else { emit_mask_u32(script)?; }
+    if let Some(off) = mask_u32_offset {
+        emit_call_to(script, off)?;
+    } else {
+        emit_mask_u32(script)?;
+    }
     script.push(lookup_opcode("STLOC2")?.byte);
 
     script.push(lookup_opcode("LDLOC1")?.byte);
-    if let Some(off) = mask_u32_offset { emit_call_to(script, off)?; } else { emit_mask_u32(script)?; }
+    if let Some(off) = mask_u32_offset {
+        emit_call_to(script, off)?;
+    } else {
+        emit_mask_u32(script)?;
+    }
     script.push(lookup_opcode("STLOC1")?.byte);
 
     script.push(lookup_opcode("LDLOC0")?.byte);
-    if let Some(off) = mask_u32_offset { emit_call_to(script, off)?; } else { emit_mask_u32(script)?; }
+    if let Some(off) = mask_u32_offset {
+        emit_call_to(script, off)?;
+    } else {
+        emit_mask_u32(script)?;
+    }
     script.push(lookup_opcode("STLOC0")?.byte);
 
     script.push(lookup_opcode("LDLOC0")?.byte);
@@ -161,7 +195,10 @@ pub(in crate::translator::runtime) fn emit_env_memmove_helper(script: &mut Vec<u
     Ok(())
 }
 
-pub(in crate::translator::runtime) fn emit_env_memset_helper(script: &mut Vec<u8>, mask_u32_offset: Option<usize>) -> Result<()> {
+pub(in crate::translator::runtime) fn emit_env_memset_helper(
+    script: &mut Vec<u8>,
+    mask_u32_offset: Option<usize>,
+) -> Result<()> {
     script.push(lookup_opcode("INITSLOT")?.byte);
     script.push(4);
     script.push(0);
@@ -174,11 +211,19 @@ pub(in crate::translator::runtime) fn emit_env_memset_helper(script: &mut Vec<u8
     script.push(lookup_opcode("STLOC3")?.byte);
 
     script.push(lookup_opcode("LDLOC2")?.byte);
-    if let Some(off) = mask_u32_offset { emit_call_to(script, off)?; } else { emit_mask_u32(script)?; }
+    if let Some(off) = mask_u32_offset {
+        emit_call_to(script, off)?;
+    } else {
+        emit_mask_u32(script)?;
+    }
     script.push(lookup_opcode("STLOC2")?.byte);
 
     script.push(lookup_opcode("LDLOC0")?.byte);
-    if let Some(off) = mask_u32_offset { emit_call_to(script, off)?; } else { emit_mask_u32(script)?; }
+    if let Some(off) = mask_u32_offset {
+        emit_call_to(script, off)?;
+    } else {
+        emit_mask_u32(script)?;
+    }
     script.push(lookup_opcode("STLOC0")?.byte);
 
     script.push(lookup_opcode("LDLOC0")?.byte);

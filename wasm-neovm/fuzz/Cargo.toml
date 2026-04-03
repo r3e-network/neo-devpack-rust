@@ -12,7 +12,11 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4"
 arbitrary = { version = "1", features = ["derive"] }
+neo-devpack = { path = "../../rust-devpack" }
+neo-syscalls = { path = "../../rust-devpack/neo-syscalls" }
+serde = { version = "1", features = ["derive"] }
 tempfile = "3"
+wat = "1"
 wasm-neovm = { path = ".." }
 
 [[bin]]
@@ -33,4 +37,19 @@ doc = false
 [[bin]]
 name = "fuzz_numeric"
 path = "fuzz_targets/fuzz_numeric.rs"
+doc = false
+
+[[bin]]
+name = "fuzz_structured_pipeline"
+path = "fuzz_targets/fuzz_structured_pipeline.rs"
+doc = false
+
+[[bin]]
+name = "fuzz_devpack_codec"
+path = "fuzz_targets/fuzz_devpack_codec.rs"
+doc = false
+
+[[bin]]
+name = "fuzz_syscall_surface"
+path = "fuzz_targets/fuzz_syscall_surface.rs"
 doc = false

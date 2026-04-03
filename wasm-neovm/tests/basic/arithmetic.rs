@@ -190,7 +190,10 @@ fn translate_i32_signed_comparisons() {
     let and = wasm_neovm::opcodes::lookup("AND").unwrap().byte;
     let and_count = translation.script.iter().filter(|&&b| b == and).count();
     // ANDs may be in the shared sign-extend helper rather than inline
-    assert!(and_count >= 1, "expected parameter normalisation ANDs (inline or in helper)");
+    assert!(
+        and_count >= 1,
+        "expected parameter normalisation ANDs (inline or in helper)"
+    );
 }
 
 #[test]

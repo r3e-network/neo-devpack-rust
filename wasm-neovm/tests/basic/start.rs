@@ -39,9 +39,7 @@ fn translate_emits_start_call() {
     let call_l_byte = opcodes::lookup("CALL_L")
         .expect("CALL_L opcode available")
         .byte;
-    let call_s_byte = opcodes::lookup("CALL")
-        .expect("CALL opcode available")
-        .byte;
+    let call_s_byte = opcodes::lookup("CALL").expect("CALL opcode available").byte;
     let mut found_call = false;
     let script = &translation.script;
     let mut i = 0usize;

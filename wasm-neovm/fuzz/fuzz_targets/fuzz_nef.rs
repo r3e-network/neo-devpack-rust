@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 //! Fuzz target: NEF serialization with arbitrary script bytes and metadata.
-//! `write_nef_with_metadata()` must never panic regardless of input.
+//! `encode_nef_with_metadata()` must never panic regardless of input.
 
 #![no_main]
 
@@ -40,13 +40,5 @@ fuzz_target!(|input: FuzzNefInput| {
         })
         .collect();
 
-    let dir = tempfile::tempdir().expect("tempdir");
-    let nef_path = dir.path().join("fuzz.nef");
-
-    let _ = wasm_neovm::write_nef_with_metadata(
-        input.script,
-        input.source_url,
-        &tokens,
-        &nef_path,
-    );
+    let _ = wasm_neovm::encode_nef_with_metadata(input.script, input.source_url, &tokens);
 });

@@ -45,15 +45,27 @@ pub(in super::super) fn emit_table_init_from_passive_helper(
     patch_jump(script, continue_len, len_ready_label)?;
 
     script.push(lookup_opcode("LDLOC2")?.byte);
-    if let Some(off) = mask_u32_offset { emit_call_to(script, off)?; } else { emit_mask_u32(script)?; }
+    if let Some(off) = mask_u32_offset {
+        emit_call_to(script, off)?;
+    } else {
+        emit_mask_u32(script)?;
+    }
     script.push(lookup_opcode("STLOC2")?.byte);
 
     script.push(lookup_opcode("LDLOC0")?.byte);
-    if let Some(off) = mask_u32_offset { emit_call_to(script, off)?; } else { emit_mask_u32(script)?; }
+    if let Some(off) = mask_u32_offset {
+        emit_call_to(script, off)?;
+    } else {
+        emit_mask_u32(script)?;
+    }
     script.push(lookup_opcode("STLOC0")?.byte);
 
     script.push(lookup_opcode("LDLOC1")?.byte);
-    if let Some(off) = mask_u32_offset { emit_call_to(script, off)?; } else { emit_mask_u32(script)?; }
+    if let Some(off) = mask_u32_offset {
+        emit_call_to(script, off)?;
+    } else {
+        emit_mask_u32(script)?;
+    }
     script.push(lookup_opcode("STLOC1")?.byte);
 
     script.push(lookup_opcode("LDLOC0")?.byte);

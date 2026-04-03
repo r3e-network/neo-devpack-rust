@@ -5,7 +5,10 @@ use crate::common::{double_sha256_checksum, read_var_uint};
 use std::convert::TryInto;
 use std::fs;
 use tempfile::tempdir;
-use wasm_neovm::{translate_module, write_nef, write_nef_with_metadata, MethodToken};
+use wasm_neovm::{
+    encode_nef, encode_nef_with_metadata, translate_module, write_nef, write_nef_with_metadata,
+    MethodToken,
+};
 
 #[test]
 fn write_nef_with_metadata_serializes_tokens_and_source() {
@@ -26,6 +29,13 @@ fn write_nef_with_metadata_serializes_tokens_and_source() {
         call_flags: 0x07,
     };
 
+    let encoded = encode_nef_with_metadata(
+        &script,
+        Some("ipfs://example"),
+        std::slice::from_ref(&token),
+    )
+    .expect("nef encoded");
+
     write_nef_with_metadata(
         &script,
         Some("ipfs://example"),
@@ -35,6 +45,7 @@ fn write_nef_with_metadata_serializes_tokens_and_source() {
     .expect("nef written");
 
     let bytes = fs::read(&nef_path).expect("nef exists");
+    assert_eq!(bytes, encoded);
     let expected_compiler = concat!("neo-devpack-rust wasm-neovm ", env!("CARGO_PKG_VERSION"));
     let mut cursor = 0usize;
     assert_eq!(&bytes[cursor..cursor + 4], b"NEF3");
@@ -128,9 +139,12 @@ fn translate_simple_constant_addition() {
 
     let dir = tempdir().expect("tempdir");
     let nef_path = dir.path().join("adder.nef");
+    let encoded = encode_nef(&translation.script).expect("nef encoded");
+
     write_nef(&translation.script, &nef_path).expect("nef written");
 
     let bytes = fs::read(&nef_path).expect("nef exists");
+    assert_eq!(bytes, encoded);
 
     let expected_compiler = concat!("neo-devpack-rust wasm-neovm ", env!("CARGO_PKG_VERSION"));
     let mut cursor = 0usize;

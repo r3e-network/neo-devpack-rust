@@ -19,11 +19,19 @@ pub(in super::super) fn emit_table_fill_helper(
     script.push(lookup_opcode("STLOC3")?.byte);
 
     script.push(lookup_opcode("LDLOC2")?.byte);
-    if let Some(off) = mask_u32_offset { emit_call_to(script, off)?; } else { emit_mask_u32(script)?; }
+    if let Some(off) = mask_u32_offset {
+        emit_call_to(script, off)?;
+    } else {
+        emit_mask_u32(script)?;
+    }
     script.push(lookup_opcode("STLOC2")?.byte);
 
     script.push(lookup_opcode("LDLOC0")?.byte);
-    if let Some(off) = mask_u32_offset { emit_call_to(script, off)?; } else { emit_mask_u32(script)?; }
+    if let Some(off) = mask_u32_offset {
+        emit_call_to(script, off)?;
+    } else {
+        emit_mask_u32(script)?;
+    }
     script.push(lookup_opcode("STLOC0")?.byte);
 
     script.push(lookup_opcode("LDLOC0")?.byte);

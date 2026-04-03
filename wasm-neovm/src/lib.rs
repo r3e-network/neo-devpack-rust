@@ -76,7 +76,9 @@ pub use core::traits;
 pub use logging::LogLevel;
 pub use manifest::RenderedManifest;
 pub use metadata::{extract_nef_metadata, NefMetadata};
-pub use nef::{write_nef, write_nef_with_metadata, MethodToken};
+pub use nef::{
+    encode_nef, encode_nef_with_metadata, write_nef, write_nef_with_metadata, MethodToken,
+};
 pub use translator::{translate_module, translate_with_config, ManifestOverlay, Translation};
 pub use types::{
     BytecodeOffset, ContractName, GlobalIndex, LocalIndex, MemoryOffset, MethodIndex,

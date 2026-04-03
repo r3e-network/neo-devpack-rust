@@ -71,13 +71,23 @@ fn translate_if_else_structure() {
     let is_long_jmpifnot = translation.script[jmp_if_not_pos] == jmp_if_not_l;
 
     // Find the JMP (long or short) for else branch
-    let skip = if is_long_jmpifnot { jmp_if_not_pos + 5 } else { jmp_if_not_pos + 2 };
+    let skip = if is_long_jmpifnot {
+        jmp_if_not_pos + 5
+    } else {
+        jmp_if_not_pos + 2
+    };
     let jmp_pos = translation
         .script
         .iter()
         .enumerate()
         .skip(skip)
-        .find_map(|(idx, &byte)| if byte == jmp_l || byte == jmp_s { Some(idx) } else { None })
+        .find_map(|(idx, &byte)| {
+            if byte == jmp_l || byte == jmp_s {
+                Some(idx)
+            } else {
+                None
+            }
+        })
         .expect("then branch should emit JMP over else body");
     let is_long_jmp = translation.script[jmp_pos] == jmp_l;
 

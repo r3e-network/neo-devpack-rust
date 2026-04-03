@@ -58,7 +58,11 @@ fn translate_deeply_nested_blocks() {
     let jmp_if_s = opcodes::lookup("JMPIF").unwrap().byte;
 
     // Should have multiple conditional jumps for br_if (long or short form)
-    let jmp_if_count = translation.script.iter().filter(|&&b| b == jmp_if_l || b == jmp_if_s).count();
+    let jmp_if_count = translation
+        .script
+        .iter()
+        .filter(|&&b| b == jmp_if_l || b == jmp_if_s)
+        .count();
     assert!(jmp_if_count >= 4, "expected at least 4 conditional jumps");
 
     // Verify final RET
@@ -265,7 +269,14 @@ fn translate_br_table_large() {
     let jmp_if_s = opcodes::lookup("JMPIF").unwrap().byte;
 
     assert!(translation.script.iter().filter(|&&b| b == dup).count() >= 4);
-    assert!(translation.script.iter().filter(|&&b| b == jmp_if_l || b == jmp_if_s).count() >= 4);
+    assert!(
+        translation
+            .script
+            .iter()
+            .filter(|&&b| b == jmp_if_l || b == jmp_if_s)
+            .count()
+            >= 4
+    );
 }
 
 #[test]

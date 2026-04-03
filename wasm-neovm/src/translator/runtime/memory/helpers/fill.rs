@@ -3,7 +3,10 @@
 
 use super::super::super::*;
 
-pub(in crate::translator::runtime) fn emit_memory_fill_helper(script: &mut Vec<u8>, mask_u32_offset: Option<usize>) -> Result<()> {
+pub(in crate::translator::runtime) fn emit_memory_fill_helper(
+    script: &mut Vec<u8>,
+    mask_u32_offset: Option<usize>,
+) -> Result<()> {
     script.push(lookup_opcode("INITSLOT")?.byte);
     script.push(3);
     script.push(0);
@@ -13,11 +16,19 @@ pub(in crate::translator::runtime) fn emit_memory_fill_helper(script: &mut Vec<u
     script.push(lookup_opcode("STLOC0")?.byte);
 
     script.push(lookup_opcode("LDLOC2")?.byte);
-    if let Some(off) = mask_u32_offset { emit_call_to(script, off)?; } else { emit_mask_u32(script)?; }
+    if let Some(off) = mask_u32_offset {
+        emit_call_to(script, off)?;
+    } else {
+        emit_mask_u32(script)?;
+    }
     script.push(lookup_opcode("STLOC2")?.byte);
 
     script.push(lookup_opcode("LDLOC0")?.byte);
-    if let Some(off) = mask_u32_offset { emit_call_to(script, off)?; } else { emit_mask_u32(script)?; }
+    if let Some(off) = mask_u32_offset {
+        emit_call_to(script, off)?;
+    } else {
+        emit_mask_u32(script)?;
+    }
     script.push(lookup_opcode("STLOC0")?.byte);
 
     script.push(lookup_opcode("LDLOC0")?.byte);

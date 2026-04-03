@@ -22,12 +22,11 @@ use crate::translator::runtime::INIT_FLAG_SLOT;
 use super::constants::*;
 use super::helpers::*;
 use super::runtime::{
-    emit_bit_count, emit_select, emit_sign_extend, emit_sign_extend_via_helper,
-    emit_zero_extend, ensure_memory_access,
-    evaluate_global_init, evaluate_offset_expr, infer_contract_tokens, translate_data_drop,
-    translate_memory_copy, translate_memory_fill, translate_memory_init, translate_memory_load,
-    translate_memory_store, BitHelperKind, FunctionRegistry, RuntimeHelpers, StartDescriptor,
-    StartKind, TableHelperKind, TableInfo,
+    emit_bit_count, emit_select, emit_sign_extend, emit_sign_extend_via_helper, emit_zero_extend,
+    ensure_memory_access, evaluate_global_init, evaluate_offset_expr, infer_contract_tokens,
+    translate_data_drop, translate_memory_copy, translate_memory_fill, translate_memory_init,
+    translate_memory_load, translate_memory_store, BitHelperKind, FunctionRegistry, RuntimeHelpers,
+    StartDescriptor, StartKind, TableHelperKind, TableInfo,
 };
 use super::types::{StackValue, Translation, TranslationConfig};
 use super::{FunctionImport, ModuleFrontend};

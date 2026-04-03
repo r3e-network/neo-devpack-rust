@@ -6,11 +6,11 @@ mod jumps;
 mod mask;
 mod offsets;
 mod opcode;
+pub(crate) mod peephole;
 mod push;
+pub(crate) mod relax;
 mod statics;
 mod try_instructions;
-pub(crate) mod peephole;
-pub(crate) mod relax;
 mod validate;
 
 pub(crate) use calls::{emit_call_placeholder, emit_call_to, patch_call};

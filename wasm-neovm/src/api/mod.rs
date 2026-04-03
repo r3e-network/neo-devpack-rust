@@ -11,7 +11,9 @@ pub use crate::config::{BehaviorConfig, DebugConfig, OutputConfig, TranslationCo
 pub use crate::logging::{LogCategory, LogLevel};
 pub use crate::manifest::{ManifestMethod, ManifestParameter, RenderedManifest};
 pub use crate::metadata::NefMetadata;
-pub use crate::nef::{write_nef, write_nef_with_metadata, MethodToken};
+pub use crate::nef::{
+    encode_nef, encode_nef_with_metadata, write_nef, write_nef_with_metadata, MethodToken,
+};
 pub use crate::translator::{
     translate_module, translate_with_config, ManifestOverlay, Translation,
 };

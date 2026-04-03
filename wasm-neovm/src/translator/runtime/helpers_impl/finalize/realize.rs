@@ -17,14 +17,25 @@ impl RuntimeHelpers {
     ) -> Result<()> {
         // Pre-emit mask_u32 helper if memory/table helpers that USE mask_u32 are registered.
         // Load/Store/Grow don't use mask_u32, so only check Fill/Copy/Env* and table ops.
-        let needs_mask_u32 = self.memory_helpers.keys().any(|k| matches!(k,
-            MemoryHelperKind::Fill | MemoryHelperKind::Copy |
-            MemoryHelperKind::EnvMemcpy | MemoryHelperKind::EnvMemmove | MemoryHelperKind::EnvMemset
-        )) || self.table_helpers.keys().any(|k| matches!(k,
-            TableHelperKind::Get(_) | TableHelperKind::Set(_) |
-            TableHelperKind::Fill(_) | TableHelperKind::Copy { .. } |
-            TableHelperKind::InitFromPassive { .. }
-        ));
+        let needs_mask_u32 = self.memory_helpers.keys().any(|k| {
+            matches!(
+                k,
+                MemoryHelperKind::Fill
+                    | MemoryHelperKind::Copy
+                    | MemoryHelperKind::EnvMemcpy
+                    | MemoryHelperKind::EnvMemmove
+                    | MemoryHelperKind::EnvMemset
+            )
+        }) || self.table_helpers.keys().any(|k| {
+            matches!(
+                k,
+                TableHelperKind::Get(_)
+                    | TableHelperKind::Set(_)
+                    | TableHelperKind::Fill(_)
+                    | TableHelperKind::Copy { .. }
+                    | TableHelperKind::InitFromPassive { .. }
+            )
+        });
         let mask_u32_offset = if needs_mask_u32 {
             let offset = script.len();
             // mask_u32 body: (1 << 32) - 1, AND, RET
@@ -200,27 +211,23 @@ impl RuntimeHelpers {
     ///   mask = (sign_bit << 1) - 1
     ///   result = ((value AND mask) XOR sign_bit) - sign_bit
     /// This is 1 byte smaller than computing mask and sign_bit independently.
-    fn realize_sign_extend_helper(
-        &self,
-        script: &mut Vec<u8>,
-        bits: u32,
-    ) -> Result<usize> {
+    fn realize_sign_extend_helper(&self, script: &mut Vec<u8>, bits: u32) -> Result<usize> {
         let offset = script.len();
 
         // Stack: [value]
         let _ = emit_push_int(script, 1);
         let _ = emit_push_int(script, (bits - 1) as i128);
-        script.push(lookup_opcode("SHL")?.byte);         // [value, sign_bit]
-        script.push(lookup_opcode("TUCK")?.byte);         // [sign_bit, value, sign_bit]
-        script.push(lookup_opcode("DUP")?.byte);          // [sign_bit, value, sign_bit, sign_bit]
+        script.push(lookup_opcode("SHL")?.byte); // [value, sign_bit]
+        script.push(lookup_opcode("TUCK")?.byte); // [sign_bit, value, sign_bit]
+        script.push(lookup_opcode("DUP")?.byte); // [sign_bit, value, sign_bit, sign_bit]
         let _ = emit_push_int(script, 1);
-        script.push(lookup_opcode("SHL")?.byte);          // [sign_bit, value, sign_bit, mask+1]
-        script.push(lookup_opcode("DEC")?.byte);          // [sign_bit, value, sign_bit, mask]
-        script.push(lookup_opcode("ROT")?.byte);          // [sign_bit, sign_bit, mask, value]
-        script.push(lookup_opcode("AND")?.byte);          // [sign_bit, sign_bit, masked]
-        script.push(lookup_opcode("XOR")?.byte);          // [sign_bit, masked^sign]
-        script.push(lookup_opcode("SWAP")?.byte);         // [masked^sign, sign_bit]
-        script.push(lookup_opcode("SUB")?.byte);          // [result]
+        script.push(lookup_opcode("SHL")?.byte); // [sign_bit, value, sign_bit, mask+1]
+        script.push(lookup_opcode("DEC")?.byte); // [sign_bit, value, sign_bit, mask]
+        script.push(lookup_opcode("ROT")?.byte); // [sign_bit, sign_bit, mask, value]
+        script.push(lookup_opcode("AND")?.byte); // [sign_bit, sign_bit, masked]
+        script.push(lookup_opcode("XOR")?.byte); // [sign_bit, masked^sign]
+        script.push(lookup_opcode("SWAP")?.byte); // [masked^sign, sign_bit]
+        script.push(lookup_opcode("SUB")?.byte); // [result]
 
         script.push(lookup_opcode("RET")?.byte);
 
@@ -310,7 +317,13 @@ impl RuntimeHelpers {
             TableHelperKind::InitFromPassive { table, segment } => {
                 let slot = self.table_slot(table)?;
                 let (value_slot, drop_slot) = self.passive_element_slots_const(segment)?;
-                emit_table_init_from_passive_helper(script, slot, value_slot, drop_slot, mask_u32_offset)?;
+                emit_table_init_from_passive_helper(
+                    script,
+                    slot,
+                    value_slot,
+                    drop_slot,
+                    mask_u32_offset,
+                )?;
             }
             TableHelperKind::ElemDrop(segment) => {
                 let drop_slot = self.passive_element_drop_slot_const(segment)?;
@@ -358,8 +371,11 @@ impl RuntimeHelpers {
             )
         })?;
 
-        let table_helper_offset =
-            self.realize_table_helper(script, TableHelperKind::Get(key.table_index), mask_u32_offset)?;
+        let table_helper_offset = self.realize_table_helper(
+            script,
+            TableHelperKind::Get(key.table_index),
+            mask_u32_offset,
+        )?;
         let helper_offset = script.len();
 
         let table_get_call = emit_call_placeholder(script)?;

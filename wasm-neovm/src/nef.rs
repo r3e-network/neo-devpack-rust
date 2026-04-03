@@ -44,7 +44,15 @@ const METHOD_TOKEN_RESERVED_BYTES: usize = 2;
 
 /// Write a NEF artefact containing the provided script payload.
 pub fn write_nef<P: AsRef<Path>>(script: &[u8], output_path: P) -> Result<()> {
-    write_nef_with_metadata(script, None, &[], output_path)
+    let bytes = encode_nef(script)?;
+    let mut file = File::create(output_path)?;
+    file.write_all(&bytes)?;
+    Ok(())
+}
+
+/// Encode a NEF artefact containing the provided script payload.
+pub fn encode_nef(script: &[u8]) -> Result<Vec<u8>> {
+    encode_nef_with_metadata(script, None, &[])
 }
 
 fn write_var_uint(buffer: &mut Vec<u8>, value: u64) {
@@ -92,6 +100,18 @@ pub fn write_nef_with_metadata<P: AsRef<Path>>(
     method_tokens: &[MethodToken],
     output_path: P,
 ) -> Result<()> {
+    let bytes = encode_nef_with_metadata(script, source_url, method_tokens)?;
+    let mut file = File::create(output_path)?;
+    file.write_all(&bytes)?;
+    Ok(())
+}
+
+/// Encode a NEF payload with metadata support.
+pub fn encode_nef_with_metadata(
+    script: &[u8],
+    source_url: Option<&str>,
+    method_tokens: &[MethodToken],
+) -> Result<Vec<u8>> {
     ensure!(!script.is_empty(), "script payload is empty");
     ensure!(
         COMPILER.len() <= 64,
@@ -117,9 +137,7 @@ pub fn write_nef_with_metadata<P: AsRef<Path>>(
     let checksum = compute_checksum(&buffer);
     buffer.extend_from_slice(&checksum[..CHECKSUM_LENGTH]);
 
-    let mut file = File::create(output_path)?;
-    file.write_all(&buffer)?;
-    Ok(())
+    Ok(buffer)
 }
 
 /// Method token for NEF files

@@ -31,7 +31,10 @@ fn collect_jump_targets(script: &[u8], table: &[Option<&opcodes::OpcodeInfo>; 25
         let byte = script[pc];
         let info = match table[byte as usize] {
             Some(info) => info,
-            None => { pc += 1; continue; }
+            None => {
+                pc += 1;
+                continue;
+            }
         };
 
         let size = if info.operand_size_prefix == 0 {
@@ -39,7 +42,10 @@ fn collect_jump_targets(script: &[u8], table: &[Option<&opcodes::OpcodeInfo>; 25
         } else {
             let ps = pc + 1;
             let prefix = info.operand_size_prefix as usize;
-            if ps + prefix > script.len() { pc += 1; continue; }
+            if ps + prefix > script.len() {
+                pc += 1;
+                continue;
+            }
             let operand_len = match prefix {
                 1 => script[ps] as usize,
                 2 => u16::from_le_bytes([script[ps], script[ps + 1]]) as usize,
@@ -64,7 +70,10 @@ fn collect_jump_targets(script: &[u8], table: &[Option<&opcodes::OpcodeInfo>; 25
             0x23 | 0x25 | 0x27 | 0x29 | 0x2B | 0x2D | 0x2F | 0x31 | 0x33 | 0x35 | 0x3E => {
                 if pc + 4 < script.len() {
                     let offset = i32::from_le_bytes([
-                        script[pc + 1], script[pc + 2], script[pc + 3], script[pc + 4],
+                        script[pc + 1],
+                        script[pc + 2],
+                        script[pc + 3],
+                        script[pc + 4],
                     ]);
                     let target = pc as i32 + offset;
                     if target >= 0 && (target as usize) < script.len() {
@@ -91,7 +100,10 @@ fn collect_jump_targets(script: &[u8], table: &[Option<&opcodes::OpcodeInfo>; 25
                 for start in [pc + 1, pc + 5] {
                     if start + 4 <= script.len() {
                         let offset = i32::from_le_bytes([
-                            script[start], script[start + 1], script[start + 2], script[start + 3],
+                            script[start],
+                            script[start + 1],
+                            script[start + 2],
+                            script[start + 3],
                         ]);
                         if offset != 0 {
                             let target = pc as i32 + offset;
@@ -145,14 +157,22 @@ pub fn peephole_optimize(script: &[u8], method_offsets: &mut [u32]) -> Vec<u8> {
     while pc < script.len() {
         let info = match table[script[pc] as usize] {
             Some(info) => info,
-            None => { instructions.push((pc, 1)); pc += 1; continue; }
+            None => {
+                instructions.push((pc, 1));
+                pc += 1;
+                continue;
+            }
         };
         let size = if info.operand_size_prefix == 0 {
             1 + info.operand_size as usize
         } else {
             let ps = pc + 1;
             let prefix = info.operand_size_prefix as usize;
-            if ps + prefix > script.len() { instructions.push((pc, 1)); pc += 1; continue; }
+            if ps + prefix > script.len() {
+                instructions.push((pc, 1));
+                pc += 1;
+                continue;
+            }
             let operand_len = match prefix {
                 1 => script[ps] as usize,
                 2 => u16::from_le_bytes([script[ps], script[ps + 1]]) as usize,
@@ -195,8 +215,10 @@ pub fn peephole_optimize(script: &[u8], method_offsets: &mut [u32]) -> Vec<u8> {
             }
 
             // Pattern 3: CONVERT Integer + CONVERT Integer → single CONVERT Integer
-            if byte == CONVERT && jbyte == CONVERT
-                && isize == 2 && jsize == 2
+            if byte == CONVERT
+                && jbyte == CONVERT
+                && isize == 2
+                && jsize == 2
                 && script[ipc + 1] == STACKITEMTYPE_INTEGER
                 && script[jpc + 1] == STACKITEMTYPE_INTEGER
             {
@@ -259,11 +281,22 @@ pub fn peephole_optimize(script: &[u8], method_offsets: &mut [u32]) -> Vec<u8> {
         let byte = script[ipc];
 
         // Check if this instruction has offsets that need rewriting
-        let is_long_branch = matches!(byte, 0x23|0x25|0x27|0x29|0x2B|0x2D|0x2F|0x31|0x33|0x35|0x3E);
-        let is_short_branch = matches!(byte, 0x22|0x24|0x26|0x28|0x2A|0x2C|0x2E|0x30|0x32|0x34|0x3D);
+        let is_long_branch = matches!(
+            byte,
+            0x23 | 0x25 | 0x27 | 0x29 | 0x2B | 0x2D | 0x2F | 0x31 | 0x33 | 0x35 | 0x3E
+        );
+        let is_short_branch = matches!(
+            byte,
+            0x22 | 0x24 | 0x26 | 0x28 | 0x2A | 0x2C | 0x2E | 0x30 | 0x32 | 0x34 | 0x3D
+        );
 
         if is_long_branch {
-            let off = i32::from_le_bytes([script[ipc+1], script[ipc+2], script[ipc+3], script[ipc+4]]);
+            let off = i32::from_le_bytes([
+                script[ipc + 1],
+                script[ipc + 2],
+                script[ipc + 3],
+                script[ipc + 4],
+            ]);
             let target = (ipc as i32 + off) as usize;
             let new_off = remap(target) as i32 - remap(ipc) as i32;
             out.push(byte);
@@ -276,17 +309,29 @@ pub fn peephole_optimize(script: &[u8], method_offsets: &mut [u32]) -> Vec<u8> {
             out.push(new_off as i8 as u8);
         } else if byte == 0x3C {
             // TRY_L
-            let catch_off = i32::from_le_bytes([script[ipc+1], script[ipc+2], script[ipc+3], script[ipc+4]]);
-            let finally_off = i32::from_le_bytes([script[ipc+5], script[ipc+6], script[ipc+7], script[ipc+8]]);
+            let catch_off = i32::from_le_bytes([
+                script[ipc + 1],
+                script[ipc + 2],
+                script[ipc + 3],
+                script[ipc + 4],
+            ]);
+            let finally_off = i32::from_le_bytes([
+                script[ipc + 5],
+                script[ipc + 6],
+                script[ipc + 7],
+                script[ipc + 8],
+            ]);
             let np = remap(ipc) as i32;
             out.push(byte);
-            if catch_off == 0 { out.extend_from_slice(&0i32.to_le_bytes()); }
-            else {
+            if catch_off == 0 {
+                out.extend_from_slice(&0i32.to_le_bytes());
+            } else {
                 let t = (ipc as i32 + catch_off) as usize;
                 out.extend_from_slice(&(remap(t) as i32 - np).to_le_bytes());
             }
-            if finally_off == 0 { out.extend_from_slice(&0i32.to_le_bytes()); }
-            else {
+            if finally_off == 0 {
+                out.extend_from_slice(&0i32.to_le_bytes());
+            } else {
                 let t = (ipc as i32 + finally_off) as usize;
                 out.extend_from_slice(&(remap(t) as i32 - np).to_le_bytes());
             }
@@ -296,17 +341,26 @@ pub fn peephole_optimize(script: &[u8], method_offsets: &mut [u32]) -> Vec<u8> {
             let finally_off = script[ipc + 2] as i8 as i32;
             let np = remap(ipc) as i32;
             out.push(byte);
-            if catch_off == 0 { out.push(0); } else {
+            if catch_off == 0 {
+                out.push(0);
+            } else {
                 let t = (ipc as i32 + catch_off) as usize;
                 out.push((remap(t) as i32 - np) as i8 as u8);
             }
-            if finally_off == 0 { out.push(0); } else {
+            if finally_off == 0 {
+                out.push(0);
+            } else {
                 let t = (ipc as i32 + finally_off) as usize;
                 out.push((remap(t) as i32 - np) as i8 as u8);
             }
         } else if byte == 0x0A {
             // PUSHA
-            let off = i32::from_le_bytes([script[ipc+1], script[ipc+2], script[ipc+3], script[ipc+4]]);
+            let off = i32::from_le_bytes([
+                script[ipc + 1],
+                script[ipc + 2],
+                script[ipc + 3],
+                script[ipc + 4],
+            ]);
             let target = (ipc as i32 + off) as usize;
             let new_off = remap(target) as i32 - remap(ipc) as i32;
             out.push(byte);
