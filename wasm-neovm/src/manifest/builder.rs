@@ -141,14 +141,8 @@ impl ManifestBuilder {
 
     /// Consume the builder and return a `RenderedManifest`.
     pub fn into_rendered(self) -> super::RenderedManifest {
-        let mut manifest = self.manifest;
-        if let Some(features) = manifest
-            .get_mut("features")
-            .and_then(serde_json::Value::as_object_mut)
-        {
-            features.clear();
+        super::RenderedManifest {
+            value: self.manifest,
         }
-
-        super::RenderedManifest { value: manifest }
     }
 }

@@ -13,12 +13,12 @@ This document tracks the current translation coverage. It should be kept up to d
 | Atomics | ❌ | No mapping exists for atomic instructions. |
 | SIMD | ❌ | SIMD opcodes are rejected. |
 | Exceptions (`exception-handling`) | ❌ | No mapping; translator treats unknown operators as unsupported. |
-| Panic semantics | ⚠️ Uses `ABORT` | Rust panics that survive to Wasm become `ABORT`; richer diagnostics TBD. |
+| Panic semantics | ⚠️ Uses `ABORT` | Rust panics that survive to Wasm become `ABORT`; richer diagnostics are not emitted today. |
 | Gas accounting | ❌ | Gas model integration not yet designed; relies on NeoVM defaults. |
 | Host interop | ✅ Syscalls generated via pre-hashed table<br>✅ Opcode imports<br>✅ Friendly `neo::` aliases resolved at translation time<br>✅ Common `env::` shims (`memcpy`/`memmove`/`memset`) | Translator recognises canonical `syscall::*` descriptors, DevPack-style `neo::*` imports, and bridges common C runtime shims emitted as `env::` imports, lowering everything to the appropriate NeoVM helpers with overlap-safe semantics. |
 | Manifest emission | ✅ ABI (methods, safe flag)<br>✅ Custom overlays merged<br>✅ Auto method-token inference<br>⚠️ Complex type annotations limited to integers | `wasm-neovm` infers method tokens for literal `SYSCALL` patterns, including `System.Contract.Call` (with hash/method/flags) and zero-hash placeholders for other interops. |
 | NEF metadata | ✅ `nefSource`, `nefMethodTokens` | See `metadata/` helpers. |
-| Testing | ✅ Comprehensive translator suites (~120 focused tests) | Arithmetic, control-flow, memory, table, syscall, and optimisation suites exercise the lowering logic end-to-end. |
+| Testing | ✅ Comprehensive translator suites | Arithmetic, control-flow, memory, table, syscall, optimisation, cross-chain, and fuzz-oriented suites exercise the lowering logic end-to-end. |
 
 ## Supported Smart-Contract Subset
 

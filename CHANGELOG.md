@@ -10,6 +10,30 @@ this repository follow independent versioning (currently 0.1.x).
 
 ## [Unreleased]
 
+## [0.5.4] - 2026-04-04
+
+### Added
+
+- Added `Alignment::try_new(...)` for fallible alignment construction in public validation paths.
+- Added regression coverage for manifest feature retention, canonical syscall descriptors, and invalid alignment inputs.
+
+### Changed
+
+- `SyscallDescriptor` validation now requires canonical `Root.Category.Method` identifiers.
+- Refreshed README and compiler documentation to reflect current manifest and cross-chain behavior.
+
+### Fixed
+
+- Fixed manifest rendering so `storage` and `payable` contract features are preserved in emitted manifests.
+- Fixed `scripts/check_versions.sh` so it inspects package-local `version.workspace = true` accurately and validates the repository's split-version policy.
+
+### Testing
+
+- `bash scripts/check_versions.sh`
+- `cargo fmt --all --check`
+- `cargo test --workspace`
+- `cargo clippy --workspace --all-targets -- -D warnings`
+
 ## [0.5.3] - 2026-03-27
 
 ### Performance — NEF Size Optimization (final)

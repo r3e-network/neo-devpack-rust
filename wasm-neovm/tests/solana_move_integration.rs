@@ -161,11 +161,11 @@ fn test_solana_storage_contract_compilation() {
 
     let translation = result.unwrap();
 
-    // Neo Express requires manifest.features to be empty.
-    assert!(translation.manifest.value["features"]
-        .as_object()
-        .map(|value| value.is_empty())
-        .unwrap_or(false));
+    assert_eq!(
+        translation.manifest.value["features"]["storage"].as_bool(),
+        Some(true),
+        "storage imports should enable manifest.features.storage"
+    );
 
     // Verify methods
     let methods = translation.manifest.value["abi"]["methods"]
@@ -445,11 +445,11 @@ fn test_move_resource_semantics_mapping() {
 
     let translation = translate_with_config(&wasm, config).unwrap();
 
-    // Neo Express requires manifest.features to be empty.
-    assert!(translation.manifest.value["features"]
-        .as_object()
-        .map(|value| value.is_empty())
-        .unwrap_or(false));
+    assert_eq!(
+        translation.manifest.value["features"]["storage"].as_bool(),
+        Some(true),
+        "Move resource lowering should enable manifest.features.storage"
+    );
 }
 
 // ============================================================================
@@ -522,10 +522,11 @@ fn test_storage_operations_compile() {
 
     let translation = result.unwrap();
     assert!(!translation.script.is_empty());
-    assert!(translation.manifest.value["features"]
-        .as_object()
-        .map(|value| value.is_empty())
-        .unwrap_or(false));
+    assert_eq!(
+        translation.manifest.value["features"]["storage"].as_bool(),
+        Some(true),
+        "storage imports should enable manifest.features.storage"
+    );
 }
 
 #[test]

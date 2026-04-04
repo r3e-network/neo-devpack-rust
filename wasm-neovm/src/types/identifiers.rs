@@ -323,25 +323,40 @@ impl From<usize> for BytecodeOffset {
 pub struct SyscallDescriptor(String);
 
 impl SyscallDescriptor {
+    fn is_valid_descriptor(descriptor: &str) -> bool {
+        let mut parts = descriptor.split('.');
+        let mut count = 0usize;
+
+        for part in &mut parts {
+            if part.is_empty() || !part.chars().all(|ch| ch.is_ascii_alphanumeric()) {
+                return false;
+            }
+            count += 1;
+        }
+
+        count == 3
+    }
+
     /// Create a new syscall descriptor
     ///
     /// # Panics
-    /// Panics if the descriptor doesn't match the expected format (e.g., "System.Runtime.GetTime")
+    /// Panics if the descriptor doesn't match the expected `Root.Category.Method`
+    /// format (for example, `System.Runtime.GetTime`).
     pub fn new(descriptor: impl Into<String>) -> Self {
         let descriptor = descriptor.into();
-        // Basic validation - should contain dots and follow pattern
         assert!(
-            descriptor.contains('.'),
-            "Syscall descriptor must contain dots: {}",
+            Self::is_valid_descriptor(&descriptor),
+            "Syscall descriptor must match Root.Category.Method: {}",
             descriptor
         );
         Self(descriptor)
     }
 
-    /// Try to create a syscall descriptor, returning None if invalid
+    /// Try to create a syscall descriptor, returning `None` if it is not in the
+    /// canonical `Root.Category.Method` form.
     pub fn try_new(descriptor: impl Into<String>) -> Option<Self> {
         let descriptor = descriptor.into();
-        if descriptor.contains('.') {
+        if Self::is_valid_descriptor(&descriptor) {
             Some(Self(descriptor))
         } else {
             None
@@ -444,6 +459,10 @@ mod tests {
     #[test]
     fn test_syscall_descriptor_try_new() {
         assert!(SyscallDescriptor::try_new("System.Runtime.GetTime").is_some());
+        assert!(SyscallDescriptor::try_new("Neo.Crypto.VerifyWithECDsa").is_some());
         assert!(SyscallDescriptor::try_new("invalid").is_none());
+        assert!(SyscallDescriptor::try_new("System.Runtime").is_none());
+        assert!(SyscallDescriptor::try_new("System..GetTime").is_none());
+        assert!(SyscallDescriptor::try_new("System.Runtime.Get Time").is_none());
     }
 }

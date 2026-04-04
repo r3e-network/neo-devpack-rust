@@ -286,7 +286,7 @@ Imported syscalls are converted to NEF method tokens:
 ### 7.1 Unit Tests
 
 ```bash
-# Solana compat tests (26 tests)
+# Solana compat tests
 cargo test --manifest-path solana-compat/Cargo.toml
 
 # Cross-chain integration tests

@@ -23,8 +23,7 @@ The repository includes a ready-to-build example contract in `contracts/hello-wo
 use neo_devpack::prelude::*;
 
 neo_manifest_overlay!(r#"{
-    "name": "HelloWorld",
-    "features": { "storage": false }
+    "name": "HelloWorld"
 }"#);
 
 #[neo_safe]
@@ -34,7 +33,7 @@ pub extern "C" fn hello() -> i64 {
 }
 ```
 
-The `#[neo_safe]` attribute marks the exported function safe in the manifest so it can be invoked by other contracts without additional CLI arguments.
+The `#[neo_safe]` attribute marks the exported function safe in the manifest so it can be invoked by other contracts without additional CLI arguments. Feature flags such as `storage` and `payable` are inferred from the translated module, so simple overlays only need to declare metadata you actually want to override.
 Any overlay fragments (from `neo_manifest_overlay!` or external files) must reference real exports—if a fragment introduces a method name the Wasm module does not actually export, the translator now fails so the manifest always matches the NEF script. Refer to [`docs/manifest-overlay-guide.md`](manifest-overlay-guide.md) for a full template and CLI tooling notes.
 
 ## 3. Build the Wasm Artifact

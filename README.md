@@ -22,18 +22,21 @@ Rust contract (neo-devpack) ──cargo build --target wasm32-unknown-unknown─
 | Resource                                                       | Description                                           |
 | -------------------------------------------------------------- | ----------------------------------------------------- |
 | [📖 Quick Start Guide](docs/rust-smart-contract-quickstart.md) | Step-by-step tutorial for writing your first contract |
-| [📋 Contract Examples](contracts/)                             | 17 production-ready example contracts                 |
+| [📋 Contract Examples](contracts/)                             | 17 bundled contract examples and samples              |
 | [🔧 API Documentation](https://docs.rs/wasm-neovm)             | Rust API docs for wasm-neovm                          |
+| [🧩 Manifest Overlays](docs/manifest-overlay-guide.md)         | Overlay JSON, macros, and `translate_with_config`     |
 | [🌉 Cross-Chain Spec](docs/CROSS_CHAIN_SPEC.md)                | Technical specification for Solana/Move compatibility |
 | [🏗️ Architecture](docs/wasm-pipeline.md)                       | WebAssembly to NeoVM translation pipeline             |
 | [🐛 Contributing](CONTRIBUTING.md)                             | Guidelines for contributors                           |
 | [🔒 Security](SECURITY.md)                                     | Security policy and vulnerability reporting           |
 
-## 🚀 Production Ready
+## 🚀 Current Status
 
-This toolchain is **production-ready** and fully compatible with **Neo N3 version 3.9.1**. All components have been thoroughly tested with:
+The core Rust/C Wasm → NeoVM pipeline is production-ready and targets **Neo N3 version 3.9.1**. Cross-chain support is mixed maturity: the Solana path is available for practical use, while the Move path remains experimental as coverage continues to expand.
 
-- ✅ 859+ automated tests across all modules
+The repository is validated with:
+
+- ✅ Hundreds of automated tests across the workspace, including integration suites and focused fuzz targets
 - ✅ Multi-platform CI (Linux, macOS, Windows)
 - ✅ Security auditing (cargo-audit, cargo-deny)
 - ✅ Code coverage tracking
@@ -124,13 +127,13 @@ end-to-end.
 ### Running Cross-Chain Tests
 
 ```bash
-# Solana compatibility tests (26 tests)
+# Solana compatibility tests
 cargo test --manifest-path solana-compat/Cargo.toml
 
 # Move translator tests (experimental)
 cargo test --manifest-path move-neovm/Cargo.toml
 
-# Cross-chain integration tests (9 tests)
+# Cross-chain integration tests
 cargo test --manifest-path wasm-neovm/Cargo.toml cross_chain
 
 # Build all cross-chain examples
@@ -314,7 +317,7 @@ The accompanying Rust contract can declare the imports with `#[link(wasm_import_
 - [x] Documentation for quick start, contract catalogue, and Neo Express deployment
 - [x] **Solana compatibility layer** (`neo-solana-compat`) with full API support (Pubkey, AccountInfo, ProgramError, invoke)
 - [x] **Move-style contract support** with resource semantics emulation
-- [x] **Cross-chain integration tests** (9 tests covering Solana/Move compilation)
+- [x] **Cross-chain integration tests** covering Solana/Move compilation paths
 - [x] **Cross-chain specification document** (`docs/CROSS_CHAIN_SPEC.md`)
 
 **Planned / In Progress**
@@ -391,11 +394,11 @@ Unsupported instructions (floating-point, reference types beyond funcref, and mu
 │   └── examples/         # Example contract patterns
 ├── solana-compat/        # Solana compatibility layer (neo-solana-compat)
 │   ├── src/              # Pubkey, AccountInfo, ProgramError implementations
-│   └── tests/            # Solana API compatibility tests (26 tests)
+│   └── tests/            # Solana API compatibility tests
 ├── move-neovm/           # Move bytecode to WebAssembly translator (experimental)
 │   ├── src/              # Move bytecode parser and WASM lowering
 │   └── tests/            # Move translation tests
-├── contracts/            # Production-ready example contracts
+├── contracts/            # Bundled example contracts
 │   ├── hello-world/      # Basic Neo contract
 │   ├── nep17-token/      # NEP-17 fungible token standard
 │   ├── nep11-nft/        # NEP-11 non-fungible token standard

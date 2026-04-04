@@ -139,6 +139,15 @@ impl Alignment {
         Self(align)
     }
 
+    /// Try to create a new alignment, returning `None` when the value is not a power of 2.
+    pub const fn try_new(align: u32) -> Option<Self> {
+        if align.is_power_of_two() {
+            Some(Self(align))
+        } else {
+            None
+        }
+    }
+
     /// Create alignment without validation (use with caution)
     pub const fn new_unchecked(align: u32) -> Self {
         Self(align)
@@ -235,6 +244,9 @@ mod tests {
         assert!(!align.is_aligned(7));
         assert_eq!(align.align_up(5), 8);
         assert_eq!(align.align_up(4), 4);
+        assert_eq!(Alignment::try_new(8).map(|v| v.value()), Some(8));
+        assert!(Alignment::try_new(3).is_none());
+        assert!(Alignment::try_new(0).is_none());
     }
 
     #[test]

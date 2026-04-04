@@ -3,7 +3,7 @@
 
 use super::{
     build_manifest, collect_method_names, ensure_manifest_methods_match, merge_manifest,
-    ManifestMethod, ManifestParameter,
+    ManifestBuilder, ManifestMethod, ManifestParameter,
 };
 use serde_json::json;
 use std::collections::HashSet;
@@ -586,4 +586,27 @@ fn ensure_manifest_methods_rejects_offset_out_of_u32_range() {
 
     let err = builder.ensure_method_parity().unwrap_err();
     assert!(err.to_string().contains("offset exceeds u32 range"));
+}
+
+#[test]
+fn manifest_builder_preserves_enabled_features_when_rendered() {
+    let methods = vec![manifest_method("main", 0)];
+    let mut builder = ManifestBuilder::new("Contract", &methods);
+
+    builder.enable_feature("storage").expect("enable storage");
+    builder.enable_feature("payable").expect("enable payable");
+
+    let rendered = builder.into_rendered();
+    let features = rendered.value["features"]
+        .as_object()
+        .expect("features object");
+
+    assert_eq!(
+        features.get("storage").and_then(|v| v.as_bool()),
+        Some(true)
+    );
+    assert_eq!(
+        features.get("payable").and_then(|v| v.as_bool()),
+        Some(true)
+    );
 }

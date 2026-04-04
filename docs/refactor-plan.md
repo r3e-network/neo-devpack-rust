@@ -114,21 +114,22 @@ pipeline stays maintainable as new features land.
 
 ### Phase 5: Example & Doc Alignment
 
-Status: **In Progress**
+Status: **Completed**
 
-- [ ] Consolidate manifest overlay snippets into reusable macros or JSON
-  templates and document them (e.g., `docs/manifest-overlay-guide.md`).
-- [ ] Add integration tests that consume the refactored APIs (`translate_with_config`)
+- [x] Consolidate manifest overlay snippets into reusable macros or JSON
+  templates and document them via `docs/manifest-overlay-guide.md`.
+- [x] Add integration tests that consume the refactored APIs (`translate_with_config`)
   to guard against regressions.
-- [ ] Update developer documentation to explain the new layering, traits, and
-  macros so contributors know where to add features (touch `docs/wasm-pipeline.md`
-  and relevant contract README files).
+- [x] Update developer documentation to explain the new layering, traits, and
+  macros so contributors know where to add features (`docs/README.md`,
+  `docs/wasm-pipeline.md`, and the contract quickstarts now point at the shared
+  guidance).
 
 Notes:
-- Overlay samples currently live per-contract; they should point to the shared
-  guide once created.
-- Integration tests can build atop `integration-tests/` or a lightweight harness
-  that runs `translate_with_config` directly.
+- Overlay samples still live per-contract where needed, but the shared guide now
+  captures the canonical structure and translator rules.
+- Integration coverage now exercises `translate_with_config` directly from the
+  `wasm-neovm/tests/` suites, rather than relying on roadmap-only intent.
 
 ## Implementation Guidelines
 
@@ -143,7 +144,10 @@ Notes:
 
 ## Next Steps
 
-1. Land Phase 1 (IR extraction + frontend separation) with focused tests.
-2. Schedule subsequent phases after confirming no performance regressions.
-3. Track progress in this document, marking completed milestones and capturing
-   follow-up tasks as the architecture settles.
+1. Continue trimming duplication in runtime helper emission where shared
+   patterns can be expressed cleanly without obscuring control-flow details.
+2. Decide whether manifest overlays need a standalone schema/linting tool
+   outside the translator runtime, or whether translator-time validation is
+   sufficient.
+3. Keep this document synchronized with landed architecture changes so roadmap
+   items do not drift behind the implementation again.

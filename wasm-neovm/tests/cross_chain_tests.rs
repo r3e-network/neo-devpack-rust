@@ -123,14 +123,10 @@ fn test_storage_contract_compilation() {
 
     let translation = translate_with_config(&wasm, config).expect("translation should succeed");
 
-    // Neo Express requires manifest.features to be an empty object.
-    let features = &translation.manifest.value["features"];
-    assert!(
-        features
-            .as_object()
-            .map(|value| value.is_empty())
-            .unwrap_or(false),
-        "features should be an empty object for Neo Express compatibility"
+    assert_eq!(
+        translation.manifest.value["features"]["storage"].as_bool(),
+        Some(true),
+        "storage imports should enable manifest.features.storage"
     );
 
     // Verify methods
@@ -343,12 +339,10 @@ fn test_move_resource_import_enables_storage_feature() {
     let translation =
         translate_with_config(&wasm, config).expect("Move resource imports should translate");
 
-    assert!(
-        translation.manifest.value["features"]
-            .as_object()
-            .map(|value| value.is_empty())
-            .unwrap_or(false),
-        "features should be an empty object for Neo Express compatibility"
+    assert_eq!(
+        translation.manifest.value["features"]["storage"].as_bool(),
+        Some(true),
+        "Move resource imports should enable manifest.features.storage"
     );
 }
 

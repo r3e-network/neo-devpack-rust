@@ -24,7 +24,10 @@ fn translate_marks_storage_feature_when_storage_syscall_used() {
             .expect("manifest serialises"),
     )
     .expect("manifest parses");
-    assert_eq!(manifest_json["features"], serde_json::json!({}));
+    assert_eq!(
+        manifest_json["features"]["storage"],
+        serde_json::json!(true)
+    );
 }
 
 #[test]
@@ -44,7 +47,10 @@ fn translate_marks_payable_feature_for_on_nep17_payment() {
             .expect("manifest serialises"),
     )
     .expect("manifest parses");
-    assert_eq!(manifest_json["features"], serde_json::json!({}));
+    assert_eq!(
+        manifest_json["features"]["payable"],
+        serde_json::json!(true)
+    );
 }
 
 #[test]
