@@ -53,3 +53,13 @@ doc = false
 name = "fuzz_syscall_surface"
 path = "fuzz_targets/fuzz_syscall_surface.rs"
 doc = false
+
+[[bin]]
+name = "fuzz_rust_contract"
+path = "fuzz_targets/fuzz_rust_contract.rs"
+doc = false
+
+[[bin]]
+name = "fuzz_rust_contract_differential"
+path = "fuzz_targets/fuzz_rust_contract_differential.rs"
+doc = false

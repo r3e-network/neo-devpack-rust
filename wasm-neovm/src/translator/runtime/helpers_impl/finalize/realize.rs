@@ -50,12 +50,13 @@ impl RuntimeHelpers {
             None
         };
 
-        let memory_kinds: Vec<MemoryHelperKind> = self
+        let mut memory_kinds: Vec<MemoryHelperKind> = self
             .memory_helpers
             .iter()
             .filter(|(_, record)| !record.calls.is_empty())
             .map(|(kind, _)| *kind)
             .collect();
+        memory_kinds.sort_unstable();
         for kind in memory_kinds {
             let offset = self.realize_memory_helper(script, kind, mask_u32_offset)?;
             if let Some(record) = self.memory_helpers.get_mut(&kind) {
@@ -65,12 +66,13 @@ impl RuntimeHelpers {
             }
         }
 
-        let bit_kinds: Vec<BitHelperKind> = self
+        let mut bit_kinds: Vec<BitHelperKind> = self
             .bit_helpers
             .iter()
             .filter(|(_, record)| !record.calls.is_empty())
             .map(|(kind, _)| *kind)
             .collect();
+        bit_kinds.sort_unstable();
         for kind in bit_kinds {
             let offset = self.realize_bit_helper(script, kind)?;
             if let Some(record) = self.bit_helpers.get_mut(&kind) {
@@ -80,12 +82,13 @@ impl RuntimeHelpers {
             }
         }
 
-        let table_kinds: Vec<TableHelperKind> = self
+        let mut table_kinds: Vec<TableHelperKind> = self
             .table_helpers
             .iter()
             .filter(|(_, record)| !record.calls.is_empty())
             .map(|(kind, _)| *kind)
             .collect();
+        table_kinds.sort_unstable();
         for kind in table_kinds {
             let offset = self.realize_table_helper(script, kind, mask_u32_offset)?;
             if let Some(record) = self.table_helpers.get_mut(&kind) {
@@ -95,12 +98,13 @@ impl RuntimeHelpers {
             }
         }
 
-        let call_indirect_keys: Vec<CallIndirectHelperKey> = self
+        let mut call_indirect_keys: Vec<CallIndirectHelperKey> = self
             .call_indirect_helpers
             .iter()
             .filter(|(_, record)| !record.calls.is_empty())
             .map(|(key, _)| *key)
             .collect();
+        call_indirect_keys.sort_unstable();
         if !call_indirect_keys.is_empty() && functions.is_none() {
             bail!("call_indirect helpers requested without function registry");
         }

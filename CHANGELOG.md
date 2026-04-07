@@ -10,6 +10,27 @@ this repository follow independent versioning (currently 0.1.x).
 
 ## [Unreleased]
 
+## [0.5.5] - 2026-04-07
+
+### Added
+
+- Added structured Rust contract fuzz targets that exercise the Rust compiler/devpack pipeline and differential determinism checks against the translator.
+- Added a detached long-run fuzz supervisor workflow plus saved-artifact regression coverage for the Rust differential harness.
+
+### Fixed
+
+- Fixed translator helper realization ordering so identical Wasm inputs now emit deterministic NeoVM scripts.
+- Fixed Rust contract fuzz workspaces to use process-scoped build directories, avoiding concurrent artifact collisions during long-running burns and standalone repros.
+
+### Testing
+
+- `bash scripts/check_versions.sh`
+- `cargo fmt --all --check`
+- `cargo test --workspace`
+- `cargo +nightly test --manifest-path wasm-neovm/fuzz/Cargo.toml --lib`
+- `cargo +nightly fuzz run fuzz_rust_contract_differential wasm-neovm/fuzz/artifacts/fuzz_rust_contract_differential/crash-1fb38c7780f76f2eaae669eb80b9b0fc5240935c -- -runs=1`
+- `cargo +nightly fuzz run fuzz_rust_contract_differential wasm-neovm/fuzz/artifacts/fuzz_rust_contract_differential/crash-6f1d25b7e3170e6fae692f6f43a8053f3fb1e029 -- -runs=1`
+
 ## [0.5.4] - 2026-04-04
 
 ### Added

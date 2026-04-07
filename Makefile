@@ -77,7 +77,7 @@ PACKAGE_MANIFESTS := \
 	move-neovm/Cargo.toml \
 	solana-compat/Cargo.toml
 
-.PHONY: help examples cross-chain hello-world nep17-token constant-product nep11-nft uniswap-v2 staking-rewards timelock-vault flashloan-pool multisig-wallet escrow crowdfunding governance-dao oracle-consumer nft-marketplace solana-hello move-coin c-hello fmt lint test verify-contract-tests test-contracts test-cross-chain integration-tests smoke-neoxp security-check package-check spec clean fuzz fuzz-compiler fuzz-translate fuzz-translate-config fuzz-pipeline fuzz-nef fuzz-numeric fuzz-devpack-codec fuzz-syscall-surface fuzz-all
+.PHONY: help examples cross-chain hello-world nep17-token constant-product nep11-nft uniswap-v2 staking-rewards timelock-vault flashloan-pool multisig-wallet escrow crowdfunding governance-dao oracle-consumer nft-marketplace solana-hello move-coin c-hello fmt lint test verify-contract-tests test-contracts test-cross-chain integration-tests smoke-neoxp security-check package-check spec clean fuzz fuzz-compiler fuzz-translate fuzz-translate-config fuzz-pipeline fuzz-nef fuzz-numeric fuzz-devpack-codec fuzz-syscall-surface fuzz-rust-contract fuzz-rust-differential fuzz-rust-long fuzz-long-status fuzz-long-stop fuzz-all
 
 help:
 	@echo "Usage: make <target>"
@@ -133,6 +133,11 @@ help:
 	@echo "  fuzz-numeric     Fuzz integer/varint/string/byte encoding helpers"
 	@echo "  fuzz-devpack-codec  Fuzz neo-devpack codec roundtrips and decoder failure paths"
 	@echo "  fuzz-syscall-surface Fuzz syscall alias/hash parity across translator and devpack"
+	@echo "  fuzz-rust-contract  Fuzz generated Rust devpack contracts through compile + translate"
+	@echo "  fuzz-rust-differential  Fuzz deterministic Rust contract compile/translate output"
+	@echo "  fuzz-rust-long   Start the detached multi-day Rust contract fuzz supervisor"
+	@echo "  fuzz-long-status Show the detached long-run fuzz status snapshot"
+	@echo "  fuzz-long-stop   Stop the detached long-run fuzz supervisor"
 	@echo "  fuzz-all         Run the full fuzz bundle sequentially"
 
 examples: hello-world nep17-token constant-product nep11-nft uniswap-v2 staking-rewards timelock-vault flashloan-pool multisig-wallet escrow crowdfunding governance-dao oracle-consumer nft-marketplace c-hello-optional cross-chain
@@ -488,7 +493,7 @@ spec:
 	$(MAKE) -C spec
 
 fuzz: fuzz-pipeline  ## Run primary structured pipeline fuzz target for 5 minutes
-fuzz-compiler: fuzz-translate fuzz-translate-config fuzz-pipeline fuzz-nef fuzz-numeric  ## Run compiler-focused fuzz bundle
+fuzz-compiler: fuzz-translate fuzz-translate-config fuzz-pipeline fuzz-nef fuzz-numeric fuzz-rust-contract fuzz-rust-differential  ## Run compiler-focused fuzz bundle
 fuzz-translate:
 	cd wasm-neovm && cargo +nightly fuzz run fuzz_translate -- -max_total_time=300
 fuzz-translate-config:
@@ -503,6 +508,16 @@ fuzz-devpack-codec:
 	cd wasm-neovm && cargo +nightly fuzz run fuzz_devpack_codec -- -max_total_time=300
 fuzz-syscall-surface:
 	cd wasm-neovm && cargo +nightly fuzz run fuzz_syscall_surface -- -max_total_time=300
+fuzz-rust-contract:
+	cd wasm-neovm && cargo +nightly fuzz run fuzz_rust_contract -- -max_total_time=300
+fuzz-rust-differential:
+	cd wasm-neovm && cargo +nightly fuzz run fuzz_rust_contract_differential -- -max_total_time=300
+fuzz-rust-long:
+	./scripts/run_long_fuzz.sh start --replace --targets fuzz_rust_contract,fuzz_rust_contract_differential --timeout 120
+fuzz-long-status:
+	./scripts/run_long_fuzz.sh status
+fuzz-long-stop:
+	./scripts/run_long_fuzz.sh stop
 fuzz-all: fuzz-compiler fuzz-devpack-codec fuzz-syscall-surface  ## Run all fuzz targets sequentially
 
 clean:

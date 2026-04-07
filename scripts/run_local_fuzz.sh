@@ -20,6 +20,8 @@ KNOWN_TARGETS=(
   fuzz_structured_pipeline
   fuzz_devpack_codec
   fuzz_syscall_surface
+  fuzz_rust_contract
+  fuzz_rust_contract_differential
 )
 
 TARGETS=("${KNOWN_TARGETS[@]}")
@@ -48,6 +50,7 @@ Options:
 Examples:
   scripts/run_local_fuzz.sh
   scripts/run_local_fuzz.sh --targets fuzz_structured_pipeline,fuzz_devpack_codec
+  scripts/run_local_fuzz.sh --targets fuzz_rust_contract,fuzz_rust_contract_differential --timeout 120
   scripts/run_local_fuzz.sh --max-total-time 86400
 USAGE
 }
