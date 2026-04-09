@@ -8,6 +8,56 @@ import { Aside } from '@astrojs/starlight/components';
 
 This page summarizes the notable changes in each release. For the complete commit-level history, see the [full changelog on GitHub](https://github.com/r3e-network/neo-devpack-rust/blob/master/CHANGELOG.md).
 
+## 0.5.5 — April 2026
+
+Determinism and fuzzing hardening release for the Rust contract toolchain.
+
+- **Translator determinism fix** — runtime helper realization now uses a stable ordering, fixing a real bug where identical Wasm could emit different NeoVM scripts.
+- **Rust pipeline fuzzing** — added structured Rust contract fuzz targets that exercise the full Rust -> Wasm -> NeoVM pipeline and differential parity checks.
+- **Long-run supervision** — added detached multi-day fuzz orchestration, saved-artifact regressions, and cleaner status reporting for current-session findings.
+
+## 0.5.4 — April 2026
+
+Manifest feature retention and validation hardening.
+
+- **Manifest feature preservation** — emitted manifests now retain `storage` and `payable` flags correctly.
+- **Alignment validation** — added fallible `Alignment::try_new(...)` support for public validation paths.
+- **Canonical syscall descriptors** — validation now requires canonical `Root.Category.Method` names.
+- **Release tooling fix** — version consistency checks now correctly handle `version.workspace = true`.
+
+## 0.5.3 — March 2026
+
+Final NEF size optimization pass.
+
+- **42% total NEF reduction** from the 0.5.0 baseline across representative workloads.
+- **Null-check removal** — parameter normalization no longer emits redundant null checks when `CONVERT Integer` already handles the case.
+- **Inline sign-extension tightening** — additional TUCK-based shrinkage for inline sign-extension paths.
+
+## 0.5.2 — March 2026
+
+Continued NEF compaction and helper sharing.
+
+- **Shared `mask_u32` helper** — deduplicated repeated masking sequences used by memory and table helpers.
+- **Less export overhead** — non-exported functions skip unnecessary parameter normalization.
+- **Init helper compaction** — removed redundant guard work and trimmed initialization bytecode.
+- **Critical opcode fix** — corrected the `CONVERT` opcode constant to match NeoVM.
+
+## 0.5.1 — March 2026
+
+Systematic bytecode-size optimization release.
+
+- **Jump/call relaxation** — long-form branches shrink to short-form encodings when offsets fit.
+- **Peephole optimization** — removes redundant opcode patterns while preserving control-flow targets.
+- **Shared normalization/sign-extension helpers** — exported call surfaces now reuse compact helper bodies instead of inlining repeated sequences.
+
+## 0.5.0 — March 2026
+
+Production-readiness milestone for the translator line.
+
+- **Security hardening** — patched multiple contract-side vulnerabilities and expanded safety-focused review coverage.
+- **Fuzzing foundation** — introduced compiler and contract fuzzing infrastructure.
+- **Performance validation** — verified no regressions while preserving existing translation throughput work.
+
 ## 0.4.8 — February 2026
 
 Production hardening release focused on Neo N3 correctness at import boundaries and syscall conformance.
