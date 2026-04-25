@@ -81,15 +81,7 @@ impl ManifestBuilder {
         let mut mutated: Vec<String> = Vec::new();
         for (name, baseline) in &self.baseline_signatures {
             if let Some(final_shape) = final_shapes.get(name) {
-                let baseline_params = baseline.param_types.len();
-                let final_params = final_shape.param_types.len();
-                let baseline_void = baseline.return_type.eq_ignore_ascii_case("Void");
-                let final_void = final_shape.return_type.eq_ignore_ascii_case("Void");
-
-                if baseline_params != final_params
-                    || baseline_void != final_void
-                    || baseline.offset != final_shape.offset
-                {
+                if baseline != final_shape {
                     mutated.push(name.clone());
                 }
             }
@@ -102,7 +94,7 @@ impl ManifestBuilder {
                 .map(|label| format!(" ({label})"))
                 .unwrap_or_default();
             bail!(
-                "manifest overlay{} mutated ABI arity or offsets for existing methods: {}",
+                "manifest overlay{} mutated ABI signatures or offsets for existing methods: {}",
                 hint,
                 mutated.join(", ")
             );
@@ -140,6 +132,12 @@ impl ManifestBuilder {
     }
 
     /// Consume the builder and return a `RenderedManifest`.
+    ///
+    /// The translator tracks declared `features.storage`/`features.payable`
+    /// internally, but the on-disk manifest is rendered with `features: {}`
+    /// because Neo Express's deployer rejects manifests that carry non-empty
+    /// feature maps; the actual storage capability still flows through the
+    /// emitted `System.Storage.*` SYSCALLs in the script body.
     pub fn into_rendered(self) -> super::RenderedManifest {
         super::RenderedManifest {
             value: self.manifest,

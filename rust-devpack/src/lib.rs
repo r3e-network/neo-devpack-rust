@@ -15,7 +15,8 @@ pub mod utils;
 pub use native_contracts::*;
 pub use neo_macros::*;
 pub use neo_runtime::{
-    NeoContractRuntime, NeoCrypto, NeoJSON, NeoRuntime, NeoRuntimeContext, NeoStorage,
+    NeoContractRuntime, NeoCrypto, NeoJSON, NeoRuntime, NeoRuntimeContext, NeoStorage, RawStorage,
+    RawStorageGet,
 };
 pub use neo_syscalls::*;
 pub use neo_types::{
@@ -38,6 +39,7 @@ pub mod prelude {
         NeoContractMethodTrait, NeoContractParameter, NeoContractPermission, NeoContractRuntime,
         NeoCrypto, NeoError, NeoInteger, NeoIterator, NeoJSON, NeoMap, NeoResult, NeoRuntime,
         NeoRuntimeContext, NeoStorage, NeoStorageContext, NeoString, NeoStruct, NeoValue,
+        RawStorage, RawStorageGet,
     };
 }
 

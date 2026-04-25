@@ -25,10 +25,8 @@ impl RuntimeHelpers {
             return Ok(());
         }
         // After the first init guard in a function, the init helper has been called
-        // (or the flag was already set from a prior invocation). Subsequent guards
-        // within the same function are redundant — the flag check always succeeds.
-        // We still emit the first one per function; callers should call
-        // reset_function_init_emitted() at the start of each new function.
+        // or the flag was already set by the exported entry stub. Subsequent guards
+        // within the same function are redundant.
         if self.function_init_emitted {
             return Ok(());
         }
@@ -53,6 +51,10 @@ impl RuntimeHelpers {
         previous
     }
 
+    pub(crate) fn memory_init_call_count(&self) -> usize {
+        self.memory_init_calls.len()
+    }
+
     pub(crate) fn finalize(&mut self, params: FinalizeParams<'_>) -> Result<()> {
         self.prepare_init_helper(
             params.script,
@@ -71,13 +73,6 @@ impl RuntimeHelpers {
             params.adapter,
         )?;
         self.emit_passive_data_helpers(params.script)?;
-        Ok(())
-    }
-
-    pub(crate) fn patch_start_calls(&self, script: &mut [u8], target: usize) -> Result<()> {
-        for &pos in &self.start_call_positions {
-            patch_call(script, pos, target)?;
-        }
         Ok(())
     }
 

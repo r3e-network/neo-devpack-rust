@@ -44,6 +44,43 @@ fn push_placeholder_value(value_stack: &mut Vec<StackValue>) {
     });
 }
 
+/// Reverse the top `n` items on the NeoVM evaluation stack.
+///
+/// Used before `CALL_L` to a wasm-defined function so that NeoVM `INITSLOT`
+/// (which pops arguments top-first into `Arguments[0..N]`) ends up populating
+/// slots in the same order WebAssembly's `local.get N` expects.
+///
+/// WebAssembly `call f(a, b, c)` pushes `a` then `b` then `c` (so `c` is on
+/// top). Without reversing, `INITSLOT` would store `c` in `Arguments[0]` and
+/// `a` in `Arguments[N-1]` — the opposite of `local.get 0 == a`. Reversing
+/// flips the top to `[c, b, a]` so `INITSLOT` lands `a` in slot 0.
+///
+/// Imports are exempt: their helper bodies (e.g. `emit_storage_*_helper`)
+/// already account for the top-first slot order in their own `INITSLOT`
+/// dispatch, so adding a reversal here would re-flip them and break.
+fn emit_reverse_args(script: &mut Vec<u8>, n: usize) -> Result<()> {
+    match n {
+        0 | 1 => Ok(()),
+        2 => {
+            script.push(lookup_opcode("SWAP")?.byte);
+            Ok(())
+        }
+        3 => {
+            script.push(lookup_opcode("REVERSE3")?.byte);
+            Ok(())
+        }
+        4 => {
+            script.push(lookup_opcode("REVERSE4")?.byte);
+            Ok(())
+        }
+        _ => {
+            let _ = emit_push_int(script, n as i128);
+            script.push(lookup_opcode("REVERSEN")?.byte);
+            Ok(())
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) fn try_handle(
     op: &Operator,
@@ -90,6 +127,15 @@ pub(super) fn try_handle(
                 if try_handle_env_import(import, func_sig, &params, runtime, script, value_stack)? {
                     return Ok(true);
                 }
+                if let Some(descriptor) =
+                    try_handle_neo_import(import, func_sig, &params, runtime, script)?
+                {
+                    features.register_syscall(descriptor);
+                    if !func_sig.results().is_empty() {
+                        push_placeholder_value(value_stack);
+                    }
+                    return Ok(true);
+                }
 
                 handle_import_call(
                     function_index,
@@ -134,6 +180,7 @@ pub(super) fn try_handle(
                         func_sig.results().len()
                     );
                 }
+                emit_reverse_args(script, func_sig.params().len())?;
                 functions.emit_call(script, function_index as usize)?;
                 if !func_sig.results().is_empty() {
                     push_placeholder_value(value_stack);

@@ -169,7 +169,7 @@ impl CompleteContract {
     /// Get balance of an account
     #[neo_method]
     pub fn balance_of(&self, account: &NeoByteString) -> NeoResult<NeoInteger> {
-        let storage = CompleteStorage::load(&NeoRuntime::get_storage_context()?);
+        let storage = CompleteStorage::load(&NeoRuntime::get_storage_context()?)?;
         Ok(storage
             .balances
             .get(account)
@@ -195,7 +195,7 @@ impl CompleteContract {
         }
 
         // Update balances
-        let mut storage = CompleteStorage::load(&NeoRuntime::get_storage_context()?);
+        let mut storage = CompleteStorage::load(&NeoRuntime::get_storage_context()?)?;
 
         // Subtract from sender
         let new_from_balance = balance - amount.clone();
@@ -251,7 +251,7 @@ impl CompleteContract {
         let owner = NeoRuntime::get_calling_script_hash()?;
 
         // Update allowances
-        let mut storage = CompleteStorage::load(&NeoRuntime::get_storage_context()?);
+        let mut storage = CompleteStorage::load(&NeoRuntime::get_storage_context()?)?;
 
         let mut owner_allowances = storage
             .allowances
@@ -294,7 +294,7 @@ impl CompleteContract {
         owner: &NeoByteString,
         spender: &NeoByteString,
     ) -> NeoResult<NeoInteger> {
-        let storage = CompleteStorage::load(&NeoRuntime::get_storage_context()?);
+        let storage = CompleteStorage::load(&NeoRuntime::get_storage_context()?)?;
 
         if let Some(owner_allowances) = storage.allowances.get(owner) {
             Ok(owner_allowances
@@ -335,7 +335,7 @@ impl CompleteContract {
         }
 
         // Update balances
-        let mut storage = CompleteStorage::load(&NeoRuntime::get_storage_context()?);
+        let mut storage = CompleteStorage::load(&NeoRuntime::get_storage_context()?)?;
 
         // Subtract from sender
         let new_from_balance = balance - amount.clone();
@@ -389,7 +389,7 @@ impl CompleteContract {
     /// Get transfer count
     #[neo_method]
     pub fn get_transfer_count(&self) -> NeoResult<NeoInteger> {
-        let storage = CompleteStorage::load(&NeoRuntime::get_storage_context()?);
+        let storage = CompleteStorage::load(&NeoRuntime::get_storage_context()?)?;
         Ok(storage
             .counters
             .get(&NeoString::from_str("transfer_count"))
@@ -400,7 +400,7 @@ impl CompleteContract {
     /// Get approval count
     #[neo_method]
     pub fn get_approval_count(&self) -> NeoResult<NeoInteger> {
-        let storage = CompleteStorage::load(&NeoRuntime::get_storage_context()?);
+        let storage = CompleteStorage::load(&NeoRuntime::get_storage_context()?)?;
         Ok(storage
             .counters
             .get(&NeoString::from_str("approval_count"))
@@ -411,7 +411,7 @@ impl CompleteContract {
     /// Get contract metadata
     #[neo_method]
     pub fn get_metadata(&self, key: &NeoString) -> NeoResult<NeoValue> {
-        let storage = CompleteStorage::load(&NeoRuntime::get_storage_context()?);
+        let storage = CompleteStorage::load(&NeoRuntime::get_storage_context()?)?;
         Ok(storage.metadata.get(key).cloned().unwrap_or(NeoValue::Null))
     }
 
@@ -425,7 +425,7 @@ impl CompleteContract {
         }
 
         // Update metadata
-        let mut storage = CompleteStorage::load(&NeoRuntime::get_storage_context()?);
+        let mut storage = CompleteStorage::load(&NeoRuntime::get_storage_context()?)?;
         storage.metadata.insert(key, value);
         storage.save(&NeoRuntime::get_storage_context()?)?;
 
@@ -446,7 +446,7 @@ impl CompleteContract {
         self.version = new_version.clone();
 
         // Update storage
-        let mut storage = CompleteStorage::load(&NeoRuntime::get_storage_context()?);
+        let mut storage = CompleteStorage::load(&NeoRuntime::get_storage_context()?)?;
         storage.metadata.insert(
             NeoString::from_str("version"),
             NeoValue::from(new_version.clone()),
@@ -467,7 +467,7 @@ impl CompleteContract {
     /// Get contract statistics
     #[neo_method]
     pub fn get_statistics(&self) -> NeoResult<NeoValue> {
-        let storage = CompleteStorage::load(&NeoRuntime::get_storage_context()?);
+        let storage = CompleteStorage::load(&NeoRuntime::get_storage_context()?)?;
 
         let mut stats = NeoStruct::new();
         stats.set_field("total_supply", NeoValue::from(self.total_supply.clone()));
@@ -514,7 +514,7 @@ impl CompleteContract {
         }
 
         // Set emergency flag
-        let mut storage = CompleteStorage::load(&NeoRuntime::get_storage_context()?);
+        let mut storage = CompleteStorage::load(&NeoRuntime::get_storage_context()?)?;
         storage.metadata.insert(
             NeoString::from_str("emergency_paused"),
             NeoValue::from(NeoBoolean::TRUE),
@@ -537,7 +537,7 @@ impl CompleteContract {
         }
 
         // Remove emergency flag
-        let mut storage = CompleteStorage::load(&NeoRuntime::get_storage_context()?);
+        let mut storage = CompleteStorage::load(&NeoRuntime::get_storage_context()?)?;
         storage.metadata.insert(
             NeoString::from_str("emergency_paused"),
             NeoValue::from(NeoBoolean::FALSE),
@@ -553,7 +553,7 @@ impl CompleteContract {
     /// Check if contract is paused
     #[neo_method]
     pub fn is_paused(&self) -> NeoResult<NeoBoolean> {
-        let storage = CompleteStorage::load(&NeoRuntime::get_storage_context()?);
+        let storage = CompleteStorage::load(&NeoRuntime::get_storage_context()?)?;
         let paused = storage
             .metadata
             .get(&NeoString::from_str("emergency_paused"))

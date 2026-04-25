@@ -73,29 +73,31 @@ pub(super) fn resolve_start_descriptor(
 pub(super) fn append_start_stub(
     script: &mut Vec<u8>,
     init_helper_offset: usize,
-    start_offset: Option<usize>,
-    start_slot: usize,
+    _start_offset: Option<usize>,
+    _start_slot: usize,
 ) -> Result<usize> {
     let stub_offset = script.len();
 
-    emit_load_static(script, INIT_FLAG_SLOT)?;
-    let skip_init = emit_jump_placeholder(script, "JMPIF_L")?;
     let init_call = emit_call_placeholder(script)?;
     patch_call(script, init_call, init_helper_offset)?;
-    let after_init = script.len();
-    patch_jump(script, skip_init, after_init)?;
 
-    emit_load_static(script, start_slot)?;
-    let skip_start = emit_jump_placeholder(script, "JMPIF_L")?;
+    script.push(RET);
 
-    if let Some(offset) = start_offset {
-        let start_call = emit_call_placeholder(script)?;
-        patch_call(script, start_call, offset)?;
-    }
-    let after_start = script.len();
-    patch_jump(script, skip_start, after_start)?;
-    let _ = emit_push_int(script, 1);
-    emit_store_static(script, start_slot)?;
+    Ok(stub_offset)
+}
+
+pub(super) fn append_entry_init_stub(
+    script: &mut Vec<u8>,
+    init_helper_offset: usize,
+    body_offset: usize,
+) -> Result<usize> {
+    let stub_offset = script.len();
+
+    let init_call = emit_call_placeholder(script)?;
+    patch_call(script, init_call, init_helper_offset)?;
+
+    let body_call = emit_call_placeholder(script)?;
+    patch_call(script, body_call, body_offset)?;
 
     script.push(RET);
 

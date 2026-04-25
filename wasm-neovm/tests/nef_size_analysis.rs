@@ -316,7 +316,7 @@ fn nef_opcode_histogram() {
         }
         eprintln!("\n=== {name} opcode histogram ({} bytes) ===", s.len());
         let mut sorted: Vec<_> = hist.into_iter().collect();
-        sorted.sort_by(|a, b| b.1 .1.cmp(&a.1 .1));
+        sorted.sort_by_key(|(_, (_, bytes))| std::cmp::Reverse(*bytes));
         for (op, (count, bytes)) in sorted.iter().take(15) {
             eprintln!("  {op:15} {count:3}x  {bytes:4}B");
         }

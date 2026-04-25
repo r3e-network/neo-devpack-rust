@@ -100,6 +100,7 @@ mod helpers_impl;
 mod init;
 mod memory;
 mod registry;
+mod storage;
 mod table;
 mod tokens;
 mod types;
@@ -122,17 +123,23 @@ use types::{
     PassiveElementLayout, PassiveSegmentLayout, TableDescriptor, TableLayout,
 };
 pub(crate) use types::{
-    BitHelperKind, CallIndirectHelperKey, CallTarget, TableHelperKind, TableInfo,
+    BitHelperKind, CallIndirectHelperKey, CallTarget, StorageHelperKind, TableHelperKind, TableInfo,
 };
 
 use bits::{emit_clz_helper, emit_ctz_helper, emit_popcnt_helper};
-use data::{emit_data_drop_helper, emit_data_init_helper};
+use data::{emit_chunked_data_init_helper, emit_data_drop_helper, emit_data_init_helper};
 use init::emit_runtime_init_helper;
 use memory::{
-    emit_env_memcpy_helper, emit_env_memmove_helper, emit_env_memset_helper,
-    emit_memory_copy_helper, emit_memory_fill_helper, emit_memory_grow_helper,
-    emit_memory_load_helper, emit_memory_store_helper,
+    emit_chunked_copy_literal_to_memory, emit_chunked_env_memcpy_helper,
+    emit_chunked_env_memmove_helper, emit_chunked_env_memset_helper,
+    emit_chunked_memory_copy_helper, emit_chunked_memory_fill_helper,
+    emit_chunked_memory_grow_helper, emit_chunked_memory_load_helper,
+    emit_chunked_memory_store_helper, emit_chunked_new_page, emit_env_memcpy_helper,
+    emit_env_memmove_helper, emit_env_memset_helper, emit_memory_copy_helper,
+    emit_memory_fill_helper, emit_memory_grow_helper, emit_memory_load_helper,
+    emit_memory_store_helper,
 };
+use storage::{emit_storage_delete_helper, emit_storage_get_helper, emit_storage_put_helper};
 use table::{
     emit_elem_drop_helper, emit_table_copy_helper, emit_table_fill_helper, emit_table_get_helper,
     emit_table_grow_helper, emit_table_init_from_passive_helper, emit_table_set_helper,
@@ -173,6 +180,10 @@ pub(crate) struct RuntimeHelpers {
     param_normalize_i64_helper: HelperRecord,
     table_helpers: HashMap<TableHelperKind, HelperRecord>,
     call_indirect_helpers: HashMap<CallIndirectHelperKey, HelperRecord>,
+    /// Storage facade helpers: marshal wasm pointer/length args into NeoVM
+    /// `System.Storage.*` SYSCALL invocations against the real persistent
+    /// storage of the executing contract.
+    storage_helpers: HashMap<StorageHelperKind, HelperRecord>,
 
     // === Cold fields (accessed during setup/finalization) ===
     data_segments: Vec<DataSegmentInfo>,
@@ -208,6 +219,7 @@ impl RuntimeHelpers {
             bit_helpers: HashMap::with_capacity(8),
             table_helpers: HashMap::with_capacity(8),
             call_indirect_helpers: HashMap::with_capacity(8),
+            storage_helpers: HashMap::with_capacity(4),
             sign_extend_32_helper: HelperRecord::default(),
             sign_extend_64_helper: HelperRecord::default(),
             param_normalize_i32_helper: HelperRecord::default(),

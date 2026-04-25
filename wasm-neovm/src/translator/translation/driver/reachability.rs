@@ -5,6 +5,142 @@ use std::collections::{BTreeSet, HashSet, VecDeque};
 
 use super::*;
 
+pub(super) struct FunctionDependencyGraph {
+    import_function_count: usize,
+    direct_edges: Vec<Vec<u32>>,
+    indirect_edges: Vec<bool>,
+    indirect_roots: BTreeSet<u32>,
+}
+
+impl FunctionDependencyGraph {
+    pub(super) fn function_requires_runtime_init(
+        &self,
+        root: u32,
+        direct_init_functions: &HashSet<u32>,
+    ) -> bool {
+        if direct_init_functions.contains(&root) {
+            return true;
+        }
+        if (root as usize) < self.import_function_count {
+            return false;
+        }
+
+        let mut seen = HashSet::new();
+        let mut queue = VecDeque::from([root]);
+
+        while let Some(function_index) = queue.pop_front() {
+            if !seen.insert(function_index) {
+                continue;
+            }
+            if direct_init_functions.contains(&function_index) {
+                return true;
+            }
+
+            let Some(defined_idx) =
+                (function_index as usize).checked_sub(self.import_function_count)
+            else {
+                continue;
+            };
+            if defined_idx >= self.direct_edges.len() {
+                continue;
+            }
+
+            for &callee in &self.direct_edges[defined_idx] {
+                if (callee as usize) >= self.import_function_count {
+                    queue.push_back(callee);
+                }
+            }
+
+            if self.indirect_edges[defined_idx] {
+                for &callee in &self.indirect_roots {
+                    if (callee as usize) >= self.import_function_count {
+                        queue.push_back(callee);
+                    }
+                }
+            }
+        }
+
+        false
+    }
+}
+
+pub(super) fn analyze_function_dependency_graph(bytes: &[u8]) -> Result<FunctionDependencyGraph> {
+    let mut import_function_count: usize = 0;
+    let mut element_function_refs: BTreeSet<u32> = BTreeSet::new();
+    let mut ref_func_refs: BTreeSet<u32> = BTreeSet::new();
+    let mut direct_edges: Vec<Vec<u32>> = Vec::new();
+    let mut indirect_edges: Vec<bool> = Vec::new();
+
+    for payload in Parser::new(0).parse_all(bytes) {
+        match payload? {
+            Payload::ImportSection(reader) => {
+                for import in reader {
+                    if matches!(import?.ty, TypeRef::Func(_)) {
+                        import_function_count += 1;
+                    }
+                }
+            }
+            Payload::ElementSection(reader) => {
+                for element in reader {
+                    let element = element?;
+                    match element.items {
+                        wasmparser::ElementItems::Functions(functions) => {
+                            for function_index in functions {
+                                element_function_refs.insert(function_index?);
+                            }
+                        }
+                        wasmparser::ElementItems::Expressions(_, exprs) => {
+                            for expr in exprs {
+                                let expr = expr?;
+                                let mut operators = expr.get_operators_reader();
+                                while !operators.eof() {
+                                    match operators.read()? {
+                                        Operator::RefFunc { function_index } => {
+                                            element_function_refs.insert(function_index);
+                                        }
+                                        Operator::End => break,
+                                        _ => {}
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Payload::CodeSectionEntry(body) => {
+                let mut callees = Vec::new();
+                let mut uses_indirect = false;
+                let mut ops = body.get_operators_reader()?;
+
+                while !ops.eof() {
+                    match ops.read()? {
+                        Operator::Call { function_index } => callees.push(function_index),
+                        Operator::CallIndirect { .. } => uses_indirect = true,
+                        Operator::RefFunc { function_index } => {
+                            ref_func_refs.insert(function_index);
+                        }
+                        _ => {}
+                    }
+                }
+
+                direct_edges.push(callees);
+                indirect_edges.push(uses_indirect);
+            }
+            Payload::End(_) => break,
+            _ => {}
+        }
+    }
+
+    element_function_refs.extend(ref_func_refs);
+
+    Ok(FunctionDependencyGraph {
+        import_function_count,
+        direct_edges,
+        indirect_edges,
+        indirect_roots: element_function_refs,
+    })
+}
+
 /// Computes the set of reachable **defined** function indices (absolute Wasm function indices).
 ///
 /// Reachability roots are exported functions and start function. We follow direct `call`

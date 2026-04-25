@@ -528,11 +528,11 @@ fn ensure_manifest_methods_catches_signature_mutation() {
     let err = builder.ensure_method_parity().unwrap_err();
     assert!(err
         .to_string()
-        .contains("mutated ABI arity or offsets for existing methods"));
+        .contains("mutated ABI signatures or offsets for existing methods"));
 }
 
 #[test]
-fn ensure_manifest_methods_allows_type_overrides() {
+fn ensure_manifest_methods_rejects_type_overrides() {
     let methods = vec![crate::manifest::ManifestMethod {
         name: "foo".to_string(),
         parameters: vec![crate::manifest::ManifestParameter {
@@ -556,9 +556,10 @@ fn ensure_manifest_methods_allows_type_overrides() {
     });
     builder.merge_overlay(&overlay, Some("overlay.json".to_string()));
     builder.propagate_safe_flags();
-    builder
-        .ensure_method_parity()
-        .expect("parameter/return types may be overridden when arity and offsets match");
+    let err = builder.ensure_method_parity().unwrap_err();
+    assert!(err
+        .to_string()
+        .contains("mutated ABI signatures or offsets for existing methods"));
 }
 
 #[test]

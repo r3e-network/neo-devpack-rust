@@ -5,7 +5,7 @@ This repository ships with a curated set of Rust smart-contract examples that de
 | Contract | Path | Highlights |
 | --- | --- | --- |
 | Hello World | `contracts/hello-world` | Minimal constant-return export. |
-| NEP-17 Token | `contracts/nep17-token` | Storage-backed balances, witness enforcement, transfer events. |
+| NEP-17 Token | `contracts/nep17-token` | Fixed-balance NEP-17-shaped sample with witness-gated validation. |
 | Constant-product AMM | `contracts/constant-product` | Swap/quote functions, reserves in storage, fee logic. |
 | NEP-11 NFT | `contracts/nep11-nft` | Minting, ownership tracking, balance queries, transfer events. |
 | Multisig Wallet | `contracts/multisig-wallet` | Configurable owners/threshold, JSON proposal approvals, on-chain execution. |

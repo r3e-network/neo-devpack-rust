@@ -21,6 +21,36 @@ const SWAP: u8 = 0x50;
 const CONVERT: u8 = 0xD3;
 const STACKITEMTYPE_INTEGER: u8 = 0x21;
 
+fn mark_relative_target(targets: &mut [bool], pc: usize, offset: i32) {
+    let target = pc as i32 + offset;
+    if target >= 0 && (target as usize) < targets.len() {
+        targets[target as usize] = true;
+    }
+}
+
+fn mark_i8_relative_target(script: &[u8], targets: &mut [bool], pc: usize, offset_pos: usize) {
+    if offset_pos < script.len() {
+        let offset = script[offset_pos] as i8 as i32;
+        if offset != 0 {
+            mark_relative_target(targets, pc, offset);
+        }
+    }
+}
+
+fn mark_i32_relative_target(script: &[u8], targets: &mut [bool], pc: usize, offset_pos: usize) {
+    if offset_pos + 4 <= script.len() {
+        let offset = i32::from_le_bytes([
+            script[offset_pos],
+            script[offset_pos + 1],
+            script[offset_pos + 2],
+            script[offset_pos + 3],
+        ]);
+        if offset != 0 {
+            mark_relative_target(targets, pc, offset);
+        }
+    }
+}
+
 /// Check if a position is a jump/call target by scanning all branch instructions.
 /// Returns a set of all target positions.
 fn collect_jump_targets(script: &[u8], table: &[Option<&opcodes::OpcodeInfo>; 256]) -> Vec<bool> {
@@ -58,60 +88,21 @@ fn collect_jump_targets(script: &[u8], table: &[Option<&opcodes::OpcodeInfo>; 25
         match byte {
             // Short jumps/calls (1-byte offset)
             0x22 | 0x24 | 0x26 | 0x28 | 0x2A | 0x2C | 0x2E | 0x30 | 0x32 | 0x34 | 0x3D => {
-                if pc + 1 < script.len() {
-                    let offset = script[pc + 1] as i8 as i32;
-                    let target = pc as i32 + offset;
-                    if target >= 0 && (target as usize) < script.len() {
-                        targets[target as usize] = true;
-                    }
-                }
+                mark_i8_relative_target(script, &mut targets, pc, pc + 1);
             }
             // Long jumps/calls (4-byte offset)
             0x23 | 0x25 | 0x27 | 0x29 | 0x2B | 0x2D | 0x2F | 0x31 | 0x33 | 0x35 | 0x3E => {
-                if pc + 4 < script.len() {
-                    let offset = i32::from_le_bytes([
-                        script[pc + 1],
-                        script[pc + 2],
-                        script[pc + 3],
-                        script[pc + 4],
-                    ]);
-                    let target = pc as i32 + offset;
-                    if target >= 0 && (target as usize) < script.len() {
-                        targets[target as usize] = true;
-                    }
-                }
+                mark_i32_relative_target(script, &mut targets, pc, pc + 1);
             }
             // TRY short (2 x 1-byte offsets)
             0x3B => {
-                if pc + 2 < script.len() {
-                    for &off_byte in &[script[pc + 1], script[pc + 2]] {
-                        let offset = off_byte as i8 as i32;
-                        if offset != 0 {
-                            let target = pc as i32 + offset;
-                            if target >= 0 && (target as usize) < script.len() {
-                                targets[target as usize] = true;
-                            }
-                        }
-                    }
-                }
+                mark_i8_relative_target(script, &mut targets, pc, pc + 1);
+                mark_i8_relative_target(script, &mut targets, pc, pc + 2);
             }
             // TRY_L (2 x 4-byte offsets)
             0x3C => {
                 for start in [pc + 1, pc + 5] {
-                    if start + 4 <= script.len() {
-                        let offset = i32::from_le_bytes([
-                            script[start],
-                            script[start + 1],
-                            script[start + 2],
-                            script[start + 3],
-                        ]);
-                        if offset != 0 {
-                            let target = pc as i32 + offset;
-                            if target >= 0 && (target as usize) < script.len() {
-                                targets[target as usize] = true;
-                            }
-                        }
-                    }
+                    mark_i32_relative_target(script, &mut targets, pc, start);
                 }
             }
             _ => {}

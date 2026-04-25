@@ -13,7 +13,7 @@ mod statics;
 mod try_instructions;
 mod validate;
 
-pub(crate) use calls::{emit_call_placeholder, emit_call_to, patch_call};
+pub(crate) use calls::{emit_call_placeholder, emit_call_to, emit_reverse_top_n, patch_call};
 pub(crate) use jumps::{emit_jump_placeholder, emit_jump_to, patch_jump};
 pub(crate) use mask::emit_mask_u32;
 pub(crate) use opcode::lookup_opcode;

@@ -152,7 +152,7 @@ impl TranslationProfile {
     /// Round 90: Get top opcodes by frequency
     pub fn top_opcodes(&self, n: usize) -> Vec<(String, u64)> {
         let mut histogram: Vec<_> = self.opcode_histogram().into_iter().collect();
-        histogram.sort_by(|a, b| b.1.cmp(&a.1));
+        histogram.sort_by_key(|(_, count)| std::cmp::Reverse(*count));
         histogram.into_iter().take(n).collect()
     }
 }

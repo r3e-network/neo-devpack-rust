@@ -1,0 +1,7 @@
+{
+  "name": "HelloWorld",
+  "extra": {
+    "description": "Checked-in overlay sample for hello-world manifest validation",
+    "source": "contracts/hello-world/src/lib.rs"
+  }
+}

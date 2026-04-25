@@ -22,4 +22,4 @@ pub use contract::NeoContractRuntime;
 pub use crypto::NeoCrypto;
 pub use json::NeoJSON;
 pub use runtime::NeoRuntime;
-pub use storage::NeoStorage;
+pub use storage::{NeoStorage, RawStorage, RawStorageGet};

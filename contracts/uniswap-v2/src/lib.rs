@@ -28,27 +28,19 @@ impl UniswapV2RouterContract {
             return 0;
         }
 
-        let amount_in_with_fee = match amount_in.checked_mul(FEE_NUMERATOR) {
-            Some(v) => v,
-            None => return 0, // overflow protection
-        };
-        let numerator = match amount_in_with_fee.checked_mul(RESERVE_1) {
-            Some(v) => v,
-            None => return 0, // overflow protection
-        };
-        let denom_addend = match RESERVE_0.checked_mul(FEE_DENOMINATOR) {
-            Some(v) => v,
-            None => return 0,
-        };
-        let denominator = match denom_addend.checked_add(amount_in_with_fee) {
-            Some(v) => v,
-            None => return 0,
-        };
-        if denominator <= 0 {
-            0
-        } else {
-            numerator / denominator
+        if amount_in > i64::MAX / FEE_NUMERATOR {
+            return 0;
         }
+        let amount_in_with_fee = amount_in * FEE_NUMERATOR;
+        if amount_in_with_fee > i64::MAX / RESERVE_1 {
+            return 0;
+        }
+        let numerator = amount_in_with_fee * RESERVE_1;
+        let denominator_base = RESERVE_0 * FEE_DENOMINATOR;
+        if amount_in_with_fee > i64::MAX - denominator_base {
+            return 0;
+        }
+        numerator / (denominator_base + amount_in_with_fee)
     }
 
     #[neo_method]
@@ -57,14 +49,11 @@ impl UniswapV2RouterContract {
             return false;
         }
 
-        let lhs = match amount_0.checked_mul(RESERVE_1) {
-            Some(v) => v,
-            None => return false, // overflow protection
-        };
-        let rhs = match amount_1.checked_mul(RESERVE_0) {
-            Some(v) => v,
-            None => return false, // overflow protection
-        };
+        if amount_0 > i64::MAX / RESERVE_1 || amount_1 > i64::MAX / RESERVE_0 {
+            return false;
+        }
+        let lhs = amount_0 * RESERVE_1;
+        let rhs = amount_1 * RESERVE_0;
         let delta = if lhs > rhs { lhs - rhs } else { rhs - lhs };
         delta <= 50_000
     }

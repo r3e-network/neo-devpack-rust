@@ -142,15 +142,15 @@ fn translate_table_inline_initializer() {
 
     let translation = translate_module(&wasm, "InlineTable").expect("translation succeeds");
 
-    let sts_fld4 = wasm_neovm::opcodes::lookup("STSFLD4").unwrap().byte;
+    let sts_fld5 = wasm_neovm::opcodes::lookup("STSFLD5").unwrap().byte;
     assert!(
-        translation.script.contains(&sts_fld4),
-        "runtime init should store the table into static slot 4"
+        translation.script.contains(&sts_fld5),
+        "runtime init should store the table into static slot 5"
     );
 
-    let lds_fld4 = wasm_neovm::opcodes::lookup("LDSFLD4").unwrap().byte;
+    let lds_fld5 = wasm_neovm::opcodes::lookup("LDSFLD5").unwrap().byte;
     assert!(
-        translation.script.contains(&lds_fld4),
+        translation.script.contains(&lds_fld5),
         "table.get should load from the table static slot"
     );
 }
@@ -193,25 +193,25 @@ fn translate_multi_table_operations() {
 
     let translation = translate_module(&wasm, "MultiTable").expect("translation succeeds");
 
-    let lds_fld4 = wasm_neovm::opcodes::lookup("LDSFLD4").unwrap().byte;
     let lds_fld5 = wasm_neovm::opcodes::lookup("LDSFLD5").unwrap().byte;
+    let lds_fld6 = wasm_neovm::opcodes::lookup("LDSFLD6").unwrap().byte;
     assert!(
-        translation.script.contains(&lds_fld4),
+        translation.script.contains(&lds_fld5),
         "table operations should load from table 0 slot"
     );
     assert!(
-        translation.script.contains(&lds_fld5),
+        translation.script.contains(&lds_fld6),
         "table operations should load from table 1 slot"
     );
 
-    let sts_fld4 = wasm_neovm::opcodes::lookup("STSFLD4").unwrap().byte;
     let sts_fld5 = wasm_neovm::opcodes::lookup("STSFLD5").unwrap().byte;
+    let sts_fld6 = wasm_neovm::opcodes::lookup("STSFLD6").unwrap().byte;
     assert!(
-        translation.script.contains(&sts_fld4),
+        translation.script.contains(&sts_fld5),
         "runtime init should store table 0"
     );
     assert!(
-        translation.script.contains(&sts_fld5),
+        translation.script.contains(&sts_fld6),
         "runtime init should store table 1"
     );
 

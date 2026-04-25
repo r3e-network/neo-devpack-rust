@@ -40,6 +40,12 @@ fn translate_emits_start_call() {
         .expect("CALL_L opcode available")
         .byte;
     let call_s_byte = opcodes::lookup("CALL").expect("CALL opcode available").byte;
+    assert!(
+        translation.script[start_offset as usize] == call_l_byte
+            || translation.script[start_offset as usize] == call_s_byte,
+        "exported start method should be an init stub"
+    );
+
     let mut found_call = false;
     let script = &translation.script;
     let mut i = 0usize;
@@ -47,7 +53,7 @@ fn translate_emits_start_call() {
         if script[i] == call_l_byte && i + 4 < script.len() {
             let delta = i32::from_le_bytes(script[i + 1..i + 5].try_into().unwrap());
             let target = i as isize + delta as isize;
-            if target == start_offset {
+            if target == 0 {
                 found_call = true;
                 break;
             }
@@ -55,7 +61,7 @@ fn translate_emits_start_call() {
         } else if script[i] == call_s_byte && i + 1 < script.len() {
             let delta = script[i + 1] as i8 as isize;
             let target = i as isize + delta;
-            if target == start_offset {
+            if target == 0 {
                 found_call = true;
                 break;
             }
@@ -67,7 +73,7 @@ fn translate_emits_start_call() {
 
     assert!(
         found_call,
-        "expected CALL/CALL_L to start function at offset {start_offset}"
+        "expected runtime init helper to call the original start body"
     );
 }
 

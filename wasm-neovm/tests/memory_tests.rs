@@ -1,6 +1,8 @@
 // Copyright (c) 2025-2026 R3E Network
 // SPDX-License-Identifier: MIT
 
+use std::convert::TryInto;
+
 use wasm_neovm::{opcodes, translate_module};
 
 #[test]
@@ -54,13 +56,36 @@ fn translate_memory_store_masks_address_to_u32() {
         .expect("store method present");
     let offset = store_method["offset"].as_u64().expect("offset is u64") as usize;
 
+    let call = opcodes::lookup("CALL").unwrap().byte;
+    let call_l = opcodes::lookup("CALL_L").unwrap().byte;
     let ret = opcodes::lookup("RET").unwrap().byte;
-    let body_end = translation.script[offset..]
+
+    let mut body_offset = offset;
+    let mut cursor = offset;
+    while cursor < translation.script.len() && translation.script[cursor] != ret {
+        if translation.script[cursor] == call_l && cursor + 4 < translation.script.len() {
+            let delta = i32::from_le_bytes(
+                translation.script[cursor + 1..cursor + 5]
+                    .try_into()
+                    .unwrap(),
+            );
+            body_offset = (cursor as isize + delta as isize) as usize;
+            cursor += 5;
+        } else if translation.script[cursor] == call && cursor + 1 < translation.script.len() {
+            let delta = translation.script[cursor + 1] as i8 as isize;
+            body_offset = (cursor as isize + delta) as usize;
+            cursor += 2;
+        } else {
+            cursor += 1;
+        }
+    }
+
+    let body_end = translation.script[body_offset..]
         .iter()
         .position(|&byte| byte == ret)
         .expect("store body contains RET")
-        + offset;
-    let body = &translation.script[offset..=body_end];
+        + body_offset;
+    let body = &translation.script[body_offset..=body_end];
 
     let push1 = opcodes::lookup("PUSH1").unwrap().byte;
     let pushint8 = opcodes::lookup("PUSHINT8").unwrap().byte;
@@ -329,6 +354,74 @@ fn translate_memory_grow_shrink() {
     assert!(
         translation.script.contains(&ldsfld2),
         "memory.size should load from static field"
+    );
+}
+
+#[test]
+fn translate_large_memory_uses_page_chunks() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (memory 17)
+              (data (i32.const 1048576) "\2a\00\00\00")
+              (func (export "load_high") (result i32)
+                i32.const 1048576
+                i32.load)
+            )"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "LargeChunkedMemory").expect("translation succeeds");
+
+    let newarray0 = opcodes::lookup("NEWARRAY0").unwrap().byte;
+    let append = opcodes::lookup("APPEND").unwrap().byte;
+    let pickitem = opcodes::lookup("PICKITEM").unwrap().byte;
+    let newbuffer = opcodes::lookup("NEWBUFFER").unwrap().byte;
+    let pushint32 = opcodes::lookup("PUSHINT32").unwrap().byte;
+
+    assert!(
+        translation.script.contains(&newarray0),
+        "multi-page memory should initialize an array of page buffers"
+    );
+    assert!(
+        translation.script.contains(&append),
+        "multi-page memory should append page buffers"
+    );
+    assert!(
+        translation.script.contains(&pickitem),
+        "multi-page memory access should select the target page"
+    );
+    assert!(
+        !translation
+            .script
+            .windows(6)
+            .any(|window| window == [pushint32, 0x00, 0x00, 0x11, 0x00, newbuffer]),
+        "translator must not allocate the 17-page memory as one NeoVM buffer"
+    );
+}
+
+#[test]
+fn translate_memory_grow_uses_chunked_pages() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (memory 1 10)
+              (func (export "grow") (param i32) (result i32)
+                local.get 0
+                memory.grow))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "MemGrowChunked").expect("translation succeeds");
+
+    let newarray0 = opcodes::lookup("NEWARRAY0").unwrap().byte;
+    let append = opcodes::lookup("APPEND").unwrap().byte;
+
+    assert!(
+        translation.script.contains(&newarray0),
+        "growable memory should use page-array backing"
+    );
+    assert!(
+        translation.script.contains(&append),
+        "memory.grow should append new page buffers instead of reallocating one large buffer"
     );
 }
 

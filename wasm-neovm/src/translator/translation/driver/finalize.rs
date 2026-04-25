@@ -4,12 +4,29 @@
 use super::*;
 
 use import_stub::emit_import_export_stub;
-use start::{append_start_stub, resolve_start_descriptor};
+use start::{append_entry_init_stub, append_start_stub, resolve_start_descriptor};
 
 use super::state::DriverState;
 use crate::translator::runtime::FinalizeParams;
 
 impl DriverState {
+    fn entry_runtime_init_functions(&self) -> BTreeSet<u32> {
+        let Some(graph) = &self.function_dependency_graph else {
+            return BTreeSet::new();
+        };
+
+        self.method_function_indices
+            .values()
+            .copied()
+            .filter(|function_index| {
+                graph.function_requires_runtime_init(
+                    *function_index,
+                    &self.direct_runtime_init_functions,
+                )
+            })
+            .collect()
+    }
+
     pub(super) fn finalize(mut self) -> Result<Translation> {
         #[cfg(feature = "profile")]
         let start = std::time::Instant::now();
@@ -69,6 +86,7 @@ impl DriverState {
                 .collect();
 
             let offset = self.script.len();
+            let init_call_count_before = self.runtime.memory_init_call_count();
             let return_kind = emit_import_export_stub(
                 &mut self.script,
                 &mut self.runtime,
@@ -84,6 +102,9 @@ impl DriverState {
                     import.module, import.name
                 )
             })?;
+            if self.runtime.memory_init_call_count() > init_call_count_before {
+                self.direct_runtime_init_functions.insert(import_idx as u32);
+            }
 
             for alias in entry.names.iter_mut() {
                 if alias.processed || alias.name.eq_ignore_ascii_case("_deploy") {
@@ -102,6 +123,8 @@ impl DriverState {
                     offset: offset as u32,
                     safe: false,
                 });
+                self.method_function_indices
+                    .insert(alias.name.clone(), import_idx as u32);
                 self.feature_tracker.register_export(&alias.name);
                 alias.processed = true;
             }
@@ -154,6 +177,10 @@ impl DriverState {
             &mut self.feature_tracker,
             adapter,
         )?;
+        let mut entry_init_functions = self.entry_runtime_init_functions();
+        if self.runtime.runtime_state_requires_entry_init() {
+            entry_init_functions.extend(self.method_function_indices.values().copied());
+        }
 
         self.runtime.finalize(FinalizeParams {
             script: &mut self.script,
@@ -187,14 +214,44 @@ impl DriverState {
                         start_body_offset,
                         start_slot,
                     )?;
-                    self.runtime
-                        .patch_start_calls(&mut self.script, stub_offset)?;
                     for method in &mut self.methods {
                         if start_names.contains(&method.name) {
                             method.offset = stub_offset as u32;
                         }
                     }
                 }
+            }
+        }
+
+        if !entry_init_functions.is_empty() {
+            let init_offset = self
+                .runtime
+                .memory_init_offset()
+                .ok_or_else(|| anyhow!("runtime init helper was not emitted for entry stubs"))?;
+            let mut stub_offsets: BTreeMap<u32, u32> = BTreeMap::new();
+            for method in &mut self.methods {
+                let Some(function_index) = self.method_function_indices.get(&method.name) else {
+                    continue;
+                };
+                if Some(*function_index) == self.start_function {
+                    continue;
+                }
+                if !entry_init_functions.contains(function_index) {
+                    continue;
+                }
+                let stub_offset = match stub_offsets.get(function_index) {
+                    Some(offset) => *offset,
+                    None => {
+                        let offset = append_entry_init_stub(
+                            &mut self.script,
+                            init_offset,
+                            method.offset as usize,
+                        )? as u32;
+                        stub_offsets.insert(*function_index, offset);
+                        offset
+                    }
+                };
+                method.offset = stub_offset;
             }
         }
 

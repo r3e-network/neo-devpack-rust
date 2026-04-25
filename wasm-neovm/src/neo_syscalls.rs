@@ -116,6 +116,16 @@ pub static NEO_SYSCALL_MAP: Lazy<HashMap<String, &'static str>> = Lazy::new(|| {
     alias("storage_as_readonly", "System.Storage.AsReadOnly");
     alias("storage_as_read_only", "System.Storage.AsReadOnly");
 
+    // Devpack storage facade aliases. These imports take pointer/length
+    // arguments and are lowered to a `CALL_L` to a translator-emitted helper
+    // that performs the SUBSTR/SYSCALL/MEMCPY marshaling against real Neo
+    // persistent storage. Registering them here makes the manifest builder
+    // mark the contract as storage-using, even though the SYSCALL is emitted
+    // inside the helper rather than at the call site.
+    alias("neo_storage_put_bytes", "System.Storage.Put");
+    alias("neo_storage_delete_bytes", "System.Storage.Delete");
+    alias("neo_storage_get_into", "System.Storage.Get");
+
     // Runtime syscalls
     alias("check_witness", "System.Runtime.CheckWitness");
     alias("runtime_check_witness", "System.Runtime.CheckWitness");

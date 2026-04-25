@@ -1,7 +1,9 @@
 // Copyright (c) 2025-2026 R3E Network
 // SPDX-License-Identifier: MIT
 
-use super::reachability::analyze_reachable_defined_functions;
+use super::reachability::{
+    analyze_function_dependency_graph, analyze_reachable_defined_functions, FunctionDependencyGraph,
+};
 use super::*;
 use crate::config::{BehaviorConfig, ManifestOverlay};
 
@@ -30,6 +32,9 @@ pub(super) struct DriverState {
     pub(super) start_function: Option<u32>,
     pub(super) start_defined_offset: Option<usize>,
     pub(super) reachable_defined_functions: Option<HashSet<u32>>,
+    pub(super) function_dependency_graph: Option<FunctionDependencyGraph>,
+    pub(super) direct_runtime_init_functions: HashSet<u32>,
+    pub(super) method_function_indices: BTreeMap<String, u32>,
 }
 
 impl DriverState {
@@ -64,10 +69,17 @@ impl DriverState {
             start_function: None,
             start_defined_offset: None,
             reachable_defined_functions: None,
+            function_dependency_graph: None,
+            direct_runtime_init_functions: HashSet::new(),
+            method_function_indices: BTreeMap::new(),
         }
     }
 
     pub(super) fn translate(mut self, bytes: &[u8]) -> Result<Translation> {
+        self.function_dependency_graph = Some(
+            analyze_function_dependency_graph(bytes)
+                .context("failed to analyze function dependencies for runtime init stubs")?,
+        );
         self.reachable_defined_functions = Some(
             analyze_reachable_defined_functions(bytes)
                 .context("failed to analyze reachable functions for size optimization")?,

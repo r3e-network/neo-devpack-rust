@@ -57,6 +57,28 @@ fn storage_has_key(ctx: &NeoStorageContext, key: &[u8]) -> bool {
         .unwrap_or(false)
 }
 
+fn ensure_witness_i64(account: i64) -> bool {
+    NeoRuntime::check_witness_i64(account)
+        .map(|flag| flag.as_bool())
+        .unwrap_or(false)
+}
+
+fn script_hash_to_i64(hash: &NeoByteString) -> i64 {
+    let bytes = hash.as_slice();
+    if bytes.len() < 8 {
+        return 0;
+    }
+    let mut buf = [0u8; 8];
+    buf.copy_from_slice(&bytes[..8]);
+    i64::from_le_bytes(buf)
+}
+
+fn calling_contract_id() -> i64 {
+    NeoRuntime::get_calling_script_hash()
+        .map(|hash| script_hash_to_i64(&hash))
+        .unwrap_or(0)
+}
+
 // Events
 #[neo_event]
 pub struct OracleConfigured {
@@ -89,6 +111,9 @@ impl NeoOracleConsumerContract {
         if owner_id == 0 || oracle_id == 0 {
             return false;
         }
+        if !ensure_witness_i64(owner_id) {
+            return false;
+        }
         let ctx = match NeoStorage::get_context().ok() {
             Some(c) => c,
             None => return false,
@@ -115,6 +140,13 @@ impl NeoOracleConsumerContract {
             Some(c) => c,
             None => return 0,
         };
+        let owner_id = match storage_get_i64(&ctx, CONFIG_OWNER_KEY) {
+            Some(id) => id,
+            None => return 0,
+        };
+        if !ensure_witness_i64(owner_id) {
+            return 0;
+        }
         let current = storage_get_i64(&ctx, REQUEST_COUNTER_KEY).unwrap_or(0);
         let next = current + 1;
         storage_put_i64(&ctx, REQUEST_COUNTER_KEY, next);
@@ -134,6 +166,13 @@ impl NeoOracleConsumerContract {
             Some(c) => c,
             None => return false,
         };
+        let oracle_id = match storage_get_i64(&ctx, CONFIG_ORACLE_KEY) {
+            Some(id) => id,
+            None => return false,
+        };
+        if calling_contract_id() != oracle_id {
+            return false;
+        }
         storage_put_i64(&ctx, &response_status_key(request_id), status_code);
         storage_put_i64(&ctx, &response_data_key(request_id), data_id);
         let _ = (OracleResponseReceived {
@@ -203,8 +242,20 @@ impl Default for NeoOracleConsumerContract {
 
 #[cfg(test)]
 mod tests {
+    use super::{calling_contract_id, script_hash_to_i64};
+    use neo_devpack::prelude::NeoByteString;
+
     #[test]
     fn contract_compiles() {
         // Compilation test - verifies contract module parses correctly
+    }
+
+    #[test]
+    fn script_hash_id_conversion_uses_first_eight_bytes() {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&7_i64.to_le_bytes());
+        bytes.extend_from_slice(&[9_u8; 12]);
+        assert_eq!(script_hash_to_i64(&NeoByteString::from_slice(&bytes)), 7);
+        assert_eq!(calling_contract_id(), 0);
     }
 }

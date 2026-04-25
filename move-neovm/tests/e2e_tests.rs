@@ -251,9 +251,9 @@ fn test_move_to_wasm_with_resource() {
     assert_valid_wasm(&wasm);
 }
 
-/// Resource operations should be lowered to storage syscalls
+/// Resource operations should fail fast until resources can be lowered faithfully
 #[test]
-fn test_move_resource_ops_lowered() {
+fn test_move_resource_ops_rejected() {
     let module = MoveModule {
         version: BytecodeVersion(6),
         name: "ResourceOps".to_string(),
@@ -291,8 +291,10 @@ fn test_move_resource_ops_lowered() {
         }],
     };
 
-    let wasm = translate_to_wasm(&module).expect("resource ops should lower");
-    assert_valid_wasm(&wasm);
+    let err = translate_to_wasm(&module).expect_err("resource ops should fail fast");
+    let msg = format!("{err:#}");
+    assert!(msg.contains("unsupported Move opcode MoveTo"));
+    assert!(msg.contains("global resource operations"));
 }
 
 /// Test empty module translation
@@ -355,6 +357,106 @@ fn test_copy_of_resource_errors() {
     let err = translate_to_wasm(&module).expect_err("copy should be rejected");
     let msg = format!("{err:#}");
     assert!(msg.contains("copy of resource"));
+}
+
+/// u128 values should fail fast instead of truncating to i64
+#[test]
+fn test_move_to_wasm_rejects_u128() {
+    let module = MoveModule {
+        version: BytecodeVersion(6),
+        name: "Wide".to_string(),
+        identifiers_offset: 0,
+        identifiers_count: 0,
+        struct_defs_offset: 0,
+        struct_defs_count: 0,
+        _function_handles_offset: 0,
+        _function_handles_count: 0,
+        function_defs_offset: 0,
+        function_defs_count: 0,
+        structs: vec![],
+        functions: vec![FunctionDef {
+            name: "wide".to_string(),
+            is_public: true,
+            is_entry: false,
+            parameters: vec![],
+            returns: vec![TypeTag::U64],
+            locals: vec![],
+            code: vec![MoveOpcode::LdU128(1), MoveOpcode::Ret],
+        }],
+    };
+
+    let err = translate_to_wasm(&module).expect_err("u128 lowering should fail fast");
+    let msg = format!("{err:#}");
+    assert!(msg.contains("unsupported Move opcode LdU128"));
+    assert!(msg.contains("truncated to i64"));
+}
+
+/// Struct pack/unpack should fail fast instead of synthesizing placeholder values
+#[test]
+fn test_move_to_wasm_rejects_struct_ops() {
+    let module = MoveModule {
+        version: BytecodeVersion(6),
+        name: "StructOps".to_string(),
+        identifiers_offset: 0,
+        identifiers_count: 0,
+        struct_defs_offset: 0,
+        struct_defs_count: 0,
+        _function_handles_offset: 0,
+        _function_handles_count: 0,
+        function_defs_offset: 0,
+        function_defs_count: 0,
+        structs: vec![StructDef {
+            name: "Pair".to_string(),
+            abilities: AbilitySet::default(),
+            fields: vec![],
+        }],
+        functions: vec![FunctionDef {
+            name: "pack".to_string(),
+            is_public: true,
+            is_entry: false,
+            parameters: vec![],
+            returns: vec![],
+            locals: vec![],
+            code: vec![MoveOpcode::Pack(0), MoveOpcode::Pop, MoveOpcode::Ret],
+        }],
+    };
+
+    let err = translate_to_wasm(&module).expect_err("struct ops should fail fast");
+    let msg = format!("{err:#}");
+    assert!(msg.contains("unsupported Move opcode Pack"));
+    assert!(msg.contains("struct materialization"));
+}
+
+/// Vector operations should fail fast instead of emitting traps or placeholder values
+#[test]
+fn test_move_to_wasm_rejects_vector_ops() {
+    let module = MoveModule {
+        version: BytecodeVersion(6),
+        name: "VectorOps".to_string(),
+        identifiers_offset: 0,
+        identifiers_count: 0,
+        struct_defs_offset: 0,
+        struct_defs_count: 0,
+        _function_handles_offset: 0,
+        _function_handles_count: 0,
+        function_defs_offset: 0,
+        function_defs_count: 0,
+        structs: vec![],
+        functions: vec![FunctionDef {
+            name: "vec_len".to_string(),
+            is_public: true,
+            is_entry: false,
+            parameters: vec![],
+            returns: vec![],
+            locals: vec![],
+            code: vec![MoveOpcode::VecPack(0, 0), MoveOpcode::Pop, MoveOpcode::Ret],
+        }],
+    };
+
+    let err = translate_to_wasm(&module).expect_err("vector ops should fail fast");
+    let msg = format!("{err:#}");
+    assert!(msg.contains("unsupported Move opcode VecPack"));
+    assert!(msg.contains("vector operations"));
 }
 
 /// Test Move bytecode validation

@@ -9,6 +9,7 @@ pub(super) fn emit_runtime_init_helper(
     script: &mut Vec<u8>,
     static_slot_count: usize,
     has_memory: bool,
+    chunked_memory: bool,
     config: &MemoryConfig,
     globals: &[GlobalLayout],
     tables: &[TableLayout<'_>],
@@ -20,9 +21,8 @@ pub(super) fn emit_runtime_init_helper(
     types: &[FuncType],
     adapter: &dyn ChainAdapter,
 ) -> Result<Option<usize>> {
-    // No TRY/CATCH wrapper needed: the init guard (LDSFLD + JMPIF) at each call site
-    // ensures this helper runs exactly once. INITSSLOT cannot throw on first call, and
-    // the guard prevents subsequent calls after the init flag is set.
+    // Export entry stubs call this helper before translated bodies can read
+    // static slots. Body-level guards may then use the init flag safely.
     if static_slot_count > u8::MAX as usize {
         bail!("too many static slots required for runtime initialisation");
     }
@@ -34,17 +34,28 @@ pub(super) fn emit_runtime_init_helper(
     // This saves ~10 bytes for contracts that don't use linear memory.
     if has_memory {
         let initial_bytes = (config.initial_pages as i128) * 65_536i128;
-        if initial_bytes == 0 {
-            script.push(lookup_opcode("PUSH0")?.byte);
-            script.push(lookup_opcode("NEWBUFFER")?.byte);
+        if chunked_memory {
+            script.push(lookup_opcode("NEWARRAY0")?.byte);
+            for _ in 0..config.initial_pages {
+                script.push(lookup_opcode("DUP")?.byte);
+                emit_chunked_new_page(script)?;
+                script.push(lookup_opcode("APPEND")?.byte);
+            }
             script.push(lookup_opcode("STSFLD0")?.byte);
-            script.push(lookup_opcode("PUSH0")?.byte);
-        } else {
             let _ = emit_push_int(script, initial_bytes);
-            script.push(lookup_opcode("DUP")?.byte); // reuse initial_bytes for STSFLD1
-            script.push(lookup_opcode("NEWBUFFER")?.byte);
-            script.push(lookup_opcode("STSFLD0")?.byte);
-            // DUP'd value is still on stack for STSFLD1
+        } else {
+            if initial_bytes == 0 {
+                script.push(lookup_opcode("PUSH0")?.byte);
+                script.push(lookup_opcode("NEWBUFFER")?.byte);
+                script.push(lookup_opcode("STSFLD0")?.byte);
+                script.push(lookup_opcode("PUSH0")?.byte);
+            } else {
+                let _ = emit_push_int(script, initial_bytes);
+                script.push(lookup_opcode("DUP")?.byte); // reuse initial_bytes for STSFLD1
+                script.push(lookup_opcode("NEWBUFFER")?.byte);
+                script.push(lookup_opcode("STSFLD0")?.byte);
+                // DUP'd value is still on stack for STSFLD1
+            }
         }
         script.push(lookup_opcode("STSFLD1")?.byte);
 
@@ -66,9 +77,8 @@ pub(super) fn emit_runtime_init_helper(
         script.push(lookup_opcode("STSFLD3")?.byte);
     }
 
-    // NeoVM's INITSSLOT initializes all static slots to null, which is falsy.
-    // The init guard (LDSFLD + JMPIF) correctly treats null as "not initialized".
-    // No need to explicitly set init_flag = 0.
+    // NeoVM's INITSSLOT initializes all static slots to null, then the helper
+    // materializes memory/table/global state and sets the init flag.
 
     for table in tables {
         let len = table.entries.len();
@@ -107,12 +117,16 @@ pub(super) fn emit_runtime_init_helper(
         if segment.bytes.is_empty() {
             continue;
         }
-        script.push(lookup_opcode("LDSFLD0")?.byte);
-        let _ = emit_push_int(script, segment.offset as i128);
-        emit_push_data(script, segment.bytes)?;
-        script.push(lookup_opcode("PUSH0")?.byte);
-        let _ = emit_push_int(script, segment.bytes.len() as i128);
-        script.push(lookup_opcode("MEMCPY")?.byte);
+        if has_memory && chunked_memory {
+            emit_chunked_copy_literal_to_memory(script, segment.offset, segment.bytes)?;
+        } else {
+            script.push(lookup_opcode("LDSFLD0")?.byte);
+            let _ = emit_push_int(script, segment.offset as i128);
+            emit_push_data(script, segment.bytes)?;
+            script.push(lookup_opcode("PUSH0")?.byte);
+            let _ = emit_push_int(script, segment.bytes.len() as i128);
+            script.push(lookup_opcode("MEMCPY")?.byte);
+        }
     }
 
     for element in passive_elements {

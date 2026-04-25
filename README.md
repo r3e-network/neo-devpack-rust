@@ -150,7 +150,7 @@ See [`docs/CROSS_CHAIN_SPEC.md`](docs/CROSS_CHAIN_SPEC.md) for the full technica
 - See [`contracts/README.md`](contracts/README.md) for per-contract entry points and build notes.
 - **`scripts/build_contract.sh`** – helper script that builds a Rust contract to Wasm and invokes the translator in a single step.
 - **`scripts/build_c_contract.sh`** – clang-based helper that compiles plain C contracts to Wasm before translating them.
-- **`integration-tests/`** – optional Neo Express harness (see [`docs/neoexpress-integration.md`](docs/neoexpress-integration.md)) for exercising generated NEF artefacts.
+- **`integration-tests/`** – Neo Express harness (see [`docs/neoexpress-integration.md`](docs/neoexpress-integration.md)) for runtime validation of generated NEF artefacts.
 - **Documentation** – updated notes on the new pipeline in [`docs/wasm-pipeline.md`](docs/wasm-pipeline.md) and the NEF container format in [`docs/nef-format-specification.md`](docs/nef-format-specification.md). See [`spec/wasm-neovm-spec.tex`](spec/wasm-neovm-spec.tex) for the full normative translation spec (buildable via `make -C spec`).
 - **Rust contract quickstart** – step-by-step instructions for authoring and compiling contracts live in [`docs/rust-smart-contract-quickstart.md`](docs/rust-smart-contract-quickstart.md).
 
@@ -179,7 +179,7 @@ See [`docs/CROSS_CHAIN_SPEC.md`](docs/CROSS_CHAIN_SPEC.md) for the full technica
      --release --target wasm32-unknown-unknown
 
    cargo run --manifest-path wasm-neovm/Cargo.toml -- \
-     --input contracts/hello-world/target/wasm32-unknown-unknown/release/hello_world.wasm \
+     --input contracts/hello-world/target/wasm32-unknown-unknown/release/hello_world_neo.wasm \
      --nef build/hello_world.nef \
      --manifest build/hello_world.manifest.json \
      --name hello-world \
@@ -187,7 +187,7 @@ See [`docs/CROSS_CHAIN_SPEC.md`](docs/CROSS_CHAIN_SPEC.md) for the full technica
      --compare-manifest contracts/hello-world/expected.manifest.json
    ```
 
-Supply `--manifest-overlay <file>` to merge additional JSON metadata when needed (for example, create `contracts/hello-world/manifest.overlay.json`). Overlay entries must reference exports that actually exist in the Wasm module—the translator now errors if an overlay adds or removes ABI methods. Use the `#[neo_safe]` attribute (or manifest overlays) inside your contract to declare safe methods.
+The checked-in hello-world sample files under `contracts/hello-world/` provide a real overlay/baseline pair for this command. Supply `--manifest-overlay <file>` to merge additional JSON metadata when needed. Overlay entries must reference exports that actually exist in the Wasm module—the translator now errors if an overlay adds or removes ABI methods. Use the `#[neo_safe]` attribute (or manifest overlays) inside your contract to declare safe methods.
 
 Use `--compare-manifest <file>` to assert that the generated manifest matches a checked-in reference; any difference aborts the translation after printing a unified diff.
 
@@ -227,19 +227,29 @@ Use `--compare-manifest <file>` to assert that the generated manifest matches a 
    examples are included without updating the runner list. It also verifies
    that each crate contains test markers before execution.
 
-8. To run the full local quality test path (translator + devpack + `neo-test` + contracts):
+8. To run the default local non-runtime test path (translator + devpack + `neo-test` + contracts):
 
    ```bash
    make test
    ```
 
-9. Individual contracts can be built with their dedicated targets, for example:
+   This covers compile-time and unit/integration suites only. It does not exercise deployment against Neo Express.
+
+9. To run the runtime validation path used by CI, execute:
+
+   ```bash
+   make smoke-neoxp
+   ```
+
+   This provisions Neo Express, deploys the full sample suite, and performs direct invoke checks for the runtime-safe smoke subset. Stateful witness-heavy examples are deployed there and covered functionally by their Rust tests. If you already have a Neo Express RPC endpoint and only want the ignored harness tests, run `make integration-tests` with `NEO_EXPRESS_RPC` set.
+
+10. Individual contracts can be built with their dedicated targets, for example:
 
    ```bash
    make nep11-nft
    ```
 
-10. To deploy a generated contract to a running Neo Express instance you can use the
+11. To deploy a generated contract to a running Neo Express instance you can use the
     helper script:
 
 ```bash
@@ -247,15 +257,8 @@ export NEO_EXPRESS_RPC=http://localhost:50012
 scripts/neoexpress_deploy.sh build/HelloWorld.nef build/HelloWorld.manifest.json HelloWorld
 ```
 
-For a local end-to-end smoke pass (build + deploy/invoke checks), run:
-
-```bash
-make smoke-neoxp
-```
-
-CI runs the same `Neo Express Smoke` suite on every run.
-This adds CI time because it performs full Neo Express provisioning and
-deploy/invoke validation for the sample suite.
+CI runs the same `Neo Express Smoke` suite as a gating job on every push, pull request, and scheduled run.
+This adds CI time because it performs full Neo Express provisioning, deploys the sample suite, and invokes the runtime-safe smoke subset.
 
 Rust contracts can now embed manifest metadata directly via DevPack macros:
 

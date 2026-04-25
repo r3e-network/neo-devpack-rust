@@ -20,7 +20,7 @@ fn count_subsequence(haystack: &[u8], needle: &[u8]) -> usize {
 }
 
 #[test]
-fn on_nep17_payment_translation_emits_gas_caller_guards_and_adapter_markers() {
+fn on_nep17_payment_translation_does_not_inject_app_specific_guards() {
     let wasm = wat::parse_str(
         r#"(module
               (func (export "onNEP17Payment") (param i32 i32 i32) (result i32)
@@ -38,41 +38,45 @@ fn on_nep17_payment_translation_emits_gas_caller_guards_and_adapter_markers() {
         .to_le_bytes();
     let mut calling_hash_pattern = vec![syscall_opcode];
     calling_hash_pattern.extend_from_slice(&calling_hash_syscall);
-    assert!(
-        count_subsequence(script, &calling_hash_pattern) >= 2,
-        "onNEP17Payment should load calling script hash for LE/BE GAS checks"
+    assert_eq!(
+        count_subsequence(script, &calling_hash_pattern),
+        0,
+        "generic onNEP17Payment translation must not inject caller-hash policy"
     );
 
     assert!(
-        script
+        !script
             .windows(GAS_HASH_LE.len())
             .any(|window| window == GAS_HASH_LE),
-        "little-endian GAS hash guard missing"
+        "generic onNEP17Payment translation must not inject GAS hash policy"
     );
     assert!(
-        script
+        !script
             .windows(GAS_HASH_BE.len())
             .any(|window| window == GAS_HASH_BE),
-        "big-endian GAS hash guard missing"
+        "generic onNEP17Payment translation must not inject GAS hash policy"
     );
 
     let assert_opcode = opcodes::lookup("ASSERT").expect("ASSERT opcode").byte;
     let istype_opcode = opcodes::lookup("ISTYPE").expect("ISTYPE opcode").byte;
     let convert_opcode = opcodes::lookup("CONVERT").expect("CONVERT opcode").byte;
     let pushint8_opcode = opcodes::lookup("PUSHINT8").expect("PUSHINT8 opcode").byte;
-    assert!(script.contains(&assert_opcode), "missing ASSERT guard");
     assert!(
-        script.contains(&istype_opcode),
-        "missing adapter ISTYPE checks"
+        !script.contains(&assert_opcode),
+        "generic translation must not inject ASSERT guards"
     );
     assert!(
-        script.contains(&convert_opcode),
-        "missing adapter CONVERT path"
+        !script.contains(&istype_opcode),
+        "generic translation must not inject data-shape adapter checks"
     );
     assert!(
-        script
+        !script.contains(&convert_opcode),
+        "generic translation must not inject data conversion adapters"
+    );
+    assert!(
+        !script
             .windows(2)
             .any(|window| window == [pushint8_opcode, 101]),
-        "missing adapter invalid packet sentinel (101)"
+        "generic translation must not inject red-envelope sentinel payloads"
     );
 }

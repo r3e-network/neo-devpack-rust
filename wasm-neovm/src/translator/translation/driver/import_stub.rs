@@ -73,6 +73,19 @@ pub(super) fn emit_import_export_stub(
             .unwrap_or_else(|| "Void".to_string());
         return Ok(return_kind);
     }
+    if let Some(descriptor) =
+        try_handle_neo_import(import, func_type, &params_stack, runtime, script)?
+    {
+        features.register_syscall(descriptor);
+        script.push(RET);
+        let return_kind = func_type
+            .results()
+            .first()
+            .map(wasm_val_type_to_manifest)
+            .transpose()?
+            .unwrap_or_else(|| "Void".to_string());
+        return Ok(return_kind);
+    }
 
     handle_import_call(
         import_index as u32,

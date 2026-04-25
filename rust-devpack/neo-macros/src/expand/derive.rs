@@ -34,12 +34,26 @@ pub(crate) fn neo_storage(input: DeriveInput) -> TokenStream2 {
                 ::neo_devpack::codec::deserialize(bytes.as_slice())
             }
 
-            /// Load storage, returning default on error.
+            /// Load storage and propagate malformed-state errors.
             ///
             /// # Note on Name Collisions
             /// If your struct already has a `load` method, you may encounter
             /// compilation errors. Use `load_result` directly or rename your method.
             pub fn load(
+                context: &::neo_devpack::NeoStorageContext,
+            ) -> ::neo_devpack::NeoResult<Self>
+            where
+                Self: ::core::default::Default
+                    + ::neo_devpack::serde::de::DeserializeOwned,
+            {
+                Self::load_result(context)
+            }
+
+            /// Load storage, returning default only when callers intentionally choose fallback.
+            ///
+            /// Prefer `load`/`load_result` for stateful contracts so corrupted or
+            /// migration-incompatible state cannot be mistaken for a clean deployment.
+            pub fn load_or_default(
                 context: &::neo_devpack::NeoStorageContext,
             ) -> Self
             where

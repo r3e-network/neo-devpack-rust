@@ -5,6 +5,7 @@ use super::super::super::*;
 
 impl RuntimeHelpers {
     pub(super) fn emit_passive_data_helpers(&mut self, script: &mut Vec<u8>) -> Result<()> {
+        let chunked_memory = self.uses_chunked_memory();
         for (index, segment) in self.data_segments.iter_mut().enumerate() {
             if let DataSegmentKind::Passive {
                 init_record,
@@ -23,12 +24,21 @@ impl RuntimeHelpers {
                         Some(existing) => existing,
                         None => {
                             let helper_offset = script.len();
-                            emit_data_init_helper(
-                                script,
-                                byte_slot,
-                                drop_slot,
-                                segment.bytes.len(),
-                            )?;
+                            if chunked_memory {
+                                emit_chunked_data_init_helper(
+                                    script,
+                                    byte_slot,
+                                    drop_slot,
+                                    segment.bytes.len(),
+                                )?;
+                            } else {
+                                emit_data_init_helper(
+                                    script,
+                                    byte_slot,
+                                    drop_slot,
+                                    segment.bytes.len(),
+                                )?;
+                            }
                             init_record.offset = Some(helper_offset);
                             helper_offset
                         }

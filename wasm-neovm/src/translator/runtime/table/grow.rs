@@ -54,6 +54,7 @@ pub(in super::super) fn emit_table_grow_helper(
     let loop_exit = emit_jump_placeholder(script, "JMPIF_L")?;
 
     script.push(lookup_opcode("LDLOC2")?.byte);
+    script.push(lookup_opcode("DUP")?.byte);
     script.push(lookup_opcode("LDLOC0")?.byte);
     script.push(lookup_opcode("APPEND")?.byte);
     script.push(lookup_opcode("STLOC2")?.byte);

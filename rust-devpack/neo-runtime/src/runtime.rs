@@ -18,6 +18,14 @@ impl NeoRuntime {
         NeoVMSyscall::check_witness(account)
     }
 
+    pub fn check_witness_bytes(account: &[u8]) -> NeoResult<NeoBoolean> {
+        NeoVMSyscall::check_witness_bytes(account)
+    }
+
+    pub fn check_witness_i64(account: i64) -> NeoResult<NeoBoolean> {
+        NeoVMSyscall::check_witness_i64(account)
+    }
+
     pub fn notify(event: &NeoString, state: &NeoArray<NeoValue>) -> NeoResult<()> {
         NeoVMSyscall::notify(event, state)
     }

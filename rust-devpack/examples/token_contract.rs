@@ -84,7 +84,7 @@ impl TokenContract {
     /// Get balance of an account
     #[neo_method]
     pub fn balance_of(&self, account: &NeoByteString) -> NeoResult<NeoInteger> {
-        let storage = TokenStorage::load(&NeoRuntime::get_storage_context()?);
+        let storage = TokenStorage::load(&NeoRuntime::get_storage_context()?)?;
         Ok(storage
             .balances
             .get(account)
@@ -110,7 +110,7 @@ impl TokenContract {
         }
 
         // Update balances
-        let mut storage = TokenStorage::load(&NeoRuntime::get_storage_context()?);
+        let mut storage = TokenStorage::load(&NeoRuntime::get_storage_context()?)?;
 
         // Subtract from sender
         let new_from_balance = balance - amount.clone();
@@ -155,7 +155,7 @@ impl TokenContract {
         let owner = NeoRuntime::get_calling_script_hash()?;
 
         // Update allowances
-        let mut storage = TokenStorage::load(&NeoRuntime::get_storage_context()?);
+        let mut storage = TokenStorage::load(&NeoRuntime::get_storage_context()?)?;
 
         let mut owner_allowances = storage
             .allowances
@@ -179,7 +179,7 @@ impl TokenContract {
         owner: &NeoByteString,
         spender: &NeoByteString,
     ) -> NeoResult<NeoInteger> {
-        let storage = TokenStorage::load(&NeoRuntime::get_storage_context()?);
+        let storage = TokenStorage::load(&NeoRuntime::get_storage_context()?)?;
 
         if let Some(owner_allowances) = storage.allowances.get(owner) {
             Ok(owner_allowances
@@ -220,7 +220,7 @@ impl TokenContract {
         }
 
         // Update balances
-        let mut storage = TokenStorage::load(&NeoRuntime::get_storage_context()?);
+        let mut storage = TokenStorage::load(&NeoRuntime::get_storage_context()?)?;
 
         // Subtract from sender
         let new_from_balance = balance - amount.clone();
@@ -274,7 +274,7 @@ pub fn deploy_contract() -> NeoResult<()> {
 
     // Distribute initial supply to deployer
     let deployer = NeoRuntime::get_calling_script_hash()?;
-    let mut storage = TokenStorage::load(&NeoRuntime::get_storage_context()?);
+    let mut storage = TokenStorage::load(&NeoRuntime::get_storage_context()?)?;
     storage.balances.insert(deployer, total_supply.clone());
     storage.save(&NeoRuntime::get_storage_context()?)?;
 

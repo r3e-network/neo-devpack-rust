@@ -91,6 +91,7 @@ impl DriverState {
         self.runtime.reset_function_init_emitted();
 
         let is_exported = maybe_export.is_some();
+        let init_call_count_before = self.runtime.memory_init_call_count();
         let mut ctx = TranslationContext {
             func_type,
             body: &body,
@@ -112,6 +113,9 @@ impl DriverState {
         self.runtime.set_memory_init_suppressed(was_suppressed);
         let return_kind = translation_result
             .with_context(|| format!("failed to translate function '{}'", function_name))?;
+        if self.runtime.memory_init_call_count() > init_call_count_before {
+            self.direct_runtime_init_functions.insert(func_index_u32);
+        }
 
         if let Some(entry) = maybe_export {
             // Fallback to "Any" for unmappable Wasm types (floats, SIMD, etc.)
@@ -142,6 +146,8 @@ impl DriverState {
                     offset: offset as u32,
                     safe: false,
                 };
+                self.method_function_indices
+                    .insert(alias.name.clone(), func_index_u32);
                 self.methods.push(method);
                 self.feature_tracker.register_export(&alias.name);
                 alias.processed = true;

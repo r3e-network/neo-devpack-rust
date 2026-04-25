@@ -8,6 +8,25 @@ use anyhow::{anyhow, bail, Context, Result};
 use std::collections::{HashMap, VecDeque};
 use wasm_encoder::ValType;
 
+pub(super) fn validate_supported_module(module: &MoveModule) -> Result<()> {
+    for func in &module.functions {
+        for (idx, tag) in func.parameters.iter().enumerate() {
+            validate_supported_type(tag, &format!("function {} parameter {}", func.name, idx))?;
+        }
+        for (idx, tag) in func.returns.iter().enumerate() {
+            validate_supported_type(tag, &format!("function {} return {}", func.name, idx))?;
+        }
+        for (idx, tag) in effective_locals(func).iter().enumerate() {
+            validate_supported_type(tag, &format!("function {} local {}", func.name, idx))?;
+        }
+        for (pc, opcode) in func.code.iter().enumerate() {
+            validate_supported_opcode(func, pc, opcode)?;
+        }
+    }
+
+    Ok(())
+}
+
 pub(super) fn analyze_stack(
     func: &FunctionDef,
     module: &MoveModule,
@@ -253,6 +272,74 @@ fn pop_any(stack: &mut Vec<ValueKind>, op: &str) -> Result<ValueKind> {
     stack
         .pop()
         .ok_or_else(|| anyhow!("stack underflow in {}", op))
+}
+
+fn validate_supported_type(tag: &TypeTag, context: &str) -> Result<()> {
+    match tag {
+        TypeTag::U128 => {
+            bail!(
+                "unsupported Move type in {}: u128 requires multi-word lowering and cannot be translated losslessly",
+                context
+            );
+        }
+        TypeTag::U256 => {
+            bail!(
+                "unsupported Move type in {}: u256 requires multi-word lowering and cannot be translated losslessly",
+                context
+            );
+        }
+        TypeTag::Vector(inner) | TypeTag::Reference(inner) | TypeTag::MutableReference(inner) => {
+            validate_supported_type(inner, context)?
+        }
+        TypeTag::Bool
+        | TypeTag::U8
+        | TypeTag::U64
+        | TypeTag::Address
+        | TypeTag::Signer
+        | TypeTag::Struct(_) => {}
+    }
+
+    Ok(())
+}
+
+fn validate_supported_opcode(func: &FunctionDef, pc: usize, opcode: &MoveOpcode) -> Result<()> {
+    let reason = match opcode {
+        MoveOpcode::LdU128(_) | MoveOpcode::CastU128 => {
+            Some("u128 values would be truncated to i64")
+        }
+        MoveOpcode::Pack(_)
+        | MoveOpcode::Unpack(_)
+        | MoveOpcode::BorrowField(_)
+        | MoveOpcode::MutBorrowField(_) => {
+            Some("struct materialization and field access are not implemented")
+        }
+        MoveOpcode::MoveTo(_)
+        | MoveOpcode::MoveFrom(_)
+        | MoveOpcode::Exists(_)
+        | MoveOpcode::BorrowGlobal(_)
+        | MoveOpcode::MutBorrowGlobal(_) => {
+            Some("global resource operations are not implemented losslessly")
+        }
+        MoveOpcode::VecPack(_, _)
+        | MoveOpcode::VecLen(_)
+        | MoveOpcode::VecImmBorrow(_)
+        | MoveOpcode::VecMutBorrow(_)
+        | MoveOpcode::VecPushBack(_)
+        | MoveOpcode::VecPopBack(_) => Some("vector operations are not implemented"),
+        _ => None,
+    };
+
+    if let Some(reason) = reason {
+        bail!(
+            "unsupported Move opcode {:?} at pc {} in function {}: {}",
+            opcode,
+            pc,
+            func.name,
+            reason
+        );
+    }
+
+    Ok(())
 }
 
 fn is_terminal_opcode(opcode: &MoveOpcode) -> bool {

@@ -24,3 +24,4 @@ mod syscall;
 pub(super) use dispatch::get_import_type_index;
 pub(crate) use dispatch::handle_import_call;
 pub(super) use env::try_handle_env_import;
+pub(super) use syscall::try_handle_neo_import;

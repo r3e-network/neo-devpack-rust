@@ -19,20 +19,19 @@ fn quote_internal(amount_in: i64) -> i64 {
         return 0;
     }
 
-    let amount_in_with_fee = match amount_in.checked_mul(FEE_NUMERATOR) {
-        Some(v) => v,
-        None => return 0,
-    };
-    let numerator = match amount_in_with_fee.checked_mul(RESERVE_Y) {
-        Some(v) => v,
-        None => return 0,
-    };
-    let denominator = match (RESERVE_X.checked_mul(FEE_DENOMINATOR))
-        .and_then(|v| v.checked_add(amount_in_with_fee))
-    {
-        Some(v) if v > 0 => v,
-        _ => return 0,
-    };
+    if amount_in > i64::MAX / FEE_NUMERATOR {
+        return 0;
+    }
+    let amount_in_with_fee = amount_in * FEE_NUMERATOR;
+    if amount_in_with_fee > i64::MAX / RESERVE_Y {
+        return 0;
+    }
+    let numerator = amount_in_with_fee * RESERVE_Y;
+    let reserve_product = RESERVE_X * FEE_DENOMINATOR;
+    if amount_in_with_fee > i64::MAX - reserve_product {
+        return 0;
+    }
+    let denominator = reserve_product + amount_in_with_fee;
     numerator / denominator
 }
 

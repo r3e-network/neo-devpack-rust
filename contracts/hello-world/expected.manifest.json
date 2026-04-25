@@ -1,0 +1,26 @@
+{
+  "abi": {
+    "events": [],
+    "methods": [
+      {
+        "name": "hello",
+        "offset": 0,
+        "parameters": [],
+        "returntype": "Integer",
+        "safe": true
+      }
+    ]
+  },
+  "extra": {
+    "author": "R3E Network",
+    "description": "Checked-in overlay sample for hello-world manifest validation",
+    "source": "contracts/hello-world/src/lib.rs",
+    "version": "1.0.0"
+  },
+  "features": {},
+  "groups": [],
+  "name": "HelloWorld",
+  "permissions": [],
+  "supportedstandards": [],
+  "trusts": []
+}

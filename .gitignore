@@ -7,6 +7,7 @@ dist/
 .astro/
 *.nef
 *.manifest.json
+!contracts/hello-world/expected.manifest.json
 
 # Generated binaries/libraries
 *.o
@@ -39,6 +40,7 @@ neo/
 .claude-flow/
 .hive-mind/
 .worktrees/
+.omx/
 /package.json
 /package-lock.json
 

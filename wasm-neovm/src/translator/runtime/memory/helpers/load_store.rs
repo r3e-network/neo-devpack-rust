@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::super::super::*;
+use super::super::chunked::{emit_chunked_load_byte_at_local, emit_chunked_store_byte_at_local};
 
 pub(in crate::translator::runtime) fn emit_memory_load_helper(
     script: &mut Vec<u8>,
@@ -97,6 +98,140 @@ pub(in crate::translator::runtime) fn emit_memory_store_helper(
     patch_jump(script, trap_negative, trap_label)?;
     patch_jump(script, trap_oob, trap_label)?;
 
+    Ok(())
+}
+
+pub(in crate::translator::runtime) fn emit_chunked_memory_load_helper(
+    script: &mut Vec<u8>,
+    bytes: u32,
+) -> Result<()> {
+    let bytes_i128 = bytes as i128;
+
+    script.push(lookup_opcode("INITSLOT")?.byte);
+    script.push(5);
+    script.push(0);
+    script.push(lookup_opcode("STLOC0")?.byte); // address
+
+    script.push(lookup_opcode("LDLOC0")?.byte);
+    script.push(lookup_opcode("PUSH0")?.byte);
+    script.push(lookup_opcode("LT")?.byte);
+    let trap_negative = emit_jump_placeholder(script, "JMPIF_L")?;
+
+    script.push(lookup_opcode("LDLOC0")?.byte);
+    let _ = emit_push_int(script, bytes_i128);
+    script.push(lookup_opcode("ADD")?.byte);
+    script.push(lookup_opcode("LDSFLD1")?.byte);
+    script.push(lookup_opcode("GT")?.byte);
+    let trap_oob = emit_jump_placeholder(script, "JMPIF_L")?;
+
+    script.push(lookup_opcode("PUSH0")?.byte);
+    script.push(lookup_opcode("STLOC1")?.byte); // result
+    script.push(lookup_opcode("PUSH0")?.byte);
+    script.push(lookup_opcode("STLOC2")?.byte); // byte index
+
+    let loop_start = script.len();
+    script.push(lookup_opcode("LDLOC2")?.byte);
+    let _ = emit_push_int(script, bytes_i128);
+    script.push(lookup_opcode("EQUAL")?.byte);
+    let loop_exit = emit_jump_placeholder(script, "JMPIF_L")?;
+
+    script.push(lookup_opcode("LDLOC0")?.byte);
+    script.push(lookup_opcode("LDLOC2")?.byte);
+    script.push(lookup_opcode("ADD")?.byte);
+    script.push(lookup_opcode("STLOC3")?.byte);
+
+    emit_chunked_load_byte_at_local(script, 3)?;
+    script.push(lookup_opcode("STLOC4")?.byte);
+
+    script.push(lookup_opcode("LDLOC4")?.byte);
+    script.push(lookup_opcode("LDLOC2")?.byte);
+    let _ = emit_push_int(script, 3);
+    script.push(lookup_opcode("SHL")?.byte);
+    script.push(lookup_opcode("SHL")?.byte);
+    script.push(lookup_opcode("LDLOC1")?.byte);
+    script.push(lookup_opcode("OR")?.byte);
+    script.push(lookup_opcode("STLOC1")?.byte);
+
+    script.push(lookup_opcode("LDLOC2")?.byte);
+    script.push(lookup_opcode("INC")?.byte);
+    script.push(lookup_opcode("STLOC2")?.byte);
+    let loop_back = emit_jump_placeholder(script, "JMP_L")?;
+
+    let exit_label = script.len();
+    script.push(lookup_opcode("LDLOC1")?.byte);
+    script.push(RET);
+
+    let trap_label = script.len();
+    script.push(lookup_opcode("ABORT")?.byte);
+
+    patch_jump(script, trap_negative, trap_label)?;
+    patch_jump(script, trap_oob, trap_label)?;
+    patch_jump(script, loop_exit, exit_label)?;
+    patch_jump(script, loop_back, loop_start)?;
+    Ok(())
+}
+
+pub(in crate::translator::runtime) fn emit_chunked_memory_store_helper(
+    script: &mut Vec<u8>,
+    bytes: u32,
+) -> Result<()> {
+    let bytes_i128 = bytes as i128;
+
+    script.push(lookup_opcode("INITSLOT")?.byte);
+    script.push(5);
+    script.push(0);
+
+    script.push(lookup_opcode("SWAP")?.byte);
+    script.push(lookup_opcode("STLOC0")?.byte); // address
+    script.push(lookup_opcode("STLOC1")?.byte); // value
+
+    script.push(lookup_opcode("LDLOC0")?.byte);
+    script.push(lookup_opcode("PUSH0")?.byte);
+    script.push(lookup_opcode("LT")?.byte);
+    let trap_negative = emit_jump_placeholder(script, "JMPIF_L")?;
+
+    script.push(lookup_opcode("LDLOC0")?.byte);
+    let _ = emit_push_int(script, bytes_i128);
+    script.push(lookup_opcode("ADD")?.byte);
+    script.push(lookup_opcode("LDSFLD1")?.byte);
+    script.push(lookup_opcode("GT")?.byte);
+    let trap_oob = emit_jump_placeholder(script, "JMPIF_L")?;
+
+    let bit_width = bytes * 8;
+    let _ = emit_push_int(script, 1);
+    let _ = emit_push_int(script, bit_width as i128);
+    script.push(lookup_opcode("SHL")?.byte);
+    script.push(lookup_opcode("DEC")?.byte);
+    script.push(lookup_opcode("LDLOC1")?.byte);
+    script.push(lookup_opcode("AND")?.byte);
+    script.push(lookup_opcode("STLOC1")?.byte);
+
+    for i in 0..bytes {
+        script.push(lookup_opcode("LDLOC1")?.byte);
+        let shift = i * 8;
+        if shift > 0 {
+            let _ = emit_push_int(script, shift as i128);
+            script.push(lookup_opcode("SHR")?.byte);
+        }
+        let _ = emit_push_int(script, 0xFF);
+        script.push(lookup_opcode("AND")?.byte);
+        script.push(lookup_opcode("STLOC2")?.byte);
+
+        script.push(lookup_opcode("LDLOC0")?.byte);
+        if i > 0 {
+            let _ = emit_push_int(script, i as i128);
+            script.push(lookup_opcode("ADD")?.byte);
+        }
+        script.push(lookup_opcode("STLOC3")?.byte);
+        emit_chunked_store_byte_at_local(script, 3, 2)?;
+    }
+
+    script.push(RET);
+
+    let trap_label = script.len();
+    script.push(lookup_opcode("ABORT")?.byte);
+    patch_jump(script, trap_negative, trap_label)?;
+    patch_jump(script, trap_oob, trap_label)?;
     Ok(())
 }
 

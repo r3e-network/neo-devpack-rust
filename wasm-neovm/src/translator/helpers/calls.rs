@@ -5,6 +5,7 @@ use anyhow::Result;
 
 use super::lookup_opcode;
 use super::offsets::emit_placeholder;
+use super::push::emit_push_int;
 
 /// Emit a CALL_L placeholder for runtime helper calls
 ///
@@ -42,3 +43,38 @@ pub fn emit_call_to(script: &mut Vec<u8>, target: usize) -> Result<()> {
 ///
 /// Re-exported from offsets module for backward compatibility
 pub use super::offsets::patch_offset as patch_call;
+
+/// Reverse the top `n` items on the NeoVM evaluation stack.
+///
+/// This is the standard adapter sequence for calling a wasm-defined function
+/// from the translator: WebAssembly pushes args left-to-right (last arg on
+/// top), but NeoVM `INITSLOT` pops top-first into `Arguments[0..N]`. Without
+/// reversing, `local.get 0` would resolve to the LAST wasm arg in the callee.
+/// Reversing the top `n` items before `CALL_L` makes the slot ordering match
+/// wasm's `local.get N == argN` invariant.
+///
+/// `n == 0` and `n == 1` are no-ops. `n == 2` uses `SWAP`; `n == 3`/`4` use
+/// the dedicated `REVERSE3`/`REVERSE4` opcodes; larger counts fall back to
+/// `PUSH n + REVERSEN`.
+pub fn emit_reverse_top_n(script: &mut Vec<u8>, n: usize) -> Result<()> {
+    match n {
+        0 | 1 => Ok(()),
+        2 => {
+            script.push(lookup_opcode("SWAP")?.byte);
+            Ok(())
+        }
+        3 => {
+            script.push(lookup_opcode("REVERSE3")?.byte);
+            Ok(())
+        }
+        4 => {
+            script.push(lookup_opcode("REVERSE4")?.byte);
+            Ok(())
+        }
+        _ => {
+            let _ = emit_push_int(script, n as i128);
+            script.push(lookup_opcode("REVERSEN")?.byte);
+            Ok(())
+        }
+    }
+}

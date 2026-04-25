@@ -29,6 +29,35 @@ impl RuntimeHelpers {
         self.memory_defined
     }
 
+    pub(crate) fn uses_chunked_memory(&self) -> bool {
+        self.memory_defined
+            && (self.memory_config.initial_pages > 1
+                || self.memory_helpers.contains_key(&MemoryHelperKind::Grow))
+    }
+
+    pub(crate) fn runtime_state_requires_entry_init(&self) -> bool {
+        !self.tables.is_empty() || !self.element_segments.is_empty()
+    }
+
+    pub(crate) fn active_data_slice(&self, offset: usize, len: usize) -> Option<&[u8]> {
+        for segment in &self.data_segments {
+            let DataSegmentKind::Active {
+                offset: segment_offset,
+            } = segment.kind
+            else {
+                continue;
+            };
+            let segment_start = segment_offset as usize;
+            let segment_end = segment_start.checked_add(segment.bytes.len())?;
+            let requested_end = offset.checked_add(len)?;
+            if offset >= segment_start && requested_end <= segment_end {
+                let relative = offset - segment_start;
+                return Some(&segment.bytes[relative..relative + len]);
+            }
+        }
+        None
+    }
+
     pub(crate) fn emit_memory_load_call(&mut self, script: &mut Vec<u8>, bytes: u32) -> Result<()> {
         let call_pos = emit_call_placeholder(script)?;
         let record = self.helper_record_mut(MemoryHelperKind::Load(bytes));

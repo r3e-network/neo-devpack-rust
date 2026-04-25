@@ -1,0 +1,21 @@
+[package]
+name = "storage-smoke-neo"
+version = "0.1.0"
+edition = "2021"
+description = "Minimal Neo N3 storage round-trip contract for smoke testing"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+neo-devpack = { path = "../../rust-devpack", default-features = false }
+
+[workspace]
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = "symbols"

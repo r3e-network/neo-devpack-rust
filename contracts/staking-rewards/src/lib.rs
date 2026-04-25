@@ -13,6 +13,7 @@ const APR_BPS: i64 = 1_200;
 const BPS_DENOMINATOR: i64 = 10_000;
 const DAYS_PER_YEAR: i64 = 365;
 const MAX_DAYS: i64 = 3_650;
+const MAX_PREVIEW_AMOUNT: i64 = 1_000_000_000_000;
 
 /// Build a fixed-size storage key from a prefix byte and an i64 staker ID.
 /// Layout: [prefix_byte | 8 bytes of staker_id in LE] = 9 bytes total.
@@ -53,8 +54,7 @@ fn storage_get_i64(ctx: &NeoStorageContext, key: &[u8]) -> Option<i64> {
 }
 
 fn ensure_witness_i64(staker: i64) -> bool {
-    let bytes = staker.to_le_bytes();
-    NeoRuntime::check_witness(&NeoByteString::from_slice(&bytes))
+    NeoRuntime::check_witness_i64(staker)
         .map(|flag| flag.as_bool())
         .unwrap_or(false)
 }
@@ -88,16 +88,13 @@ impl StakingRewardsContract {
     }
 
     fn preview_reward_internal(amount: i64, days_staked: i64) -> i64 {
-        if amount <= 0 || days_staked <= 0 || days_staked > MAX_DAYS {
+        if amount <= 0 || amount > MAX_PREVIEW_AMOUNT || days_staked <= 0 || days_staked > MAX_DAYS
+        {
             return 0;
         }
 
-        // Reorder to minimize intermediate values: (amount * days_staked / 365) * APR / 10000
-        amount
-            .checked_mul(days_staked)
-            .and_then(|v| v.checked_mul(APR_BPS))
-            .map(|v| v / (BPS_DENOMINATOR * DAYS_PER_YEAR))
-            .unwrap_or(0)
+        let amount_days = amount * days_staked;
+        (amount_days * APR_BPS) / (BPS_DENOMINATOR * DAYS_PER_YEAR)
     }
 
     #[neo_method]
@@ -114,10 +111,10 @@ impl StakingRewardsContract {
         };
         let key = stake_key(staker);
         let current = storage_get_i64(&ctx, &key).unwrap_or(0);
-        let new_total = match current.checked_add(amount) {
-            Some(v) => v,
-            None => return false,
-        };
+        if amount > i64::MAX - current {
+            return false;
+        }
+        let new_total = current + amount;
         storage_put_i64(&ctx, &key, new_total);
         let _ = (Staked {
             staker: NeoInteger::new(staker),

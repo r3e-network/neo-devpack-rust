@@ -144,7 +144,7 @@ mod tests {
     }
 
     #[test]
-    fn lowers_resource_ops() {
+    fn rejects_lossy_resource_ops() {
         let module = MoveModule {
             version: crate::bytecode::BytecodeVersion(6),
             name: "Resource".into(),
@@ -182,7 +182,40 @@ mod tests {
             }],
         };
 
-        let bytes = translate_to_wasm(&module).unwrap();
-        validate_wasm(&bytes).expect("valid wasm for resource ops");
+        let err = translate_to_wasm(&module).unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(msg.contains("unsupported Move opcode MoveTo"));
+        assert!(msg.contains("global resource operations"));
+    }
+
+    #[test]
+    fn rejects_lossy_u128_lowering() {
+        let module = MoveModule {
+            version: crate::bytecode::BytecodeVersion(6),
+            name: "Wide".into(),
+            identifiers_offset: 0,
+            identifiers_count: 0,
+            struct_defs_offset: 0,
+            struct_defs_count: 0,
+            _function_handles_offset: 0,
+            _function_handles_count: 0,
+            function_defs_offset: 0,
+            function_defs_count: 0,
+            structs: vec![],
+            functions: vec![FunctionDef {
+                name: "wide".into(),
+                is_public: true,
+                is_entry: false,
+                parameters: vec![],
+                returns: vec![TypeTag::U64],
+                locals: vec![],
+                code: vec![MoveOpcode::LdU128(1), MoveOpcode::Ret],
+            }],
+        };
+
+        let err = translate_to_wasm(&module).unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(msg.contains("unsupported Move opcode LdU128"));
+        assert!(msg.contains("truncated to i64"));
     }
 }

@@ -17,7 +17,6 @@ use crate::metadata::{
 };
 use crate::nef::MethodToken;
 use crate::numeric;
-use crate::translator::runtime::INIT_FLAG_SLOT;
 
 use super::constants::*;
 use super::helpers::*;
@@ -48,7 +47,7 @@ pub use driver::{translate_module, translate_with_config};
 
 use control::{block_result_count, handle_br_table, handle_branch, ControlFrame, ControlKind};
 use features::register_import_features;
-use imports::{get_import_type_index, try_handle_env_import};
+use imports::{get_import_type_index, try_handle_env_import, try_handle_neo_import};
 use locals::{
     emit_load_arg, emit_local_get, emit_local_set, emit_store_arg, LocalKind, LocalState,
 };

@@ -91,7 +91,7 @@ The generated artefacts are placed in the `build/` directory. Run `make clean` t
 
 Two richer samples are provided under the `contracts/` directory:
 
-1. **NEP-17 micro token (`contracts/nep17-token`)** – a storage-backed token that enforces witness checks, emits transfer events, and persists balances. It exposes `init`, `totalSupply`, `balanceOf`, and `transfer` exports. View methods mark themselves safe via the `#[neo_safe]` attribute. Build and translate it the same way:
+1. **NEP-17 micro token (`contracts/nep17-token`)** – a compact NEP-17-shaped sample with fixed balances and witness-gated `init`/`transfer` validation. It exposes `init`, `totalSupply`, `balanceOf`, and `transfer` exports. View methods mark themselves safe via the `#[neo_safe]` attribute. Build and translate it the same way:
 
    ```bash
    make nep17-token

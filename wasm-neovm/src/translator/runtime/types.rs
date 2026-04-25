@@ -44,6 +44,17 @@ impl BitHelperKind {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) enum StorageHelperKind {
+    /// `System.Storage.Put` with key/value bytes marshaled from wasm memory.
+    PutBytes,
+    /// `System.Storage.Delete` with key bytes marshaled from wasm memory.
+    DeleteBytes,
+    /// `System.Storage.Get` with key bytes marshaled in and value bytes copied
+    /// back into wasm memory through a caller-provided output buffer.
+    GetInto,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) enum TableHelperKind {
     Get(usize),
     Set(usize),

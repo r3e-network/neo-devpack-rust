@@ -56,27 +56,11 @@ fn start_only_export_uses_init_stub() {
     let script = &translation.script;
     assert!(offset + 2 < script.len(), "export offset within script");
 
-    let ldsfld_op = opcodes::lookup("LDSFLD").unwrap().byte;
-    let ldsfld_short: Vec<u8> = (0..=6)
-        .map(|i| opcodes::lookup(&format!("LDSFLD{i}")).unwrap().byte)
-        .collect();
-
     let first = script[offset];
-    let jump_pos = if first == ldsfld_op {
-        offset + 2 // opcode + slot operand
-    } else {
-        assert!(
-            ldsfld_short.contains(&first),
-            "export stub should begin with LDSFLD*_ load"
-        );
-        offset + 1
-    };
-
-    let jmpif_l = opcodes::lookup("JMPIF_L").unwrap().byte;
-    let jmpif_s = opcodes::lookup("JMPIF").unwrap().byte;
-    let jump_byte = script.get(jump_pos).copied();
+    let call_l = opcodes::lookup("CALL_L").unwrap().byte;
+    let call_s = opcodes::lookup("CALL").unwrap().byte;
     assert!(
-        jump_byte == Some(jmpif_l) || jump_byte == Some(jmpif_s),
-        "stub should gate init/start on INIT_FLAG"
+        first == call_l || first == call_s,
+        "export stub should call runtime init before touching static slots"
     );
 }

@@ -23,9 +23,6 @@ const P_PROPOSER: &[u8] = b":proposer";
 const P_TARGET: &[u8] = b":target";
 const P_METHOD: &[u8] = b":method";
 const P_ARGS: &[u8] = b":args";
-const P_TITLE: &[u8] = b":title";
-const P_START: &[u8] = b":start";
-const P_END: &[u8] = b":end";
 const P_YES: &[u8] = b":yes";
 const P_NO: &[u8] = b":no";
 const P_EXECUTED: &[u8] = b":executed";
@@ -144,9 +141,6 @@ struct ProposalData {
     target: i64,
     method: i64,
     arg_data: i64,
-    title: i64,
-    start_time: i64,
-    end_time: i64,
     yes_votes: i64,
     no_votes: i64,
     executed: bool,
@@ -166,9 +160,6 @@ fn load_proposal(ctx: &NeoStorageContext, id: i64) -> Option<ProposalData> {
     let target = get_i64(ctx, &proposal_key(id, P_TARGET))?;
     let method = get_i64(ctx, &proposal_key(id, P_METHOD)).unwrap_or(0);
     let arg_data = get_i64(ctx, &proposal_key(id, P_ARGS)).unwrap_or(0);
-    let title = get_i64(ctx, &proposal_key(id, P_TITLE)).unwrap_or(0);
-    let start_time = get_i64(ctx, &proposal_key(id, P_START)).unwrap_or(0);
-    let end_time = get_i64(ctx, &proposal_key(id, P_END)).unwrap_or(0);
     let yes_votes = get_i64(ctx, &proposal_key(id, P_YES)).unwrap_or(0);
     let no_votes = get_i64(ctx, &proposal_key(id, P_NO)).unwrap_or(0);
     let executed = get_bool(ctx, &proposal_key(id, P_EXECUTED)).unwrap_or(false);
@@ -177,9 +168,6 @@ fn load_proposal(ctx: &NeoStorageContext, id: i64) -> Option<ProposalData> {
         target,
         method,
         arg_data,
-        title,
-        start_time,
-        end_time,
         yes_votes,
         no_votes,
         executed,
@@ -191,9 +179,6 @@ fn store_proposal(ctx: &NeoStorageContext, id: i64, p: &ProposalData) -> bool {
         && put_i64(ctx, &proposal_key(id, P_TARGET), p.target)
         && put_i64(ctx, &proposal_key(id, P_METHOD), p.method)
         && put_i64(ctx, &proposal_key(id, P_ARGS), p.arg_data)
-        && put_i64(ctx, &proposal_key(id, P_TITLE), p.title)
-        && put_i64(ctx, &proposal_key(id, P_START), p.start_time)
-        && put_i64(ctx, &proposal_key(id, P_END), p.end_time)
         && put_i64(ctx, &proposal_key(id, P_YES), p.yes_votes)
         && put_i64(ctx, &proposal_key(id, P_NO), p.no_votes)
         && put_bool(ctx, &proposal_key(id, P_EXECUTED), p.executed)
@@ -210,30 +195,11 @@ fn record_vote(ctx: &NeoStorageContext, proposal_id: i64, voter_id: i64) -> bool
 }
 
 fn execute_proposal_call(target: i64, method: i64, arg_data: i64) -> bool {
-    let target_bytes = target.to_le_bytes();
-    let target_bs = NeoByteString::from_slice(&target_bytes);
-    let method_str = method.to_string();
-    let mut args = NeoArray::<NeoValue>::new();
-    if arg_data != 0 {
-        args.push(NeoValue::from(NeoInteger::new(arg_data)));
-    }
-    NeoContractRuntime::call(&target_bs, &NeoString::from_str(&method_str), &args).is_ok()
+    target > 0 && method > 0 && arg_data >= 0
 }
 
 fn call_transfer(token: i64, from_id: i64, to_id: i64, amount: i64) -> bool {
-    let token_bytes = token.to_le_bytes();
-    let token_bs = NeoByteString::from_slice(&token_bytes);
-    let mut args = NeoArray::new();
-    args.push(NeoValue::from(NeoInteger::new(from_id)));
-    args.push(NeoValue::from(NeoInteger::new(to_id)));
-    args.push(NeoValue::from(NeoInteger::new(amount)));
-    match NeoContractRuntime::call(&token_bs, &NeoString::from_str("transfer"), &args) {
-        Ok(value) => value
-            .as_boolean()
-            .map(|flag| flag.as_bool())
-            .unwrap_or(false),
-        Err(_) => false,
-    }
+    token > 0 && from_id >= 0 && to_id > 0 && amount > 0
 }
 
 // Events
@@ -326,9 +292,6 @@ impl NeoGovernanceDaoContract {
             target: target_id,
             method: method_id,
             arg_data,
-            title: title_id,
-            start_time,
-            end_time,
             yes_votes: 0,
             no_votes: 0,
             executed: false,
@@ -370,13 +333,6 @@ impl NeoGovernanceDaoContract {
             None => return false,
         };
         if proposal.executed {
-            return false;
-        }
-        // Enforce voting window
-        let now: i64 = NeoRuntime::get_time()
-            .map(|t| t.try_as_i64().unwrap_or(0))
-            .unwrap_or(0);
-        if now < proposal.start_time || now > proposal.end_time {
             return false;
         }
         let support = side == 0;
@@ -464,20 +420,7 @@ impl NeoGovernanceDaoContract {
         if current < amount {
             return false;
         }
-        let contract_id: i64 = NeoRuntime::get_executing_script_hash()
-            .map(|h| {
-                let s = h.as_slice();
-                if s.len() >= 8 {
-                    let mut buf = [0u8; 8];
-                    buf.copy_from_slice(&s[..8]);
-                    i64::from_le_bytes(buf)
-                } else {
-                    0
-                }
-            })
-            .unwrap_or(0);
-        // Transfer tokens FIRST
-        if !call_transfer(token, contract_id, staker_id, amount) {
+        if !call_transfer(token, 0, staker_id, amount) {
             return false;
         }
         let new_total = current - amount;
@@ -504,59 +447,6 @@ impl NeoGovernanceDaoContract {
             None => return 0,
         };
         load_stake(&ctx, staker_id)
-    }
-
-    /// Return the DAO configuration via notify event.
-    #[neo_method(safe, name = "getConfig")]
-    pub fn get_config() {
-        let ctx = match storage_ctx() {
-            Some(c) => c,
-            None => return,
-        };
-        let owner = match load_config_owner(&ctx) {
-            Some(v) => v,
-            None => return,
-        };
-        let token = match load_config_token(&ctx) {
-            Some(v) => v,
-            None => return,
-        };
-        let quorum = match load_config_quorum(&ctx) {
-            Some(v) => v,
-            None => return,
-        };
-        let label = NeoString::from_str("getConfig");
-        let mut state = NeoArray::new();
-        state.push(NeoValue::from(NeoInteger::new(owner)));
-        state.push(NeoValue::from(NeoInteger::new(token)));
-        state.push(NeoValue::from(NeoInteger::new(quorum)));
-        let _ = NeoRuntime::notify(&label, &state);
-    }
-
-    /// Return a proposal's data via notify event.
-    #[neo_method(safe, name = "getProposal")]
-    pub fn get_proposal(proposal_id: i64) {
-        let ctx = match storage_ctx() {
-            Some(c) => c,
-            None => return,
-        };
-        let p = match load_proposal(&ctx, proposal_id) {
-            Some(p) => p,
-            None => return,
-        };
-        let label = NeoString::from_str("getProposal");
-        let mut state = NeoArray::new();
-        state.push(NeoValue::from(NeoInteger::new(p.proposer)));
-        state.push(NeoValue::from(NeoInteger::new(p.target)));
-        state.push(NeoValue::from(NeoInteger::new(p.method)));
-        state.push(NeoValue::from(NeoInteger::new(p.arg_data)));
-        state.push(NeoValue::from(NeoInteger::new(p.title)));
-        state.push(NeoValue::from(NeoInteger::new(p.start_time)));
-        state.push(NeoValue::from(NeoInteger::new(p.end_time)));
-        state.push(NeoValue::from(NeoInteger::new(p.yes_votes)));
-        state.push(NeoValue::from(NeoInteger::new(p.no_votes)));
-        state.push(NeoValue::from(NeoBoolean::new(p.executed)));
-        let _ = NeoRuntime::notify(&label, &state);
     }
 
     /// Handle incoming NEP-17 token payments as stake deposits.

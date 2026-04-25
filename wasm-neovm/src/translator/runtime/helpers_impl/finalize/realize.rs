@@ -66,6 +66,21 @@ impl RuntimeHelpers {
             }
         }
 
+        let storage_kinds: Vec<StorageHelperKind> = self
+            .storage_helpers
+            .iter()
+            .filter(|(_, record)| !record.calls.is_empty())
+            .map(|(kind, _)| *kind)
+            .collect();
+        for kind in storage_kinds {
+            let offset = self.realize_storage_helper(script, kind)?;
+            if let Some(record) = self.storage_helpers.get_mut(&kind) {
+                for &call_pos in &record.calls {
+                    patch_call(script, call_pos, offset)?;
+                }
+            }
+        }
+
         let mut bit_kinds: Vec<BitHelperKind> = self
             .bit_helpers
             .iter()
@@ -244,22 +259,69 @@ impl RuntimeHelpers {
         kind: MemoryHelperKind,
         mask_u32_offset: Option<usize>,
     ) -> Result<usize> {
-        let record = self.memory_helpers.entry(kind).or_default();
-        if let Some(offset) = record.offset {
-            return Ok(offset);
+        if let Some(record) = self.memory_helpers.get(&kind) {
+            if let Some(offset) = record.offset {
+                return Ok(offset);
+            }
         }
         let helper_offset = script.len();
+        let chunked_memory = self.uses_chunked_memory();
         match kind {
+            MemoryHelperKind::Load(bytes) if chunked_memory => {
+                emit_chunked_memory_load_helper(script, bytes)?
+            }
             MemoryHelperKind::Load(bytes) => emit_memory_load_helper(script, bytes)?,
+            MemoryHelperKind::Store(bytes) if chunked_memory => {
+                emit_chunked_memory_store_helper(script, bytes)?
+            }
             MemoryHelperKind::Store(bytes) => emit_memory_store_helper(script, bytes)?,
+            MemoryHelperKind::Grow if chunked_memory => {
+                emit_chunked_memory_grow_helper(script, &self.memory_config)?
+            }
             MemoryHelperKind::Grow => emit_memory_grow_helper(script, &self.memory_config)?,
+            MemoryHelperKind::Fill if chunked_memory => {
+                emit_chunked_memory_fill_helper(script, mask_u32_offset)?
+            }
             MemoryHelperKind::Fill => emit_memory_fill_helper(script, mask_u32_offset)?,
+            MemoryHelperKind::Copy if chunked_memory => {
+                emit_chunked_memory_copy_helper(script, mask_u32_offset)?
+            }
             MemoryHelperKind::Copy => emit_memory_copy_helper(script, mask_u32_offset)?,
+            MemoryHelperKind::EnvMemcpy if chunked_memory => {
+                emit_chunked_env_memcpy_helper(script, mask_u32_offset)?
+            }
             MemoryHelperKind::EnvMemcpy => emit_env_memcpy_helper(script, mask_u32_offset)?,
+            MemoryHelperKind::EnvMemmove if chunked_memory => {
+                emit_chunked_env_memmove_helper(script, mask_u32_offset)?
+            }
             MemoryHelperKind::EnvMemmove => emit_env_memmove_helper(script, mask_u32_offset)?,
+            MemoryHelperKind::EnvMemset if chunked_memory => {
+                emit_chunked_env_memset_helper(script, mask_u32_offset)?
+            }
             MemoryHelperKind::EnvMemset => emit_env_memset_helper(script, mask_u32_offset)?,
         }
-        record.offset = Some(helper_offset);
+        self.memory_helpers.entry(kind).or_default().offset = Some(helper_offset);
+        Ok(helper_offset)
+    }
+
+    fn realize_storage_helper(
+        &mut self,
+        script: &mut Vec<u8>,
+        kind: StorageHelperKind,
+    ) -> Result<usize> {
+        if let Some(record) = self.storage_helpers.get(&kind) {
+            if let Some(offset) = record.offset {
+                return Ok(offset);
+            }
+        }
+        let chunked = self.uses_chunked_memory();
+        let helper_offset = script.len();
+        match kind {
+            StorageHelperKind::PutBytes => emit_storage_put_helper(script, chunked)?,
+            StorageHelperKind::DeleteBytes => emit_storage_delete_helper(script, chunked)?,
+            StorageHelperKind::GetInto => emit_storage_get_helper(script, chunked)?,
+        }
+        self.storage_helpers.entry(kind).or_default().offset = Some(helper_offset);
         Ok(helper_offset)
     }
 
@@ -454,6 +516,7 @@ impl RuntimeHelpers {
             helper_type.params().len()
         ];
 
+        let param_count = helper_type.params().len();
         let mut end_fixups: Vec<usize> = Vec::with_capacity(estimated_matches);
         for (jump, target) in case_fixups {
             let label = script.len();
@@ -461,6 +524,9 @@ impl RuntimeHelpers {
             script.push(lookup_opcode("DROP")?.byte);
             match target {
                 CallTarget::Import(idx) => {
+                    // Imports route through helpers whose own INITSLOT already
+                    // accounts for top-first slot order; pushing args in wasm
+                    // order matches what they expect.
                     handle_import_call(
                         idx,
                         script,
@@ -472,6 +538,10 @@ impl RuntimeHelpers {
                     )?;
                 }
                 CallTarget::Defined(idx) => {
+                    // Defined wasm functions assume `local.get N` reads the
+                    // Nth wasm-pushed arg; reverse here so INITSLOT lands the
+                    // first wasm arg in `Arguments[0]`.
+                    emit_reverse_top_n(script, param_count)?;
                     functions.emit_call(script, idx)?;
                 }
             }

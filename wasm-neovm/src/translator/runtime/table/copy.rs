@@ -77,6 +77,7 @@ pub(in super::super) fn emit_table_copy_helper(
     let collect_exit = emit_jump_placeholder(script, "JMPIFNOT_L")?;
 
     script.push(lookup_opcode("LDLOC5")?.byte);
+    script.push(lookup_opcode("DUP")?.byte);
     script.push(lookup_opcode("LDLOC4")?.byte);
     script.push(lookup_opcode("LDLOC1")?.byte);
     script.push(lookup_opcode("LDLOC6")?.byte);

@@ -54,10 +54,11 @@ impl FlashLoanPoolContract {
             return false;
         }
 
-        let required = match amount.checked_add(Self::flash_fee_internal(amount)) {
-            Some(value) => value,
-            None => return false,
-        };
+        let fee = Self::flash_fee_internal(amount);
+        if fee > i64::MAX - amount {
+            return false;
+        }
+        let required = amount + fee;
         repaid_amount >= required
     }
 }

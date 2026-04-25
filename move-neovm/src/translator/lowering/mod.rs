@@ -47,6 +47,8 @@ pub struct ImportLayout {
 ///
 /// This is the main entry point for Move → WASM translation.
 pub fn translate_to_wasm(module: &MoveModule) -> Result<Vec<u8>> {
+    super::analysis::validate_supported_module(module)?;
+
     let needs_storage = module
         .functions
         .iter()

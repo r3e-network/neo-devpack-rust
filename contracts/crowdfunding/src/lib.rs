@@ -101,8 +101,7 @@ fn storage_has_key(ctx: &NeoStorageContext, key: &[u8]) -> bool {
 }
 
 fn ensure_witness_i64(account: i64) -> bool {
-    let bs = NeoByteString::from_slice(&account.to_le_bytes());
-    NeoRuntime::check_witness(&bs)
+    NeoRuntime::check_witness_i64(account)
         .map(|flag| flag.as_bool())
         .unwrap_or(false)
 }

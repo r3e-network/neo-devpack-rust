@@ -163,16 +163,20 @@ impl RuntimeHelpers {
             + passive_element_layouts.len() * 2
             + if start_helper.is_some() { 1 } else { 0 };
 
-        let needs_init_helper = !self.memory_init_calls.is_empty() || start_helper.is_some();
+        let needs_init_helper = !self.memory_init_calls.is_empty()
+            || start_helper.is_some()
+            || self.runtime_state_requires_entry_init();
         if needs_init_helper {
             let offset = match self.memory_init_offset {
                 Some(existing) => existing,
                 None => {
                     let helper_offset = script.len();
+                    let chunked_memory = self.uses_chunked_memory();
                     let start_call = emit_runtime_init_helper(
                         script,
                         static_slot_count,
                         self.memory_defined,
+                        chunked_memory,
                         &self.memory_config,
                         &global_layouts,
                         &table_layouts,

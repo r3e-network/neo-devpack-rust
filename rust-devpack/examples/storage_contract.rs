@@ -76,7 +76,7 @@ impl StorageContract {
         user_data: UserData,
     ) -> NeoResult<NeoBoolean> {
         let context = NeoRuntime::get_storage_context()?;
-        let mut storage = ContractStorage::load(&context);
+        let mut storage = ContractStorage::load(&context)?;
         if storage.users.get(user_id).is_some() {
             return Ok(NeoBoolean::FALSE);
         }
@@ -112,7 +112,7 @@ impl StorageContract {
         email: NeoString,
     ) -> NeoResult<NeoBoolean> {
         let context = NeoRuntime::get_storage_context()?;
-        let mut storage = ContractStorage::load(&context);
+        let mut storage = ContractStorage::load(&context)?;
         if storage.users.get(user_id).is_some() {
             return Ok(NeoBoolean::FALSE);
         }
@@ -150,7 +150,7 @@ impl StorageContract {
     #[neo_method]
     pub fn get_user(&self, user_id: &NeoByteString) -> NeoResult<NeoValue> {
         let context = NeoRuntime::get_storage_context()?;
-        let storage = ContractStorage::load(&context);
+        let storage = ContractStorage::load(&context)?;
 
         if let Some(user_data) = storage.users.get(user_id) {
             // Create a struct representation
@@ -174,7 +174,7 @@ impl StorageContract {
         new_balance: NeoInteger,
     ) -> NeoResult<NeoBoolean> {
         let context = NeoRuntime::get_storage_context()?;
-        let mut storage = ContractStorage::load(&context);
+        let mut storage = ContractStorage::load(&context)?;
 
         if let Some(user_data) = storage.users.get_mut(user_id) {
             user_data.balance = new_balance;
@@ -195,7 +195,7 @@ impl StorageContract {
     #[neo_method]
     pub fn set_setting(&mut self, key: NeoString, value: NeoValue) -> NeoResult<()> {
         let context = NeoRuntime::get_storage_context()?;
-        let mut storage = ContractStorage::load(&context);
+        let mut storage = ContractStorage::load(&context)?;
         storage.settings.insert(key, value);
         storage.save(&context)?;
         Ok(())
@@ -205,7 +205,7 @@ impl StorageContract {
     #[neo_method]
     pub fn get_setting(&self, key: &NeoString) -> NeoResult<NeoValue> {
         let context = NeoRuntime::get_storage_context()?;
-        let storage = ContractStorage::load(&context);
+        let storage = ContractStorage::load(&context)?;
         Ok(storage.settings.get(key).cloned().unwrap_or(NeoValue::Null))
     }
 
@@ -213,7 +213,7 @@ impl StorageContract {
     #[neo_method]
     pub fn increment_counter(&mut self, counter_name: NeoString) -> NeoResult<NeoInteger> {
         let context = NeoRuntime::get_storage_context()?;
-        let mut storage = ContractStorage::load(&context);
+        let mut storage = ContractStorage::load(&context)?;
 
         let current_value = storage
             .counters
@@ -233,7 +233,7 @@ impl StorageContract {
     #[neo_method]
     pub fn get_counter(&self, counter_name: &NeoString) -> NeoResult<NeoInteger> {
         let context = NeoRuntime::get_storage_context()?;
-        let storage = ContractStorage::load(&context);
+        let storage = ContractStorage::load(&context)?;
         Ok(storage
             .counters
             .get(counter_name)
@@ -252,7 +252,7 @@ impl StorageContract {
 
         // Clear storage
         let context = NeoRuntime::get_storage_context()?;
-        let mut storage = ContractStorage::load(&context);
+        let mut storage = ContractStorage::load(&context)?;
         storage.users = NeoMap::new();
         storage.settings = NeoMap::new();
         storage.counters = NeoMap::new();

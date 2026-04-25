@@ -62,6 +62,10 @@ TIMELOCK_MANIFEST := $(OUTDIR)/TimelockVault.manifest.json
 FLASHLOAN_WASM    := contracts/flashloan-pool/target/$(WASM_TARGET)/release/flashloan_pool_neo.wasm
 FLASHLOAN_NEF     := $(OUTDIR)/FlashLoanPool.nef
 FLASHLOAN_MANIFEST := $(OUTDIR)/FlashLoanPool.manifest.json
+STORAGE_SMOKE_WASM := contracts/storage-smoke/target/$(WASM_TARGET)/release/storage_smoke_neo.wasm
+STORAGE_SMOKE_NEF := $(OUTDIR)/StorageSmoke.nef
+STORAGE_SMOKE_MANIFEST := $(OUTDIR)/StorageSmoke.manifest.json
+STORAGE_SMOKE_SNIP_WASM := $(OUTDIR)/StorageSmoke.snip.wasm
 UNISWAP_SNIP_WASM := $(OUTDIR)/UniswapV2.snip.wasm
 STAKING_SNIP_WASM := $(OUTDIR)/StakingRewards.snip.wasm
 TIMELOCK_SNIP_WASM := $(OUTDIR)/TimelockVault.snip.wasm
@@ -77,7 +81,7 @@ PACKAGE_MANIFESTS := \
 	move-neovm/Cargo.toml \
 	solana-compat/Cargo.toml
 
-.PHONY: help examples cross-chain hello-world nep17-token constant-product nep11-nft uniswap-v2 staking-rewards timelock-vault flashloan-pool multisig-wallet escrow crowdfunding governance-dao oracle-consumer nft-marketplace solana-hello move-coin c-hello fmt lint test verify-contract-tests test-contracts test-cross-chain integration-tests smoke-neoxp security-check package-check spec clean fuzz fuzz-compiler fuzz-translate fuzz-translate-config fuzz-pipeline fuzz-nef fuzz-numeric fuzz-devpack-codec fuzz-syscall-surface fuzz-rust-contract fuzz-rust-differential fuzz-rust-long fuzz-long-status fuzz-long-stop fuzz-all
+.PHONY: help examples cross-chain hello-world nep17-token constant-product nep11-nft uniswap-v2 staking-rewards timelock-vault flashloan-pool multisig-wallet escrow crowdfunding governance-dao oracle-consumer nft-marketplace solana-hello move-coin storage-smoke c-hello fmt lint test verify-contract-tests test-contracts test-cross-chain integration-tests smoke-neoxp security-check package-check spec clean fuzz fuzz-compiler fuzz-translate fuzz-translate-config fuzz-pipeline fuzz-nef fuzz-numeric fuzz-devpack-codec fuzz-syscall-surface fuzz-rust-contract fuzz-rust-differential fuzz-rust-long fuzz-long-status fuzz-long-stop fuzz-all
 
 help:
 	@echo "Usage: make <target>"
@@ -107,12 +111,12 @@ help:
 	@echo "Maintenance targets:"
 	@echo "  fmt             Run cargo fmt across the workspace"
 	@echo "  lint            Run cargo clippy across the workspace"
-	@echo "  test            Execute translator/devpack/neo-test + contract unit suites"
+	@echo "  test            Execute non-runtime translator/devpack/neo-test + contract unit suites"
 	@echo "  verify-contract-tests Ensure each Rust contract crate defines tests"
 	@echo "  test-contracts  Run unit tests for all Rust sample contracts"
 	@echo "  test-cross-chain Run wasm-neovm cross-chain test suites"
-	@echo "  integration-tests  Run optional Neo Express integration harness"
-	@echo "  smoke-neoxp     Run local Neo Express deploy/invoke smoke checks"
+	@echo "  integration-tests  Run Neo Express integration harness (requires NEO_EXPRESS_RPC)"
+	@echo "  smoke-neoxp     Run Neo Express deploy/invoke runtime validation"
 	@echo "  security-check Run cargo-audit/cargo-deny checks (requires cargo-audit/cargo-deny)"
 	@echo "  package-check   Verify all publishable crates can be packaged"
 	@echo "  unused-deps     Check for unused dependencies (requires cargo-machete)"
@@ -167,6 +171,9 @@ timelock-vault: $(TIMELOCK_NEF) $(TIMELOCK_MANIFEST)
 
 flashloan-pool: $(FLASHLOAN_NEF) $(FLASHLOAN_MANIFEST)
 	@echo "✔ Flashloan pool artifacts are in $(OUTDIR)/"
+
+storage-smoke: $(STORAGE_SMOKE_NEF) $(STORAGE_SMOKE_MANIFEST)
+	@echo "✔ Storage smoke artifacts are in $(OUTDIR)/"
 
 multisig-wallet: $(MULTISIG_NEF) $(MULTISIG_MANIFEST)
 	@echo "✔ Multisig wallet artifacts are in $(OUTDIR)/"
@@ -248,6 +255,18 @@ $(FLASHLOAN_NEF) $(FLASHLOAN_MANIFEST): $(FLASHLOAN_WASM) | $(OUTDIR)
 	  --nef $(FLASHLOAN_NEF) \
 	  --manifest $(FLASHLOAN_MANIFEST) \
 	  --name FlashLoanPool
+
+$(STORAGE_SMOKE_NEF) $(STORAGE_SMOKE_MANIFEST): $(STORAGE_SMOKE_WASM) | $(OUTDIR)
+	$(WASM_SNIP) --snip-rust-fmt-code --snip-rust-panicking-code $(STORAGE_SMOKE_WASM) -o $(STORAGE_SMOKE_SNIP_WASM)
+	$(TRANSLATOR) \
+	  --input $(STORAGE_SMOKE_SNIP_WASM) \
+	  --nef $(STORAGE_SMOKE_NEF) \
+	  --manifest $(STORAGE_SMOKE_MANIFEST) \
+	  --name StorageSmoke
+
+$(STORAGE_SMOKE_WASM):
+	RUSTFLAGS="$(CONTRACT_RUSTFLAGS)" \
+	cargo build --manifest-path contracts/storage-smoke/Cargo.toml --release --target $(WASM_TARGET) --quiet
 
 $(MULTISIG_NEF) $(MULTISIG_MANIFEST): $(MULTISIG_WASM) | $(OUTDIR)
 	$(TRANSLATOR) \
@@ -414,6 +433,7 @@ lint:
 	cargo clippy --manifest-path integration-tests/Cargo.toml --all-targets --all-features -- -D warnings
 
 test:
+	@echo "Running non-runtime test suites; run 'make smoke-neoxp' for Neo Express runtime validation."
 	cargo test --manifest-path wasm-neovm/Cargo.toml
 	cargo test --manifest-path move-neovm/Cargo.toml
 	cargo test --manifest-path solana-compat/Cargo.toml
@@ -442,10 +462,11 @@ test-cross-chain:
 	cargo test --manifest-path wasm-neovm/Cargo.toml --test cross_chain_tests --test solana_move_integration
 
 integration-tests:
-	@echo "Running integration tests (requires NEO_EXPRESS_RPC)..."
+	@echo "Running Neo Express integration tests (requires NEO_EXPRESS_RPC)..."
 	cargo test --manifest-path integration-tests/Cargo.toml -- --ignored
 
 smoke-neoxp:
+	@echo "Running Neo Express deploy/invoke runtime validation..."
 	scripts/neoxp_smoke.sh
 
 security-check:

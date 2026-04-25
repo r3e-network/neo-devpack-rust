@@ -10,6 +10,72 @@ this repository follow independent versioning (currently 0.1.x).
 
 ## [Unreleased]
 
+## [0.5.6] - 2026-04-25
+
+### Fixed
+
+- **Internal call argument ordering for multi-arg functions.** NeoVM `INITSLOT`
+  pops arguments TOP-FIRST into `Arguments[0..N]`, while WebAssembly `local.get N`
+  for parameters expects the Nth-pushed argument. For exported method entries
+  this was masked because Neo's external dispatcher pushes args in reverse before
+  the callee's `INITSLOT`. Internal wasm-to-wasm calls had no such reversal —
+  `local.get 0` resolved to the LAST pushed wasm arg in the callee. This
+  surfaced as `MaxItemSize exceed: 1048560/131070` faults in storage-heavy
+  contracts when an internal helper's `local.get 2` returned a wasm
+  shadow-stack pointer (~1MB) that was then interpreted as a `key_len` and fed
+  to `NEWBUFFER`.
+
+  Fix:
+  - New `emit_reverse_top_n` helper in `wasm-neovm/src/translator/helpers/calls.rs`.
+    Picks `SWAP` for 2 args, `REVERSE3` for 3, `REVERSE4` for 4, or
+    `PUSH n + REVERSEN` for 5+; no-op for 0/1.
+  - Inserted before `CALL_L` in `op_calls.rs::Operator::Call` for defined wasm
+    function calls and in `realize_call_indirect_helper`'s `CallTarget::Defined`
+    arm.
+  - Imports remain unaffected — their helper bodies (e.g. `emit_storage_*_helper`)
+    already account for top-first slot order in their own `INITSLOT` dispatch.
+
+  Empirical result on `SampleMultisig` with `cfg:threshold` (13 bytes) +
+  `cfg:owners` (10 bytes) keys: without fix → `FAULT MaxItemSize exceed:
+  1048560/131070`; with fix → `HALT, value: -1`.
+
+### Added
+
+- Heap-free `RawStorage` facade (`rust-devpack/neo-runtime/src/storage.rs`)
+  that takes plain `&[u8]` slices and writes results into caller-supplied
+  buffers, lowering directly to `System.Storage.*` SYSCALLs on `wasm32`
+  without touching the wasm allocator. Storage-heavy contracts that route
+  through this path stay deploy-and-invokeable on Neo Express rather than
+  "deploy-only".
+- New translator runtime helpers `wasm-neovm/src/translator/runtime/storage.rs`
+  bridging `neo_storage_put_bytes` / `neo_storage_delete_bytes` /
+  `neo_storage_get_into` imports onto the executing contract's
+  `System.Storage.*` SYSCALLs, supporting both compact and chunked memory
+  layouts.
+- `contracts/storage-smoke` test contract exercising a real
+  `System.Storage.Get` / `Put` round-trip on Neo Express to verify the
+  wasm-side storage facade reaches actual contract storage rather than the
+  previous in-process simulation `Vec`.
+
+### Changed
+
+- **`StakingRewards.previewReward` smoke args.** The previous smoke harness
+  invoked `previewReward 365 10000`, which appeared to return 1200 only because
+  the internal-call bug swapped the args and the symmetric reward formula
+  `amount*days*APR/(BPS*Y)` produced the same value. With the bug fixed, those
+  args correctly trip `days_staked > MAX_DAYS` and return 0. The smoke now
+  invokes `previewReward 10000 365`.
+- `SampleMultisig` rewritten to route storage through `RawStorage` so the
+  contract is invokable on Neo Express, not just deployable.
+
+### Testing
+
+- `cargo test --workspace` passes; `cargo fmt --all --check` and
+  `cargo clippy --workspace -- -D warnings` clean.
+- `bash scripts/neoxp_smoke.sh` passes for HelloWorld, NEP-17, NEP-11, AMM,
+  Uniswap, Staking, Timelock, Flashloan, Storage round-trip, NFT marketplace,
+  solana-hello, and MoveCoin.
+
 ## [0.5.5] - 2026-04-07
 
 ### Added

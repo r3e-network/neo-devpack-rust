@@ -5,12 +5,49 @@
 
 use neo_types::*;
 
+#[cfg(not(target_arch = "wasm32"))]
 use crate::storage::*;
 use crate::syscalls::SYSCALLS;
 use crate::NeoVMSyscallInfo;
 
+#[cfg(target_arch = "wasm32")]
+#[link(wasm_import_module = "neo")]
+extern "C" {
+    #[link_name = "runtime_check_witness_bytes"]
+    fn neo_runtime_check_witness_bytes(ptr: i32, len: i32) -> i32;
+
+    #[link_name = "runtime_check_witness_i64"]
+    fn neo_runtime_check_witness_i64(account: i64) -> i32;
+
+    /// Lowered to `CALL_L` -> helper that emits
+    ///   `SYSCALL System.Storage.GetContext;
+    ///    SUBSTR <key>; SUBSTR <value>;
+    ///    SYSCALL System.Storage.Put`.
+    #[link_name = "neo_storage_put_bytes"]
+    fn neo_storage_put_bytes(key_ptr: i32, key_len: i32, value_ptr: i32, value_len: i32);
+
+    /// Lowered to `CALL_L` -> helper that emits
+    ///   `SYSCALL System.Storage.GetContext;
+    ///    SUBSTR <key>;
+    ///    SYSCALL System.Storage.Delete`.
+    #[link_name = "neo_storage_delete_bytes"]
+    fn neo_storage_delete_bytes(key_ptr: i32, key_len: i32);
+
+    /// Lowered to `CALL_L` -> helper that emits the `Get` SYSCALL and then
+    /// copies the returned `ByteString` back into wasm memory at `out_ptr`.
+    /// Returns:
+    ///   - the stored value's length on success (`>= 0`),
+    ///   - `-1` if the key is not present in storage,
+    ///   - `-needed_len` if the caller-supplied buffer was too small.
+    #[link_name = "neo_storage_get_into"]
+    fn neo_storage_get_into(key_ptr: i32, key_len: i32, out_ptr: i32, out_cap: i32) -> i32;
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 const CALL_FLAGS_VALID_MASK: i32 = 0x0F;
+#[cfg(not(target_arch = "wasm32"))]
 const CALL_FLAGS_READ_STATES: i32 = 0x01;
+#[cfg(not(target_arch = "wasm32"))]
 const CALL_FLAGS_WRITE_STATES: i32 = 0x02;
 
 fn find_syscall(name: &str) -> Option<&'static NeoVMSyscallInfo> {
@@ -61,10 +98,12 @@ fn value_matches_param_type(value: &NeoValue, param_type: &str) -> bool {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn call_flags_allow_write(flags: i32) -> bool {
     (flags & CALL_FLAGS_WRITE_STATES) != 0
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn call_flags_allow_read(flags: i32) -> bool {
     (flags & CALL_FLAGS_READ_STATES) != 0
 }
@@ -343,10 +382,12 @@ impl NeoVMSyscall {
     }
 
     /// Clear host-mode syscall/storage simulation state.
+    ///
+    /// On wasm32 this is a no-op: storage state lives in the Neo node's real
+    /// persistent store and is reset at the chain level (e.g. by tearing down
+    /// the Neo Express chain), not by the contract itself.
     #[cfg(target_arch = "wasm32")]
     pub fn reset_host_state() -> NeoResult<()> {
-        let mut store = STORAGE_ENTRIES.lock().map_err(|_| NeoError::InvalidState)?;
-        store.clear();
         Ok(())
     }
 
@@ -464,8 +505,44 @@ impl NeoVMSyscall {
 
     /// Check if the specified account is a witness
     pub fn check_witness(account: &NeoByteString) -> NeoResult<NeoBoolean> {
-        let args = [NeoValue::from(account.clone())];
-        Self::call_boolean("System.Runtime.CheckWitness", &args)
+        Self::check_witness_bytes(account.as_slice())
+    }
+
+    /// Check if the specified account hash/public key bytes are a witness.
+    pub fn check_witness_bytes(account: &[u8]) -> NeoResult<NeoBoolean> {
+        #[cfg(target_arch = "wasm32")]
+        {
+            let result = unsafe {
+                neo_runtime_check_witness_bytes(account.as_ptr() as i32, account.len() as i32)
+            };
+            return Ok(NeoBoolean::new(result != 0));
+        }
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let args = [NeoValue::from(NeoByteString::from_slice(account))];
+            Self::call_boolean("System.Runtime.CheckWitness", &args)
+        }
+    }
+
+    /// Check a compact sample-account identifier as a witness.
+    ///
+    /// This helper exists for the repository sample contracts that expose
+    /// account IDs as integers. Production contracts should prefer
+    /// `check_witness`/`check_witness_bytes` with real Hash160 account bytes.
+    pub fn check_witness_i64(account: i64) -> NeoResult<NeoBoolean> {
+        #[cfg(target_arch = "wasm32")]
+        {
+            let result = unsafe { neo_runtime_check_witness_i64(account) };
+            return Ok(NeoBoolean::new(result != 0));
+        }
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let mut bytes = [0u8; 20];
+            bytes[..8].copy_from_slice(&account.to_le_bytes());
+            Self::check_witness_bytes(&bytes)
+        }
     }
 
     /// Send notification to the runtime.
@@ -719,6 +796,11 @@ impl NeoVMSyscall {
         STORAGE_STATE.create_context(current_executing_script_hash(), read_only)
     }
 
+    /// On wasm32 we return a sentinel `NeoStorageContext`. The translator
+    /// emits a fresh `SYSCALL System.Storage.GetContext` inside each storage
+    /// helper, so the i32 id carried by this struct is irrelevant to NeoVM —
+    /// the only field that affects translated bytecode is the `read_only`
+    /// marker, which is enforced by the wasm32 wrappers below.
     #[cfg(target_arch = "wasm32")]
     pub fn storage_get_context() -> NeoResult<NeoStorageContext> {
         Ok(NeoStorageContext::new(1))
@@ -779,6 +861,12 @@ impl NeoVMSyscall {
         Ok(())
     }
 
+    /// Writes through to real Neo persistent storage. The translator lowers
+    /// `neo_storage_put_bytes` to a `CALL_L` that emits the
+    /// `System.Storage.GetContext + System.Storage.Put` SYSCALL pair. The
+    /// `read_only` check on the supplied marker still runs first so contracts
+    /// that hand a read-only context to `put` short-circuit before crossing
+    /// the wasm boundary.
     #[cfg(target_arch = "wasm32")]
     pub fn storage_put(
         context: &NeoStorageContext,
@@ -789,30 +877,58 @@ impl NeoVMSyscall {
             return Err(NeoError::InvalidOperation);
         }
 
-        let mut store = STORAGE_ENTRIES.lock().map_err(|_| NeoError::InvalidState)?;
-        if let Some((_, existing_value)) = store
-            .iter_mut()
-            .find(|(entry_key, _)| entry_key.as_slice() == key.as_slice())
-        {
-            *existing_value = value.as_slice().to_vec();
-        } else {
-            store.push((key.as_slice().to_vec(), value.as_slice().to_vec()));
+        let key_slice = key.as_slice();
+        let value_slice = value.as_slice();
+        unsafe {
+            neo_storage_put_bytes(
+                key_slice.as_ptr() as i32,
+                key_slice.len() as i32,
+                value_slice.as_ptr() as i32,
+                value_slice.len() as i32,
+            );
         }
-
         Ok(())
     }
+
+    /// Reads through to real Neo persistent storage via the translator-emitted
+    /// `neo_storage_get_into` helper. The helper writes the stored bytes into
+    /// the local `buffer` (sized up on demand) and reports the actual length;
+    /// missing keys return an empty `NeoByteString`, matching the host-mode
+    /// semantics already exercised by the devpack tests.
     #[cfg(target_arch = "wasm32")]
     pub fn storage_get(
         _context: &NeoStorageContext,
         key: &NeoByteString,
     ) -> NeoResult<NeoByteString> {
-        let store = STORAGE_ENTRIES.lock().map_err(|_| NeoError::InvalidState)?;
-        let value = store
-            .iter()
-            .find(|(entry_key, _)| entry_key.as_slice() == key.as_slice())
-            .map(|(_, entry_value)| entry_value.clone())
-            .unwrap_or_default();
-        Ok(NeoByteString::new(value))
+        const INITIAL_CAPACITY: usize = 64;
+        const MAX_CAPACITY: usize = 64 * 1024;
+
+        let key_slice = key.as_slice();
+        let mut buffer: Vec<u8> = vec![0u8; INITIAL_CAPACITY];
+        loop {
+            let actual = unsafe {
+                neo_storage_get_into(
+                    key_slice.as_ptr() as i32,
+                    key_slice.len() as i32,
+                    buffer.as_mut_ptr() as i32,
+                    buffer.len() as i32,
+                )
+            };
+            if actual == -1 {
+                return Ok(NeoByteString::new(Vec::new()));
+            }
+            if actual >= 0 {
+                let len = actual as usize;
+                buffer.truncate(len);
+                return Ok(NeoByteString::new(buffer));
+            }
+            // -needed_len: grow buffer and retry.
+            let needed = (-actual) as usize;
+            if needed > MAX_CAPACITY {
+                return Err(NeoError::InvalidState);
+            }
+            buffer.resize(needed, 0);
+        }
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -829,14 +945,19 @@ impl NeoVMSyscall {
         Ok(())
     }
 
+    /// Deletes the key from real Neo persistent storage via
+    /// `neo_storage_delete_bytes`, which the translator lowers to
+    /// `System.Storage.GetContext + System.Storage.Delete`.
     #[cfg(target_arch = "wasm32")]
     pub fn storage_delete(context: &NeoStorageContext, key: &NeoByteString) -> NeoResult<()> {
         if context.is_read_only() {
             return Err(NeoError::InvalidOperation);
         }
 
-        let mut store = STORAGE_ENTRIES.lock().map_err(|_| NeoError::InvalidState)?;
-        store.retain(|(entry_key, _)| entry_key.as_slice() != key.as_slice());
+        let key_slice = key.as_slice();
+        unsafe {
+            neo_storage_delete_bytes(key_slice.as_ptr() as i32, key_slice.len() as i32);
+        }
         Ok(())
     }
 
@@ -867,26 +988,17 @@ impl NeoVMSyscall {
         Ok(NeoIterator::new(matches))
     }
 
+    /// On wasm32 `storage_find` returns an empty iterator. Bridging a real
+    /// `System.Storage.Find` iterator handle through wasm would require
+    /// special-cased translator support for `System.Iterator.Next/Value`
+    /// on top of the byte-marshalled `Get/Put/Delete` primitives that this
+    /// module already lowers; contracts that need prefix iteration must use
+    /// indexed enumeration backed by `storage_get` until that lands.
     #[cfg(target_arch = "wasm32")]
     pub fn storage_find(
         _context: &NeoStorageContext,
-        prefix: &NeoByteString,
+        _prefix: &NeoByteString,
     ) -> NeoResult<NeoIterator<NeoValue>> {
-        let prefix_bytes = prefix.as_slice();
-        let store = STORAGE_ENTRIES.lock().map_err(|_| NeoError::InvalidState)?;
-        let matches: Vec<NeoValue> = store
-            .iter()
-            .filter_map(|(key_bytes, value)| {
-                if key_bytes.starts_with(prefix_bytes) {
-                    let mut entry = NeoStruct::new();
-                    entry.set_field("key", NeoValue::from(NeoByteString::from_slice(key_bytes)));
-                    entry.set_field("value", NeoValue::from(NeoByteString::from_slice(value)));
-                    Some(NeoValue::from(entry))
-                } else {
-                    None
-                }
-            })
-            .collect();
-        Ok(NeoIterator::new(matches))
+        Ok(NeoIterator::new(Vec::new()))
     }
 }

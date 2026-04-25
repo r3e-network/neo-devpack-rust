@@ -3,6 +3,7 @@
 
 //! Storage state management for Neo N3 syscall simulation.
 
+#[cfg(not(target_arch = "wasm32"))]
 use once_cell::sync::Lazy;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -11,8 +12,6 @@ use neo_types::{NeoError, NeoResult, NeoStorageContext};
 use std::collections::{HashMap, HashSet};
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::atomic::{AtomicU32, Ordering};
-#[cfg(target_arch = "wasm32")]
-use std::sync::Mutex;
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::{Arc, RwLock};
 
@@ -376,13 +375,6 @@ pub(crate) fn active_crypto_verification_results() -> CryptoVerificationResults 
 pub(crate) fn reset_crypto_verification_results() {
     set_crypto_verification_results(CryptoVerificationResults::default());
 }
-
-#[cfg(target_arch = "wasm32")]
-pub(crate) type StorageEntry = (Vec<u8>, Vec<u8>);
-
-#[cfg(target_arch = "wasm32")]
-pub(crate) static STORAGE_ENTRIES: Lazy<Mutex<Vec<StorageEntry>>> =
-    Lazy::new(|| Mutex::new(Vec::new()));
 
 #[cfg(test)]
 mod tests {

@@ -94,12 +94,12 @@ Reference hash/lookup validation: `wasm-neovm/src/syscalls.rs:92`
 
 ## Runtime Neo Express Validation
 
-`make smoke-neoxp` deployed and invoked 16 contracts successfully, including:
+`make smoke-neoxp` deploys the bundled contract suite and invokes the runtime-safe smoke subset, including:
 
 - HelloWorld (`scripts/neoxp_smoke.sh:200`)
 - NEP-17 (`scripts/neoxp_smoke.sh:203`)
 - NEP-11 (`scripts/neoxp_smoke.sh:208`)
-- Governance/Oracle/Marketplace flows (`scripts/neoxp_smoke.sh:259`)
+- Deploy validation for stateful Governance/Oracle/Marketplace flows
 - Cross-chain Solana + Move flows (`scripts/neoxp_smoke.sh:278`)
 
 ## Interpretation

@@ -231,7 +231,6 @@ jobs:
         env:
           NEOXP_BIN: /tmp/neo-tools/neoxp
         run: make smoke-neoxp
-        continue-on-error: true
 
   clippy:
     name: Clippy

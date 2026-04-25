@@ -114,6 +114,50 @@ fn translate_neo_runtime_check_witness() {
 }
 
 #[test]
+fn translate_neo_runtime_check_witness_bytes_reads_linear_memory() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (import "neo" "runtime_check_witness_bytes" (func $check_witness (param i32 i32) (result i32)))
+              (memory 1)
+              (data (i32.const 0) "\01\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00\00")
+              (func (export "test") (result i32)
+                i32.const 0
+                i32.const 20
+                call $check_witness))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "CheckWitnessBytes").expect("translation succeeds");
+
+    let syscall = wasm_neovm::opcodes::lookup("SYSCALL").unwrap().byte;
+    let pushdata1 = wasm_neovm::opcodes::lookup("PUSHDATA1").unwrap().byte;
+    assert!(translation.script.contains(&syscall));
+    assert!(translation.script.contains(&pushdata1));
+}
+
+#[test]
+fn translate_neo_runtime_check_witness_i64_avoids_linear_memory() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (import "neo" "runtime_check_witness_i64" (func $check_witness (param i64) (result i32)))
+              (memory 17)
+              (func (export "test") (param i64) (result i32)
+                local.get 0
+                call $check_witness))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "CheckWitnessI64").expect("translation succeeds");
+
+    let syscall = wasm_neovm::opcodes::lookup("SYSCALL").unwrap().byte;
+    let cat = wasm_neovm::opcodes::lookup("CAT").unwrap().byte;
+    let newbuffer = wasm_neovm::opcodes::lookup("NEWBUFFER").unwrap().byte;
+    assert!(translation.script.contains(&syscall));
+    assert!(translation.script.contains(&cat));
+    assert!(!translation.script.contains(&newbuffer));
+}
+
+#[test]
 fn translate_neo_runtime_log() {
     let wasm = wat::parse_str(
         r#"(module

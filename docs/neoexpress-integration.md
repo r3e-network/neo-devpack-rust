@@ -1,8 +1,9 @@
 # Neo Express Integration Tests
 
-The repository includes an optional integration test crate under `integration-tests/` to help
+The repository includes a Neo Express integration test crate under `integration-tests/` to help
 exercise generated NEF artefacts against a live [Neo Express](https://github.com/neo-project/neo-express)
-instance.
+instance. The default local `make test` path does not cover runtime deployment; use the
+Neo Express targets below when validating end-to-end behavior.
 
 ## Prerequisites
 
@@ -23,23 +24,35 @@ instance.
 2. Execute the integration suite (tests are ignored by default so they must be
    invoked explicitly):
    ```bash
-   cargo test --manifest-path integration-tests/Cargo.toml -- --ignored
+   make integration-tests
    ```
 
 The harness verifies that the translated artefacts exist and surfaces their sizes.
 Augment the test with project-specific deployment logic (for example by invoking
 `neo-express contract deploy`) as you plug the suite into CI.
 
+For the CI-equivalent runtime validation path, run:
+
+```bash
+make smoke-neoxp
+```
+
+This path provisions Neo Express, deploys the bundled sample contracts, and performs
+direct invoke checks for the runtime-safe smoke subset via `scripts/neoxp_smoke.sh`.
+Stateful witness-heavy examples are deployed in this job and covered functionally by
+their Rust test suites.
+
 ## CI Smoke Job
 
-The CI workflow includes a `Neo Express Smoke` job that provisions Neo Express,
+The CI workflow includes a gating `Neo Express Smoke` job that provisions Neo Express,
 builds/translates all sample contracts, deploys them, and runs invoke checks via
 `scripts/neoxp_smoke.sh`.
 
-The job runs on every CI execution.
+The job runs on every CI execution, and failures now fail the workflow.
 
 This increases CI duration because it installs Neo Express tooling and runs
-full build/deploy/invoke checks across the contract suite.
+full build/deploy checks across the contract suite plus direct invokes for the
+runtime-safe smoke subset.
 
 ## Deployment Helper Script
 
@@ -57,9 +70,10 @@ example `--account <script-hash>` to specify the signer.
 ## Sample Deploy + Invoke Flow
 
 Once a contract is deployed, Neo Express prints the resulting script hash. Use
-that hash with `neo-express contract invoke` to exercise the exported methods.
-All examples expose at least one *safe* method, so you can validate the deployment
-without additional witness configuration:
+that hash with `neo-express contract invoke` to exercise exported methods that do
+not require witness or state setup. Some advanced examples are deploy-validated in
+`make smoke-neoxp` and should be exercised through their Rust tests until a richer
+Neo Express fixture provisions witnesses and contract state.
 
 | Contract | Safe Validation Call |
 | --- | --- |
@@ -67,12 +81,12 @@ without additional witness configuration:
 | NEP-17 Token | `neo-express contract invoke --rpc $NEO_EXPRESS_RPC <hash> totalSupply` |
 | Constant-product AMM | `neo-express contract invoke --rpc $NEO_EXPRESS_RPC <hash> getReserves` |
 | NEP-11 NFT | `neo-express contract invoke --rpc $NEO_EXPRESS_RPC <hash> totalSupply` |
-| Multisig Wallet | `neo-express contract invoke --rpc $NEO_EXPRESS_RPC <hash> getConfig` |
-| Escrow | `neo-express contract invoke --rpc $NEO_EXPRESS_RPC <hash> getState` |
-| Crowdfunding | `neo-express contract invoke --rpc $NEO_EXPRESS_RPC <hash> getCampaign` |
-| Governance DAO | `neo-express contract invoke --rpc $NEO_EXPRESS_RPC <hash> getConfig` |
-| Oracle Consumer | `neo-express contract invoke --rpc $NEO_EXPRESS_RPC <hash> getConfig` |
-| NFT Marketplace | `neo-express contract invoke --rpc $NEO_EXPRESS_RPC <hash> getListing --integer 1` |
+| Multisig Wallet | Deploy validation plus Rust contract tests for witness-gated flows |
+| Escrow | Deploy validation plus Rust contract tests for stateful flows |
+| Crowdfunding | Deploy validation plus Rust contract tests for witness-gated flows |
+| Governance DAO | Deploy validation plus Rust contract tests for stateful flows |
+| Oracle Consumer | Deploy validation plus Rust contract tests for witness-gated callbacks |
+| NFT Marketplace | Deploy validation plus Rust contract tests for stateful flows |
 | Solana Hello (cross-chain) | `neo-express contract invoke --rpc $NEO_EXPRESS_RPC <hash> hello` |
 | Move Coin (cross-chain, experimental) | `neo-express contract invoke --rpc $NEO_EXPRESS_RPC <hash> balance --binary <address>` |
 
