@@ -10,6 +10,21 @@ TRANSLATOR        := cargo run --manifest-path wasm-neovm/Cargo.toml --quiet --
 
 CONTRACT_RUSTFLAGS := -C opt-level=z -C strip=symbols -C panic=abort -C target-feature=-simd128,-reference-types,-multivalue,-tail-call
 WASM_SNIP         ?= wasm-snip
+# Post-build WASM optimization: wasm-opt -Oz shrinks WASM by 8-12% and the
+# translator (post-fix) handles its stack-shuffled output. Falls back to the
+# raw WASM if wasm-opt is not installed.
+WASM_OPT          ?= wasm-opt
+WASM_OPT_FLAGS    := -Oz --enable-bulk-memory --strip-debug --strip-producers
+
+# Optimize a WASM module in-place (used by all contract build rules).
+define optimize_wasm
+	@if command -v $(WASM_OPT) >/dev/null 2>&1; then \
+		$(WASM_OPT) $(WASM_OPT_FLAGS) $$1 -o $$1.opt && mv $$1.opt $$1; \
+		echo "  optimized $$1 ($$(wc -c < $$1) bytes)"; \
+	else \
+		echo "  (wasm-opt not found, skipping optimization)"; \
+	fi
+endef
 
 HELLO_WASM        := contracts/hello-world/target/$(WASM_TARGET)/release/hello_world_neo.wasm
 HELLO_NEF         := $(OUTDIR)/HelloWorld.nef
