@@ -13,6 +13,13 @@ use serde::{Deserialize, Serialize};
 ///
 /// Hash160 is the standard identifier for Neo addresses and contract script hashes.
 /// It wraps exactly 20 bytes and provides validated construction.
+///
+/// # Byte order
+///
+/// All Neo hashes (Hash160/Hash256) are stored and transmitted in
+/// **little-endian** byte order, matching the Neo VM and on-wire protocol.
+/// When converting from a display string (big-endian hex), the bytes are
+/// reversed; the internal `[u8; 20]` is always little-endian.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Hash160([u8; 20]);

@@ -88,7 +88,19 @@ impl Arena {
             }
         };
 
-        let ptr = unsafe { current.as_ptr().add(aligned_pos) };
+        let ptr = unsafe {
+            // Guard against pointer arithmetic overflow: the WASM module
+            // limits bound `aligned_pos` well below isize::MAX, but a logic
+            // error could still violate this. Aborting is safer than UB.
+            debug_assert!(
+                aligned_pos <= (isize::MAX as usize) - size,
+                "arena allocation offset would overflow isize::MAX"
+            );
+            if aligned_pos > (isize::MAX as usize).saturating_sub(size) {
+                std::alloc::handle_alloc_error(Layout::new::<u8>());
+            }
+            current.as_ptr().add(aligned_pos)
+        };
 
         self.pos.set(end_pos);
         let consumed = (aligned_pos - old_pos) + size;

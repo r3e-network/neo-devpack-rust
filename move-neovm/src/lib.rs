@@ -1,7 +1,12 @@
 // Copyright (c) 2025-2026 R3E Network
 // Licensed under the MIT License
 
-//! Move Bytecode to NeoVM Translator
+//! ⚠️ EXPERIMENTAL — Move Bytecode to NeoVM Translator
+//!
+//! **This crate is NOT production-ready.** It provides a minimal Move bytecode
+//! → WASM translator to feed the wasm-neovm pipeline. The lowering is
+//! experimental and does not cover the full Move semantics yet. Many Move
+//! instructions are lowered to NOP placeholders. Do not use for real assets.
 //!
 //! This crate provides a minimal Move bytecode → WASM translator to feed the
 //! wasm-neovm pipeline. The lowering is experimental and does not cover the

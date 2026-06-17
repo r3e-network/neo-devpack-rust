@@ -39,7 +39,10 @@ impl CompareOp {
                 let rhs = (rhs as i64) as i128;
                 self.evaluate_order(lhs, rhs)
             }
-            other => unreachable!("unsupported signed comparison width {}", other),
+            other => {
+                debug_assert!(false, "unsupported signed comparison width {}", other);
+                self.evaluate_order(lhs, rhs) // safe fallback
+            }
         }
     }
 

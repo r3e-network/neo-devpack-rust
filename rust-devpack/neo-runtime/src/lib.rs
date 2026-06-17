@@ -9,6 +9,15 @@
 //! implementation intentionally returns deterministic placeholder values –
 //! enough to validate wiring and type conversions while remaining
 //! self-contained for unit tests.
+//!
+//! # ⚠️ Contract panic safety
+//!
+//! In Neo N3, a runtime panic (`panic!`, `unwrap()` on `None`/`Err`, index out
+//! of bounds, arithmetic overflow) causes the VM to **FAULT**, which reverts
+//! the entire transaction. Unlike off-chain Rust, you **cannot** use panics
+//! for control flow in on-chain contracts. Always use `NeoResult<T>` and
+//! explicit error handling. The `#[neo_contract]` macro expects methods to
+//! return `NeoResult<T>` precisely because panics are unrecoverable on-chain.
 
 mod context;
 mod contract;

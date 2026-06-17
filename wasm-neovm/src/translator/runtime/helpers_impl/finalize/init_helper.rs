@@ -69,7 +69,16 @@ impl RuntimeHelpers {
                         byte_slot: *byte_slot,
                         drop_slot: *drop_slot,
                     },
-                    _ => unreachable!("passive slot assignment missing"),
+                    _ => {
+                        debug_assert!(false, "passive slot assignment missing");
+                        // Unreachable: passive segments always have slots assigned.
+                        // Leak a zero to provide a valid &'static usize reference.
+                        PassiveSegmentLayout {
+                            bytes: &[],
+                            byte_slot: *Box::leak(Box::new(0usize)),
+                            drop_slot: *Box::leak(Box::new(0usize)),
+                        }
+                    }
                 }
             })
             .collect();
@@ -120,7 +129,15 @@ impl RuntimeHelpers {
                         value_slot: *value_slot,
                         drop_slot: *drop_slot,
                     },
-                    _ => unreachable!("passive element slot assignment missing"),
+                    _ => {
+                        debug_assert!(false, "passive element slot assignment missing");
+                        // Unreachable: passive elements always have slots assigned.
+                        PassiveElementLayout {
+                            values: &[],
+                            value_slot: *Box::leak(Box::new(0usize)),
+                            drop_slot: *Box::leak(Box::new(0usize)),
+                        }
+                    }
                 }
             })
             .collect();

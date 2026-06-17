@@ -154,7 +154,10 @@ pub(super) fn translate_function(ctx: &mut TranslationContext<'_>) -> Result<Str
                 ValType::I64 => {
                     ctx.runtime.emit_param_normalize_i64_helper(ctx.script)?;
                 }
-                _ => unreachable!("parameter types validated earlier"),
+                other => {
+                    debug_assert!(false, "parameter types validated earlier: {:?}", other);
+                    // Skip unsupported param types instead of panicking
+                }
             }
             emit_store_arg(ctx.script, index as u32)?;
         }

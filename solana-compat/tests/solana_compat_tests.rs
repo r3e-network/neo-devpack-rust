@@ -45,9 +45,19 @@ fn test_pubkey_to_neo_uint160() {
     let pk = Pubkey::new(bytes);
     let uint160 = pk.to_neo_uint160();
 
-    for (idx, byte) in uint160.iter().enumerate() {
-        assert_eq!(*byte, idx as u8);
-    }
+    // Must be 20 bytes
+    assert_eq!(uint160.len(), 20);
+
+    // Must be deterministic
+    assert_eq!(pk.to_neo_uint160(), pk.to_neo_uint160());
+
+    // Must be collision-resistant: different Pubkeys must produce different
+    // UInt160s (the old truncation approach made 2^96 Pubkeys alias).
+    let pk2 = Pubkey::new([1u8; 32]);
+    assert_ne!(pk.to_neo_uint160(), pk2.to_neo_uint160());
+
+    // Must NOT be the raw first 20 bytes (that was the vulnerable truncation).
+    assert_ne!(&uint160[..], &pk.0[..20]);
 }
 
 #[test]

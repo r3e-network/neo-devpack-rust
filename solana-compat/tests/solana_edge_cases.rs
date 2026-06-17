@@ -47,10 +47,14 @@ fn pubkey_neo_uint160_first_20_bytes() {
     }
     let pk = Pubkey::new(bytes);
     let uint160 = pk.to_neo_uint160();
+    // SHA-256 based: must be 20 bytes, deterministic, and collision-resistant.
     assert_eq!(uint160.len(), 20);
-    for (i, val) in uint160.iter().enumerate() {
-        assert_eq!(*val, i as u8);
-    }
+    assert_eq!(uint160, pk.to_neo_uint160());
+    // Must NOT equal the raw first 20 bytes (old truncation was vulnerable).
+    assert_ne!(&uint160[..], &pk.0[..20]);
+    // Different pubkeys must map to different UInt160s.
+    let pk2 = Pubkey::new([255u8; 32]);
+    assert_ne!(uint160, pk2.to_neo_uint160());
 }
 
 #[test]
@@ -98,9 +102,12 @@ fn pubkey_find_pda_different_programs_different_result() {
 fn pubkey_find_pda_empty_seeds() {
     let program = Pubkey::new([0xCC; 32]);
     let (pda, bump) = Pubkey::find_program_address(&[], &program);
-    // With no seeds, result is just XOR of program_id
-    assert_eq!(pda.to_bytes(), program.to_bytes());
-    assert_eq!(bump, 255);
+    // With no seeds, PDA = SHA-256(bump ‖ program_id). Must be deterministic
+    // and NOT equal to the program id itself (unlike the old XOR behavior).
+    assert_ne!(pda.to_bytes(), program.to_bytes());
+    let (pda2, bump2) = Pubkey::find_program_address(&[], &program);
+    assert_eq!(pda, pda2);
+    assert_eq!(bump, bump2);
 }
 
 #[test]

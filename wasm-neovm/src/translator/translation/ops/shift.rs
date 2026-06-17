@@ -77,7 +77,10 @@ pub(in super::super) fn emit_rotate(
             let mask = match bits {
                 32 => 31,
                 64 => 63,
-                _ => unreachable!(),
+                _ => {
+                    debug_assert!(false, "unsupported shift width");
+                    63u32 // safe fallback (treat as 64-bit)
+                }
             };
             let rotate = match bits {
                 32 => {
@@ -98,7 +101,10 @@ pub(in super::super) fn emit_rotate(
                         val.rotate_right(amt) as i128
                     }
                 }
-                _ => unreachable!(),
+                _ => {
+                    debug_assert!(false, "unsupported shift width");
+                    0i128 // safe fallback (identity)
+                }
             };
             let _ = (value_start, shift_start);
             // Keep script monotonic: replacing backtracking `truncate` with

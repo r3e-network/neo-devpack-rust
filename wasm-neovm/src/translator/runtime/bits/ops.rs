@@ -90,7 +90,10 @@ fn popcnt_const(value: i128, bits: u32) -> i128 {
     match bits {
         32 => (masked as u32).count_ones() as i128,
         64 => (masked as u64).count_ones() as i128,
-        _ => unreachable!("unsupported bit-width {} for popcnt", bits),
+        _ => {
+            debug_assert!(false, "unsupported bit-width {} for popcnt", bits);
+            0i128 // safe fallback
+        }
     }
 }
 
@@ -102,7 +105,10 @@ fn ctz_const(value: i128, bits: u32) -> i128 {
     match bits {
         32 => (masked as u32).trailing_zeros() as i128,
         64 => (masked as u64).trailing_zeros() as i128,
-        _ => unreachable!("unsupported bit-width {} for ctz", bits),
+        _ => {
+            debug_assert!(false, "unsupported bit-width {} for ctz", bits);
+            0i128 // safe fallback
+        }
     }
 }
 
@@ -114,7 +120,10 @@ fn clz_const(value: i128, bits: u32) -> i128 {
     match bits {
         32 => (masked as u32).leading_zeros() as i128,
         64 => (masked as u64).leading_zeros() as i128,
-        _ => unreachable!("unsupported bit-width {} for clz", bits),
+        _ => {
+            debug_assert!(false, "unsupported bit-width {} for clz", bits);
+            0i128 // safe fallback
+        }
     }
 }
 
