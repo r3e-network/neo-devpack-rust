@@ -311,9 +311,9 @@ make examples
 
 | Component | Version | Compatibility |
 |-----------|---------|---------------|
-| neo-solana-compat | 0.1.1 | Solana ~1.16 API surface |
-| move-neovm | 0.1.0 | Move Bytecode v6 |
-| wasm-neovm | 0.5.7 | Neo N3 3.x |
+| neo-solana-compat | 0.5.8 | Solana ~1.16 API surface |
+| move-neovm | 0.5.8 | Move Bytecode v6 |
+| wasm-neovm | 0.5.8 | Neo N3 3.x |
 
 ## 10. References
 

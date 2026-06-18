@@ -5,10 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-Note: This changelog tracks the `wasm-neovm` crate and repo-level tooling. Other crates in
-this repository follow independent versioning (currently 0.1.x).
+Note: Beginning with `0.5.8`, all public workspace crates and contract templates
+follow the same repository version.
 
 ## [Unreleased]
+
+## [0.5.8] - 2026-06-18
+
+### Changed
+
+- Unified versioning across the repository. `wasm-neovm`, `move-neovm`,
+  `neo-solana-compat`, `neo-types`, `neo-syscalls`, `neo-runtime`,
+  `neo-macros`, `neo-devpack`, `neo-test`, integration test metadata, and all
+  contract templates now use the same release version.
+- Workspace member crates now use `version.workspace = true` so package
+  versions cannot drift away from `workspace.package.version`.
+- Contract templates now pin local `neo-devpack` / `neo-solana-compat`
+  dependencies to the repository release version.
+- Release tooling now publishes all registry-facing workspace crates in
+  dependency order, including `neo-test` and `move-neovm`.
+
+### Fixed
+
+- Fixed `scripts/check_versions.sh` so it rejects split-version metadata across
+  workspace packages, workspace dependency pins, and contract template crates.
+
+### Testing
+
+- `bash scripts/check_versions.sh`
+- `cargo check --workspace`
+- Full contract `cargo check --manifest-path contracts/<name>/Cargo.toml --no-default-features`
 
 ## [0.5.7] - 2026-06-18
 

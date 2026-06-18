@@ -1,6 +1,6 @@
 [package]
 name = "storage-smoke-neo"
-version = "0.1.0"
+version = "0.5.8"
 edition = "2021"
 description = "Minimal Neo N3 storage round-trip contract for smoke testing"
 license = "MIT"
@@ -9,7 +9,7 @@ license = "MIT"
 crate-type = ["cdylib"]
 
 [dependencies]
-neo-devpack = { path = "../../rust-devpack", version = "0.1.1", default-features = false }
+neo-devpack = { path = "../../rust-devpack", version = "0.5.8", default-features = false }
 
 [features]
 default = ["neo-devpack/std"]

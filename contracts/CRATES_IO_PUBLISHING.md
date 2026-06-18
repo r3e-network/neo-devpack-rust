@@ -10,40 +10,29 @@ Before publishing contracts to crates.io, you need:
    export CRATES_IO_TOKEN=your_token_here
    ```
 
-3. **Published devpack crates** in this order:
-   - `neo-types` v0.1.1
-   - `neo-syscalls` v0.1.1
-   - `neo-runtime` v0.1.1
-   - `neo-macros` v0.1.1
-   - `neo-devpack` v0.1.1
+3. **Published workspace crates** in this order:
+   - `neo-types` v0.5.8
+   - `neo-syscalls` v0.5.8
+   - `neo-runtime` v0.5.8
+   - `neo-macros` v0.5.8
+   - `neo-devpack` v0.5.8
+   - `neo-test` v0.5.8
+   - `move-neovm` v0.5.8
+   - `neo-solana-compat` v0.5.8
+   - `wasm-neovm` v0.5.8
 
 ## Publishing Steps
 
-### Step 1: Publish DevPack Crates
+### Step 1: Publish Workspace Crates
 
 ```bash
-# Each publish may take a few minutes due to compilation
-
-# 1. Publish neo-types
-cd rust-devpack/neo-types
-cargo publish --token $CRATES_IO_TOKEN
-
-# 2. Publish neo-syscalls (depends on neo-types)
-cd rust-devpack/neo-syscalls
-cargo publish --token $CRATES_IO_TOKEN
-
-# 3. Publish neo-runtime (depends on neo-types, neo-syscalls)
-cd rust-devpack/neo-runtime
-cargo publish --token $CRATES_IO_TOKEN
-
-# 4. Publish neo-macros
-cd rust-devpack/neo-macros
-cargo publish --token $CRATES_IO_TOKEN
-
-# 5. Publish neo-devpack (depends on all above)
-cd rust-devpack
-cargo publish --token $CRATES_IO_TOKEN
+./scripts/publish-to-cratesio.sh --dry-run
+./scripts/publish-to-cratesio.sh --publish
 ```
+
+The script publishes registry-facing workspace crates in dependency order:
+`neo-types`, `neo-syscalls`, `neo-runtime`, `neo-macros`, `neo-devpack`,
+`neo-test`, `move-neovm`, `neo-solana-compat`, then `wasm-neovm`.
 
 ### Step 2: Update Contract Dependencies
 
@@ -52,11 +41,11 @@ Edit each contract's `Cargo.toml` to use crates.io versions:
 ```toml
 [package]
 name = "nep17-token"
-version = "0.2.0"
+version = "0.5.8"
 # ... metadata ...
 
 [dependencies]
-neo-devpack = "0.1.1"
+neo-devpack = "0.5.8"
 serde = { version = "1.0", features = ["derive"] }
 ```
 
@@ -113,12 +102,16 @@ Note: Consider using `-neo` suffix to avoid naming conflicts with existing crate
 
 | Component | Local Version | Published Version | Required |
 |-----------|---------------|-------------------|----------|
-| neo-types | 0.1.1 | 0.1.1 | ✓ |
-| neo-syscalls | 0.1.1 | 0.1.1 | ✓ |
-| neo-runtime | 0.1.1 | 0.1.1 | ✓ |
-| neo-macros | 0.1.1 | 0.1.1 | ✓ |
-| neo-devpack | 0.1.1 | 0.1.1 | ✓ |
-| contracts | 0.2.0 | 0.2 | ✓ |
+| neo-types | 0.5.8 | 0.5.8 | ✓ |
+| neo-syscalls | 0.5.8 | 0.5.8 | ✓ |
+| neo-runtime | 0.5.8 | 0.5.8 | ✓ |
+| neo-macros | 0.5.8 | 0.5.8 | ✓ |
+| neo-devpack | 0.5.8 | 0.5.8 | ✓ |
+| neo-test | 0.5.8 | 0.5.8 | ✓ |
+| move-neovm | 0.5.8 | 0.5.8 | ✓ |
+| neo-solana-compat | 0.5.8 | 0.5.8 | ✓ |
+| wasm-neovm | 0.5.8 | 0.5.8 | ✓ |
+| contracts | 0.5.8 | optional | ✓ |
 
 ## Verification
 
@@ -141,7 +134,8 @@ cargo search neo-types --limit 1
 ```
 
 ### "version mismatch"
-Ensure all devpack crates use matching versions (e.g., all 0.1.1 for this release).
+Ensure all workspace crates and contract templates use the same release version
+(e.g., all 0.5.8 for this release).
 
 ### "API rate limited"
 Wait a few minutes between publishes or use `--dry-run` to check first.
@@ -150,7 +144,7 @@ Wait a few minutes between publishes or use `--dry-run` to check first.
 
 | Step | Status |
 |------|--------|
-| GitHub Release | ✓ v0.2.0 |
+| GitHub Release | ✓ v0.5.8 |
 | Metadata Added | ✓ All crates |
 | DevPack Published | ⏳ Pending |
 | Contracts Published | ⏳ Pending |

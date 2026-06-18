@@ -361,7 +361,7 @@ checksum = "88904434abc2901f197fe8cc55f0445e7ded921dba5911dad2e2b39b48e663c4"
 
 [[package]]
 name = "neo-devpack"
-version = "0.1.1"
+version = "0.5.8"
 dependencies = [
  "criterion",
  "neo-macros",
@@ -375,7 +375,7 @@ dependencies = [
 
 [[package]]
 name = "neo-macros"
-version = "0.1.1"
+version = "0.5.8"
 dependencies = [
  "neo-runtime",
  "neo-syscalls",
@@ -389,7 +389,7 @@ dependencies = [
 
 [[package]]
 name = "neo-runtime"
-version = "0.1.1"
+version = "0.5.8"
 dependencies = [
  "neo-syscalls",
  "neo-types",
@@ -402,7 +402,7 @@ dependencies = [
 
 [[package]]
 name = "neo-syscalls"
-version = "0.1.1"
+version = "0.5.8"
 dependencies = [
  "neo-types",
  "once_cell",
@@ -410,7 +410,7 @@ dependencies = [
 
 [[package]]
 name = "neo-test"
-version = "0.1.0"
+version = "0.5.8"
 dependencies = [
  "neo-devpack",
  "neo-syscalls",
@@ -421,7 +421,7 @@ dependencies = [
 
 [[package]]
 name = "neo-types"
-version = "0.1.1"
+version = "0.5.8"
 dependencies = [
  "num-bigint",
  "num-traits",

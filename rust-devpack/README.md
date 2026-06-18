@@ -26,7 +26,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-neo-devpack = "0.1.1"
+neo-devpack = "0.5.8"
 ```
 
 ## 🎯 Quick Start
@@ -339,7 +339,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-neo-devpack = "0.1.1"
+neo-devpack = "0.5.8"
 
 [[bin]]
 name = "contract"
