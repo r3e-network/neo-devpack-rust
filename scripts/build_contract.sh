@@ -55,9 +55,19 @@ echo "==> Building Wasm contract ($CONTRACT_NAME)"
 DEFAULT_RUSTFLAGS="-C opt-level=z -C strip=symbols -C panic=abort -C target-feature=-simd128,-reference-types,-multivalue,-tail-call"
 RUSTFLAGS_TO_USE="${NEO_WASM_RUSTFLAGS:-$DEFAULT_RUSTFLAGS}"
 echo "    RUSTFLAGS=$RUSTFLAGS_TO_USE"
-RUSTFLAGS="$RUSTFLAGS_TO_USE" cargo build --manifest-path "$CONTRACT_DIR/Cargo.toml" \
-  --target wasm32-unknown-unknown \
+declare -a CARGO_BUILD_ARGS=(
+  build
+  --manifest-path "$CONTRACT_DIR/Cargo.toml"
+  --target wasm32-unknown-unknown
   --release
+)
+if [[ "${NEO_CARGO_NO_DEFAULT_FEATURES:-1}" != "0" ]]; then
+  CARGO_BUILD_ARGS+=(--no-default-features)
+fi
+if [[ -n "${NEO_CARGO_FEATURES:-}" ]]; then
+  CARGO_BUILD_ARGS+=(--features "$NEO_CARGO_FEATURES")
+fi
+RUSTFLAGS="$RUSTFLAGS_TO_USE" cargo "${CARGO_BUILD_ARGS[@]}"
 
 CRATE_NAME="$(
   awk '
@@ -84,13 +94,32 @@ if [[ ! -f "$WASM_PATH" ]]; then
   exit 1
 fi
 
+TRANSLATE_WASM_PATH="$WASM_PATH"
+
+if [[ "${NEO_WASM_OPT:-1}" != "0" ]]; then
+  WASM_OPT_BIN="${WASM_OPT:-wasm-opt}"
+  if [[ -n "${NEO_WASM_OPT_FLAGS:-}" ]]; then
+    read -r -a WASM_OPT_FLAGS <<<"$NEO_WASM_OPT_FLAGS"
+  else
+    WASM_OPT_FLAGS=(-Oz --enable-bulk-memory --strip-debug --strip-producers)
+  fi
+  if command -v "$WASM_OPT_BIN" >/dev/null 2>&1; then
+    OPT_WASM_PATH="${WASM_PATH%.wasm}.opt.wasm"
+    echo "==> Optimizing Wasm with $WASM_OPT_BIN ${WASM_OPT_FLAGS[*]}"
+    "$WASM_OPT_BIN" "${WASM_OPT_FLAGS[@]}" "$WASM_PATH" -o "$OPT_WASM_PATH"
+    TRANSLATE_WASM_PATH="$OPT_WASM_PATH"
+  else
+    echo "==> wasm-opt not found; skipping Wasm optimization"
+  fi
+fi
+
 NEF_OUT="${WASM_PATH%.wasm}.nef"
 MANIFEST_OUT="${NEF_OUT%.nef}.manifest.json"
 
 echo "==> Translating Wasm to NeoVM"
 declare -a TRANSLATE_CMD=(
   cargo run --manifest-path "$REPO_ROOT/wasm-neovm/Cargo.toml" --
-  --input "$WASM_PATH"
+  --input "$TRANSLATE_WASM_PATH"
   --nef "$NEF_OUT"
   --manifest "$MANIFEST_OUT"
   --name "$CONTRACT_NAME"

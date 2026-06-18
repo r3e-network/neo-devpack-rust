@@ -590,7 +590,7 @@ fn ensure_manifest_methods_rejects_offset_out_of_u32_range() {
 }
 
 #[test]
-fn manifest_builder_preserves_enabled_features_when_rendered() {
+fn manifest_builder_clears_enabled_features_when_rendered() {
     let methods = vec![manifest_method("main", 0)];
     let mut builder = ManifestBuilder::new("Contract", &methods);
 
@@ -602,12 +602,8 @@ fn manifest_builder_preserves_enabled_features_when_rendered() {
         .as_object()
         .expect("features object");
 
-    assert_eq!(
-        features.get("storage").and_then(|v| v.as_bool()),
-        Some(true)
-    );
-    assert_eq!(
-        features.get("payable").and_then(|v| v.as_bool()),
-        Some(true)
+    assert!(
+        features.is_empty(),
+        "rendered Neo N3 manifests must keep features empty"
     );
 }

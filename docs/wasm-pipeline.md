@@ -92,7 +92,7 @@ wasm-neovm/
 1. Walk Wasm sections with `ModuleReader`.
 2. Record the type signatures, function bodies, exports, and any custom sections.
 3. Enforce constraints that keep the first version tractable: a single linear memory, integer-only arithmetic (floating point and SIMD still pending), and reference types restricted to `funcref` handles (which back `call_indirect`).
-4. Require exported functions to be `#[no_mangle] pub extern "C" fn ...` to avoid name mangling.
+4. Require ABI methods to appear as stable Wasm exports. Rust contracts normally get these exports from `#[neo_contract]` / `#[neo_method]`; low-level hand-written modules can still use `#[no_mangle] pub extern "C" fn ...`.
 
 ### 3.2 Instruction lowering
 

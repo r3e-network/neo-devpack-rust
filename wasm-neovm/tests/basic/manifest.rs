@@ -5,7 +5,7 @@ use serde_json::Value;
 use wasm_neovm::translate_module;
 
 #[test]
-fn translate_marks_storage_feature_when_storage_syscall_used() {
+fn translate_renders_empty_features_when_storage_syscall_used() {
     let wasm = wat::parse_str(
         r#"(module
               (import "syscall" "System.Storage.Get" (func $storage_get (param i32 i32) (result i32)))
@@ -24,14 +24,11 @@ fn translate_marks_storage_feature_when_storage_syscall_used() {
             .expect("manifest serialises"),
     )
     .expect("manifest parses");
-    assert_eq!(
-        manifest_json["features"]["storage"],
-        serde_json::json!(true)
-    );
+    assert_eq!(manifest_json["features"], serde_json::json!({}));
 }
 
 #[test]
-fn translate_marks_payable_feature_for_on_nep17_payment() {
+fn translate_renders_empty_features_for_on_nep17_payment() {
     let wasm = wat::parse_str(
         r#"(module
               (func (export "onNEP17Payment") (param i32 i32 i32) (result i32)
@@ -47,10 +44,7 @@ fn translate_marks_payable_feature_for_on_nep17_payment() {
             .expect("manifest serialises"),
     )
     .expect("manifest parses");
-    assert_eq!(
-        manifest_json["features"]["payable"],
-        serde_json::json!(true)
-    );
+    assert_eq!(manifest_json["features"], serde_json::json!({}));
 }
 
 #[test]

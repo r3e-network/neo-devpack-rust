@@ -19,6 +19,24 @@ extern "C" {
     #[link_name = "runtime_check_witness_i64"]
     fn neo_runtime_check_witness_i64(account: i64) -> i32;
 
+    #[link_name = "runtime_get_time"]
+    fn neo_runtime_get_time() -> i64;
+
+    #[link_name = "runtime_get_calling_script_hash_i64"]
+    fn neo_runtime_get_calling_script_hash_i64() -> i64;
+
+    #[link_name = "runtime_get_entry_script_hash_i64"]
+    fn neo_runtime_get_entry_script_hash_i64() -> i64;
+
+    #[link_name = "runtime_get_executing_script_hash_i64"]
+    fn neo_runtime_get_executing_script_hash_i64() -> i64;
+
+    #[link_name = "runtime_log"]
+    fn neo_runtime_log(ptr: i32, len: i32);
+
+    #[link_name = "runtime_notify"]
+    fn neo_runtime_notify(event_ptr: i32, event_len: i32);
+
     /// Lowered to `CALL_L` -> helper that emits
     ///   `SYSCALL System.Storage.GetContext;
     ///    SUBSTR <key>; SUBSTR <value>;
@@ -106,6 +124,13 @@ fn call_flags_allow_write(flags: i32) -> bool {
 #[cfg(not(target_arch = "wasm32"))]
 fn call_flags_allow_read(flags: i32) -> bool {
     (flags & CALL_FLAGS_READ_STATES) != 0
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn hash160_prefix_i64(hash: &[u8; 20]) -> i64 {
+    let mut buf = [0u8; 8];
+    buf.copy_from_slice(&hash[..8]);
+    i64::from_le_bytes(buf)
 }
 
 /// Neo N3 System Call Function
@@ -405,12 +430,6 @@ impl NeoVMSyscall {
         value.as_boolean().ok_or(NeoError::InvalidType)
     }
 
-    #[cfg(target_arch = "wasm32")]
-    fn call_bytes(name: &str) -> NeoResult<NeoByteString> {
-        let value = Self::call_value(name, &[])?;
-        value.as_byte_string().cloned().ok_or(NeoError::InvalidType)
-    }
-
     fn call_bytes_with_args(name: &str, args: &[NeoValue]) -> NeoResult<NeoByteString> {
         let value = Self::call_value(name, args)?;
         value.as_byte_string().cloned().ok_or(NeoError::InvalidType)
@@ -500,7 +519,32 @@ impl NeoVMSyscall {
 
     /// Get current timestamp
     pub fn get_time() -> NeoResult<NeoInteger> {
-        Self::call_integer("System.Runtime.GetTime")
+        #[cfg(target_arch = "wasm32")]
+        {
+            return Ok(NeoInteger::new(unsafe { neo_runtime_get_time() }));
+        }
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            Self::call_integer("System.Runtime.GetTime")
+        }
+    }
+
+    /// Get current timestamp as a plain `i64`.
+    ///
+    /// This keeps wasm contracts on the direct syscall import path and avoids
+    /// pulling arbitrary-precision integer conversion code into small
+    /// contracts that only need the native timestamp.
+    pub fn get_time_i64() -> NeoResult<i64> {
+        #[cfg(target_arch = "wasm32")]
+        {
+            return Ok(unsafe { neo_runtime_get_time() });
+        }
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            Self::call_integer("System.Runtime.GetTime")?.try_into_i64()
+        }
     }
 
     /// Check if the specified account is a witness
@@ -547,18 +591,53 @@ impl NeoVMSyscall {
 
     /// Send notification to the runtime.
     pub fn notify(event: &NeoString, state: &NeoArray<NeoValue>) -> NeoResult<()> {
-        let event_bytes = NeoByteString::from_slice(event.as_str().as_bytes());
-        let args = [NeoValue::from(event_bytes), NeoValue::from(state.clone())];
-        neovm_syscall(syscall_hash("System.Runtime.Notify")?, &args)?;
-        Ok(())
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = state;
+            return Self::notify_event(event.as_str());
+        }
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let event_bytes = NeoByteString::from_slice(event.as_str().as_bytes());
+            let args = [NeoValue::from(event_bytes), NeoValue::from(state.clone())];
+            neovm_syscall(syscall_hash("System.Runtime.Notify")?, &args)?;
+            Ok(())
+        }
+    }
+
+    /// Send a notification with an empty state array.
+    pub fn notify_event(event: &str) -> NeoResult<()> {
+        #[cfg(target_arch = "wasm32")]
+        unsafe {
+            neo_runtime_notify(event.as_ptr() as i32, event.len() as i32);
+            Ok(())
+        }
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let label = NeoString::from_str(event);
+            let state = NeoArray::new();
+            Self::notify(&label, &state)
+        }
     }
 
     /// Log message to the runtime.
     pub fn log(message: &NeoString) -> NeoResult<()> {
-        let message_bytes = NeoByteString::from_slice(message.as_str().as_bytes());
-        let args = [NeoValue::from(message_bytes)];
-        neovm_syscall(syscall_hash("System.Runtime.Log")?, &args)?;
-        Ok(())
+        #[cfg(target_arch = "wasm32")]
+        unsafe {
+            let message = message.as_str();
+            neo_runtime_log(message.as_ptr() as i32, message.len() as i32);
+            Ok(())
+        }
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let message_bytes = NeoByteString::from_slice(message.as_str().as_bytes());
+            let args = [NeoValue::from(message_bytes)];
+            neovm_syscall(syscall_hash("System.Runtime.Log")?, &args)?;
+            Ok(())
+        }
     }
 
     /// Platform identifier
@@ -597,7 +676,17 @@ impl NeoVMSyscall {
 
     #[cfg(target_arch = "wasm32")]
     pub fn get_calling_script_hash() -> NeoResult<NeoByteString> {
-        Self::call_bytes("System.Runtime.GetCallingScriptHash")
+        Ok(NeoByteString::new(vec![0u8; 20]))
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn get_calling_script_hash_i64() -> NeoResult<i64> {
+        Ok(hash160_prefix_i64(&current_calling_script_hash()))
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn get_calling_script_hash_i64() -> NeoResult<i64> {
+        Ok(unsafe { neo_runtime_get_calling_script_hash_i64() })
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -607,7 +696,17 @@ impl NeoVMSyscall {
 
     #[cfg(target_arch = "wasm32")]
     pub fn get_entry_script_hash() -> NeoResult<NeoByteString> {
-        Self::call_bytes("System.Runtime.GetEntryScriptHash")
+        Ok(NeoByteString::new(vec![0u8; 20]))
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn get_entry_script_hash_i64() -> NeoResult<i64> {
+        Ok(hash160_prefix_i64(&current_entry_script_hash()))
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn get_entry_script_hash_i64() -> NeoResult<i64> {
+        Ok(unsafe { neo_runtime_get_entry_script_hash_i64() })
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -617,7 +716,17 @@ impl NeoVMSyscall {
 
     #[cfg(target_arch = "wasm32")]
     pub fn get_executing_script_hash() -> NeoResult<NeoByteString> {
-        Self::call_bytes("System.Runtime.GetExecutingScriptHash")
+        Ok(NeoByteString::new(vec![0u8; 20]))
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn get_executing_script_hash_i64() -> NeoResult<i64> {
+        Ok(hash160_prefix_i64(&current_executing_script_hash()))
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn get_executing_script_hash_i64() -> NeoResult<i64> {
+        Ok(unsafe { neo_runtime_get_executing_script_hash_i64() })
     }
 
     /// Get notifications for the specified script hash, or all notifications if None.
@@ -841,6 +950,19 @@ impl NeoVMSyscall {
         let store = handle.store.read().map_err(|_| NeoError::InvalidState)?;
         let value = store.get(key.as_slice()).cloned().unwrap_or_else(Vec::new);
         Ok(NeoByteString::new(value))
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn storage_try_get(
+        context: &NeoStorageContext,
+        key: &NeoByteString,
+    ) -> NeoResult<Option<NeoByteString>> {
+        if !call_flags_allow_read(current_call_flags()) {
+            return Err(NeoError::InvalidOperation);
+        }
+        let handle = STORAGE_STATE.get_handle(context)?;
+        let store = handle.store.read().map_err(|_| NeoError::InvalidState)?;
+        Ok(store.get(key.as_slice()).cloned().map(NeoByteString::new))
     }
 
     #[cfg(not(target_arch = "wasm32"))]

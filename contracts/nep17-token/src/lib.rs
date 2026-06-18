@@ -20,12 +20,11 @@ fn witness_account_hash(account: i64) -> &'static [u8; 20] {
     const ACCOUNT_1: [u8; 20] = [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
     const ACCOUNT_2: [u8; 20] = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
-    let bytes = match account {
+    match account {
         1 => &ACCOUNT_1,
         2 => &ACCOUNT_2,
         _ => &ACCOUNT_0,
-    };
-    bytes
+    }
 }
 
 fn ensure_witness_i64(account: i64) -> bool {

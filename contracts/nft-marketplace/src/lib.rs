@@ -1,6 +1,8 @@
 // Copyright (c) 2025-2026 R3E Network
 // SPDX-License-Identifier: MIT
 
+#![allow(clippy::too_many_arguments)]
+
 use neo_devpack::prelude::*;
 
 neo_manifest_overlay!(
@@ -9,55 +11,47 @@ neo_manifest_overlay!(
 }"#
 );
 
-// Storage keys
-const LISTING_PREFIX: &[u8] = b"listing:";
-const SELLER_SUFFIX: &[u8] = b":seller";
-const TOKEN_CONTRACT_SUFFIX: &[u8] = b":tc";
-const TOKEN_ID_SUFFIX: &[u8] = b":tid";
-const PAYMENT_TOKEN_SUFFIX: &[u8] = b":pt";
-const PRICE_SUFFIX: &[u8] = b":price";
-const FEE_BPS_SUFFIX: &[u8] = b":fee";
-const EXPIRY_SUFFIX: &[u8] = b":expiry";
-const ACTIVE_SUFFIX: &[u8] = b":active";
+const KEY_STRIDE: i64 = 16;
+const FIELD_SELLER: i64 = 1;
+const FIELD_TOKEN_CONTRACT: i64 = 2;
+const FIELD_TOKEN_ID: i64 = 3;
+const FIELD_PAYMENT_TOKEN: i64 = 4;
+const FIELD_PRICE: i64 = 5;
+const FIELD_FEE_BPS: i64 = 6;
+const FIELD_EXPIRY: i64 = 7;
+const FIELD_ACTIVE: i64 = 8;
+const LISTING_ACTIVE: i64 = 1;
+const LISTING_CANCELLED: i64 = 2;
+const MAX_LISTING_ID: i64 = i64::MAX / KEY_STRIDE;
 
-fn listing_key(id: i64, suffix: &[u8]) -> Vec<u8> {
-    let mut key = LISTING_PREFIX.to_vec();
-    key.extend_from_slice(&id.to_le_bytes());
-    key.extend_from_slice(suffix);
-    key
+fn listing_key(id: i64, field: i64) -> i64 {
+    id * KEY_STRIDE + field
 }
 
-fn storage_put_i64(ctx: &NeoStorageContext, key: &[u8], value: i64) -> bool {
-    NeoStorage::put(
-        ctx,
-        &NeoByteString::from_slice(key),
-        &NeoByteString::from_slice(&value.to_le_bytes()),
-    )
-    .is_ok()
+fn valid_listing_id(id: i64) -> bool {
+    (0..=MAX_LISTING_ID).contains(&id)
 }
 
-fn storage_get_i64(ctx: &NeoStorageContext, key: &[u8]) -> Option<i64> {
-    let data = NeoStorage::get(ctx, &NeoByteString::from_slice(key)).ok()?;
-    if data.len() != 8 {
-        return None;
-    }
-    let s = data.as_slice();
-    let mut buf = [0u8; 8];
-    buf.copy_from_slice(s);
-    Some(i64::from_le_bytes(buf))
+fn storage_put_i64(key: i64, value: i64) -> bool {
+    RawStorage::put_i64_key(key, value);
+    true
+}
+
+fn storage_get_i64(key: i64) -> i64 {
+    RawStorage::get_i64_key_or_zero(key)
 }
 
 // Events
 #[neo_event]
 pub struct ListingCreated {
-    pub listing_id: NeoInteger,
-    pub seller: NeoInteger,
-    pub price: NeoInteger,
+    pub listing_id: i64,
+    pub seller: i64,
+    pub price: i64,
 }
 
 #[neo_event]
 pub struct ListingCancelled {
-    pub listing_id: NeoInteger,
+    pub listing_id: i64,
 }
 
 #[neo_contract]
@@ -80,32 +74,33 @@ impl NeoNftMarketplaceContract {
         expiry: i64,
         listing_id: i64,
     ) -> bool {
-        if price <= 0 || fee_bps < 0 || expiry <= 0 || listing_id < 0 || token_id < 0 {
+        if price <= 0
+            || fee_bps < 0
+            || expiry <= 0
+            || !valid_listing_id(listing_id)
+            || token_id < 0
+        {
             return false;
         }
         if seller_id == 0 || token_contract_id == 0 || payment_token_id == 0 {
             return false;
         }
-        let ctx = match NeoStorage::get_context().ok() {
-            Some(c) => c,
-            None => return false,
-        };
-        // Check listing not already active
-        if storage_get_i64(&ctx, &listing_key(listing_id, ACTIVE_SUFFIX)).is_some() {
+        // Any non-zero listing status means this id has already been used.
+        if storage_get_i64(listing_key(listing_id, FIELD_ACTIVE)) != 0 {
             return false;
         }
-        storage_put_i64(&ctx, &listing_key(listing_id, SELLER_SUFFIX), seller_id);
-        storage_put_i64(&ctx, &listing_key(listing_id, TOKEN_CONTRACT_SUFFIX), token_contract_id);
-        storage_put_i64(&ctx, &listing_key(listing_id, TOKEN_ID_SUFFIX), token_id);
-        storage_put_i64(&ctx, &listing_key(listing_id, PAYMENT_TOKEN_SUFFIX), payment_token_id);
-        storage_put_i64(&ctx, &listing_key(listing_id, PRICE_SUFFIX), price);
-        storage_put_i64(&ctx, &listing_key(listing_id, FEE_BPS_SUFFIX), fee_bps);
-        storage_put_i64(&ctx, &listing_key(listing_id, EXPIRY_SUFFIX), expiry);
-        storage_put_i64(&ctx, &listing_key(listing_id, ACTIVE_SUFFIX), 1);
+        storage_put_i64(listing_key(listing_id, FIELD_SELLER), seller_id);
+        storage_put_i64(listing_key(listing_id, FIELD_TOKEN_CONTRACT), token_contract_id);
+        storage_put_i64(listing_key(listing_id, FIELD_TOKEN_ID), token_id);
+        storage_put_i64(listing_key(listing_id, FIELD_PAYMENT_TOKEN), payment_token_id);
+        storage_put_i64(listing_key(listing_id, FIELD_PRICE), price);
+        storage_put_i64(listing_key(listing_id, FIELD_FEE_BPS), fee_bps);
+        storage_put_i64(listing_key(listing_id, FIELD_EXPIRY), expiry);
+        storage_put_i64(listing_key(listing_id, FIELD_ACTIVE), LISTING_ACTIVE);
         let _ = (ListingCreated {
-            listing_id: NeoInteger::new(listing_id),
-            seller: NeoInteger::new(seller_id),
-            price: NeoInteger::new(price),
+            listing_id,
+            seller: seller_id,
+            price,
         })
         .emit();
         true
@@ -113,29 +108,22 @@ impl NeoNftMarketplaceContract {
 
     #[neo_method(name = "cancelListing")]
     pub fn cancel_listing(listing_id: i64, caller_id: i64) -> bool {
-        if listing_id < 0 || caller_id == 0 {
+        if !valid_listing_id(listing_id) || caller_id == 0 {
             return false;
         }
-        let ctx = match NeoStorage::get_context().ok() {
-            Some(c) => c,
-            None => return false,
-        };
-        let active = storage_get_i64(&ctx, &listing_key(listing_id, ACTIVE_SUFFIX)).unwrap_or(0);
-        if active != 1 {
+        let active = storage_get_i64(listing_key(listing_id, FIELD_ACTIVE));
+        if active != LISTING_ACTIVE {
             return false;
         }
-        let seller = match storage_get_i64(&ctx, &listing_key(listing_id, SELLER_SUFFIX)) {
-            Some(s) => s,
-            None => return false,
-        };
+        let seller = storage_get_i64(listing_key(listing_id, FIELD_SELLER));
+        if seller == 0 {
+            return false;
+        }
         if caller_id != seller {
             return false;
         }
-        storage_put_i64(&ctx, &listing_key(listing_id, ACTIVE_SUFFIX), 0);
-        let _ = (ListingCancelled {
-            listing_id: NeoInteger::new(listing_id),
-        })
-        .emit();
+        storage_put_i64(listing_key(listing_id, FIELD_ACTIVE), LISTING_CANCELLED);
+        let _ = (ListingCancelled { listing_id }).emit();
         true
     }
 
@@ -152,26 +140,35 @@ impl NeoNftMarketplaceContract {
     /// Return listing data via notify: [price, fee_bps, expiry, token_id, active]
     #[neo_method(safe, name = "getListing")]
     pub fn get_listing(listing_id: i64) {
-        let ctx = match NeoStorage::get_context().ok() {
-            Some(c) => c,
-            None => return,
-        };
-        let price = match storage_get_i64(&ctx, &listing_key(listing_id, PRICE_SUFFIX)) {
-            Some(v) => v,
-            None => return,
-        };
-        let fee_bps = storage_get_i64(&ctx, &listing_key(listing_id, FEE_BPS_SUFFIX)).unwrap_or(0);
-        let expiry = storage_get_i64(&ctx, &listing_key(listing_id, EXPIRY_SUFFIX)).unwrap_or(0);
-        let token_id = storage_get_i64(&ctx, &listing_key(listing_id, TOKEN_ID_SUFFIX)).unwrap_or(0);
-        let active = storage_get_i64(&ctx, &listing_key(listing_id, ACTIVE_SUFFIX)).unwrap_or(0);
-        let label = NeoString::from_str("getListing");
-        let mut state = NeoArray::new();
-        state.push(NeoValue::from(NeoInteger::new(price)));
-        state.push(NeoValue::from(NeoInteger::new(fee_bps)));
-        state.push(NeoValue::from(NeoInteger::new(expiry)));
-        state.push(NeoValue::from(NeoInteger::new(token_id)));
-        state.push(NeoValue::from(NeoBoolean::new(active != 0)));
-        let _ = NeoRuntime::notify(&label, &state);
+        if !valid_listing_id(listing_id) {
+            return;
+        }
+        let price = storage_get_i64(listing_key(listing_id, FIELD_PRICE));
+        if price == 0 {
+            return;
+        }
+        let fee_bps = storage_get_i64(listing_key(listing_id, FIELD_FEE_BPS));
+        let expiry = storage_get_i64(listing_key(listing_id, FIELD_EXPIRY));
+        let token_id = storage_get_i64(listing_key(listing_id, FIELD_TOKEN_ID));
+        let active = storage_get_i64(listing_key(listing_id, FIELD_ACTIVE));
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = (price, fee_bps, expiry, token_id, active);
+            let _ = NeoRuntime::notify_event("getListing");
+        }
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let label = NeoString::from_str("getListing");
+            let mut state = NeoArray::new();
+            state.push(NeoValue::from(price));
+            state.push(NeoValue::from(fee_bps));
+            state.push(NeoValue::from(expiry));
+            state.push(NeoValue::from(token_id));
+            state.push(NeoValue::from(active == LISTING_ACTIVE));
+            let _ = NeoRuntime::notify(&label, &state);
+        }
     }
 }
 

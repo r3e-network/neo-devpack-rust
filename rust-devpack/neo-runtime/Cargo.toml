@@ -1,6 +1,6 @@
 [package]
 name = "neo-runtime"
-version = "0.1.0"
+version = "0.1.1"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -14,14 +14,26 @@ categories = ["cryptography::cryptocurrencies"]
 include = ["src/**/*", "Cargo.toml", "README.md", "../../LICENSE"]
 
 [dependencies]
-neo-types = { workspace = true }
-neo-syscalls = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-num-bigint = { version = "0.4", features = ["std"] }
-sha2 = { workspace = true }
-ripemd = "0.1"
-tiny-keccak = { version = "2.0", features = ["keccak"] }
+neo-types = { workspace = true, default-features = false }
+neo-syscalls = { workspace = true, default-features = false }
+num-bigint = { version = "0.4", default-features = false, optional = true }
+serde_json = { version = "1.0", default-features = false, features = ["alloc"], optional = true }
+sha2 = { version = "0.10", default-features = false, optional = true }
+ripemd = { version = "0.1", default-features = false, optional = true }
+tiny-keccak = { version = "2.0", default-features = false, features = ["keccak"], optional = true }
 
 [features]
-default = []
+default = ["std"]
+std = [
+    "crypto-hashes",
+    "json",
+    "neo-types/std",
+    "neo-types/serde",
+    "neo-syscalls/std",
+    "num-bigint/std",
+    "ripemd/std",
+    "serde_json/std",
+    "sha2/std",
+]
+crypto-hashes = ["dep:ripemd", "dep:sha2", "dep:tiny-keccak"]
+json = ["dep:num-bigint", "dep:serde_json"]

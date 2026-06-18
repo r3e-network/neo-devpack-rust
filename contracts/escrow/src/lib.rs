@@ -1,6 +1,8 @@
 // Copyright (c) 2025-2026 R3E Network
 // SPDX-License-Identifier: MIT
 
+#![allow(clippy::too_many_arguments)]
+
 use neo_devpack::prelude::*;
 
 neo_manifest_overlay!(
@@ -24,66 +26,42 @@ const STATUS_ACTIVE: i64 = 1;
 const STATUS_RELEASED: i64 = 2;
 const STATUS_REFUNDED: i64 = 3;
 
-/// Build a fixed-size storage key from escrow_id and field tag.
-/// Layout: 8 bytes (escrow_id LE) + 8 bytes (field LE) = 16 bytes on the stack.
-fn make_key(escrow_id: i64, field: i64) -> NeoByteString {
-    let mut buf = [0u8; 16];
-    let id_bytes = escrow_id.to_le_bytes();
-    let field_bytes = field.to_le_bytes();
-    let mut i = 0;
-    while i < 8 {
-        buf[i] = id_bytes[i];
-        buf[8 + i] = field_bytes[i];
-        i += 1;
-    }
-    NeoByteString::from_slice(&buf)
+const KEY_STRIDE: i64 = 16;
+
+fn make_key(escrow_id: i64, field: i64) -> i64 {
+    escrow_id * KEY_STRIDE + field
 }
 
 /// Store an i64 value under the given key.
-fn storage_put_i64(ctx: &NeoStorageContext, escrow_id: i64, field: i64, value: i64) -> bool {
+fn storage_put_i64(escrow_id: i64, field: i64, value: i64) -> bool {
     let key = make_key(escrow_id, field);
-    let val = NeoByteString::from_slice(&value.to_le_bytes());
-    NeoStorage::put(ctx, &key, &val).is_ok()
+    RawStorage::put_i64_key(key, value);
+    true
 }
 
 /// Load an i64 value from storage, returning 0 if absent.
-fn storage_get_i64(ctx: &NeoStorageContext, escrow_id: i64, field: i64) -> i64 {
+fn storage_get_i64(escrow_id: i64, field: i64) -> i64 {
     let key = make_key(escrow_id, field);
-    match NeoStorage::get(ctx, &key) {
-        Ok(data) => {
-            let s = data.as_slice();
-            if s.len() != 8 {
-                return 0;
-            }
-            let mut buf = [0u8; 8];
-            let mut i = 0;
-            while i < 8 {
-                buf[i] = s[i];
-                i += 1;
-            }
-            i64::from_le_bytes(buf)
-        }
-        Err(_) => 0,
-    }
+    RawStorage::get_i64_key_or_zero(key)
 }
 
-// Events -- all fields are NeoInteger (i64-based), no NeoByteString
+// Events use primitive fields so wasm builds do not construct BigInt wrappers.
 #[neo_event]
 pub struct EscrowConfigured {
-    pub escrow_id: NeoInteger,
-    pub payer: NeoInteger,
-    pub payee: NeoInteger,
-    pub amount: NeoInteger,
+    pub escrow_id: i64,
+    pub payer: i64,
+    pub payee: i64,
+    pub amount: i64,
 }
 
 #[neo_event]
 pub struct EscrowReleased {
-    pub escrow_id: NeoInteger,
+    pub escrow_id: i64,
 }
 
 #[neo_event]
 pub struct EscrowRefunded {
-    pub escrow_id: NeoInteger,
+    pub escrow_id: i64,
 }
 
 #[neo_contract]
@@ -107,33 +85,34 @@ impl NeoEscrowContract {
         release_height: i64,
         refund_height: i64,
     ) -> bool {
-        if escrow_id <= 0 || amount <= 0 || release_height < 0 || refund_height < release_height {
+        if escrow_id <= 0
+            || escrow_id > i64::MAX / KEY_STRIDE
+            || amount <= 0
+            || release_height < 0
+            || refund_height < release_height
+        {
             return false;
         }
         if payer <= 0 || payee <= 0 || arbiter <= 0 || token <= 0 {
             return false;
         }
-        let ctx = match NeoStorage::get_context().ok() {
-            Some(c) => c,
-            None => return false,
-        };
         // Prevent re-initialization
-        if storage_get_i64(&ctx, escrow_id, KEY_STATUS) != 0 {
+        if storage_get_i64(escrow_id, KEY_STATUS) != 0 {
             return false;
         }
-        storage_put_i64(&ctx, escrow_id, KEY_PAYER, payer);
-        storage_put_i64(&ctx, escrow_id, KEY_PAYEE, payee);
-        storage_put_i64(&ctx, escrow_id, KEY_ARBITER, arbiter);
-        storage_put_i64(&ctx, escrow_id, KEY_TOKEN, token);
-        storage_put_i64(&ctx, escrow_id, KEY_AMOUNT, amount);
-        storage_put_i64(&ctx, escrow_id, KEY_RELEASE_HEIGHT, release_height);
-        storage_put_i64(&ctx, escrow_id, KEY_REFUND_HEIGHT, refund_height);
-        storage_put_i64(&ctx, escrow_id, KEY_STATUS, STATUS_ACTIVE);
+        storage_put_i64(escrow_id, KEY_PAYER, payer);
+        storage_put_i64(escrow_id, KEY_PAYEE, payee);
+        storage_put_i64(escrow_id, KEY_ARBITER, arbiter);
+        storage_put_i64(escrow_id, KEY_TOKEN, token);
+        storage_put_i64(escrow_id, KEY_AMOUNT, amount);
+        storage_put_i64(escrow_id, KEY_RELEASE_HEIGHT, release_height);
+        storage_put_i64(escrow_id, KEY_REFUND_HEIGHT, refund_height);
+        storage_put_i64(escrow_id, KEY_STATUS, STATUS_ACTIVE);
         let _ = (EscrowConfigured {
-            escrow_id: NeoInteger::new(escrow_id),
-            payer: NeoInteger::new(payer),
-            payee: NeoInteger::new(payee),
-            amount: NeoInteger::new(amount),
+            escrow_id,
+            payer,
+            payee,
+            amount,
         })
         .emit();
         true
@@ -145,24 +124,17 @@ impl NeoEscrowContract {
         if escrow_id <= 0 || caller <= 0 {
             return false;
         }
-        let ctx = match NeoStorage::get_context().ok() {
-            Some(c) => c,
-            None => return false,
-        };
-        let status = storage_get_i64(&ctx, escrow_id, KEY_STATUS);
+        let status = storage_get_i64(escrow_id, KEY_STATUS);
         if status != STATUS_ACTIVE {
             return false;
         }
-        let arbiter = storage_get_i64(&ctx, escrow_id, KEY_ARBITER);
-        let payer = storage_get_i64(&ctx, escrow_id, KEY_PAYER);
+        let arbiter = storage_get_i64(escrow_id, KEY_ARBITER);
+        let payer = storage_get_i64(escrow_id, KEY_PAYER);
         if caller != arbiter && caller != payer {
             return false;
         }
-        storage_put_i64(&ctx, escrow_id, KEY_STATUS, STATUS_RELEASED);
-        let _ = (EscrowReleased {
-            escrow_id: NeoInteger::new(escrow_id),
-        })
-        .emit();
+        storage_put_i64(escrow_id, KEY_STATUS, STATUS_RELEASED);
+        let _ = (EscrowReleased { escrow_id }).emit();
         true
     }
 
@@ -172,48 +144,47 @@ impl NeoEscrowContract {
         if escrow_id <= 0 || caller <= 0 {
             return false;
         }
-        let ctx = match NeoStorage::get_context().ok() {
-            Some(c) => c,
-            None => return false,
-        };
-        let status = storage_get_i64(&ctx, escrow_id, KEY_STATUS);
+        let status = storage_get_i64(escrow_id, KEY_STATUS);
         if status != STATUS_ACTIVE {
             return false;
         }
-        let arbiter = storage_get_i64(&ctx, escrow_id, KEY_ARBITER);
-        let payee = storage_get_i64(&ctx, escrow_id, KEY_PAYEE);
+        let arbiter = storage_get_i64(escrow_id, KEY_ARBITER);
+        let payee = storage_get_i64(escrow_id, KEY_PAYEE);
         if caller != arbiter && caller != payee {
             return false;
         }
-        storage_put_i64(&ctx, escrow_id, KEY_STATUS, STATUS_REFUNDED);
-        let _ = (EscrowRefunded {
-            escrow_id: NeoInteger::new(escrow_id),
-        })
-        .emit();
+        storage_put_i64(escrow_id, KEY_STATUS, STATUS_REFUNDED);
+        let _ = (EscrowRefunded { escrow_id }).emit();
         true
     }
 
     /// Return escrow state via notify: [status, amount, release_h, refund_h]
     #[neo_method(safe, name = "getState")]
     pub fn get_state(escrow_id: i64) {
-        let ctx = match NeoStorage::get_context().ok() {
-            Some(c) => c,
-            None => return,
-        };
-        let status = storage_get_i64(&ctx, escrow_id, KEY_STATUS);
+        let status = storage_get_i64(escrow_id, KEY_STATUS);
         if status == 0 {
             return;
         }
-        let amount = storage_get_i64(&ctx, escrow_id, KEY_AMOUNT);
-        let release_h = storage_get_i64(&ctx, escrow_id, KEY_RELEASE_HEIGHT);
-        let refund_h = storage_get_i64(&ctx, escrow_id, KEY_REFUND_HEIGHT);
-        let label = NeoString::from_str("getState");
-        let mut state = NeoArray::new();
-        state.push(NeoValue::from(NeoInteger::new(status)));
-        state.push(NeoValue::from(NeoInteger::new(amount)));
-        state.push(NeoValue::from(NeoInteger::new(release_h)));
-        state.push(NeoValue::from(NeoInteger::new(refund_h)));
-        let _ = NeoRuntime::notify(&label, &state);
+        let amount = storage_get_i64(escrow_id, KEY_AMOUNT);
+        let release_h = storage_get_i64(escrow_id, KEY_RELEASE_HEIGHT);
+        let refund_h = storage_get_i64(escrow_id, KEY_REFUND_HEIGHT);
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = (status, amount, release_h, refund_h);
+            let _ = NeoRuntime::notify_event("getState");
+        }
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let label = NeoString::from_str("getState");
+            let mut state = NeoArray::new();
+            state.push(NeoValue::from(status));
+            state.push(NeoValue::from(amount));
+            state.push(NeoValue::from(release_h));
+            state.push(NeoValue::from(refund_h));
+            let _ = NeoRuntime::notify(&label, &state);
+        }
     }
 
     #[neo_method(name = "onNEP17Payment")]
@@ -271,12 +242,12 @@ mod tests {
     fn make_key_deterministic() {
         let k1 = make_key(1, KEY_PAYER);
         let k2 = make_key(1, KEY_PAYER);
-        assert_eq!(k1.as_slice(), k2.as_slice());
+        assert_eq!(k1, k2);
         // Different field produces different key
         let k3 = make_key(1, KEY_PAYEE);
-        assert_ne!(k1.as_slice(), k3.as_slice());
+        assert_ne!(k1, k3);
         // Different escrow_id produces different key
         let k4 = make_key(2, KEY_PAYER);
-        assert_ne!(k1.as_slice(), k4.as_slice());
+        assert_ne!(k1, k4);
     }
 }

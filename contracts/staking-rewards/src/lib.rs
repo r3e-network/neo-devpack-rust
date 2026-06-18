@@ -15,31 +15,13 @@ const DAYS_PER_YEAR: i64 = 365;
 const MAX_DAYS: i64 = 3_650;
 const MAX_PREVIEW_AMOUNT: i64 = 1_000_000_000_000;
 
-/// Build a fixed-size storage key from a prefix byte and an i64 staker ID.
-/// Layout: [prefix_byte | 8 bytes of staker_id in LE] = 9 bytes total.
-/// No heap allocation -- uses a stack-allocated array.
-fn stake_key(staker: i64) -> [u8; 9] {
-    let mut key = [0u8; 9];
-    key[0] = b's'; // "s" for stake
-    let bytes = staker.to_le_bytes();
-    key[1] = bytes[0];
-    key[2] = bytes[1];
-    key[3] = bytes[2];
-    key[4] = bytes[3];
-    key[5] = bytes[4];
-    key[6] = bytes[5];
-    key[7] = bytes[6];
-    key[8] = bytes[7];
-    key
-}
-
-fn storage_put_i64(key: &[u8], value: i64) -> bool {
-    RawStorage::put_i64(key, value);
+fn storage_put_i64(staker: i64, value: i64) -> bool {
+    RawStorage::put_i64_key(staker, value);
     true
 }
 
-fn storage_get_i64(key: &[u8]) -> Option<i64> {
-    RawStorage::get_i64(key)
+fn storage_get_i64(staker: i64) -> i64 {
+    RawStorage::get_i64_key_or_zero(staker)
 }
 
 fn ensure_witness_i64(staker: i64) -> bool {
@@ -51,20 +33,20 @@ fn ensure_witness_i64(staker: i64) -> bool {
 // Events
 #[neo_event]
 pub struct Staked {
-    pub staker: NeoInteger,
-    pub amount: NeoInteger,
+    pub staker: i64,
+    pub amount: i64,
 }
 
 #[neo_event]
 pub struct Unstaked {
-    pub staker: NeoInteger,
-    pub amount: NeoInteger,
+    pub staker: i64,
+    pub amount: i64,
 }
 
 #[neo_event]
 pub struct RewardClaimed {
-    pub staker: NeoInteger,
-    pub reward: NeoInteger,
+    pub staker: i64,
+    pub reward: i64,
 }
 
 #[neo_contract]
@@ -82,8 +64,15 @@ impl StakingRewardsContract {
             return 0;
         }
 
-        let amount_days = amount * days_staked;
-        (amount_days * APR_BPS) / (BPS_DENOMINATOR * DAYS_PER_YEAR)
+        let amount_days = match amount.checked_mul(days_staked) {
+            Some(v) => v,
+            None => return 0,
+        };
+        let scaled = match amount_days.checked_mul(APR_BPS) {
+            Some(v) => v,
+            None => return 0,
+        };
+        scaled / (BPS_DENOMINATOR * DAYS_PER_YEAR)
     }
 
     #[neo_method]
@@ -94,18 +83,13 @@ impl StakingRewardsContract {
         if !ensure_witness_i64(staker) {
             return false;
         }
-        let key = stake_key(staker);
-        let current = storage_get_i64(&key).unwrap_or(0);
+        let current = storage_get_i64(staker);
         if amount > i64::MAX - current {
             return false;
         }
         let new_total = current + amount;
-        storage_put_i64(&key, new_total);
-        let _ = (Staked {
-            staker: NeoInteger::new(staker),
-            amount: NeoInteger::new(amount),
-        })
-        .emit();
+        storage_put_i64(staker, new_total);
+        let _ = (Staked { staker, amount }).emit();
         true
     }
 
@@ -117,17 +101,12 @@ impl StakingRewardsContract {
         if !ensure_witness_i64(staker) {
             return false;
         }
-        let key = stake_key(staker);
-        let current = storage_get_i64(&key).unwrap_or(0);
+        let current = storage_get_i64(staker);
         if current < amount {
             return false;
         }
-        storage_put_i64(&key, current - amount);
-        let _ = (Unstaked {
-            staker: NeoInteger::new(staker),
-            amount: NeoInteger::new(amount),
-        })
-        .emit();
+        storage_put_i64(staker, current - amount);
+        let _ = (Unstaked { staker, amount }).emit();
         true
     }
 
@@ -146,11 +125,7 @@ impl StakingRewardsContract {
         }
         let reward = Self::preview_reward_internal(amount, days_staked);
         if reward > 0 {
-            let _ = (RewardClaimed {
-                staker: NeoInteger::new(staker),
-                reward: NeoInteger::new(reward),
-            })
-            .emit();
+            let _ = (RewardClaimed { staker, reward }).emit();
         }
         reward
     }

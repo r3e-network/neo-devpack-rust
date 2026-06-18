@@ -124,9 +124,9 @@ fn test_storage_contract_compilation() {
     let translation = translate_with_config(&wasm, config).expect("translation should succeed");
 
     assert_eq!(
-        translation.manifest.value["features"]["storage"].as_bool(),
-        Some(true),
-        "storage imports should enable manifest.features.storage"
+        translation.manifest.value["features"],
+        serde_json::json!({}),
+        "rendered Neo N3 manifests must keep features empty"
     );
 
     // Verify methods
@@ -340,9 +340,9 @@ fn test_move_resource_import_enables_storage_feature() {
         translate_with_config(&wasm, config).expect("Move resource imports should translate");
 
     assert_eq!(
-        translation.manifest.value["features"]["storage"].as_bool(),
-        Some(true),
-        "Move resource imports should enable manifest.features.storage"
+        translation.manifest.value["features"],
+        serde_json::json!({}),
+        "rendered Neo N3 manifests must keep features empty"
     );
 }
 

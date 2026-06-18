@@ -19,10 +19,19 @@ WASM_OPT_FLAGS    := -Oz --enable-bulk-memory --strip-debug --strip-producers
 # Optimize a WASM module in-place (used by all contract build rules).
 define optimize_wasm
 	@if command -v $(WASM_OPT) >/dev/null 2>&1; then \
-		$(WASM_OPT) $(WASM_OPT_FLAGS) $$1 -o $$1.opt && mv $$1.opt $$1; \
-		echo "  optimized $$1 ($$(wc -c < $$1) bytes)"; \
+		$(WASM_OPT) $(WASM_OPT_FLAGS) "$(1)" -o "$(1).opt" && mv "$(1).opt" "$(1)"; \
+		echo "  optimized $(1) ($$(wc -c < "$(1)") bytes)"; \
 	else \
 		echo "  (wasm-opt not found, skipping optimization)"; \
+	fi
+endef
+
+define snip_wasm
+	@if command -v $(WASM_SNIP) >/dev/null 2>&1; then \
+		$(WASM_SNIP) --snip-rust-fmt-code --snip-rust-panicking-code "$(1)" -o "$(2)"; \
+	else \
+		cp "$(1)" "$(2)"; \
+		echo "  (wasm-snip not found, using optimized wasm for $(2))"; \
 	fi
 endef
 
@@ -95,6 +104,14 @@ PACKAGE_MANIFESTS := \
 	rust-devpack/neo-test/Cargo.toml \
 	move-neovm/Cargo.toml \
 	solana-compat/Cargo.toml
+PACKAGE_PATCH_CONFIG_ARGS := \
+	--config 'patch.crates-io.neo-types.path="rust-devpack/neo-types"' \
+	--config 'patch.crates-io.neo-syscalls.path="rust-devpack/neo-syscalls"' \
+	--config 'patch.crates-io.neo-runtime.path="rust-devpack/neo-runtime"' \
+	--config 'patch.crates-io.neo-macros.path="rust-devpack/neo-macros"' \
+	--config 'patch.crates-io.neo-devpack.path="rust-devpack"' \
+	--config 'patch.crates-io.move-neovm.path="move-neovm"' \
+	--config 'patch.crates-io.neo-solana-compat.path="solana-compat"'
 
 .PHONY: help examples cross-chain hello-world nep17-token constant-product nep11-nft uniswap-v2 staking-rewards timelock-vault flashloan-pool multisig-wallet escrow crowdfunding governance-dao oracle-consumer nft-marketplace solana-hello move-coin storage-smoke c-hello fmt lint test verify-contract-tests test-contracts test-cross-chain integration-tests smoke-neoxp security-check package-check spec clean fuzz fuzz-compiler fuzz-translate fuzz-translate-config fuzz-pipeline fuzz-nef fuzz-numeric fuzz-devpack-codec fuzz-syscall-surface fuzz-rust-contract fuzz-rust-differential fuzz-rust-long fuzz-long-status fuzz-long-stop fuzz-all
 
@@ -216,7 +233,7 @@ $(HELLO_NEF) $(HELLO_MANIFEST): $(HELLO_WASM) | $(OUTDIR)
 	  --name HelloWorld
 
 $(NEP17_NEF) $(NEP17_MANIFEST): $(NEP17_WASM) | $(OUTDIR)
-	$(WASM_SNIP) --snip-rust-fmt-code --snip-rust-panicking-code $(NEP17_WASM) -o $(NEP17_SNIP_WASM)
+	$(call snip_wasm,$(NEP17_WASM),$(NEP17_SNIP_WASM))
 	$(TRANSLATOR) \
 	  --input $(NEP17_SNIP_WASM) \
 	  --nef $(NEP17_NEF) \
@@ -224,7 +241,7 @@ $(NEP17_NEF) $(NEP17_MANIFEST): $(NEP17_WASM) | $(OUTDIR)
 	  --name SampleNEP17
 
 $(AMM_NEF) $(AMM_MANIFEST): $(AMM_WASM) | $(OUTDIR)
-	$(WASM_SNIP) --snip-rust-fmt-code --snip-rust-panicking-code $(AMM_WASM) -o $(AMM_SNIP_WASM)
+	$(call snip_wasm,$(AMM_WASM),$(AMM_SNIP_WASM))
 	$(TRANSLATOR) \
 	  --input $(AMM_SNIP_WASM) \
 	  --nef $(AMM_NEF) \
@@ -232,7 +249,7 @@ $(AMM_NEF) $(AMM_MANIFEST): $(AMM_WASM) | $(OUTDIR)
 	  --name ConstantProductAMM
 
 $(NEP11_NEF) $(NEP11_MANIFEST): $(NEP11_WASM) | $(OUTDIR)
-	$(WASM_SNIP) --snip-rust-fmt-code --snip-rust-panicking-code $(NEP11_WASM) -o $(NEP11_SNIP_WASM)
+	$(call snip_wasm,$(NEP11_WASM),$(NEP11_SNIP_WASM))
 	$(TRANSLATOR) \
 	  --input $(NEP11_SNIP_WASM) \
 	  --nef $(NEP11_NEF) \
@@ -240,7 +257,7 @@ $(NEP11_NEF) $(NEP11_MANIFEST): $(NEP11_WASM) | $(OUTDIR)
 	  --name SampleNEP11
 
 $(UNISWAP_NEF) $(UNISWAP_MANIFEST): $(UNISWAP_WASM) | $(OUTDIR)
-	$(WASM_SNIP) --snip-rust-fmt-code --snip-rust-panicking-code $(UNISWAP_WASM) -o $(UNISWAP_SNIP_WASM)
+	$(call snip_wasm,$(UNISWAP_WASM),$(UNISWAP_SNIP_WASM))
 	$(TRANSLATOR) \
 	  --input $(UNISWAP_SNIP_WASM) \
 	  --nef $(UNISWAP_NEF) \
@@ -248,7 +265,7 @@ $(UNISWAP_NEF) $(UNISWAP_MANIFEST): $(UNISWAP_WASM) | $(OUTDIR)
 	  --name UniswapV2Router
 
 $(STAKING_NEF) $(STAKING_MANIFEST): $(STAKING_WASM) | $(OUTDIR)
-	$(WASM_SNIP) --snip-rust-fmt-code --snip-rust-panicking-code $(STAKING_WASM) -o $(STAKING_SNIP_WASM)
+	$(call snip_wasm,$(STAKING_WASM),$(STAKING_SNIP_WASM))
 	$(TRANSLATOR) \
 	  --input $(STAKING_SNIP_WASM) \
 	  --nef $(STAKING_NEF) \
@@ -256,7 +273,7 @@ $(STAKING_NEF) $(STAKING_MANIFEST): $(STAKING_WASM) | $(OUTDIR)
 	  --name StakingRewards
 
 $(TIMELOCK_NEF) $(TIMELOCK_MANIFEST): $(TIMELOCK_WASM) | $(OUTDIR)
-	$(WASM_SNIP) --snip-rust-fmt-code --snip-rust-panicking-code $(TIMELOCK_WASM) -o $(TIMELOCK_SNIP_WASM)
+	$(call snip_wasm,$(TIMELOCK_WASM),$(TIMELOCK_SNIP_WASM))
 	$(TRANSLATOR) \
 	  --input $(TIMELOCK_SNIP_WASM) \
 	  --nef $(TIMELOCK_NEF) \
@@ -264,7 +281,7 @@ $(TIMELOCK_NEF) $(TIMELOCK_MANIFEST): $(TIMELOCK_WASM) | $(OUTDIR)
 	  --name TimelockVault
 
 $(FLASHLOAN_NEF) $(FLASHLOAN_MANIFEST): $(FLASHLOAN_WASM) | $(OUTDIR)
-	$(WASM_SNIP) --snip-rust-fmt-code --snip-rust-panicking-code $(FLASHLOAN_WASM) -o $(FLASHLOAN_SNIP_WASM)
+	$(call snip_wasm,$(FLASHLOAN_WASM),$(FLASHLOAN_SNIP_WASM))
 	$(TRANSLATOR) \
 	  --input $(FLASHLOAN_SNIP_WASM) \
 	  --nef $(FLASHLOAN_NEF) \
@@ -272,7 +289,7 @@ $(FLASHLOAN_NEF) $(FLASHLOAN_MANIFEST): $(FLASHLOAN_WASM) | $(OUTDIR)
 	  --name FlashLoanPool
 
 $(STORAGE_SMOKE_NEF) $(STORAGE_SMOKE_MANIFEST): $(STORAGE_SMOKE_WASM) | $(OUTDIR)
-	$(WASM_SNIP) --snip-rust-fmt-code --snip-rust-panicking-code $(STORAGE_SMOKE_WASM) -o $(STORAGE_SMOKE_SNIP_WASM)
+	$(call snip_wasm,$(STORAGE_SMOKE_WASM),$(STORAGE_SMOKE_SNIP_WASM))
 	$(TRANSLATOR) \
 	  --input $(STORAGE_SMOKE_SNIP_WASM) \
 	  --nef $(STORAGE_SMOKE_NEF) \
@@ -282,6 +299,7 @@ $(STORAGE_SMOKE_NEF) $(STORAGE_SMOKE_MANIFEST): $(STORAGE_SMOKE_WASM) | $(OUTDIR
 $(STORAGE_SMOKE_WASM):
 	RUSTFLAGS="$(CONTRACT_RUSTFLAGS)" \
 	cargo build --manifest-path contracts/storage-smoke/Cargo.toml --release --target $(WASM_TARGET) --quiet
+	$(call optimize_wasm,$(STORAGE_SMOKE_WASM))
 
 $(MULTISIG_NEF) $(MULTISIG_MANIFEST): $(MULTISIG_WASM) | $(OUTDIR)
 	$(TRANSLATOR) \
@@ -350,66 +368,82 @@ $(MOVE_COIN_NEF) $(MOVE_COIN_MANIFEST): $(MOVE_COIN_WASM) | $(OUTDIR)
 $(HELLO_WASM):
 	RUSTFLAGS="$(CONTRACT_RUSTFLAGS)" \
 	cargo build --manifest-path contracts/hello-world/Cargo.toml --release --target $(WASM_TARGET) --quiet
+	$(call optimize_wasm,$(HELLO_WASM))
 
 $(NEP17_WASM):
 	RUSTFLAGS="$(CONTRACT_RUSTFLAGS)" \
 	cargo build --manifest-path contracts/nep17-token/Cargo.toml --release --target $(WASM_TARGET) --quiet
+	$(call optimize_wasm,$(NEP17_WASM))
 
 $(AMM_WASM):
 	RUSTFLAGS="$(CONTRACT_RUSTFLAGS)" \
 	cargo build --manifest-path contracts/constant-product/Cargo.toml --release --target $(WASM_TARGET) --quiet
+	$(call optimize_wasm,$(AMM_WASM))
 
 $(NEP11_WASM):
 	RUSTFLAGS="$(CONTRACT_RUSTFLAGS)" \
 	cargo build --manifest-path contracts/nep11-nft/Cargo.toml --release --target $(WASM_TARGET) --quiet
+	$(call optimize_wasm,$(NEP11_WASM))
 
 $(UNISWAP_WASM):
 	RUSTFLAGS="$(CONTRACT_RUSTFLAGS)" \
 	cargo build --manifest-path contracts/uniswap-v2/Cargo.toml --release --target $(WASM_TARGET) --quiet
+	$(call optimize_wasm,$(UNISWAP_WASM))
 
 $(STAKING_WASM):
 	RUSTFLAGS="$(CONTRACT_RUSTFLAGS)" \
 	cargo build --manifest-path contracts/staking-rewards/Cargo.toml --release --target $(WASM_TARGET) --quiet
+	$(call optimize_wasm,$(STAKING_WASM))
 
 $(TIMELOCK_WASM):
 	RUSTFLAGS="$(CONTRACT_RUSTFLAGS)" \
 	cargo build --manifest-path contracts/timelock-vault/Cargo.toml --release --target $(WASM_TARGET) --quiet
+	$(call optimize_wasm,$(TIMELOCK_WASM))
 
 $(FLASHLOAN_WASM):
 	RUSTFLAGS="$(CONTRACT_RUSTFLAGS)" \
 	cargo build --manifest-path contracts/flashloan-pool/Cargo.toml --release --target $(WASM_TARGET) --quiet
+	$(call optimize_wasm,$(FLASHLOAN_WASM))
 
 $(MULTISIG_WASM):
 	RUSTFLAGS="$(CONTRACT_RUSTFLAGS)" \
 	cargo build --manifest-path contracts/multisig-wallet/Cargo.toml --release --target $(WASM_TARGET) --quiet
+	$(call optimize_wasm,$(MULTISIG_WASM))
 
 $(ESCROW_WASM):
 	RUSTFLAGS="$(CONTRACT_RUSTFLAGS)" \
 	cargo build --manifest-path contracts/escrow/Cargo.toml --release --target $(WASM_TARGET) --quiet
+	$(call optimize_wasm,$(ESCROW_WASM))
 
 $(CROWD_WASM):
 	RUSTFLAGS="$(CONTRACT_RUSTFLAGS)" \
 	cargo build --manifest-path contracts/crowdfunding/Cargo.toml --release --target $(WASM_TARGET) --quiet
+	$(call optimize_wasm,$(CROWD_WASM))
 
 $(GOV_WASM):
 	RUSTFLAGS="$(CONTRACT_RUSTFLAGS)" \
 	cargo build --manifest-path contracts/governance-dao/Cargo.toml --release --target $(WASM_TARGET) --quiet
+	$(call optimize_wasm,$(GOV_WASM))
 
 $(ORACLE_WASM):
 	RUSTFLAGS="$(CONTRACT_RUSTFLAGS)" \
 	cargo build --manifest-path contracts/oracle-consumer/Cargo.toml --release --target $(WASM_TARGET) --quiet
+	$(call optimize_wasm,$(ORACLE_WASM))
 
 $(MARKET_WASM):
 	RUSTFLAGS="$(CONTRACT_RUSTFLAGS)" \
 	cargo build --manifest-path contracts/nft-marketplace/Cargo.toml --release --target $(WASM_TARGET) --quiet
+	$(call optimize_wasm,$(MARKET_WASM))
 
 $(SOLANA_HELLO_WASM):
 	RUSTFLAGS="$(CONTRACT_RUSTFLAGS)" \
 	  cargo build --manifest-path contracts/solana-hello/Cargo.toml --release --target $(WASM_TARGET) --quiet
+	$(call optimize_wasm,$(SOLANA_HELLO_WASM))
 
 $(MOVE_COIN_WASM):
 	RUSTFLAGS="$(CONTRACT_RUSTFLAGS)" \
 	  cargo build --manifest-path contracts/move-coin/Cargo.toml --release --target $(WASM_TARGET) --quiet
+	$(call optimize_wasm,$(MOVE_COIN_WASM))
 
 c-hello:
 	scripts/build_c_contract.sh contracts/c-hello
@@ -498,7 +532,7 @@ package-check:
 	@set -e; \
 	for manifest in $(PACKAGE_MANIFESTS); do \
 		echo "==> cargo package --manifest-path $$manifest --allow-dirty"; \
-		cargo package --manifest-path "$$manifest" --allow-dirty --no-verify; \
+		cargo package --manifest-path "$$manifest" --allow-dirty --no-verify $(PACKAGE_PATCH_CONFIG_ARGS); \
 	done
 
 # Check for unused dependencies (requires cargo-machete)

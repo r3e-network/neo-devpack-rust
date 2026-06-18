@@ -52,6 +52,14 @@ pub(crate) enum StorageHelperKind {
     /// `System.Storage.Get` with key bytes marshaled in and value bytes copied
     /// back into wasm memory through a caller-provided output buffer.
     GetInto,
+    /// `System.Storage.Put` with an `i64` key and `i64` value converted on the NeoVM stack.
+    PutI64,
+    /// `System.Storage.Get` with an `i64` key, returning `0` when missing.
+    GetI64,
+    /// `System.Storage.Get` with an `i64` key, returning boolean existence.
+    HasI64,
+    /// `System.Storage.Delete` with an `i64` key converted on the NeoVM stack.
+    DeleteI64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]

@@ -15,6 +15,7 @@ NEOXP_BIN=${NEOXP_BIN:-/tmp/neo-tools/neoxp}
 NEOXP_TIMEOUT=${NEOXP_TIMEOUT:-60s}
 WASM_SNIP_BIN=${WASM_SNIP:-wasm-snip}
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+TIMEOUT_BIN=${TIMEOUT_BIN:-}
 
 BUILD_TARGETS=(
   hello-world
@@ -82,8 +83,14 @@ if [ "${#CONTRACT_NEF_PATHS[@]}" -ne "${#CONTRACT_DEPLOY_NAMES[@]}" ]; then
 fi
 
 require_command jq "Install jq and retry."
-require_command timeout "Install GNU coreutils timeout and retry."
-require_command "$WASM_SNIP_BIN" "Install wasm-snip (cargo install wasm-snip --locked) or set WASM_SNIP."
+
+if [ -z "$TIMEOUT_BIN" ]; then
+  if command -v timeout >/dev/null 2>&1; then
+    TIMEOUT_BIN=timeout
+  elif command -v gtimeout >/dev/null 2>&1; then
+    TIMEOUT_BIN=gtimeout
+  fi
+fi
 
 if [ ! -x "$NEOXP_BIN" ]; then
   echo "ERROR: Neo Express binary not found at $NEOXP_BIN" >&2
@@ -114,7 +121,11 @@ cleanup() {
 trap cleanup EXIT
 
 neoxp() {
-  timeout "$NEOXP_TIMEOUT" "$NEOXP_BIN" "$@"
+  if [ -n "$TIMEOUT_BIN" ]; then
+    "$TIMEOUT_BIN" "$NEOXP_TIMEOUT" "$NEOXP_BIN" "$@"
+  else
+    "$NEOXP_BIN" "$@"
+  fi
 }
 
 neoxp create -o "$CHAIN" -f >/dev/null
@@ -250,6 +261,8 @@ run_expect FlashLoanPool flashLoan 9 1 10000
 run_expect FlashLoanPool repay 1 10000 10009
 
 echo "[smoke] Storage round-trip"
+run_expect StorageSmoke directFirst 100001
+run_expect StorageSmoke directSecond 200002
 # Real persistent storage: setValue commits a writeable transaction (no -r),
 # then getValue reads back the same i64 from chain state. This exercises
 # `System.Storage.GetContext + Put + Get` end-to-end on Neo Express, proving
@@ -258,6 +271,13 @@ echo "[smoke] Storage round-trip"
 neoxp contract run -i "$CHAIN" StorageSmoke setValue 31415 -a genesis >/dev/null
 echo "  ok StorageSmoke.setValue committed"
 run_expect StorageSmoke getValue 31415
+run_expect StorageSmoke directZeroStatus 0
+neoxp contract run -i "$CHAIN" StorageSmoke setDirectZero -a genesis >/dev/null
+echo "  ok StorageSmoke.setDirectZero committed"
+run_expect StorageSmoke directZeroStatus 1
+neoxp contract run -i "$CHAIN" StorageSmoke setDirectFlag -a genesis >/dev/null
+echo "  ok StorageSmoke.setDirectFlag committed"
+run_expect StorageSmoke directFlagStatus 1
 
 echo "[smoke] Multisig invoke set"
 echo "  deploy-only SampleMultisig (stateful witness paths covered by Rust tests)"

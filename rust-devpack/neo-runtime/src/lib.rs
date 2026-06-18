@@ -21,14 +21,18 @@
 
 mod context;
 mod contract;
+#[cfg(feature = "crypto-hashes")]
 mod crypto;
+#[cfg(feature = "json")]
 mod json;
 mod runtime;
 mod storage;
 
 pub use context::NeoRuntimeContext;
 pub use contract::NeoContractRuntime;
+#[cfg(feature = "crypto-hashes")]
 pub use crypto::NeoCrypto;
+#[cfg(feature = "json")]
 pub use json::NeoJSON;
 pub use runtime::NeoRuntime;
-pub use storage::{NeoStorage, RawStorage, RawStorageGet};
+pub use storage::{NeoStorage, RawKeyBuilder, RawStorage, RawStorageGet};

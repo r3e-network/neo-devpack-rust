@@ -11,11 +11,11 @@ Before publishing contracts to crates.io, you need:
    ```
 
 3. **Published devpack crates** in this order:
-   - `neo-types` v0.1.0
-   - `neo-syscalls` v0.1.0
-   - `neo-runtime` v0.1.0
-   - `neo-macros` v0.1.0
-   - `neo-devpack` v0.1.0
+   - `neo-types` v0.1.1
+   - `neo-syscalls` v0.1.1
+   - `neo-runtime` v0.1.1
+   - `neo-macros` v0.1.1
+   - `neo-devpack` v0.1.1
 
 ## Publishing Steps
 
@@ -56,7 +56,7 @@ version = "0.2.0"
 # ... metadata ...
 
 [dependencies]
-neo-devpack = "0.1"
+neo-devpack = "0.1.1"
 serde = { version = "1.0", features = ["derive"] }
 ```
 
@@ -82,10 +82,14 @@ Use the provided script for automated publishing:
 
 ```bash
 # Preview what will be published
-./scripts/publish-to-cratesio.sh --prepare-only
+./scripts/publish-to-cratesio.sh --dry-run
 
-# Actually publish (requires CRATES_IO_TOKEN)
-./scripts/publish-to-cratesio.sh
+# Actually publish (requires CRATES_IO_TOKEN or saved cargo credentials)
+./scripts/publish-to-cratesio.sh --publish
+
+# Optional: include example/template contract crates
+./scripts/publish-to-cratesio.sh --dry-run --include-contracts
+./scripts/publish-to-cratesio.sh --publish --include-contracts
 ```
 
 ## Crates.io Names
@@ -109,11 +113,11 @@ Note: Consider using `-neo` suffix to avoid naming conflicts with existing crate
 
 | Component | Local Version | Published Version | Required |
 |-----------|---------------|-------------------|----------|
-| neo-types | 0.1.0 | 0.1 | ✓ |
-| neo-syscalls | 0.1.0 | 0.1 | ✓ |
-| neo-runtime | 0.1.0 | 0.1 | ✓ |
-| neo-macros | 0.1.0 | 0.1 | ✓ |
-| neo-devpack | 0.1.0 | 0.1 | ✓ |
+| neo-types | 0.1.1 | 0.1.1 | ✓ |
+| neo-syscalls | 0.1.1 | 0.1.1 | ✓ |
+| neo-runtime | 0.1.1 | 0.1.1 | ✓ |
+| neo-macros | 0.1.1 | 0.1.1 | ✓ |
+| neo-devpack | 0.1.1 | 0.1.1 | ✓ |
 | contracts | 0.2.0 | 0.2 | ✓ |
 
 ## Verification
@@ -137,10 +141,10 @@ cargo search neo-types --limit 1
 ```
 
 ### "version mismatch"
-Ensure all devpack crates use matching versions (e.g., all 0.1).
+Ensure all devpack crates use matching versions (e.g., all 0.1.1 for this release).
 
 ### "API rate limited"
-Wait a few minutes between publishes or use `--干燥运行` to check first.
+Wait a few minutes between publishes or use `--dry-run` to check first.
 
 ## Current Publishing Status
 

@@ -26,6 +26,9 @@ impl FlashLoanPoolContract {
         if amount <= 0 {
             return 0;
         }
+        if amount > i64::MAX / FEE_BPS {
+            return 0;
+        }
         (amount * FEE_BPS) / BPS_DENOMINATOR
     }
 
@@ -78,6 +81,7 @@ mod tests {
         assert_eq!(FlashLoanPoolContract::max_flash_loan(), 1_000_000);
         assert_eq!(FlashLoanPoolContract::flash_fee(0), 0);
         assert_eq!(FlashLoanPoolContract::flash_fee(10_000), 9);
+        assert_eq!(FlashLoanPoolContract::flash_fee(i64::MAX), 0);
     }
 
     #[test]

@@ -9,50 +9,52 @@ neo_manifest_overlay!(
 }"#
 );
 
-// Storage key constants — fixed-length tags avoid heap allocation.
-// Layout: [prefix 3][campaign_id 8][suffix up to 8] = max 19 bytes.
-const PREFIX: [u8; 3] = *b"cf:";
-const SUFFIX_OWNER: [u8; 6] = *b":owner";
-const SUFFIX_TOKEN: [u8; 6] = *b":token";
-const SUFFIX_GOAL: [u8; 5] = *b":goal";
-const SUFFIX_DEADLINE: [u8; 9] = *b":deadline";
-const SUFFIX_MIN: [u8; 4] = *b":min";
-const SUFFIX_RAISED: [u8; 7] = *b":raised";
-const SUFFIX_FINAL: [u8; 6] = *b":final";
+// Campaign field keys use direct i64 storage, avoiding wasm linear-memory key
+// materialisation for the hot path: [campaign_id * 16 + field].
+const CAMPAIGN_KEY_STRIDE: i64 = 16;
+const MAX_CAMPAIGN_ID: i64 = i64::MAX / CAMPAIGN_KEY_STRIDE;
+const FIELD_OWNER: i64 = 1;
+const FIELD_TOKEN: i64 = 2;
+const FIELD_GOAL: i64 = 3;
+const FIELD_DEADLINE: i64 = 4;
+const FIELD_MIN: i64 = 5;
+const FIELD_RAISED: i64 = 6;
+const FIELD_FINAL: i64 = 7;
 
 // Contribution keys: [prefix 11][campaign_id 8][:][contributor 8] = 28 bytes.
 const CONTRIB_PREFIX: [u8; 11] = *b"cf:contrib:";
 
-// Maximum key buffer size: 3 + 8 + 9 = 20 for campaign keys.
-const MAX_CAMPAIGN_KEY: usize = 20;
 // Contribution key size: 11 + 8 + 1 + 8 = 28.
 const CONTRIB_KEY_LEN: usize = 28;
 
-/// Build a campaign storage key into a fixed buffer. Returns the used length.
-fn campaign_key(buf: &mut [u8; MAX_CAMPAIGN_KEY], id: i64, suffix: &[u8]) -> usize {
-    let id_bytes = id.to_le_bytes();
-    let len = PREFIX.len() + id_bytes.len() + suffix.len();
-    let mut pos = 0;
-    buf[pos..pos + PREFIX.len()].copy_from_slice(&PREFIX);
-    pos += PREFIX.len();
-    buf[pos..pos + 8].copy_from_slice(&id_bytes);
-    pos += 8;
-    buf[pos..pos + suffix.len()].copy_from_slice(suffix);
-    len
+#[inline(always)]
+fn valid_campaign_id(campaign_id: i64) -> bool {
+    campaign_id > 0 && campaign_id <= MAX_CAMPAIGN_ID
 }
 
-/// Build a contribution key into a fixed buffer. Always 28 bytes.
-fn contrib_key(buf: &mut [u8; CONTRIB_KEY_LEN], campaign_id: i64, contributor: i64) {
-    let cid = campaign_id.to_le_bytes();
-    let ctr = contributor.to_le_bytes();
-    let mut pos = 0;
-    buf[pos..pos + CONTRIB_PREFIX.len()].copy_from_slice(&CONTRIB_PREFIX);
-    pos += CONTRIB_PREFIX.len();
-    buf[pos..pos + 8].copy_from_slice(&cid);
-    pos += 8;
-    buf[pos] = b':';
-    pos += 1;
-    buf[pos..pos + 8].copy_from_slice(&ctr);
+#[inline(always)]
+fn campaign_key(campaign_id: i64, field: i64) -> i64 {
+    campaign_id * CAMPAIGN_KEY_STRIDE + field
+}
+
+#[inline(always)]
+fn campaign_put_i64(campaign_id: i64, field: i64, value: i64) {
+    RawStorage::put_i64_key(campaign_key(campaign_id, field), value);
+}
+
+#[inline(always)]
+fn campaign_get_i64(campaign_id: i64, field: i64) -> i64 {
+    RawStorage::get_i64_key_or_zero(campaign_key(campaign_id, field))
+}
+
+/// Build a contribution key without heap allocation. Always 28 bytes.
+#[inline(always)]
+fn contrib_key(key: &mut RawKeyBuilder<CONTRIB_KEY_LEN>, campaign_id: i64, contributor: i64) {
+    key.clear();
+    key.push_bytes(&CONTRIB_PREFIX);
+    key.push_i64_le(campaign_id);
+    key.push_byte(b':');
+    key.push_i64_le(contributor);
 }
 
 fn storage_put_i64(key: &[u8], value: i64) -> bool {
@@ -64,52 +66,46 @@ fn storage_get_i64(key: &[u8]) -> Option<i64> {
     RawStorage::get_i64(key)
 }
 
-fn storage_put_bool(key: &[u8], value: bool) -> bool {
-    RawStorage::put_bool(key, value);
-    true
-}
-
-fn storage_get_bool(key: &[u8]) -> Option<bool> {
-    RawStorage::get_bool(key)
-}
-
-fn storage_has_key(key: &[u8]) -> bool {
-    let mut buf = [0u8; 1];
-    matches!(RawStorage::get_into(key, &mut buf), RawStorageGet::Found(_))
-}
-
 fn ensure_witness_i64(account: i64) -> bool {
     NeoRuntime::check_witness_i64(account)
         .map(|flag| flag.as_bool())
         .unwrap_or(false)
 }
 
+fn calling_contract_id() -> i64 {
+    NeoRuntime::get_calling_script_hash_i64().unwrap_or(0)
+}
+
+fn current_time_i64() -> Option<i64> {
+    NeoRuntime::get_time_i64().ok()
+}
+
 // Events
 #[neo_event]
 pub struct CampaignCreated {
-    pub campaign_id: NeoInteger,
-    pub owner: NeoByteString,
-    pub goal: NeoInteger,
+    pub campaign_id: i64,
+    pub owner: i64,
+    pub goal: i64,
 }
 
 #[neo_event]
 pub struct ContributionReceived {
-    pub campaign_id: NeoInteger,
-    pub contributor: NeoByteString,
-    pub amount: NeoInteger,
+    pub campaign_id: i64,
+    pub contributor: i64,
+    pub amount: i64,
 }
 
 #[neo_event]
 pub struct CampaignFinalized {
-    pub campaign_id: NeoInteger,
-    pub total_raised: NeoInteger,
+    pub campaign_id: i64,
+    pub total_raised: i64,
 }
 
 #[neo_event]
 pub struct RefundClaimed {
-    pub campaign_id: NeoInteger,
-    pub contributor: NeoByteString,
-    pub amount: NeoInteger,
+    pub campaign_id: i64,
+    pub contributor: i64,
+    pub amount: i64,
 }
 
 #[neo_contract]
@@ -130,7 +126,11 @@ impl NeoCrowdfundContract {
         deadline: i64,
         min_contribution: i64,
     ) -> bool {
-        if campaign_id <= 0 || goal <= 0 || deadline <= 0 || min_contribution <= 0 {
+        if !valid_campaign_id(campaign_id)
+            || goal <= 0
+            || deadline <= 0
+            || min_contribution <= 0
+        {
             return false;
         }
         if owner == 0 || token == 0 {
@@ -141,43 +141,35 @@ impl NeoCrowdfundContract {
         }
 
         // Check campaign does not already exist
-        let mut kb = [0u8; MAX_CAMPAIGN_KEY];
-        let kl = campaign_key(&mut kb, campaign_id, &SUFFIX_OWNER);
-        if storage_has_key(&kb[..kl]) {
+        if campaign_get_i64(campaign_id, FIELD_OWNER) != 0 {
             return false;
         }
 
         // Store owner (as i64)
-        storage_put_i64(&kb[..kl], owner);
+        campaign_put_i64(campaign_id, FIELD_OWNER, owner);
 
         // Store token
-        let kl = campaign_key(&mut kb, campaign_id, &SUFFIX_TOKEN);
-        storage_put_i64(&kb[..kl], token);
+        campaign_put_i64(campaign_id, FIELD_TOKEN, token);
 
         // Store goal
-        let kl = campaign_key(&mut kb, campaign_id, &SUFFIX_GOAL);
-        storage_put_i64(&kb[..kl], goal);
+        campaign_put_i64(campaign_id, FIELD_GOAL, goal);
 
         // Store deadline
-        let kl = campaign_key(&mut kb, campaign_id, &SUFFIX_DEADLINE);
-        storage_put_i64(&kb[..kl], deadline);
+        campaign_put_i64(campaign_id, FIELD_DEADLINE, deadline);
 
         // Store min contribution
-        let kl = campaign_key(&mut kb, campaign_id, &SUFFIX_MIN);
-        storage_put_i64(&kb[..kl], min_contribution);
+        campaign_put_i64(campaign_id, FIELD_MIN, min_contribution);
 
         // Store raised = 0
-        let kl = campaign_key(&mut kb, campaign_id, &SUFFIX_RAISED);
-        storage_put_i64(&kb[..kl], 0);
+        campaign_put_i64(campaign_id, FIELD_RAISED, 0);
 
         // Store finalized = false
-        let kl = campaign_key(&mut kb, campaign_id, &SUFFIX_FINAL);
-        storage_put_bool(&kb[..kl], false);
+        campaign_put_i64(campaign_id, FIELD_FINAL, 0);
 
         let _ = (CampaignCreated {
-            campaign_id: NeoInteger::new(campaign_id),
-            owner: NeoByteString::from_slice(&owner.to_le_bytes()),
-            goal: NeoInteger::new(goal),
+            campaign_id,
+            owner,
+            goal,
         })
         .emit();
         true
@@ -185,14 +177,17 @@ impl NeoCrowdfundContract {
 
     #[neo_method(safe, name = "contributionOf")]
     pub fn contribution_of(campaign_id: i64, contributor: i64) -> i64 {
-        let mut ck = [0u8; CONTRIB_KEY_LEN];
-        contrib_key(&mut ck, campaign_id, contributor);
-        storage_get_i64(&ck).unwrap_or(0)
+        if !valid_campaign_id(campaign_id) {
+            return 0;
+        }
+        let mut key = RawKeyBuilder::new();
+        contrib_key(&mut key, campaign_id, contributor);
+        storage_get_i64(key.as_slice()).unwrap_or(0)
     }
 
     #[neo_method]
     pub fn finalize(campaign_id: i64, caller: i64) -> bool {
-        if campaign_id <= 0 {
+        if !valid_campaign_id(campaign_id) {
             return false;
         }
         if caller == 0 {
@@ -203,32 +198,36 @@ impl NeoCrowdfundContract {
         }
 
         // Check caller is the owner
-        let mut kb = [0u8; MAX_CAMPAIGN_KEY];
-        let kl = campaign_key(&mut kb, campaign_id, &SUFFIX_OWNER);
-        let stored_owner = match storage_get_i64(&kb[..kl]) {
-            Some(v) => v,
-            None => return false,
-        };
+        let stored_owner = campaign_get_i64(campaign_id, FIELD_OWNER);
+        if stored_owner == 0 {
+            return false;
+        }
         if caller != stored_owner {
             return false;
         }
 
         // Check not already finalized
-        let kl = campaign_key(&mut kb, campaign_id, &SUFFIX_FINAL);
-        if storage_get_bool(&kb[..kl]).unwrap_or(false) {
+        if campaign_get_i64(campaign_id, FIELD_FINAL) != 0 {
+            return false;
+        }
+        let deadline = campaign_get_i64(campaign_id, FIELD_DEADLINE);
+        let now = match current_time_i64() {
+            Some(t) => t,
+            None => return false,
+        };
+        if now < deadline {
             return false;
         }
 
         // Mark finalized
-        storage_put_bool(&kb[..kl], true);
+        campaign_put_i64(campaign_id, FIELD_FINAL, 1);
 
         // Read raised amount
-        let kl = campaign_key(&mut kb, campaign_id, &SUFFIX_RAISED);
-        let raised = storage_get_i64(&kb[..kl]).unwrap_or(0);
+        let raised = campaign_get_i64(campaign_id, FIELD_RAISED);
 
         let _ = (CampaignFinalized {
-            campaign_id: NeoInteger::new(campaign_id),
-            total_raised: NeoInteger::new(raised),
+            campaign_id,
+            total_raised: raised,
         })
         .emit();
         true
@@ -236,7 +235,7 @@ impl NeoCrowdfundContract {
 
     #[neo_method(name = "claimRefund")]
     pub fn claim_refund(campaign_id: i64, contributor: i64) -> bool {
-        if campaign_id <= 0 {
+        if !valid_campaign_id(campaign_id) {
             return false;
         }
         if contributor == 0 {
@@ -245,21 +244,29 @@ impl NeoCrowdfundContract {
         if !ensure_witness_i64(contributor) {
             return false;
         }
+        if campaign_get_i64(campaign_id, FIELD_FINAL) == 0 {
+            return false;
+        }
+        let goal = campaign_get_i64(campaign_id, FIELD_GOAL);
+        let raised = campaign_get_i64(campaign_id, FIELD_RAISED);
+        if goal == 0 || raised >= goal {
+            return false;
+        }
 
-        let mut ck = [0u8; CONTRIB_KEY_LEN];
-        contrib_key(&mut ck, campaign_id, contributor);
+        let mut key = RawKeyBuilder::new();
+        contrib_key(&mut key, campaign_id, contributor);
 
-        let amount = storage_get_i64(&ck).unwrap_or(0);
+        let amount = storage_get_i64(key.as_slice()).unwrap_or(0);
         if amount <= 0 {
             return false;
         }
 
-        RawStorage::delete(&ck);
+        RawStorage::delete(key.as_slice());
 
         let _ = (RefundClaimed {
-            campaign_id: NeoInteger::new(campaign_id),
-            contributor: NeoByteString::from_slice(&contributor.to_le_bytes()),
-            amount: NeoInteger::new(amount),
+            campaign_id,
+            contributor,
+            amount,
         })
         .emit();
         true
@@ -268,66 +275,88 @@ impl NeoCrowdfundContract {
     /// Return campaign state via notify: [goal, raised, deadline, min, finalized]
     #[neo_method(safe, name = "getCampaign")]
     pub fn get_campaign(campaign_id: i64) {
-        let mut kb = [0u8; MAX_CAMPAIGN_KEY];
+        if !valid_campaign_id(campaign_id) {
+            return;
+        }
+        let goal = campaign_get_i64(campaign_id, FIELD_GOAL);
+        if goal == 0 {
+            return;
+        }
 
-        let kl = campaign_key(&mut kb, campaign_id, &SUFFIX_GOAL);
-        let goal = match storage_get_i64(&kb[..kl]) {
-            Some(v) => v,
-            None => return,
-        };
+        let raised = campaign_get_i64(campaign_id, FIELD_RAISED);
 
-        let kl = campaign_key(&mut kb, campaign_id, &SUFFIX_RAISED);
-        let raised = storage_get_i64(&kb[..kl]).unwrap_or(0);
+        let deadline = campaign_get_i64(campaign_id, FIELD_DEADLINE);
 
-        let kl = campaign_key(&mut kb, campaign_id, &SUFFIX_DEADLINE);
-        let deadline = storage_get_i64(&kb[..kl]).unwrap_or(0);
+        let min = campaign_get_i64(campaign_id, FIELD_MIN);
 
-        let kl = campaign_key(&mut kb, campaign_id, &SUFFIX_MIN);
-        let min = storage_get_i64(&kb[..kl]).unwrap_or(0);
+        let finalized = campaign_get_i64(campaign_id, FIELD_FINAL) != 0;
 
-        let kl = campaign_key(&mut kb, campaign_id, &SUFFIX_FINAL);
-        let finalized = storage_get_bool(&kb[..kl]).unwrap_or(false);
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = (goal, raised, deadline, min, finalized);
+            let _ = NeoRuntime::notify_event("getCampaign");
+        }
 
-        let label = NeoString::from_str("getCampaign");
-        let mut state = NeoArray::new();
-        state.push(NeoValue::from(NeoInteger::new(goal)));
-        state.push(NeoValue::from(NeoInteger::new(raised)));
-        state.push(NeoValue::from(NeoInteger::new(deadline)));
-        state.push(NeoValue::from(NeoInteger::new(min)));
-        state.push(NeoValue::from(NeoBoolean::new(finalized)));
-        let _ = NeoRuntime::notify(&label, &state);
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let label = NeoString::from_str("getCampaign");
+            let mut state = NeoArray::new();
+            state.push(NeoValue::from(goal));
+            state.push(NeoValue::from(raised));
+            state.push(NeoValue::from(deadline));
+            state.push(NeoValue::from(min));
+            state.push(NeoValue::from(finalized));
+            let _ = NeoRuntime::notify(&label, &state);
+        }
     }
 
     #[neo_method(name = "onNEP17Payment")]
     pub fn on_nep17_payment(from: i64, amount: i64, data: i64) {
-        if amount <= 0 || data <= 0 || from == 0 {
+        if amount <= 0 || !valid_campaign_id(data) || from == 0 {
             return;
         }
         let campaign_id = data;
+        let token = campaign_get_i64(campaign_id, FIELD_TOKEN);
+        let min_contribution = campaign_get_i64(campaign_id, FIELD_MIN);
+        let deadline = campaign_get_i64(campaign_id, FIELD_DEADLINE);
+        if token == 0 || min_contribution <= 0 || deadline <= 0 {
+            return;
+        }
+        if calling_contract_id() != token {
+            return;
+        }
+        if amount < min_contribution || campaign_get_i64(campaign_id, FIELD_FINAL) != 0 {
+            return;
+        }
+        let now = match current_time_i64() {
+            Some(t) => t,
+            None => return,
+        };
+        if now > deadline {
+            return;
+        }
 
-        let mut ck = [0u8; CONTRIB_KEY_LEN];
-        contrib_key(&mut ck, campaign_id, from);
+        let mut contrib = RawKeyBuilder::new();
+        contrib_key(&mut contrib, campaign_id, from);
 
-        let current = storage_get_i64(&ck).unwrap_or(0);
+        let current = storage_get_i64(contrib.as_slice()).unwrap_or(0);
         let new_contrib = match current.checked_add(amount) {
             Some(v) => v,
             None => return,
         };
-        storage_put_i64(&ck, new_contrib);
+        storage_put_i64(contrib.as_slice(), new_contrib);
 
-        let mut kb = [0u8; MAX_CAMPAIGN_KEY];
-        let kl = campaign_key(&mut kb, campaign_id, &SUFFIX_RAISED);
-        let raised = storage_get_i64(&kb[..kl]).unwrap_or(0);
+        let raised = campaign_get_i64(campaign_id, FIELD_RAISED);
         let new_raised = match raised.checked_add(amount) {
             Some(v) => v,
             None => return,
         };
-        storage_put_i64(&kb[..kl], new_raised);
+        campaign_put_i64(campaign_id, FIELD_RAISED, new_raised);
 
         let _ = (ContributionReceived {
-            campaign_id: NeoInteger::new(campaign_id),
-            contributor: NeoByteString::from_slice(&from.to_le_bytes()),
-            amount: NeoInteger::new(amount),
+            campaign_id,
+            contributor: from,
+            amount,
         })
         .emit();
     }

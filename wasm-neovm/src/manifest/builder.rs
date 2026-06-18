@@ -138,7 +138,10 @@ impl ManifestBuilder {
     /// because Neo Express's deployer rejects manifests that carry non-empty
     /// feature maps; the actual storage capability still flows through the
     /// emitted `System.Storage.*` SYSCALLs in the script body.
-    pub fn into_rendered(self) -> super::RenderedManifest {
+    pub fn into_rendered(mut self) -> super::RenderedManifest {
+        if let Some(manifest_obj) = self.manifest.as_object_mut() {
+            manifest_obj.insert("features".to_string(), Value::Object(Map::new()));
+        }
         super::RenderedManifest {
             value: self.manifest,
         }

@@ -10,6 +10,57 @@ this repository follow independent versioning (currently 0.1.x).
 
 ## [Unreleased]
 
+## [0.5.7] - 2026-06-18
+
+### Added
+
+- Added a heap-free Rust contract storage path for Neo N3 contracts:
+  `RawStorage`, `RawKeyBuilder`, direct byte-slice storage helpers, and direct
+  `i64` key/value helpers now lower to `System.Storage.*` without pulling the
+  wasm allocator into small contracts.
+- Added direct runtime imports for lightweight contract calls, including event
+  notification, logging, timestamp reads, and compact script-hash prefixes.
+- Added the `contracts/storage-smoke` Neo Express smoke contract to prove real
+  `Storage.Put` / `Storage.Get` round-trips execute against contract storage.
+- Added a system-level Rust Neo N3 guide covering the Rust -> Wasm -> NeoVM
+  pipeline, no-default-feature contract builds, storage semantics, smoke tests,
+  NEF size expectations, and troubleshooting.
+
+### Changed
+
+- Bumped `wasm-neovm` to `0.5.7` and the Rust devpack crate family
+  (`neo-types`, `neo-syscalls`, `neo-runtime`, `neo-macros`, `neo-devpack`) to
+  `0.1.1` for this release.
+- Refactored storage-heavy sample contracts onto the heap-free storage/runtime
+  APIs so they remain deployable and invokable on Neo Express with much smaller
+  NEF output.
+- Tightened contract manifests so rendered Neo N3 manifests keep the `features`
+  object empty for current Neo Express compatibility while storage capability is
+  still represented by emitted script syscalls.
+- Switched contract and devpack manifests toward explicit `default-features =
+  false` dependency wiring for production Wasm builds.
+
+### Fixed
+
+- Fixed host/runtime storage lookup semantics so absent keys can be represented
+  without conflating every empty byte string with missing storage.
+- Fixed primitive manifest type inference for Rust contract macros, including
+  booleans and integer types.
+- Fixed event macro emission on `wasm32` so simple notifications stay on the
+  compact direct-runtime path instead of forcing array/value construction.
+
+### Testing
+
+- `make test` passes.
+- Full no-default-feature Wasm clippy across all contract crates passes.
+- Host clippy across all contract crates passes.
+- `cargo clippy --manifest-path rust-devpack/Cargo.toml --all-targets -- -D warnings`
+  passes.
+- `cargo clippy --manifest-path wasm-neovm/Cargo.toml --all-targets -- -D warnings`
+  passes.
+- `DOTNET_ROOT=/opt/homebrew/Cellar/dotnet/10.0.108/libexec NEOXP_BIN=/tmp/neo-tools/neoxp scripts/neoxp_smoke.sh`
+  passes across the Rust sample contract suite.
+
 ## [0.5.6] - 2026-04-25
 
 ### Fixed

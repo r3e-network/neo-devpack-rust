@@ -13,7 +13,10 @@ categories = ["cryptography::cryptocurrencies", "wasm"]
 crate-type = ["cdylib"]
 
 [dependencies]
-neo-devpack = { path = "../../rust-devpack", default-features = false }
+neo-devpack = { path = "../../rust-devpack", version = "0.1.1", default-features = false }
+
+[features]
+default = ["neo-devpack/std"]
 [workspace]
 
 [profile.release]

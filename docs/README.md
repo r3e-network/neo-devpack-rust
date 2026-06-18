@@ -5,6 +5,7 @@ This repository focuses on the Wasm → NeoVM translator, the Rust DevPack, and 
 ## Index
 
 - **[wasm-pipeline.md](wasm-pipeline.md)** – Design notes and roadmap for the Wasm → NeoVM workflow.
+- **[rust-neo-n3-system-guide.md](rust-neo-n3-system-guide.md)** – Detailed system guide for Rust contract authoring, storage, size optimization, validation, and troubleshooting.
 - **[wasm-neovm-status.md](wasm-neovm-status.md)** – Current feature coverage for the translator.
 - **[wasm-memory-design.md](wasm-memory-design.md)** – Deep dive into the linear memory helper architecture.
 - **[wasm-table-design.md](wasm-table-design.md)** – Table runtime design and helper behaviour.

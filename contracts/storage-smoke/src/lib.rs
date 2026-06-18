@@ -17,6 +17,8 @@ pub struct StorageSmokeContract;
 // We pick from two distinct values via a runtime parameter.
 static INPUT_A: i64 = 100;
 static INPUT_B: i64 = 200;
+const DIRECT_ZERO_KEY: i64 = -7;
+const DIRECT_FLAG_KEY: i64 = -8;
 
 #[inline(never)]
 #[no_mangle]
@@ -65,10 +67,62 @@ impl StorageSmokeContract {
     pub fn get_value() -> i64 {
         RawStorage::get_i64(b"v").unwrap_or(-1)
     }
+
+    #[neo_method(name = "setDirectZero")]
+    pub fn set_direct_zero() {
+        RawStorage::put_i64_key(DIRECT_ZERO_KEY, 0);
+    }
+
+    #[neo_method(safe, name = "directZeroStatus")]
+    pub fn direct_zero_status() -> i64 {
+        if RawStorage::has_i64_key(DIRECT_ZERO_KEY) {
+            1
+        } else {
+            0
+        }
+    }
+
+    #[neo_method(name = "setDirectFlag")]
+    pub fn set_direct_flag() {
+        RawStorage::put_i64_key(DIRECT_FLAG_KEY, 1);
+    }
+
+    #[neo_method(safe, name = "directFlagStatus")]
+    pub fn direct_flag_status() -> i64 {
+        if RawStorage::has_i64_key(DIRECT_FLAG_KEY)
+            && RawStorage::get_i64_key_or_zero(DIRECT_FLAG_KEY) == 1
+        {
+            1
+        } else {
+            0
+        }
+    }
 }
 
 impl Default for StorageSmokeContract {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::StorageSmokeContract;
+    use neo_devpack::NeoVMSyscall;
+
+    #[test]
+    fn direct_call_helpers_preserve_argument_order() {
+        assert_eq!(StorageSmokeContract::direct_first(), 100001);
+        assert_eq!(StorageSmokeContract::direct_second(), 200002);
+    }
+
+    #[test]
+    fn direct_i64_zero_is_present_after_write() {
+        NeoVMSyscall::reset_host_state().unwrap();
+        assert_eq!(StorageSmokeContract::direct_zero_status(), 0);
+        StorageSmokeContract::set_direct_zero();
+        assert_eq!(StorageSmokeContract::direct_zero_status(), 1);
+        StorageSmokeContract::set_direct_flag();
+        assert_eq!(StorageSmokeContract::direct_flag_status(), 1);
     }
 }

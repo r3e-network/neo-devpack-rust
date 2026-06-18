@@ -39,3 +39,16 @@ impl Default for SampleMultisigContract {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::SampleMultisigContract;
+    use neo_devpack::NeoVMSyscall;
+
+    #[test]
+    fn missing_config_reads_as_unconfigured() {
+        NeoVMSyscall::reset_host_state().unwrap();
+        assert_eq!(SampleMultisigContract::threshold(), -1);
+        assert_eq!(SampleMultisigContract::owner_count(), -1);
+    }
+}

@@ -1,6 +1,6 @@
 # Contract Examples
 
-This repository ships with a curated set of Rust smart-contract examples that demonstrate common dApp patterns on Neo N3. Every contract includes storage-backed state, safe method annotations via `#[neo_safe]`, events, and Makefile targets for building/translating to NEF + manifest.
+This repository ships with a curated set of Rust smart-contract examples that demonstrate common dApp patterns on Neo N3. The suite covers minimal constants, token-shaped contracts, storage-backed state machines, safe method annotations via `#[neo_method(safe)]`, events, and Makefile targets for building/translating to NEF + manifest.
 
 | Contract | Path | Highlights |
 | --- | --- | --- |

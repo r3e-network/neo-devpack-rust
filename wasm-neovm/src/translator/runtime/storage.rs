@@ -30,6 +30,7 @@ use super::memory::{emit_chunked_load_byte_at_local, emit_chunked_store_byte_at_
 
 const SYSCALL_OPERAND_SIZE: u8 = 4;
 const STACKITEM_TYPE_BYTESTRING: u8 = 0x28;
+const STACKITEM_TYPE_INTEGER: u8 = 0x21;
 
 fn emit_load_arg(script: &mut Vec<u8>, index: u8) -> Result<()> {
     let opcode_name = match index {
@@ -86,6 +87,24 @@ fn emit_storage_syscall(script: &mut Vec<u8>, descriptor: &str) -> Result<()> {
     }
     script.push(opcode.byte);
     script.extend_from_slice(&syscall.hash.to_le_bytes());
+    Ok(())
+}
+
+fn emit_convert(script: &mut Vec<u8>, stack_item_type: u8) -> Result<()> {
+    let convert =
+        opcodes::lookup("CONVERT").ok_or_else(|| anyhow!("CONVERT opcode metadata missing"))?;
+    if convert.operand_size != 1 || convert.operand_size_prefix != 0 {
+        anyhow::bail!("unexpected CONVERT operand metadata");
+    }
+    script.push(convert.byte);
+    script.push(stack_item_type);
+    Ok(())
+}
+
+fn emit_i64_key_and_context_from_arg(script: &mut Vec<u8>, arg: u8) -> Result<()> {
+    emit_load_arg(script, arg)?;
+    emit_convert(script, STACKITEM_TYPE_BYTESTRING)?;
+    emit_storage_syscall(script, "System.Storage.GetContext")?;
     Ok(())
 }
 
@@ -371,5 +390,83 @@ pub(in crate::translator::runtime) fn emit_storage_get_helper(
 
     patch_jump(script, jump_not_found, not_found_label)?;
     patch_jump(script, jump_too_small, too_small_label)?;
+    Ok(())
+}
+
+pub(in crate::translator::runtime) fn emit_storage_put_i64_helper(
+    script: &mut Vec<u8>,
+) -> Result<()> {
+    script.push(lookup_opcode("INITSLOT")?.byte);
+    script.push(0);
+    script.push(2); // ARG0=value, ARG1=key
+
+    emit_load_arg(script, 0)?;
+    emit_convert(script, STACKITEM_TYPE_BYTESTRING)?;
+    emit_i64_key_and_context_from_arg(script, 1)?;
+    emit_storage_syscall(script, "System.Storage.Put")?;
+    script.push(lookup_opcode("RET")?.byte);
+    Ok(())
+}
+
+pub(in crate::translator::runtime) fn emit_storage_get_i64_helper(
+    script: &mut Vec<u8>,
+) -> Result<()> {
+    script.push(lookup_opcode("INITSLOT")?.byte);
+    script.push(0);
+    script.push(1); // ARG0=key
+
+    emit_i64_key_and_context_from_arg(script, 0)?;
+    emit_storage_syscall(script, "System.Storage.Get")?;
+    script.push(lookup_opcode("DUP")?.byte);
+    script.push(lookup_opcode("ISNULL")?.byte);
+    let jump_missing = emit_jump_placeholder(script, "JMPIF_L")?;
+    emit_convert(script, STACKITEM_TYPE_INTEGER)?;
+    script.push(lookup_opcode("RET")?.byte);
+
+    let missing_label = script.len();
+    script.push(lookup_opcode("DROP")?.byte);
+    let _ = emit_push_int(script, 0);
+    script.push(lookup_opcode("RET")?.byte);
+
+    patch_jump(script, jump_missing, missing_label)?;
+    Ok(())
+}
+
+pub(in crate::translator::runtime) fn emit_storage_has_i64_helper(
+    script: &mut Vec<u8>,
+) -> Result<()> {
+    script.push(lookup_opcode("INITSLOT")?.byte);
+    script.push(0);
+    script.push(1); // ARG0=key
+
+    emit_i64_key_and_context_from_arg(script, 0)?;
+    emit_storage_syscall(script, "System.Storage.Get")?;
+    script.push(lookup_opcode("DUP")?.byte);
+    script.push(lookup_opcode("ISNULL")?.byte);
+    let jump_missing = emit_jump_placeholder(script, "JMPIF_L")?;
+    script.push(lookup_opcode("SIZE")?.byte);
+    script.push(lookup_opcode("PUSH0")?.byte);
+    script.push(lookup_opcode("GT")?.byte);
+    script.push(lookup_opcode("RET")?.byte);
+
+    let missing_label = script.len();
+    script.push(lookup_opcode("DROP")?.byte);
+    let _ = emit_push_int(script, 0);
+    script.push(lookup_opcode("RET")?.byte);
+
+    patch_jump(script, jump_missing, missing_label)?;
+    Ok(())
+}
+
+pub(in crate::translator::runtime) fn emit_storage_delete_i64_helper(
+    script: &mut Vec<u8>,
+) -> Result<()> {
+    script.push(lookup_opcode("INITSLOT")?.byte);
+    script.push(0);
+    script.push(1); // ARG0=key
+
+    emit_i64_key_and_context_from_arg(script, 0)?;
+    emit_storage_syscall(script, "System.Storage.Delete")?;
+    script.push(lookup_opcode("RET")?.byte);
     Ok(())
 }

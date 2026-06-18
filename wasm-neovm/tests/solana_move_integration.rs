@@ -162,9 +162,9 @@ fn test_solana_storage_contract_compilation() {
     let translation = result.unwrap();
 
     assert_eq!(
-        translation.manifest.value["features"]["storage"].as_bool(),
-        Some(true),
-        "storage imports should enable manifest.features.storage"
+        translation.manifest.value["features"],
+        serde_json::json!({}),
+        "rendered Neo N3 manifests must keep features empty"
     );
 
     // Verify methods
@@ -446,9 +446,9 @@ fn test_move_resource_semantics_mapping() {
     let translation = translate_with_config(&wasm, config).unwrap();
 
     assert_eq!(
-        translation.manifest.value["features"]["storage"].as_bool(),
-        Some(true),
-        "Move resource lowering should enable manifest.features.storage"
+        translation.manifest.value["features"],
+        serde_json::json!({}),
+        "rendered Neo N3 manifests must keep features empty"
     );
 }
 
@@ -471,10 +471,14 @@ fn test_equivalent_contracts_compile_similarly() {
     let solana_result = translate_with_config(&solana_wasm, solana_config).unwrap();
     let move_result = translate_with_config(&move_wasm, move_config).unwrap();
 
-    // Both should have storage enabled
+    // Both rendered manifests should be deployable on Neo N3.
     assert_eq!(
-        solana_result.manifest.value["features"]["storage"],
-        move_result.manifest.value["features"]["storage"]
+        solana_result.manifest.value["features"],
+        serde_json::json!({})
+    );
+    assert_eq!(
+        move_result.manifest.value["features"],
+        serde_json::json!({})
     );
 
     // Both should produce valid NEF
@@ -523,9 +527,9 @@ fn test_storage_operations_compile() {
     let translation = result.unwrap();
     assert!(!translation.script.is_empty());
     assert_eq!(
-        translation.manifest.value["features"]["storage"].as_bool(),
-        Some(true),
-        "storage imports should enable manifest.features.storage"
+        translation.manifest.value["features"],
+        serde_json::json!({}),
+        "rendered Neo N3 manifests must keep features empty"
     );
 }
 

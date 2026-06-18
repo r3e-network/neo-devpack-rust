@@ -1,117 +1,106 @@
 #!/bin/bash
-# publish-to-cratesio.sh - Publish neo-devpack-rust contracts to crates.io
+# Publish the repository's registry-facing crates to crates.io.
 #
-# Usage: ./scripts/publish-to-cratesio.sh [--prepare-only]
+# Usage:
+#   scripts/publish-to-cratesio.sh --dry-run
+#   scripts/publish-to-cratesio.sh --publish
+#   scripts/publish-to-cratesio.sh --dry-run --include-contracts
 #
-# This script prepares and publishes all contracts to crates.io.
-# Requires: cargo, crates.io API token
+# The default release path publishes the devpack family first, then compatibility
+# crates that changed for this release, then wasm-neovm. Contract examples are
+# optional because they are templates, not required dependencies of wasm-neovm.
 
-set -e
+set -euo pipefail
 
-echo "=============================================="
-echo "Neo N3 Contracts - crates.io Publishing Script"
-echo "=============================================="
-echo ""
+MODE=""
+INCLUDE_CONTRACTS=false
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+for arg in "$@"; do
+    case "$arg" in
+        --dry-run|--prepare-only)
+            MODE="dry-run"
+            ;;
+        --publish)
+            MODE="publish"
+            ;;
+        --include-contracts)
+            INCLUDE_CONTRACTS=true
+            ;;
+        *)
+            echo "Unknown argument: $arg" >&2
+            exit 2
+            ;;
+    esac
+done
 
-# Check if running prepare only
-PREPARE_ONLY=false
-if [ "$1" == "--prepare-only" ]; then
-    PREPARE_ONLY=true
+if [ -z "$MODE" ]; then
+    echo "Usage: $0 --dry-run|--publish [--include-contracts]" >&2
+    exit 2
 fi
 
-# Check for crates.io token
-if [ -z "$CRATES_IO_TOKEN" ]; then
-    echo -e "${YELLOW}Warning: CRATES_IO_TOKEN not set${NC}"
-    echo "Set it with: export CRATES_IO_TOKEN=your_token"
-    echo ""
+publish_args=()
+if [ -n "${CRATES_IO_TOKEN:-}" ]; then
+    publish_args+=(--token "$CRATES_IO_TOKEN")
 fi
 
-# Step 1: Publish devpack crates
-echo "Step 1: Publishing devpack crates..."
-echo "====================================="
+if [ "$MODE" = "publish" ] && [ -z "${CRATES_IO_TOKEN:-}${CARGO_REGISTRY_TOKEN:-}" ]; then
+    echo "No CRATES_IO_TOKEN/CARGO_REGISTRY_TOKEN detected; cargo may still use saved credentials." >&2
+fi
 
-publish_crate() {
-    local dir=$1
-    local name=$(grep "^name" "$dir/Cargo.toml" | head -1 | cut -d'"' -f2)
-    local version=$(grep "^version" "$dir/Cargo.toml" | head -1 | cut -d'"' -f2)
-    
-    echo "Publishing $name v$version..."
-    if cargo publish --manifest-path "$dir/Cargo.toml" 2>&1; then
-        echo -e "${GREEN}✓ $name published${NC}"
+release_crates=(
+    "rust-devpack/neo-types"
+    "rust-devpack/neo-syscalls"
+    "rust-devpack/neo-runtime"
+    "rust-devpack/neo-macros"
+    "rust-devpack"
+    "solana-compat"
+    "wasm-neovm"
+)
+
+contract_crates=(
+    "contracts/hello-world"
+    "contracts/nep17-token"
+    "contracts/nep11-nft"
+    "contracts/constant-product"
+    "contracts/uniswap-v2"
+    "contracts/staking-rewards"
+    "contracts/timelock-vault"
+    "contracts/flashloan-pool"
+    "contracts/multisig-wallet"
+    "contracts/escrow"
+    "contracts/crowdfunding"
+    "contracts/governance-dao"
+    "contracts/oracle-consumer"
+    "contracts/nft-marketplace"
+    "contracts/storage-smoke"
+    "contracts/move-coin"
+)
+
+run_for_crate() {
+    local dir="$1"
+    local manifest="$dir/Cargo.toml"
+    local name version
+    name=$(sed -n 's/^name[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$manifest" | head -n 1)
+    version=$(sed -n 's/^version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$manifest" | head -n 1)
+    if [ -z "$version" ]; then
+        version=$(sed -n 's/^version\.workspace[[:space:]]*=[[:space:]]*true.*/workspace/p' "$manifest" | head -n 1)
+    fi
+
+    echo "==> $MODE $name $version ($manifest)"
+    if [ "$MODE" = "dry-run" ]; then
+        cargo publish --manifest-path "$manifest" --dry-run "${publish_args[@]+"${publish_args[@]}"}"
     else
-        echo -e "${RED}✗ $name failed to publish${NC}"
-        return 1
+        cargo publish --manifest-path "$manifest" "${publish_args[@]+"${publish_args[@]}"}"
+        sleep 20
     fi
 }
 
-# Publish neo-types first (it's a dependency of others)
-if ! publish_crate "rust-devpack/neo-types"; then
-    echo "Failed to publish neo-types"
-    exit 1
-fi
-
-# Publish neo-syscalls
-if ! publish_crate "rust-devpack/neo-syscalls"; then
-    echo "Failed to publish neo-syscalls"
-    exit 1
-fi
-
-# Publish neo-runtime
-if ! publish_crate "rust-devpack/neo-runtime"; then
-    echo "Failed to publish neo-runtime"
-    exit 1
-fi
-
-# Publish neo-macros
-if ! publish_crate "rust-devpack/neo-macros"; then
-    echo "Failed to publish neo-macros"
-    exit 1
-fi
-
-# Publish neo-devpack
-if ! publish_crate "rust-devpack"; then
-    echo "Failed to publish neo-devpack"
-    exit 1
-fi
-
-echo ""
-echo "Step 2: Publishing contracts..."
-echo "================================="
-
-# Contracts to publish
-CONTRACTS=(
-    "hello-world"
-    "nep17-token"
-    "nep11-nft"
-    "constant-product"
-    "crowdfunding"
-    "escrow"
-    "governance-dao"
-    "multisig-wallet"
-    "nft-marketplace"
-    "oracle-consumer"
-)
-
-for contract in "${CONTRACTS[@]}"; do
-    if ! publish_crate "contracts/$contract"; then
-        echo "Failed to publish $contract"
-        exit 1
-    fi
-    sleep 2  # Rate limiting
+for dir in "${release_crates[@]}"; do
+    run_for_crate "$dir"
 done
 
-echo ""
-echo -e "${GREEN}==============================================${NC}"
-echo -e "${GREEN}All crates published successfully!${NC}"
-echo -e "${GREEN}==============================================${NC}"
-echo ""
-echo "Published crates:"
-for contract in "${CONTRACTS[@]}"; do
-    echo "  - $contract"
-done
+if [ "$INCLUDE_CONTRACTS" = true ]; then
+    for dir in "${contract_crates[@]}"; do
+        run_for_crate "$dir"
+    done
+fi

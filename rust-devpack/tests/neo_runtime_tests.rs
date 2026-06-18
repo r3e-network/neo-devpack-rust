@@ -23,6 +23,8 @@ fn runtime_core_syscalls_return_expected_types() {
     let _guard = setup_runtime_test();
     let timestamp = NeoRuntime::get_time().unwrap();
     assert!(timestamp.as_i32_saturating() >= 0);
+    let timestamp_i64 = NeoRuntime::get_time_i64().unwrap();
+    assert!(timestamp_i64 >= 0);
 
     let network = NeoRuntime::get_network().unwrap();
     assert!(network.as_i32_saturating() >= 0);
@@ -47,6 +49,29 @@ fn runtime_script_hash_helpers_produce_bytes() {
     assert_eq!(calling.len(), 20);
     assert_eq!(entry.len(), 20);
     assert_eq!(executing.len(), 20);
+}
+
+#[test]
+fn runtime_script_hash_i64_helpers_use_hash160_prefix() {
+    let _guard = setup_runtime_test();
+
+    let mut calling = [0u8; 20];
+    calling[..8].copy_from_slice(&123_i64.to_le_bytes());
+    let mut entry = [0u8; 20];
+    entry[..8].copy_from_slice(&(-45_i64).to_le_bytes());
+    let mut executing = [0u8; 20];
+    executing[..8].copy_from_slice(&987_i64.to_le_bytes());
+
+    NeoVMSyscall::set_active_script_hashes(
+        &NeoByteString::from_slice(&calling),
+        &NeoByteString::from_slice(&entry),
+        &NeoByteString::from_slice(&executing),
+    )
+    .unwrap();
+
+    assert_eq!(NeoRuntime::get_calling_script_hash_i64().unwrap(), 123);
+    assert_eq!(NeoRuntime::get_entry_script_hash_i64().unwrap(), -45);
+    assert_eq!(NeoRuntime::get_executing_script_hash_i64().unwrap(), 987);
 }
 
 #[test]
@@ -87,6 +112,48 @@ fn storage_operations_succeed_for_writable_context() {
 
     let iter = NeoStorage::find(&ctx, &key).unwrap();
     assert!(!iter.has_next());
+}
+
+#[test]
+fn raw_storage_empty_and_missing_read_as_zero_length() {
+    let _guard = setup_runtime_test();
+    RawStorage::put(b"empty", b"");
+
+    let mut empty = [];
+    assert_eq!(
+        RawStorage::get_into(b"empty", &mut empty),
+        RawStorageGet::Found(0)
+    );
+    assert_eq!(
+        RawStorage::get_into(b"missing", &mut empty),
+        RawStorageGet::Found(0)
+    );
+}
+
+#[test]
+fn raw_storage_i64_has_matches_neovm_zero_encoding() {
+    let _guard = setup_runtime_test();
+
+    RawStorage::put_i64_key(-7, 0);
+    assert_eq!(RawStorage::get_i64_key_or_zero(-7), 0);
+    assert!(RawStorage::has_i64_key(-7));
+
+    RawStorage::put_i64_key(-8, 1);
+    assert_eq!(RawStorage::get_i64_key_or_zero(-8), 1);
+    assert!(RawStorage::has_i64_key(-8));
+}
+
+#[test]
+fn raw_key_builder_rejects_overflow_without_mutating_existing_key() {
+    let mut key = RawKeyBuilder::<4>::new();
+    assert!(key.push_bytes(b"ab"));
+    assert!(!key.push_bytes(b"cdef"));
+    assert_eq!(key.as_slice(), b"ab");
+
+    assert!(key.push_byte(b'c'));
+    assert!(key.push_byte(b'd'));
+    assert!(!key.push_byte(b'e'));
+    assert_eq!(key.as_slice(), b"abcd");
 }
 
 #[test]

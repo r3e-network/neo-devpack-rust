@@ -14,6 +14,10 @@ impl NeoRuntime {
         NeoVMSyscall::get_time()
     }
 
+    pub fn get_time_i64() -> NeoResult<i64> {
+        NeoVMSyscall::get_time_i64()
+    }
+
     pub fn check_witness(account: &NeoByteString) -> NeoResult<NeoBoolean> {
         NeoVMSyscall::check_witness(account)
     }
@@ -28,6 +32,10 @@ impl NeoRuntime {
 
     pub fn notify(event: &NeoString, state: &NeoArray<NeoValue>) -> NeoResult<()> {
         NeoVMSyscall::notify(event, state)
+    }
+
+    pub fn notify_event(event: &str) -> NeoResult<()> {
+        NeoVMSyscall::notify_event(event)
     }
 
     pub fn log(message: &NeoString) -> NeoResult<()> {
@@ -66,12 +74,24 @@ impl NeoRuntime {
         NeoVMSyscall::get_calling_script_hash()
     }
 
+    pub fn get_calling_script_hash_i64() -> NeoResult<i64> {
+        NeoVMSyscall::get_calling_script_hash_i64()
+    }
+
     pub fn get_entry_script_hash() -> NeoResult<NeoByteString> {
         NeoVMSyscall::get_entry_script_hash()
     }
 
+    pub fn get_entry_script_hash_i64() -> NeoResult<i64> {
+        NeoVMSyscall::get_entry_script_hash_i64()
+    }
+
     pub fn get_executing_script_hash() -> NeoResult<NeoByteString> {
         NeoVMSyscall::get_executing_script_hash()
+    }
+
+    pub fn get_executing_script_hash_i64() -> NeoResult<i64> {
+        NeoVMSyscall::get_executing_script_hash_i64()
     }
 
     pub fn get_notifications(script_hash: Option<&NeoByteString>) -> NeoResult<NeoArray<NeoValue>> {

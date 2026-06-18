@@ -35,6 +35,18 @@ extern "C" {
 
     #[link_name = "neo_storage_get_into"]
     fn neo_storage_get_into(key_ptr: i32, key_len: i32, out_ptr: i32, out_cap: i32) -> i32;
+
+    #[link_name = "raw_storage_put_i64"]
+    fn neo_raw_storage_put_i64(key: i64, value: i64);
+
+    #[link_name = "raw_storage_get_i64"]
+    fn neo_raw_storage_get_i64(key: i64) -> i64;
+
+    #[link_name = "raw_storage_has_i64"]
+    fn neo_raw_storage_has_i64(key: i64) -> i32;
+
+    #[link_name = "raw_storage_delete_i64"]
+    fn neo_raw_storage_delete_i64(key: i64);
 }
 
 /// Storage convenience helpers built on top of the syscall layer.
@@ -92,11 +104,94 @@ pub enum RawStorageGet {
     /// Value was found and fully written into the caller buffer; the contained
     /// `usize` is the number of bytes written.
     Found(usize),
-    /// Key was not present in the contract's storage namespace.
+    /// The runtime explicitly reported a null/missing value. Neo N3 storage
+    /// commonly surfaces absent keys as an empty byte string instead, so
+    /// callers must not rely on this variant for existence checks.
     Missing,
     /// Value exists but is larger than the caller buffer; the contained
     /// `usize` is the byte length the caller must allocate before retrying.
     BufferTooSmall(usize),
+}
+
+/// Fixed-capacity stack key builder for `RawStorage` keys.
+///
+/// This keeps contract samples on a heap-free path while centralizing the
+/// small `copy_nonoverlapping` block that fixed key construction needs.
+/// Push methods return `false` when the requested write would exceed capacity;
+/// existing bytes are left unchanged in that case.
+pub struct RawKeyBuilder<const N: usize> {
+    buf: core::mem::MaybeUninit<[u8; N]>,
+    len: usize,
+}
+
+impl<const N: usize> RawKeyBuilder<N> {
+    #[inline(always)]
+    pub const fn new() -> Self {
+        Self {
+            buf: core::mem::MaybeUninit::uninit(),
+            len: 0,
+        }
+    }
+
+    #[inline(always)]
+    pub fn push_bytes(&mut self, bytes: &[u8]) -> bool {
+        if bytes.len() > N - self.len {
+            return false;
+        }
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                bytes.as_ptr(),
+                self.buf.as_mut_ptr().cast::<u8>().add(self.len),
+                bytes.len(),
+            );
+        }
+        self.len += bytes.len();
+        true
+    }
+
+    #[inline(always)]
+    pub fn push_i64_le(&mut self, value: i64) -> bool {
+        self.push_bytes(&value.to_le_bytes())
+    }
+
+    #[inline(always)]
+    pub fn push_byte(&mut self, value: u8) -> bool {
+        if self.len == N {
+            return false;
+        }
+        unsafe {
+            *self.buf.as_mut_ptr().cast::<u8>().add(self.len) = value;
+        }
+        self.len += 1;
+        true
+    }
+
+    #[inline(always)]
+    pub fn as_slice(&self) -> &[u8] {
+        debug_assert!(self.len <= N);
+        unsafe { core::slice::from_raw_parts(self.buf.as_ptr().cast::<u8>(), self.len) }
+    }
+
+    #[inline(always)]
+    pub fn clear(&mut self) {
+        self.len = 0;
+    }
+
+    #[inline(always)]
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    #[inline(always)]
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+}
+
+impl<const N: usize> Default for RawKeyBuilder<N> {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl RawStorage {
@@ -146,7 +241,8 @@ impl RawStorage {
     /// Returns one of:
     /// - [`RawStorageGet::Found`] with the byte count actually written into
     ///   `buf` when the key is present and the value fits.
-    /// - [`RawStorageGet::Missing`] when the key is not in storage.
+    /// - [`RawStorageGet::Missing`] only when the runtime explicitly reports
+    ///   null/missing; Neo N3 commonly returns zero bytes for absent keys.
     /// - [`RawStorageGet::BufferTooSmall`] with the value's true length when
     ///   `buf` cannot hold it; the value bytes are NOT copied in this case.
     pub fn get_into(key: &[u8], buf: &mut [u8]) -> RawStorageGet {
@@ -215,6 +311,61 @@ impl RawStorage {
     pub fn put_bool(key: &[u8], value: bool) {
         Self::put(key, &[value as u8]);
     }
+
+    /// Store an `i64` value under an `i64` key without touching wasm linear
+    /// memory. On wasm32 this lowers directly to `System.Storage.Put`.
+    pub fn put_i64_key(key: i64, value: i64) {
+        #[cfg(target_arch = "wasm32")]
+        unsafe {
+            neo_raw_storage_put_i64(key, value);
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        host_put_i64_key(key, value);
+    }
+
+    /// Read an `i64` value from an `i64` key. Missing keys return `0`.
+    pub fn get_i64_key_or_zero(key: i64) -> i64 {
+        #[cfg(target_arch = "wasm32")]
+        unsafe {
+            neo_raw_storage_get_i64(key)
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            host_get_i64_key(key).unwrap_or(0)
+        }
+    }
+
+    /// Check whether an `i64` key has a stored integer value.
+    ///
+    /// Neo Express surfaces absent direct keys as empty bytes. The translator
+    /// therefore treats any non-empty `Storage.Get` result as present.
+    pub fn has_i64_key(key: i64) -> bool {
+        #[cfg(target_arch = "wasm32")]
+        unsafe {
+            neo_raw_storage_has_i64(key) != 0
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            host_has_i64_key(key)
+        }
+    }
+
+    /// Delete an `i64` key without touching wasm linear memory.
+    pub fn delete_i64_key(key: i64) {
+        #[cfg(target_arch = "wasm32")]
+        unsafe {
+            neo_raw_storage_delete_i64(key);
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let ctx = match NeoVMSyscall::storage_get_context() {
+                Ok(c) => c,
+                Err(_) => return,
+            };
+            let key_bytes = neovm_i64_bytes(key);
+            let _ = NeoVMSyscall::storage_delete(&ctx, &NeoByteString::from_slice(&key_bytes));
+        }
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -223,18 +374,90 @@ fn host_get_into(key: &[u8], buf: &mut [u8]) -> i32 {
         Ok(c) => c,
         Err(_) => return -1,
     };
-    let stored = match NeoVMSyscall::storage_get(&ctx, &NeoByteString::from_slice(key)) {
-        Ok(b) => b,
+    let stored = match NeoVMSyscall::storage_try_get(&ctx, &NeoByteString::from_slice(key)) {
+        Ok(Some(b)) => b,
+        Ok(None) => return 0,
         Err(_) => return -1,
     };
     let bytes = stored.as_slice();
-    if bytes.is_empty() {
-        return -1;
-    }
     if bytes.len() > buf.len() {
         return -(bytes.len() as i32);
     }
     let len = bytes.len();
     buf[..len].copy_from_slice(bytes);
     len as i32
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn host_put_i64_key(key: i64, value: i64) {
+    let ctx = match NeoVMSyscall::storage_get_context() {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+    let key_bytes = neovm_i64_bytes(key);
+    let value_bytes = neovm_i64_bytes(value);
+    let _ = NeoVMSyscall::storage_put(
+        &ctx,
+        &NeoByteString::from_slice(&key_bytes),
+        &NeoByteString::from_slice(&value_bytes),
+    );
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn host_get_i64_key(key: i64) -> Option<i64> {
+    let ctx = NeoVMSyscall::storage_get_context().ok()?;
+    let key_bytes = neovm_i64_bytes(key);
+    let stored = NeoVMSyscall::storage_try_get(&ctx, &NeoByteString::from_slice(&key_bytes))
+        .ok()
+        .flatten()?;
+    storage_bytes_to_i64(stored.as_slice())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn host_has_i64_key(key: i64) -> bool {
+    let ctx = match NeoVMSyscall::storage_get_context() {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+    let key_bytes = neovm_i64_bytes(key);
+    NeoVMSyscall::storage_try_get(&ctx, &NeoByteString::from_slice(&key_bytes))
+        .ok()
+        .flatten()
+        .map(|stored| !stored.as_slice().is_empty())
+        .unwrap_or(false)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn neovm_i64_bytes(value: i64) -> Vec<u8> {
+    if value == 0 {
+        return vec![0];
+    }
+
+    let mut bytes = value.to_le_bytes().to_vec();
+    while bytes.len() > 1 {
+        let last = *bytes.last().unwrap_or(&0);
+        let prev = bytes[bytes.len() - 2];
+        let redundant_positive = last == 0x00 && (prev & 0x80) == 0;
+        let redundant_negative = last == 0xff && (prev & 0x80) != 0;
+        if redundant_positive || redundant_negative {
+            bytes.pop();
+        } else {
+            break;
+        }
+    }
+    bytes
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn storage_bytes_to_i64(bytes: &[u8]) -> Option<i64> {
+    match bytes.len() {
+        0 => None,
+        1..=8 => {
+            let sign_extend = bytes.last().copied().unwrap_or(0) & 0x80 != 0;
+            let mut buf = if sign_extend { [0xff; 8] } else { [0u8; 8] };
+            buf[..bytes.len()].copy_from_slice(bytes);
+            Some(i64::from_le_bytes(buf))
+        }
+        _ => None,
+    }
 }

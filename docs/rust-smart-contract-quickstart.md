@@ -22,18 +22,29 @@ The repository includes a ready-to-build example contract in `contracts/hello-wo
 ```rust
 use neo_devpack::prelude::*;
 
-neo_manifest_overlay!(r#"{
+neo_manifest_overlay!(
+    r#"{
     "name": "HelloWorld"
-}"#);
+}"#
+);
 
-#[neo_safe]
-#[no_mangle]
-pub extern "C" fn hello() -> i64 {
-    42
+#[neo_contract]
+pub struct HelloWorldContract;
+
+#[neo_contract]
+impl HelloWorldContract {
+    pub fn new() -> Self {
+        Self
+    }
+
+    #[neo_method(safe)]
+    pub fn hello() -> i64 {
+        42
+    }
 }
 ```
 
-The `#[neo_safe]` attribute marks the exported function safe in the manifest so it can be invoked by other contracts without additional CLI arguments. Feature flags such as `storage` and `payable` are inferred from the translated module, so simple overlays only need to declare metadata you actually want to override.
+The `#[neo_method(safe)]` attribute marks the generated ABI method safe in the manifest so it can be invoked by other contracts without additional CLI arguments. Feature flags such as `storage` and `payable` are inferred from the translated module, so simple overlays only need to declare metadata you actually want to override.
 Any overlay fragments (from `neo_manifest_overlay!` or external files) must reference real exports—if a fragment introduces a method name the Wasm module does not actually export, the translator now fails so the manifest always matches the NEF script. Refer to [`docs/manifest-overlay-guide.md`](manifest-overlay-guide.md) for a full template and CLI tooling notes.
 
 ## 3. Build the Wasm Artifact
@@ -65,7 +76,7 @@ cargo run --manifest-path wasm-neovm/Cargo.toml -- \
 
 - `--nef` and `--manifest` control the output paths.
 - `--name` sets the contract name within the manifest.
-- Safe methods are declared inside the contract via the `#[neo_safe]` attribute
+- Safe methods are declared inside the contract via the `#[neo_method(safe)]` attribute
   (see the sample code above) so no additional CLI flags are required.
 
 The command emits two files:
@@ -91,19 +102,19 @@ The generated artefacts are placed in the `build/` directory. Run `make clean` t
 
 Two richer samples are provided under the `contracts/` directory:
 
-1. **NEP-17 micro token (`contracts/nep17-token`)** – a compact NEP-17-shaped sample with fixed balances and witness-gated `init`/`transfer` validation. It exposes `init`, `totalSupply`, `balanceOf`, and `transfer` exports. View methods mark themselves safe via the `#[neo_safe]` attribute. Build and translate it the same way:
+1. **NEP-17 micro token (`contracts/nep17-token`)** – a compact NEP-17-shaped sample with fixed balances and witness-gated `init`/`transfer` validation. It exposes `init`, `totalSupply`, `balanceOf`, and `transfer` exports. View methods mark themselves safe via `#[neo_method(safe)]`. Build and translate it the same way:
 
    ```bash
    make nep17-token
    ```
 
-2. **Constant-product AMM (`contracts/constant-product`)** – a Uniswap-style swapper that keeps reserves in storage, charges a 0.3% swap fee, and validates the caller via `check_witness`. `getReserves` returns a packed 64-bit integer where the high 32-bits represent the X reserve and the low 32-bits represent the Y reserve. Query methods (`getReserves`, `quote`) carry `#[neo_safe]` metadata.
+2. **Constant-product AMM (`contracts/constant-product`)** – a Uniswap-style swapper that keeps reserves in storage, charges a 0.3% swap fee, and validates the caller via `check_witness`. `getReserves` returns a packed 64-bit integer where the high 32-bits represent the X reserve and the low 32-bits represent the Y reserve. Query methods (`getReserves`, `quote`) carry `#[neo_method(safe)]` metadata.
 
    ```bash
    make constant-product
    ```
 
-3. **NEP-11 NFT (`contracts/nep11-nft`)** – illustrates minting, ownership tracking, balances, and transfers for individual tokens. The view methods (`totalSupply`, `balanceOf`, `ownerOf`) are safe by virtue of `#[neo_safe]`.
+3. **NEP-11 NFT (`contracts/nep11-nft`)** – illustrates minting, ownership tracking, balances, and transfers for individual tokens. The view methods (`totalSupply`, `balanceOf`, `ownerOf`) are safe by virtue of `#[neo_method(safe)]`.
 
    ```bash
    make nep11-nft

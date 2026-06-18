@@ -151,9 +151,21 @@ impl From<NeoInteger> for NeoValue {
     }
 }
 
+impl From<i64> for NeoValue {
+    fn from(value: i64) -> Self {
+        NeoValue::Integer(NeoInteger::new(value))
+    }
+}
+
 impl From<NeoBoolean> for NeoValue {
     fn from(value: NeoBoolean) -> Self {
         NeoValue::Boolean(value)
+    }
+}
+
+impl From<bool> for NeoValue {
+    fn from(value: bool) -> Self {
+        NeoValue::Boolean(NeoBoolean::new(value))
     }
 }
 

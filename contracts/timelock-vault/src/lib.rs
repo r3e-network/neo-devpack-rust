@@ -9,55 +9,40 @@ neo_manifest_overlay!(
 }"#
 );
 
-// Storage keys
-const VAULT_PREFIX: &[u8] = b"vault:";
-const BENEFICIARY_SUFFIX: &[u8] = b":ben";
-const AMOUNT_SUFFIX: &[u8] = b":amt";
-const UNLOCK_SUFFIX: &[u8] = b":unlock";
-const RELEASED_SUFFIX: &[u8] = b":released";
-const VAULT_COUNTER_KEY: &[u8] = b"vault:counter";
+const KEY_COUNTER: i64 = -1;
+const KEY_STRIDE: i64 = 16;
+const FIELD_BENEFICIARY: i64 = 1;
+const FIELD_AMOUNT: i64 = 2;
+const FIELD_UNLOCK: i64 = 3;
+const FIELD_RELEASED: i64 = 4;
 
-fn vault_key(id: i64, suffix: &[u8]) -> Vec<u8> {
-    let mut key = VAULT_PREFIX.to_vec();
-    key.extend_from_slice(&id.to_le_bytes());
-    key.extend_from_slice(suffix);
-    key
+fn vault_key(id: i64, field: i64) -> i64 {
+    id * KEY_STRIDE + field
 }
 
-fn storage_put_i64(ctx: &NeoStorageContext, key: &[u8], value: i64) -> bool {
-    NeoStorage::put(
-        ctx,
-        &NeoByteString::from_slice(key),
-        &NeoByteString::from_slice(&value.to_le_bytes()),
-    )
-    .is_ok()
+fn storage_put_i64(key: i64, value: i64) -> bool {
+    RawStorage::put_i64_key(key, value);
+    true
 }
 
-fn storage_get_i64(ctx: &NeoStorageContext, key: &[u8]) -> Option<i64> {
-    let data = NeoStorage::get(ctx, &NeoByteString::from_slice(key)).ok()?;
-    if data.len() != 8 {
-        return None;
-    }
-    let s = data.as_slice();
-    let mut buf = [0u8; 8];
-    buf.copy_from_slice(s);
-    Some(i64::from_le_bytes(buf))
+fn storage_get_i64(key: i64) -> i64 {
+    RawStorage::get_i64_key_or_zero(key)
 }
 
 // Events
 #[neo_event]
 pub struct VaultQueued {
-    pub vault_id: NeoInteger,
-    pub beneficiary: NeoInteger,
-    pub amount: NeoInteger,
-    pub unlock_time: NeoInteger,
+    pub vault_id: i64,
+    pub beneficiary: i64,
+    pub amount: i64,
+    pub unlock_time: i64,
 }
 
 #[neo_event]
 pub struct VaultReleased {
-    pub vault_id: NeoInteger,
-    pub beneficiary: NeoInteger,
-    pub amount: NeoInteger,
+    pub vault_id: i64,
+    pub beneficiary: i64,
+    pub amount: i64,
 }
 
 #[neo_contract]
@@ -79,21 +64,20 @@ impl TimelockVaultContract {
         if amount <= 0 || unlock_time <= 0 || caller_id == 0 || beneficiary_id == 0 {
             return false;
         }
-        let ctx = match NeoStorage::get_context().ok() {
-            Some(c) => c,
-            None => return false,
+        let id = match storage_get_i64(KEY_COUNTER).checked_add(1) {
+            Some(next) if next > 0 && next <= i64::MAX / KEY_STRIDE => next,
+            _ => return false,
         };
-        let id = storage_get_i64(&ctx, VAULT_COUNTER_KEY).unwrap_or(0) + 1;
-        storage_put_i64(&ctx, VAULT_COUNTER_KEY, id);
-        storage_put_i64(&ctx, &vault_key(id, BENEFICIARY_SUFFIX), beneficiary_id);
-        storage_put_i64(&ctx, &vault_key(id, AMOUNT_SUFFIX), amount);
-        storage_put_i64(&ctx, &vault_key(id, UNLOCK_SUFFIX), unlock_time);
-        storage_put_i64(&ctx, &vault_key(id, RELEASED_SUFFIX), 0);
+        storage_put_i64(KEY_COUNTER, id);
+        storage_put_i64(vault_key(id, FIELD_BENEFICIARY), beneficiary_id);
+        storage_put_i64(vault_key(id, FIELD_AMOUNT), amount);
+        storage_put_i64(vault_key(id, FIELD_UNLOCK), unlock_time);
+        storage_put_i64(vault_key(id, FIELD_RELEASED), 0);
         let _ = (VaultQueued {
-            vault_id: NeoInteger::new(id),
-            beneficiary: NeoInteger::new(beneficiary_id),
-            amount: NeoInteger::new(amount),
-            unlock_time: NeoInteger::new(unlock_time),
+            vault_id: id,
+            beneficiary: beneficiary_id,
+            amount,
+            unlock_time,
         })
         .emit();
         true
@@ -109,28 +93,27 @@ impl TimelockVaultContract {
         if vault_id <= 0 || caller_id == 0 {
             return false;
         }
-        let ctx = match NeoStorage::get_context().ok() {
-            Some(c) => c,
-            None => return false,
-        };
-        let released = storage_get_i64(&ctx, &vault_key(vault_id, RELEASED_SUFFIX)).unwrap_or(1);
+        if vault_id > i64::MAX / KEY_STRIDE {
+            return false;
+        }
+        let released = storage_get_i64(vault_key(vault_id, FIELD_RELEASED));
         if released != 0 {
             return false;
         }
-        let unlock_time = match storage_get_i64(&ctx, &vault_key(vault_id, UNLOCK_SUFFIX)) {
-            Some(t) => t,
-            None => return false,
-        };
+        let unlock_time = storage_get_i64(vault_key(vault_id, FIELD_UNLOCK));
+        if unlock_time == 0 {
+            return false;
+        }
         if current_time < unlock_time {
             return false;
         }
-        let amount = storage_get_i64(&ctx, &vault_key(vault_id, AMOUNT_SUFFIX)).unwrap_or(0);
-        let beneficiary_id = storage_get_i64(&ctx, &vault_key(vault_id, BENEFICIARY_SUFFIX)).unwrap_or(0);
-        storage_put_i64(&ctx, &vault_key(vault_id, RELEASED_SUFFIX), 1);
+        let amount = storage_get_i64(vault_key(vault_id, FIELD_AMOUNT));
+        let beneficiary_id = storage_get_i64(vault_key(vault_id, FIELD_BENEFICIARY));
+        storage_put_i64(vault_key(vault_id, FIELD_RELEASED), 1);
         let _ = (VaultReleased {
-            vault_id: NeoInteger::new(vault_id),
-            beneficiary: NeoInteger::new(beneficiary_id),
-            amount: NeoInteger::new(amount),
+            vault_id,
+            beneficiary: beneficiary_id,
+            amount,
         })
         .emit();
         true

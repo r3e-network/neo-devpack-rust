@@ -1,6 +1,6 @@
 [package]
 name = "neo-solana-compat"
-version = "0.1.0"
+version = "0.1.1"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
@@ -18,7 +18,7 @@ no-entrypoint = []
 
 [dependencies]
 tiny-keccak = { version = "2", default-features = false, features = ["keccak"] }
-sha2 = "0.10"
+sha2 = { version = "0.10", default-features = false }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 # No external deps for wasm - we provide everything

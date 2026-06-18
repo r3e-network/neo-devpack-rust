@@ -162,18 +162,23 @@ fn translate_neo_runtime_log() {
     let wasm = wat::parse_str(
         r#"(module
               (import "neo" "log" (func $log (param i32 i32)))
-              (func (export "test")
-                i32.const 0
-                i32.const 0
+              (memory 1)
+              (func (export "test") (param i32 i32)
+                local.get 0
+                local.get 1
                 call $log))"#,
     )
     .expect("valid wat");
 
     let translation = translate_module(&wasm, "RuntimeLog").expect("translation succeeds");
 
-    // Runtime.Log syscall
     let syscall = wasm_neovm::opcodes::lookup("SYSCALL").unwrap().byte;
+    let substr = wasm_neovm::opcodes::lookup("SUBSTR").unwrap().byte;
     assert!(translation.script.contains(&syscall));
+    assert!(
+        translation.script.contains(&substr),
+        "runtime log pointer/length import should marshal bytes from linear memory"
+    );
 }
 
 #[test]
@@ -181,18 +186,28 @@ fn translate_neo_runtime_notify() {
     let wasm = wat::parse_str(
         r#"(module
               (import "neo" "notify" (func $notify (param i32 i32)))
-              (func (export "test")
-                i32.const 0
-                i32.const 0
+              (memory 1)
+              (func (export "test") (param i32 i32)
+                local.get 0
+                local.get 1
                 call $notify))"#,
     )
     .expect("valid wat");
 
     let translation = translate_module(&wasm, "RuntimeNotify").expect("translation succeeds");
 
-    // Runtime.Notify syscall
     let syscall = wasm_neovm::opcodes::lookup("SYSCALL").unwrap().byte;
+    let substr = wasm_neovm::opcodes::lookup("SUBSTR").unwrap().byte;
+    let newarray0 = wasm_neovm::opcodes::lookup("NEWARRAY0").unwrap().byte;
     assert!(translation.script.contains(&syscall));
+    assert!(
+        translation.script.contains(&substr),
+        "runtime notify pointer/length import should marshal the event name from linear memory"
+    );
+    assert!(
+        translation.script.contains(&newarray0),
+        "runtime notify pointer/length import should provide an empty state array"
+    );
 }
 
 #[test]
@@ -210,6 +225,26 @@ fn translate_neo_runtime_get_time() {
     // Runtime.GetTime syscall
     let syscall = wasm_neovm::opcodes::lookup("SYSCALL").unwrap().byte;
     assert!(translation.script.contains(&syscall));
+}
+
+#[test]
+fn translate_neo_runtime_get_calling_script_hash_i64() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (import "neo" "runtime_get_calling_script_hash_i64" (func $calling (result i64)))
+              (func (export "test") (result i64)
+                call $calling))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "CallingHashI64").expect("translation succeeds");
+
+    let syscall = wasm_neovm::opcodes::lookup("SYSCALL").unwrap().byte;
+    let substr = wasm_neovm::opcodes::lookup("SUBSTR").unwrap().byte;
+    let convert = wasm_neovm::opcodes::lookup("CONVERT").unwrap().byte;
+    assert!(translation.script.contains(&syscall));
+    assert!(translation.script.contains(&substr));
+    assert!(translation.script.contains(&convert));
 }
 
 #[test]

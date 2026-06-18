@@ -25,8 +25,8 @@ clap = { version = "4.5", features = ["derive"] }
 
 # Neo N3 dependencies (CRATES.IO VERSIONS)
 # These versions will be updated when new versions are published
-neo-types = "0.1"
-neo-syscalls = "0.1"
-neo-runtime = "0.1"
-neo-macros = "0.1"
-neo-devpack = "0.1"
+neo-types = "0.1.1"
+neo-syscalls = "0.1.1"
+neo-runtime = "0.1.1"
+neo-macros = "0.1.1"
+neo-devpack = "0.1.1"

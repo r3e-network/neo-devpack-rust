@@ -18,6 +18,16 @@ pub(in super::super) fn try_handle_neo_import(
         return Ok(Some(descriptor));
     }
 
+    if let Some(descriptor) =
+        try_handle_runtime_event_import(import, func_type, params, runtime, script)?
+    {
+        return Ok(Some(descriptor));
+    }
+
+    if let Some(descriptor) = try_handle_runtime_hash_i64_import(import, func_type, script)? {
+        return Ok(Some(descriptor));
+    }
+
     let is_witness_bytes = import
         .name
         .eq_ignore_ascii_case("runtime_check_witness_bytes");
@@ -118,6 +128,145 @@ pub(in super::super) fn try_handle_neo_import(
     Ok(Some(syscall.name))
 }
 
+fn try_handle_runtime_hash_i64_import(
+    import: &FunctionImport,
+    func_type: &FuncType,
+    script: &mut Vec<u8>,
+) -> Result<Option<&'static str>> {
+    let descriptor = if import
+        .name
+        .eq_ignore_ascii_case("runtime_get_calling_script_hash_i64")
+    {
+        "System.Runtime.GetCallingScriptHash"
+    } else if import
+        .name
+        .eq_ignore_ascii_case("runtime_get_entry_script_hash_i64")
+    {
+        "System.Runtime.GetEntryScriptHash"
+    } else if import
+        .name
+        .eq_ignore_ascii_case("runtime_get_executing_script_hash_i64")
+    {
+        "System.Runtime.GetExecutingScriptHash"
+    } else {
+        return Ok(None);
+    };
+
+    if !func_type.params().is_empty() {
+        bail!(
+            "neo import '{}::{}' must not take parameters",
+            import.module,
+            import.name
+        );
+    }
+    if func_type.results() != [ValType::I64] {
+        bail!(
+            "neo import '{}::{}' must return a single i64",
+            import.module,
+            import.name
+        );
+    }
+
+    emit_descriptor_syscall(descriptor, script)?;
+    script.push(lookup_opcode("PUSH0")?.byte);
+    script.push(lookup_opcode("PUSH8")?.byte);
+    script.push(lookup_opcode("SUBSTR")?.byte);
+
+    let convert =
+        opcodes::lookup("CONVERT").ok_or_else(|| anyhow!("CONVERT opcode metadata missing"))?;
+    if convert.operand_size != 1 || convert.operand_size_prefix != 0 {
+        bail!("unexpected CONVERT operand metadata");
+    }
+    const STACKITEM_TYPE_INTEGER: u8 = 0x21;
+    script.push(convert.byte);
+    script.push(STACKITEM_TYPE_INTEGER);
+
+    let syscall = syscalls::lookup_extended(descriptor)
+        .ok_or_else(|| anyhow!("syscall '{}' not found", descriptor))?;
+    Ok(Some(syscall.name))
+}
+
+fn try_handle_runtime_event_import(
+    import: &FunctionImport,
+    func_type: &FuncType,
+    params: &[StackValue],
+    runtime: &mut RuntimeHelpers,
+    script: &mut Vec<u8>,
+) -> Result<Option<&'static str>> {
+    let descriptor = if import.name.eq_ignore_ascii_case("log")
+        || import.name.eq_ignore_ascii_case("runtime_log")
+    {
+        "System.Runtime.Log"
+    } else if import.name.eq_ignore_ascii_case("notify")
+        || import.name.eq_ignore_ascii_case("runtime_notify")
+    {
+        "System.Runtime.Notify"
+    } else {
+        return Ok(None);
+    };
+
+    if func_type.params() != [ValType::I32, ValType::I32] {
+        bail!(
+            "neo import '{}::{}' expects i32 pointer and i32 length parameters",
+            import.module,
+            import.name
+        );
+    }
+    if !func_type.results().is_empty() {
+        bail!(
+            "neo import '{}::{}' must not return a value",
+            import.module,
+            import.name
+        );
+    }
+
+    emit_memory_bytes_argument(params, runtime, script)?;
+    if descriptor == "System.Runtime.Notify" {
+        script.push(lookup_opcode("NEWARRAY0")?.byte);
+    }
+
+    let syscall = syscalls::lookup_extended(descriptor)
+        .ok_or_else(|| anyhow!("syscall '{}' not found", descriptor))?;
+    let syscall_op =
+        opcodes::lookup("SYSCALL").ok_or_else(|| anyhow!("SYSCALL opcode metadata missing"))?;
+    if syscall_op.operand_size != 4 || syscall_op.operand_size_prefix != 0 {
+        bail!("unexpected SYSCALL operand metadata");
+    }
+    script.push(syscall_op.byte);
+    script.extend_from_slice(&syscall.hash.to_le_bytes());
+    Ok(Some(syscall.name))
+}
+
+fn emit_memory_bytes_argument(
+    params: &[StackValue],
+    runtime: &mut RuntimeHelpers,
+    script: &mut Vec<u8>,
+) -> Result<()> {
+    let embedded_static_bytes = params
+        .first()
+        .and_then(|param| param.const_value)
+        .zip(params.get(1).and_then(|param| param.const_value))
+        .and_then(|(ptr, len)| {
+            let ptr = usize::try_from(ptr).ok()?;
+            let len = usize::try_from(len).ok()?;
+            runtime.active_data_slice(ptr, len)
+        });
+
+    if let Some(bytes) = embedded_static_bytes {
+        emit_push_data(script, bytes)?;
+    } else {
+        ensure_memory_access(runtime, 0)?;
+        runtime.emit_memory_init_call(script)?;
+
+        script.push(lookup_opcode("LDSFLD0")?.byte);
+        script.push(lookup_opcode("REVERSE3")?.byte);
+        script.push(lookup_opcode("SWAP")?.byte);
+        script.push(lookup_opcode("SUBSTR")?.byte);
+    }
+
+    Ok(())
+}
+
 pub(super) fn emit_syscall_call(
     import: &FunctionImport,
     script: &mut Vec<u8>,
@@ -164,6 +313,12 @@ fn try_handle_storage_import(
     runtime: &mut RuntimeHelpers,
     script: &mut Vec<u8>,
 ) -> Result<Option<&'static str>> {
+    if let Some(descriptor) =
+        try_handle_direct_i64_storage_import(import, func_type, runtime, script)?
+    {
+        return Ok(Some(descriptor));
+    }
+
     let (helper_kind, descriptor, expected_params) = match import.name.as_str() {
         "neo_storage_put_bytes" => (
             crate::translator::runtime::StorageHelperKind::PutBytes,
@@ -207,6 +362,101 @@ fn try_handle_storage_import(
     runtime.emit_memory_init_call(script)?;
     runtime.emit_storage_helper(script, helper_kind)?;
     Ok(Some(descriptor))
+}
+
+fn try_handle_direct_i64_storage_import(
+    import: &FunctionImport,
+    func_type: &FuncType,
+    runtime: &mut RuntimeHelpers,
+    script: &mut Vec<u8>,
+) -> Result<Option<&'static str>> {
+    match import.name.as_str() {
+        "raw_storage_put_i64" => {
+            if func_type.params() != [ValType::I64, ValType::I64] {
+                bail!(
+                    "neo import '{}::{}' expects (i64 key, i64 value)",
+                    import.module,
+                    import.name
+                );
+            }
+            if !func_type.results().is_empty() {
+                bail!(
+                    "neo import '{}::{}' must not return a value",
+                    import.module,
+                    import.name
+                );
+            }
+            runtime.emit_storage_helper(
+                script,
+                crate::translator::runtime::StorageHelperKind::PutI64,
+            )?;
+            Ok(Some("System.Storage.Put"))
+        }
+        "raw_storage_get_i64" => {
+            if func_type.params() != [ValType::I64] {
+                bail!(
+                    "neo import '{}::{}' expects a single i64 key",
+                    import.module,
+                    import.name
+                );
+            }
+            if func_type.results() != [ValType::I64] {
+                bail!(
+                    "neo import '{}::{}' must return a single i64",
+                    import.module,
+                    import.name
+                );
+            }
+            runtime.emit_storage_helper(
+                script,
+                crate::translator::runtime::StorageHelperKind::GetI64,
+            )?;
+            Ok(Some("System.Storage.Get"))
+        }
+        "raw_storage_has_i64" => {
+            if func_type.params() != [ValType::I64] {
+                bail!(
+                    "neo import '{}::{}' expects a single i64 key",
+                    import.module,
+                    import.name
+                );
+            }
+            if func_type.results() != [ValType::I32] {
+                bail!(
+                    "neo import '{}::{}' must return a single i32",
+                    import.module,
+                    import.name
+                );
+            }
+            runtime.emit_storage_helper(
+                script,
+                crate::translator::runtime::StorageHelperKind::HasI64,
+            )?;
+            Ok(Some("System.Storage.Get"))
+        }
+        "raw_storage_delete_i64" => {
+            if func_type.params() != [ValType::I64] {
+                bail!(
+                    "neo import '{}::{}' expects a single i64 key",
+                    import.module,
+                    import.name
+                );
+            }
+            if !func_type.results().is_empty() {
+                bail!(
+                    "neo import '{}::{}' must not return a value",
+                    import.module,
+                    import.name
+                );
+            }
+            runtime.emit_storage_helper(
+                script,
+                crate::translator::runtime::StorageHelperKind::DeleteI64,
+            )?;
+            Ok(Some("System.Storage.Delete"))
+        }
+        _ => Ok(None),
+    }
 }
 
 pub(super) fn emit_neo_syscall(

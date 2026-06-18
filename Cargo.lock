@@ -626,9 +626,8 @@ dependencies = [
 
 [[package]]
 name = "neo-devpack"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
- "anyhow",
  "criterion",
  "neo-macros",
  "neo-runtime",
@@ -637,12 +636,11 @@ dependencies = [
  "postcard",
  "serde",
  "serde_json",
- "thiserror 1.0.69",
 ]
 
 [[package]]
 name = "neo-macros"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "neo-runtime",
  "neo-syscalls",
@@ -656,13 +654,12 @@ dependencies = [
 
 [[package]]
 name = "neo-runtime"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "neo-syscalls",
  "neo-types",
  "num-bigint",
  "ripemd",
- "serde",
  "serde_json",
  "sha2",
  "tiny-keccak",
@@ -670,7 +667,7 @@ dependencies = [
 
 [[package]]
 name = "neo-solana-compat"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "sha2",
  "tiny-keccak",
@@ -678,7 +675,7 @@ dependencies = [
 
 [[package]]
 name = "neo-syscalls"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "neo-types",
  "once_cell",
@@ -697,13 +694,11 @@ dependencies = [
 
 [[package]]
 name = "neo-types"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
- "anyhow",
  "num-bigint",
  "num-traits",
  "serde",
- "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -1354,7 +1349,7 @@ dependencies = [
 
 [[package]]
 name = "wasm-neovm"
-version = "0.5.6"
+version = "0.5.7"
 dependencies = [
  "anyhow",
  "assert_cmd",

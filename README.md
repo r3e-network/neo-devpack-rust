@@ -22,6 +22,7 @@ Rust contract (neo-devpack) ──cargo build --target wasm32-unknown-unknown─
 | Resource                                                       | Description                                           |
 | -------------------------------------------------------------- | ----------------------------------------------------- |
 | [📖 Quick Start Guide](docs/rust-smart-contract-quickstart.md) | Step-by-step tutorial for writing your first contract |
+| [🧭 System Guide](docs/rust-neo-n3-system-guide.md)            | End-to-end Rust contract architecture, optimization, validation, and troubleshooting |
 | [📋 Contract Examples](contracts/)                             | 17 bundled contract examples and samples              |
 | [🔧 API Documentation](https://docs.rs/wasm-neovm)             | Rust API docs for wasm-neovm                          |
 | [🧩 Manifest Overlays](docs/manifest-overlay-guide.md)         | Overlay JSON, macros, and `translate_with_config`     |
@@ -170,7 +171,7 @@ See [`docs/CROSS_CHAIN_SPEC.md`](docs/CROSS_CHAIN_SPEC.md) for the full technica
 
    The Rust helper compiles the crate for `wasm32-unknown-unknown` (release mode) and then runs the translator to produce `hello_world.nef` and `hello_world.manifest.json` next to the `.wasm` artefact.  
    The C helper wraps `clang --target wasm32-unknown-unknown` (with `-nostdlib`/`-fno-builtin` to avoid `env::` imports) and writes the Wasm/NEF/manifest trio into `contracts/c-hello/build/`.
-   Append additional translator flags after the optional contract name if needed. Safe methods are typically declared inside the contract (via `#[neo_safe]`) so no CLI flags are required for that metadata.
+   Append additional translator flags after the optional contract name if needed. Safe methods are typically declared inside the contract (via `#[neo_method(safe)]`) so no CLI flags are required for that metadata.
 
 3. Alternatively, run the translator manually:
 
@@ -187,7 +188,7 @@ See [`docs/CROSS_CHAIN_SPEC.md`](docs/CROSS_CHAIN_SPEC.md) for the full technica
      --compare-manifest contracts/hello-world/expected.manifest.json
    ```
 
-The checked-in hello-world sample files under `contracts/hello-world/` provide a real overlay/baseline pair for this command. Supply `--manifest-overlay <file>` to merge additional JSON metadata when needed. Overlay entries must reference exports that actually exist in the Wasm module—the translator now errors if an overlay adds or removes ABI methods. Use the `#[neo_safe]` attribute (or manifest overlays) inside your contract to declare safe methods.
+The checked-in hello-world sample files under `contracts/hello-world/` provide a real overlay/baseline pair for this command. Supply `--manifest-overlay <file>` to merge additional JSON metadata when needed. Overlay entries must reference exports that actually exist in the Wasm module—the translator now errors if an overlay adds or removes ABI methods. Use `#[neo_method(safe)]` or manifest overlays inside your contract to declare safe methods.
 
 Use `--compare-manifest <file>` to assert that the generated manifest matches a checked-in reference; any difference aborts the translation after printing a unified diff.
 
@@ -381,6 +382,7 @@ Unsupported instructions (floating-point, reference types beyond funcref, and mu
 │   └── workflows/        # CI/CD configuration (tests, clippy, security audit)
 ├── docs/                 # Technical documentation
 │   ├── CROSS_CHAIN_SPEC.md           # Cross-chain compilation specification
+│   ├── rust-neo-n3-system-guide.md   # End-to-end Rust contract system guide
 │   ├── wasm-pipeline.md              # WebAssembly translation pipeline
 │   ├── nef-format-specification.md   # NEF container format
 │   ├── rust-smart-contract-quickstart.md  # Contract development guide
@@ -393,7 +395,7 @@ Unsupported instructions (floating-point, reference types beyond funcref, and mu
 │   ├── neo-runtime/      # Runtime stubs and syscall bindings
 │   ├── neo-syscalls/     # Low-level syscall definitions
 │   ├── neo-types/        # Neo type system (NeoInteger, NeoByteString, etc.)
-│   ├── neo-macros/       # Procedural macros (#[neo_event], #[neo_safe])
+│   ├── neo-macros/       # Procedural macros (#[neo_contract], #[neo_method], #[neo_event])
 │   └── examples/         # Example contract patterns
 ├── solana-compat/        # Solana compatibility layer (neo-solana-compat)
 │   ├── src/              # Pubkey, AccountInfo, ProgramError implementations
