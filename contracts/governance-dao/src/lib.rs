@@ -27,51 +27,28 @@ const P_YES: &[u8] = b":yes";
 const P_NO: &[u8] = b":no";
 const P_EXECUTED: &[u8] = b":executed";
 
-// --- Storage helpers ---
+// --- Storage helpers (heap-free via RawStorage) ---
 
-fn storage_ctx() -> Option<NeoStorageContext> {
-    NeoStorage::get_context().ok()
+fn put_i64(key: &[u8], value: i64) -> bool {
+    RawStorage::put_i64(key, value);
+    true
 }
 
-fn put_i64(ctx: &NeoStorageContext, key: &[u8], value: i64) -> bool {
-    NeoStorage::put(
-        ctx,
-        &NeoByteString::from_slice(key),
-        &NeoByteString::from_slice(&value.to_le_bytes()),
-    )
-    .is_ok()
+fn get_i64(key: &[u8]) -> Option<i64> {
+    RawStorage::get_i64(key)
 }
 
-fn get_i64(ctx: &NeoStorageContext, key: &[u8]) -> Option<i64> {
-    let data = NeoStorage::get(ctx, &NeoByteString::from_slice(key)).ok()?;
-    if data.len() != 8 {
-        return None;
-    }
-    let s = data.as_slice();
-    let mut buf = [0u8; 8];
-    buf.copy_from_slice(s);
-    Some(i64::from_le_bytes(buf))
+fn put_bool(key: &[u8], value: bool) -> bool {
+    RawStorage::put_bool(key, value);
+    true
 }
 
-fn put_bool(ctx: &NeoStorageContext, key: &[u8], value: bool) -> bool {
-    NeoStorage::put(
-        ctx,
-        &NeoByteString::from_slice(key),
-        &NeoByteString::from_slice(&[value as u8]),
-    )
-    .is_ok()
+fn get_bool(key: &[u8]) -> Option<bool> {
+    RawStorage::get_bool(key)
 }
 
-fn get_bool(ctx: &NeoStorageContext, key: &[u8]) -> Option<bool> {
-    let data = NeoStorage::get(ctx, &NeoByteString::from_slice(key)).ok()?;
-    if data.len() != 1 {
-        return None;
-    }
-    Some(data.as_slice()[0] != 0)
-}
-
-fn delete_key(ctx: &NeoStorageContext, key: &[u8]) {
-    let _ = NeoStorage::delete(ctx, &NeoByteString::from_slice(key));
+fn delete_key(key: &[u8]) {
+    RawStorage::delete(key);
 }
 
 // --- Key builders ---
@@ -99,38 +76,38 @@ fn vote_key(proposal_id: i64, voter_id: i64) -> Vec<u8> {
 
 // --- Config ---
 
-fn load_config_owner(ctx: &NeoStorageContext) -> Option<i64> {
-    get_i64(ctx, CONFIG_OWNER_KEY)
+fn load_config_owner() -> Option<i64> {
+    get_i64(CONFIG_OWNER_KEY)
 }
 
-fn load_config_token(ctx: &NeoStorageContext) -> Option<i64> {
-    get_i64(ctx, CONFIG_TOKEN_KEY)
+fn load_config_token() -> Option<i64> {
+    get_i64(CONFIG_TOKEN_KEY)
 }
 
-fn load_config_quorum(ctx: &NeoStorageContext) -> Option<i64> {
-    get_i64(ctx, CONFIG_QUORUM_KEY)
+fn load_config_quorum() -> Option<i64> {
+    get_i64(CONFIG_QUORUM_KEY)
 }
 
-fn config_exists(ctx: &NeoStorageContext) -> bool {
-    load_config_owner(ctx).is_some()
+fn config_exists() -> bool {
+    load_config_owner().is_some()
 }
 
-fn store_config(ctx: &NeoStorageContext, owner: i64, token: i64, quorum: i64) -> bool {
-    put_i64(ctx, CONFIG_OWNER_KEY, owner)
-        && put_i64(ctx, CONFIG_TOKEN_KEY, token)
-        && put_i64(ctx, CONFIG_QUORUM_KEY, quorum)
+fn store_config(owner: i64, token: i64, quorum: i64) -> bool {
+    put_i64(CONFIG_OWNER_KEY, owner)
+        && put_i64(CONFIG_TOKEN_KEY, token)
+        && put_i64(CONFIG_QUORUM_KEY, quorum)
 }
 
-fn load_stake(ctx: &NeoStorageContext, account_id: i64) -> i64 {
-    get_i64(ctx, &stake_key(account_id)).unwrap_or(0)
+fn load_stake(account_id: i64) -> i64 {
+    get_i64(&stake_key(account_id)).unwrap_or(0)
 }
 
-fn store_stake(ctx: &NeoStorageContext, account_id: i64, amount: i64) -> bool {
+fn store_stake(account_id: i64, amount: i64) -> bool {
     if amount == 0 {
-        delete_key(ctx, &stake_key(account_id));
+        delete_key(&stake_key(account_id));
         true
     } else {
-        put_i64(ctx, &stake_key(account_id), amount)
+        put_i64(&stake_key(account_id), amount)
     }
 }
 
@@ -146,23 +123,23 @@ struct ProposalData {
     executed: bool,
 }
 
-fn next_proposal_id(ctx: &NeoStorageContext) -> Option<i64> {
-    let current = get_i64(ctx, PROPOSAL_COUNTER_KEY).unwrap_or(0);
+fn next_proposal_id() -> Option<i64> {
+    let current = get_i64(PROPOSAL_COUNTER_KEY).unwrap_or(0);
     let next = current.checked_add(1)?;
-    if !put_i64(ctx, PROPOSAL_COUNTER_KEY, next) {
+    if !put_i64(PROPOSAL_COUNTER_KEY, next) {
         return None;
     }
     Some(next)
 }
 
-fn load_proposal(ctx: &NeoStorageContext, id: i64) -> Option<ProposalData> {
-    let proposer = get_i64(ctx, &proposal_key(id, P_PROPOSER))?;
-    let target = get_i64(ctx, &proposal_key(id, P_TARGET))?;
-    let method = get_i64(ctx, &proposal_key(id, P_METHOD)).unwrap_or(0);
-    let arg_data = get_i64(ctx, &proposal_key(id, P_ARGS)).unwrap_or(0);
-    let yes_votes = get_i64(ctx, &proposal_key(id, P_YES)).unwrap_or(0);
-    let no_votes = get_i64(ctx, &proposal_key(id, P_NO)).unwrap_or(0);
-    let executed = get_bool(ctx, &proposal_key(id, P_EXECUTED)).unwrap_or(false);
+fn load_proposal(id: i64) -> Option<ProposalData> {
+    let proposer = get_i64(&proposal_key(id, P_PROPOSER))?;
+    let target = get_i64(&proposal_key(id, P_TARGET))?;
+    let method = get_i64(&proposal_key(id, P_METHOD)).unwrap_or(0);
+    let arg_data = get_i64(&proposal_key(id, P_ARGS)).unwrap_or(0);
+    let yes_votes = get_i64(&proposal_key(id, P_YES)).unwrap_or(0);
+    let no_votes = get_i64(&proposal_key(id, P_NO)).unwrap_or(0);
+    let executed = get_bool(&proposal_key(id, P_EXECUTED)).unwrap_or(false);
     Some(ProposalData {
         proposer,
         target,
@@ -174,24 +151,24 @@ fn load_proposal(ctx: &NeoStorageContext, id: i64) -> Option<ProposalData> {
     })
 }
 
-fn store_proposal(ctx: &NeoStorageContext, id: i64, p: &ProposalData) -> bool {
-    put_i64(ctx, &proposal_key(id, P_PROPOSER), p.proposer)
-        && put_i64(ctx, &proposal_key(id, P_TARGET), p.target)
-        && put_i64(ctx, &proposal_key(id, P_METHOD), p.method)
-        && put_i64(ctx, &proposal_key(id, P_ARGS), p.arg_data)
-        && put_i64(ctx, &proposal_key(id, P_YES), p.yes_votes)
-        && put_i64(ctx, &proposal_key(id, P_NO), p.no_votes)
-        && put_bool(ctx, &proposal_key(id, P_EXECUTED), p.executed)
+fn store_proposal(id: i64, p: &ProposalData) -> bool {
+    put_i64(&proposal_key(id, P_PROPOSER), p.proposer)
+        && put_i64(&proposal_key(id, P_TARGET), p.target)
+        && put_i64(&proposal_key(id, P_METHOD), p.method)
+        && put_i64(&proposal_key(id, P_ARGS), p.arg_data)
+        && put_i64(&proposal_key(id, P_YES), p.yes_votes)
+        && put_i64(&proposal_key(id, P_NO), p.no_votes)
+        && put_bool(&proposal_key(id, P_EXECUTED), p.executed)
 }
 
 // --- Voting helpers ---
 
-fn has_voted(ctx: &NeoStorageContext, proposal_id: i64, voter_id: i64) -> bool {
-    get_bool(ctx, &vote_key(proposal_id, voter_id)).unwrap_or(false)
+fn has_voted(proposal_id: i64, voter_id: i64) -> bool {
+    get_bool(&vote_key(proposal_id, voter_id)).unwrap_or(false)
 }
 
-fn record_vote(ctx: &NeoStorageContext, proposal_id: i64, voter_id: i64) -> bool {
-    put_bool(ctx, &vote_key(proposal_id, voter_id), true)
+fn record_vote(proposal_id: i64, voter_id: i64) -> bool {
+    put_bool(&vote_key(proposal_id, voter_id), true)
 }
 
 fn execute_proposal_call(target: i64, method: i64, arg_data: i64) -> bool {
@@ -252,14 +229,10 @@ impl NeoGovernanceDaoContract {
         if quorum <= 0 || owner_id == 0 || token_id == 0 {
             return false;
         }
-        let ctx = match storage_ctx() {
-            Some(c) => c,
-            None => return false,
-        };
-        if config_exists(&ctx) {
+        if config_exists() {
             return false;
         }
-        store_config(&ctx, owner_id, token_id, quorum)
+        store_config(owner_id, token_id, quorum)
     }
 
     /// Create a governance proposal.
@@ -276,14 +249,10 @@ impl NeoGovernanceDaoContract {
         if end_time <= start_time || proposer_id == 0 || target_id == 0 {
             return false;
         }
-        let ctx = match storage_ctx() {
-            Some(c) => c,
-            None => return false,
-        };
-        if !config_exists(&ctx) {
+        if !config_exists() {
             return false;
         }
-        let id = match next_proposal_id(&ctx) {
+        let id = match next_proposal_id() {
             Some(i) => i,
             None => return false,
         };
@@ -296,7 +265,7 @@ impl NeoGovernanceDaoContract {
             no_votes: 0,
             executed: false,
         };
-        if !store_proposal(&ctx, id, &proposal) {
+        if !store_proposal(id, &proposal) {
             return false;
         }
         let _ = (ProposalCreatedEvt {
@@ -317,18 +286,14 @@ impl NeoGovernanceDaoContract {
         if weight <= 0 || !(0..=1).contains(&side) || voter_id == 0 {
             return false;
         }
-        let ctx = match storage_ctx() {
-            Some(c) => c,
-            None => return false,
-        };
-        if has_voted(&ctx, proposal_id, voter_id) {
+        if has_voted(proposal_id, voter_id) {
             return false;
         }
-        let stake = load_stake(&ctx, voter_id);
+        let stake = load_stake(voter_id);
         if stake <= 0 || weight > stake {
             return false;
         }
-        let mut proposal = match load_proposal(&ctx, proposal_id) {
+        let mut proposal = match load_proposal(proposal_id) {
             Some(p) => p,
             None => return false,
         };
@@ -347,10 +312,10 @@ impl NeoGovernanceDaoContract {
                 None => return false,
             };
         }
-        if !store_proposal(&ctx, proposal_id, &proposal) {
+        if !store_proposal(proposal_id, &proposal) {
             return false;
         }
-        if !record_vote(&ctx, proposal_id, voter_id) {
+        if !record_vote(proposal_id, voter_id) {
             return false;
         }
         let _ = (VoteCastEvt {
@@ -366,15 +331,11 @@ impl NeoGovernanceDaoContract {
     /// Execute a proposal if quorum is met and yes > no.
     #[neo_method]
     pub fn execute(proposal_id: i64) -> bool {
-        let ctx = match storage_ctx() {
-            Some(c) => c,
-            None => return false,
-        };
-        let quorum = match load_config_quorum(&ctx) {
+        let quorum = match load_config_quorum() {
             Some(q) => q,
             None => return false,
         };
-        let mut proposal = match load_proposal(&ctx, proposal_id) {
+        let mut proposal = match load_proposal(proposal_id) {
             Some(p) => p,
             None => return false,
         };
@@ -389,7 +350,7 @@ impl NeoGovernanceDaoContract {
             return false;
         }
         proposal.executed = true;
-        if !store_proposal(&ctx, proposal_id, &proposal) {
+        if !store_proposal(proposal_id, &proposal) {
             return false;
         }
         let _ = (ProposalExecutedEvt {
@@ -408,15 +369,11 @@ impl NeoGovernanceDaoContract {
         if amount <= 0 || staker_id == 0 {
             return false;
         }
-        let ctx = match storage_ctx() {
-            Some(c) => c,
-            None => return false,
-        };
-        let token = match load_config_token(&ctx) {
+        let token = match load_config_token() {
             Some(t) => t,
             None => return false,
         };
-        let current = load_stake(&ctx, staker_id);
+        let current = load_stake(staker_id);
         if current < amount {
             return false;
         }
@@ -424,7 +381,7 @@ impl NeoGovernanceDaoContract {
             return false;
         }
         let new_total = current - amount;
-        if !store_stake(&ctx, staker_id, new_total) {
+        if !store_stake(staker_id, new_total) {
             return false;
         }
         let _ = (StakeDecreasedEvt {
@@ -442,11 +399,7 @@ impl NeoGovernanceDaoContract {
         if staker_id == 0 {
             return 0;
         }
-        let ctx = match storage_ctx() {
-            Some(c) => c,
-            None => return 0,
-        };
-        load_stake(&ctx, staker_id)
+        load_stake(staker_id)
     }
 
     /// Handle incoming NEP-17 token payments as stake deposits.
@@ -458,12 +411,8 @@ impl NeoGovernanceDaoContract {
         if amount <= 0 || from_id == 0 {
             return;
         }
-        let ctx = match storage_ctx() {
-            Some(c) => c,
-            None => return,
-        };
         // Verify the calling contract is the configured governance token.
-        let token = match load_config_token(&ctx) {
+        let token = match load_config_token() {
             Some(t) => t,
             None => return,
         };
@@ -482,12 +431,12 @@ impl NeoGovernanceDaoContract {
         if caller_id != token {
             return;
         }
-        let current = load_stake(&ctx, from_id);
+        let current = load_stake(from_id);
         let new_total = match current.checked_add(amount) {
             Some(v) => v,
             None => return,
         };
-        let _ = store_stake(&ctx, from_id, new_total);
+        let _ = store_stake(from_id, new_total);
         let _ = (StakeIncreasedEvt {
             staker: NeoInteger::new(from_id),
             amount: NeoInteger::new(amount),
