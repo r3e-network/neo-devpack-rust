@@ -55,49 +55,27 @@ fn contrib_key(buf: &mut [u8; CONTRIB_KEY_LEN], campaign_id: i64, contributor: i
     buf[pos..pos + 8].copy_from_slice(&ctr);
 }
 
-fn storage_put_i64(ctx: &NeoStorageContext, key: &[u8], value: i64) -> bool {
-    NeoStorage::put(
-        ctx,
-        &NeoByteString::from_slice(key),
-        &NeoByteString::from_slice(&value.to_le_bytes()),
-    )
-    .is_ok()
+fn storage_put_i64(key: &[u8], value: i64) -> bool {
+    RawStorage::put_i64(key, value);
+    true
 }
 
-fn storage_get_i64(ctx: &NeoStorageContext, key: &[u8]) -> Option<i64> {
-    let data = NeoStorage::get(ctx, &NeoByteString::from_slice(key)).ok()?;
-    let s = data.as_slice();
-    if s.len() != 8 {
-        return None;
-    }
-    let mut buf = [0u8; 8];
-    buf.copy_from_slice(s);
-    Some(i64::from_le_bytes(buf))
+fn storage_get_i64(key: &[u8]) -> Option<i64> {
+    RawStorage::get_i64(key)
 }
 
-fn storage_put_bool(ctx: &NeoStorageContext, key: &[u8], value: bool) -> bool {
-    NeoStorage::put(
-        ctx,
-        &NeoByteString::from_slice(key),
-        &NeoByteString::from_slice(&[value as u8]),
-    )
-    .is_ok()
+fn storage_put_bool(key: &[u8], value: bool) -> bool {
+    RawStorage::put_bool(key, value);
+    true
 }
 
-fn storage_get_bool(ctx: &NeoStorageContext, key: &[u8]) -> Option<bool> {
-    let data = NeoStorage::get(ctx, &NeoByteString::from_slice(key)).ok()?;
-    let s = data.as_slice();
-    if s.len() != 1 {
-        return None;
-    }
-    Some(s[0] != 0)
+fn storage_get_bool(key: &[u8]) -> Option<bool> {
+    RawStorage::get_bool(key)
 }
 
-fn storage_has_key(ctx: &NeoStorageContext, key: &[u8]) -> bool {
-    NeoStorage::get(ctx, &NeoByteString::from_slice(key))
-        .ok()
-        .map(|d| !d.is_empty())
-        .unwrap_or(false)
+fn storage_has_key(key: &[u8]) -> bool {
+    let mut buf = [0u8; 1];
+    matches!(RawStorage::get_into(key, &mut buf), RawStorageGet::Found(_))
 }
 
 fn ensure_witness_i64(account: i64) -> bool {
@@ -161,44 +139,40 @@ impl NeoCrowdfundContract {
         if !ensure_witness_i64(owner) {
             return false;
         }
-        let ctx = match NeoStorage::get_context().ok() {
-            Some(c) => c,
-            None => return false,
-        };
 
         // Check campaign does not already exist
         let mut kb = [0u8; MAX_CAMPAIGN_KEY];
         let kl = campaign_key(&mut kb, campaign_id, &SUFFIX_OWNER);
-        if storage_has_key(&ctx, &kb[..kl]) {
+        if storage_has_key(&kb[..kl]) {
             return false;
         }
 
         // Store owner (as i64)
-        storage_put_i64(&ctx, &kb[..kl], owner);
+        storage_put_i64(&kb[..kl], owner);
 
         // Store token
         let kl = campaign_key(&mut kb, campaign_id, &SUFFIX_TOKEN);
-        storage_put_i64(&ctx, &kb[..kl], token);
+        storage_put_i64(&kb[..kl], token);
 
         // Store goal
         let kl = campaign_key(&mut kb, campaign_id, &SUFFIX_GOAL);
-        storage_put_i64(&ctx, &kb[..kl], goal);
+        storage_put_i64(&kb[..kl], goal);
 
         // Store deadline
         let kl = campaign_key(&mut kb, campaign_id, &SUFFIX_DEADLINE);
-        storage_put_i64(&ctx, &kb[..kl], deadline);
+        storage_put_i64(&kb[..kl], deadline);
 
         // Store min contribution
         let kl = campaign_key(&mut kb, campaign_id, &SUFFIX_MIN);
-        storage_put_i64(&ctx, &kb[..kl], min_contribution);
+        storage_put_i64(&kb[..kl], min_contribution);
 
         // Store raised = 0
         let kl = campaign_key(&mut kb, campaign_id, &SUFFIX_RAISED);
-        storage_put_i64(&ctx, &kb[..kl], 0);
+        storage_put_i64(&kb[..kl], 0);
 
         // Store finalized = false
         let kl = campaign_key(&mut kb, campaign_id, &SUFFIX_FINAL);
-        storage_put_bool(&ctx, &kb[..kl], false);
+        storage_put_bool(&kb[..kl], false);
 
         let _ = (CampaignCreated {
             campaign_id: NeoInteger::new(campaign_id),
@@ -211,13 +185,9 @@ impl NeoCrowdfundContract {
 
     #[neo_method(safe, name = "contributionOf")]
     pub fn contribution_of(campaign_id: i64, contributor: i64) -> i64 {
-        let ctx = match NeoStorage::get_context().ok() {
-            Some(c) => c,
-            None => return 0,
-        };
         let mut ck = [0u8; CONTRIB_KEY_LEN];
         contrib_key(&mut ck, campaign_id, contributor);
-        storage_get_i64(&ctx, &ck).unwrap_or(0)
+        storage_get_i64(&ck).unwrap_or(0)
     }
 
     #[neo_method]
@@ -231,15 +201,11 @@ impl NeoCrowdfundContract {
         if !ensure_witness_i64(caller) {
             return false;
         }
-        let ctx = match NeoStorage::get_context().ok() {
-            Some(c) => c,
-            None => return false,
-        };
 
         // Check caller is the owner
         let mut kb = [0u8; MAX_CAMPAIGN_KEY];
         let kl = campaign_key(&mut kb, campaign_id, &SUFFIX_OWNER);
-        let stored_owner = match storage_get_i64(&ctx, &kb[..kl]) {
+        let stored_owner = match storage_get_i64(&kb[..kl]) {
             Some(v) => v,
             None => return false,
         };
@@ -249,16 +215,16 @@ impl NeoCrowdfundContract {
 
         // Check not already finalized
         let kl = campaign_key(&mut kb, campaign_id, &SUFFIX_FINAL);
-        if storage_get_bool(&ctx, &kb[..kl]).unwrap_or(false) {
+        if storage_get_bool(&kb[..kl]).unwrap_or(false) {
             return false;
         }
 
         // Mark finalized
-        storage_put_bool(&ctx, &kb[..kl], true);
+        storage_put_bool(&kb[..kl], true);
 
         // Read raised amount
         let kl = campaign_key(&mut kb, campaign_id, &SUFFIX_RAISED);
-        let raised = storage_get_i64(&ctx, &kb[..kl]).unwrap_or(0);
+        let raised = storage_get_i64(&kb[..kl]).unwrap_or(0);
 
         let _ = (CampaignFinalized {
             campaign_id: NeoInteger::new(campaign_id),
@@ -279,20 +245,16 @@ impl NeoCrowdfundContract {
         if !ensure_witness_i64(contributor) {
             return false;
         }
-        let ctx = match NeoStorage::get_context().ok() {
-            Some(c) => c,
-            None => return false,
-        };
 
         let mut ck = [0u8; CONTRIB_KEY_LEN];
         contrib_key(&mut ck, campaign_id, contributor);
 
-        let amount = storage_get_i64(&ctx, &ck).unwrap_or(0);
+        let amount = storage_get_i64(&ck).unwrap_or(0);
         if amount <= 0 {
             return false;
         }
 
-        let _ = NeoStorage::delete(&ctx, &NeoByteString::from_slice(&ck));
+        RawStorage::delete(&ck);
 
         let _ = (RefundClaimed {
             campaign_id: NeoInteger::new(campaign_id),
@@ -306,29 +268,25 @@ impl NeoCrowdfundContract {
     /// Return campaign state via notify: [goal, raised, deadline, min, finalized]
     #[neo_method(safe, name = "getCampaign")]
     pub fn get_campaign(campaign_id: i64) {
-        let ctx = match NeoStorage::get_context().ok() {
-            Some(c) => c,
-            None => return,
-        };
         let mut kb = [0u8; MAX_CAMPAIGN_KEY];
 
         let kl = campaign_key(&mut kb, campaign_id, &SUFFIX_GOAL);
-        let goal = match storage_get_i64(&ctx, &kb[..kl]) {
+        let goal = match storage_get_i64(&kb[..kl]) {
             Some(v) => v,
             None => return,
         };
 
         let kl = campaign_key(&mut kb, campaign_id, &SUFFIX_RAISED);
-        let raised = storage_get_i64(&ctx, &kb[..kl]).unwrap_or(0);
+        let raised = storage_get_i64(&kb[..kl]).unwrap_or(0);
 
         let kl = campaign_key(&mut kb, campaign_id, &SUFFIX_DEADLINE);
-        let deadline = storage_get_i64(&ctx, &kb[..kl]).unwrap_or(0);
+        let deadline = storage_get_i64(&kb[..kl]).unwrap_or(0);
 
         let kl = campaign_key(&mut kb, campaign_id, &SUFFIX_MIN);
-        let min = storage_get_i64(&ctx, &kb[..kl]).unwrap_or(0);
+        let min = storage_get_i64(&kb[..kl]).unwrap_or(0);
 
         let kl = campaign_key(&mut kb, campaign_id, &SUFFIX_FINAL);
-        let finalized = storage_get_bool(&ctx, &kb[..kl]).unwrap_or(false);
+        let finalized = storage_get_bool(&kb[..kl]).unwrap_or(false);
 
         let label = NeoString::from_str("getCampaign");
         let mut state = NeoArray::new();
@@ -345,30 +303,26 @@ impl NeoCrowdfundContract {
         if amount <= 0 || data <= 0 || from == 0 {
             return;
         }
-        let ctx = match NeoStorage::get_context().ok() {
-            Some(c) => c,
-            None => return,
-        };
         let campaign_id = data;
 
         let mut ck = [0u8; CONTRIB_KEY_LEN];
         contrib_key(&mut ck, campaign_id, from);
 
-        let current = storage_get_i64(&ctx, &ck).unwrap_or(0);
+        let current = storage_get_i64(&ck).unwrap_or(0);
         let new_contrib = match current.checked_add(amount) {
             Some(v) => v,
             None => return,
         };
-        storage_put_i64(&ctx, &ck, new_contrib);
+        storage_put_i64(&ck, new_contrib);
 
         let mut kb = [0u8; MAX_CAMPAIGN_KEY];
         let kl = campaign_key(&mut kb, campaign_id, &SUFFIX_RAISED);
-        let raised = storage_get_i64(&ctx, &kb[..kl]).unwrap_or(0);
+        let raised = storage_get_i64(&kb[..kl]).unwrap_or(0);
         let new_raised = match raised.checked_add(amount) {
             Some(v) => v,
             None => return,
         };
-        storage_put_i64(&ctx, &kb[..kl], new_raised);
+        storage_put_i64(&kb[..kl], new_raised);
 
         let _ = (ContributionReceived {
             campaign_id: NeoInteger::new(campaign_id),

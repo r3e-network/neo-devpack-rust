@@ -33,24 +33,13 @@ fn stake_key(staker: i64) -> [u8; 9] {
     key
 }
 
-fn storage_put_i64(ctx: &NeoStorageContext, key: &[u8], value: i64) -> bool {
-    NeoStorage::put(
-        ctx,
-        &NeoByteString::from_slice(key),
-        &NeoByteString::from_slice(&value.to_le_bytes()),
-    )
-    .is_ok()
+fn storage_put_i64(key: &[u8], value: i64) -> bool {
+    RawStorage::put_i64(key, value);
+    true
 }
 
-fn storage_get_i64(ctx: &NeoStorageContext, key: &[u8]) -> Option<i64> {
-    let data = NeoStorage::get(ctx, &NeoByteString::from_slice(key)).ok()?;
-    let slice = data.as_slice();
-    if slice.len() != 8 {
-        return None;
-    }
-    let mut buf = [0u8; 8];
-    buf.copy_from_slice(slice);
-    Some(i64::from_le_bytes(buf))
+fn storage_get_i64(key: &[u8]) -> Option<i64> {
+    RawStorage::get_i64(key)
 }
 
 fn ensure_witness_i64(staker: i64) -> bool {
@@ -105,17 +94,13 @@ impl StakingRewardsContract {
         if !ensure_witness_i64(staker) {
             return false;
         }
-        let ctx = match NeoStorage::get_context().ok() {
-            Some(c) => c,
-            None => return false,
-        };
         let key = stake_key(staker);
-        let current = storage_get_i64(&ctx, &key).unwrap_or(0);
+        let current = storage_get_i64(&key).unwrap_or(0);
         if amount > i64::MAX - current {
             return false;
         }
         let new_total = current + amount;
-        storage_put_i64(&ctx, &key, new_total);
+        storage_put_i64(&key, new_total);
         let _ = (Staked {
             staker: NeoInteger::new(staker),
             amount: NeoInteger::new(amount),
@@ -132,16 +117,12 @@ impl StakingRewardsContract {
         if !ensure_witness_i64(staker) {
             return false;
         }
-        let ctx = match NeoStorage::get_context().ok() {
-            Some(c) => c,
-            None => return false,
-        };
         let key = stake_key(staker);
-        let current = storage_get_i64(&ctx, &key).unwrap_or(0);
+        let current = storage_get_i64(&key).unwrap_or(0);
         if current < amount {
             return false;
         }
-        storage_put_i64(&ctx, &key, current - amount);
+        storage_put_i64(&key, current - amount);
         let _ = (Unstaked {
             staker: NeoInteger::new(staker),
             amount: NeoInteger::new(amount),
