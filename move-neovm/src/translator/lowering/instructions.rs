@@ -17,7 +17,7 @@ use std::collections::HashMap;
 use wasm_encoder::{BlockType, Function, Instruction};
 
 use super::super::resources::{
-    ensure_has_key, struct_for_index, struct_hash, write_resource_key, write_resource_value,
+    ensure_has_key, struct_for_index, write_resource_key, write_resource_value,
 };
 use super::imports::{
     SCRATCH_KEY_OFFSET, SCRATCH_KEY_SIZE, SCRATCH_VALUE_OFFSET, SCRATCH_VALUE_SIZE,
@@ -59,6 +59,12 @@ pub fn emit_case_body(
             f.instruction(&Instruction::I64Const(*v as i64));
         }
         MoveOpcode::LdU128(v) => {
+            // Move u128 constants wider than i64 cannot be represented in the
+            // translator's current 64-bit value model. Bail loudly at translation
+            // time rather than silently truncating (X11).
+            if *v > i64::MAX as u128 {
+                bail!("Move u128 constant {v} exceeds i64::MAX; the translator's 64-bit value model cannot represent it (X11)");
+            }
             f.instruction(&Instruction::I64Const(*v as i64));
         }
         MoveOpcode::LdTrue => {
@@ -82,13 +88,71 @@ pub fn emit_case_body(
         }
 
         MoveOpcode::Add => {
-            f.instruction(&Instruction::I64Add);
+            // Move integer arithmetic aborts on overflow (X6). Move integers
+            // are unsigned here, so `a + b` overflows iff `sum < a`.
+            f.instruction(&Instruction::LocalSet(tmp_b_local)); // tmp_b = b
+            f.instruction(&Instruction::LocalSet(tmp_a_local)); // tmp_a = a
+            f.instruction(&Instruction::LocalGet(tmp_a_local));
+            f.instruction(&Instruction::LocalGet(tmp_b_local));
+            f.instruction(&Instruction::I64Add); // [sum]
+            // Save sum to tmp_b (b no longer needed) and probe sum<a without
+            // losing sum: compare a reloaded copy, then re-push sum afterward.
+            f.instruction(&Instruction::LocalTee(tmp_b_local)); // [sum]; tmp_b = sum
+            f.instruction(&Instruction::LocalGet(tmp_a_local)); // [sum, a]
+            f.instruction(&Instruction::I64LtU); // [sum<a] (consumes sum+a)
+            f.instruction(&Instruction::If(BlockType::Empty));
+            f.instruction(&Instruction::Unreachable);
+            f.instruction(&Instruction::End);
+            f.instruction(&Instruction::LocalGet(tmp_b_local)); // [sum]
         }
         MoveOpcode::Sub => {
-            f.instruction(&Instruction::I64Sub);
+            // Unsigned subtraction overflows iff a < b.
+            f.instruction(&Instruction::LocalSet(tmp_b_local)); // tmp_b = b
+            f.instruction(&Instruction::LocalSet(tmp_a_local)); // tmp_a = a
+            f.instruction(&Instruction::LocalGet(tmp_a_local));
+            f.instruction(&Instruction::LocalGet(tmp_b_local));
+            f.instruction(&Instruction::I64Sub); // [a-b]
+            // Probe a<b: push a and b AFTER the result so the diff survives.
+            f.instruction(&Instruction::LocalGet(tmp_a_local)); // [a-b, a]
+            f.instruction(&Instruction::LocalGet(tmp_b_local)); // [a-b, a, b]
+            f.instruction(&Instruction::I64LtU); // [a-b, a<b]
+            f.instruction(&Instruction::If(BlockType::Empty));
+            f.instruction(&Instruction::Unreachable);
+            f.instruction(&Instruction::End);
+            // [a-b]
         }
         MoveOpcode::Mul => {
+            // Unsigned mul overflows iff a != 0 && (a*b)/a != b. Guard the
+            // division by a!=0 first (else WASM div-by-zero traps).
+            f.instruction(&Instruction::LocalSet(tmp_b_local)); // tmp_b = b
+            f.instruction(&Instruction::LocalSet(tmp_a_local)); // tmp_a = a
+            // Compute product into tmp_a (reuse; we still need a but can recompute).
+            f.instruction(&Instruction::LocalGet(tmp_a_local));
+            f.instruction(&Instruction::LocalGet(tmp_b_local));
             f.instruction(&Instruction::I64Mul);
+            f.instruction(&Instruction::LocalSet(tmp_b_local)); // tmp_b = product (b gone)
+            // Probe: a != 0 && product / a != b. Branch on a != 0.
+            f.instruction(&Instruction::LocalGet(tmp_a_local));
+            f.instruction(&Instruction::I64Const(0));
+            f.instruction(&Instruction::I64Ne); // [a!=0]
+            f.instruction(&Instruction::If(BlockType::Empty));
+            {
+                f.instruction(&Instruction::LocalGet(tmp_b_local)); // product
+                f.instruction(&Instruction::LocalGet(tmp_a_local)); // a
+                f.instruction(&Instruction::I64DivU); // product/a
+                f.instruction(&Instruction::LocalGet(tmp_a_local)); // (b is gone; recompute b? no)
+                // We lost b. Re-derive: reload b by recomputing is impossible.
+                // Instead, check (product/a) * a == product. If not, overflow.
+                f.instruction(&Instruction::I64Mul); // (product/a)*a
+                f.instruction(&Instruction::LocalGet(tmp_b_local)); // product
+                f.instruction(&Instruction::I64Ne); // [(product/a)*a != product]
+                f.instruction(&Instruction::If(BlockType::Empty));
+                f.instruction(&Instruction::Unreachable);
+                f.instruction(&Instruction::End);
+            }
+            f.instruction(&Instruction::End);
+            // Return the product.
+            f.instruction(&Instruction::LocalGet(tmp_b_local)); // [product]
         }
         MoveOpcode::Div => {
             // Move integers are unsigned; use unsigned division
@@ -148,6 +212,22 @@ pub fn emit_case_body(
             f.instruction(&Instruction::LocalSet(tmp_a_local)); // value
             f.instruction(&Instruction::LocalSet(tmp_b_local)); // address
 
+            // Move's resource linearity: move_to ABORTS if a resource already
+            // exists under the key (X10). Probe existence first and trap.
+            write_resource_key(f, struct_def, tmp_b_local);
+            f.instruction(&Instruction::I32Const(SCRATCH_KEY_OFFSET));
+            f.instruction(&Instruction::I32Const(SCRATCH_KEY_SIZE));
+            f.instruction(&Instruction::Call(
+                imports
+                    .storage_get
+                    .ok_or_else(|| anyhow!("storage_get import missing"))?,
+            ));
+            f.instruction(&Instruction::I64Eqz); // 0 -> absent, 1 -> present
+            f.instruction(&Instruction::I32Eqz); // abort when present (present -> 0 -> eqz 1)
+            f.instruction(&Instruction::If(BlockType::Empty));
+            f.instruction(&Instruction::Unreachable); // resource already exists
+            f.instruction(&Instruction::End);
+
             write_resource_key(f, struct_def, tmp_b_local);
             write_resource_value(f, tmp_a_local);
 
@@ -177,6 +257,11 @@ pub fn emit_case_body(
                     .storage_get
                     .ok_or_else(|| anyhow!("storage_get import missing"))?,
             ));
+            // move_from ABORTS if the resource is absent (X10). Trap on absence.
+            f.instruction(&Instruction::I64Eqz); // 1 -> absent
+            f.instruction(&Instruction::If(BlockType::Empty));
+            f.instruction(&Instruction::Unreachable); // resource absent
+            f.instruction(&Instruction::End);
         }
         MoveOpcode::Exists(struct_idx) => {
             let struct_def = struct_for_index(module, *struct_idx)?;
@@ -214,23 +299,18 @@ pub fn emit_case_body(
         }
 
         MoveOpcode::Pack(struct_idx) => {
-            let struct_def = struct_for_index(module, *struct_idx)?;
-            // Discard field values but keep a placeholder handle
-            for _ in &struct_def.fields {
-                f.instruction(&Instruction::Drop);
-            }
-            f.instruction(&Instruction::I64Const(struct_hash(&struct_def.name) as i64));
+            // Struct packing is not modelled in the translator's 64-bit value
+            // representation; bail loudly at translation time rather than
+            // silently dropping field values and pushing a placeholder (X12).
+            let _ = struct_for_index(module, *struct_idx)?;
+            bail!("unsupported Move feature: Pack (struct construction) is not modelled by the translator's flat value representation (X12)");
         }
         MoveOpcode::Unpack(struct_idx) => {
-            let struct_def = struct_for_index(module, *struct_idx)?;
-            // Drop the struct value, push zeroes for each field
-            f.instruction(&Instruction::Drop);
-            for _ in &struct_def.fields {
-                f.instruction(&Instruction::I64Const(0));
-            }
+            let _ = struct_for_index(module, *struct_idx)?;
+            bail!("unsupported Move feature: Unpack (struct deconstruction) is not modelled by the translator (X12)");
         }
         MoveOpcode::BorrowField(_) | MoveOpcode::MutBorrowField(_) => {
-            f.instruction(&Instruction::Unreachable);
+            bail!("unsupported Move feature: BorrowField/MutBorrowField (struct field access) is not modelled by the translator (X12)");
         }
 
         MoveOpcode::Pop => {
@@ -238,20 +318,24 @@ pub fn emit_case_body(
         }
 
         MoveOpcode::VecPack(_, _) => {
-            f.instruction(&Instruction::Unreachable);
+            bail!("unsupported Move feature: VecPack (vector construction) is not modelled by the translator (X12)");
         }
         MoveOpcode::VecLen(_) => {
-            f.instruction(&Instruction::I64Const(0));
+            bail!("unsupported Move feature: VecLen is not modelled by the translator (X12)");
         }
         MoveOpcode::VecImmBorrow(_) | MoveOpcode::VecMutBorrow(_) => {
-            f.instruction(&Instruction::Unreachable);
+            bail!("unsupported Move feature: VecImmBorrow/VecMutBorrow (vector element access) is not modelled by the translator (X12)");
         }
         MoveOpcode::VecPushBack(_) | MoveOpcode::VecPopBack(_) => {
-            f.instruction(&Instruction::Unreachable);
+            bail!("unsupported Move feature: VecPushBack/VecPopBack (vector mutation) is not modelled by the translator (X12)");
         }
 
         MoveOpcode::CastU8 => {
+            // `as u8` must mask to the low 8 bits (X6): I32WrapI64 keeps the
+            // low 32 bits, so explicitly AND with 0xFF.
             f.instruction(&Instruction::I32WrapI64);
+            f.instruction(&Instruction::I32Const(0xFF));
+            f.instruction(&Instruction::I32And);
         }
         MoveOpcode::CastU64 | MoveOpcode::CastU128 => {
             f.instruction(&Instruction::Nop);
