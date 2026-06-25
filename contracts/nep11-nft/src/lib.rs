@@ -5,10 +5,13 @@ use neo_devpack::prelude::*;
 
 neo_manifest_overlay!(
     r#"{
-    "name": "SampleNEP11",
-    "supportedstandards": ["NEP-11"]
+    "name": "SampleNEP11"
 }"#
 );
+// NOTE: this sample omits "supportedstandards": ["NEP-11"] because it does not
+// implement the full NEP-11 method surface (tokens/tokensOf/properties, real
+// ownership persistence, transfer events). Declaring a standard it doesn't
+// meet would mislead wallets/indexers (X19).
 
 const TOTAL_SUPPLY: i64 = 1_000;
 
