@@ -283,6 +283,11 @@ impl NeoGovernanceDaoContract {
         if quorum <= 0 || owner_id == 0 || token_id == 0 {
             return false;
         }
+        // The owner must be runtime-witnessed to bootstrap the DAO config;
+        // otherwise anyone could register as owner (X18).
+        if !NeoRuntime::require_witness_i64(owner_id) {
+            return false;
+        }
         if config_exists() {
             return false;
         }
@@ -301,6 +306,11 @@ impl NeoGovernanceDaoContract {
         end_time: i64,
     ) -> bool {
         if end_time <= start_time || proposer_id == 0 || target_id == 0 {
+            return false;
+        }
+        // The proposer must be witnessed to prevent attribution spoofing /
+        // governance spam (X18).
+        if !NeoRuntime::require_witness_i64(proposer_id) {
             return false;
         }
         if !config_exists() {
@@ -340,6 +350,11 @@ impl NeoGovernanceDaoContract {
     #[neo_method]
     pub fn vote(proposal_id: i64, voter_id: i64, side: i64, weight: i64) -> bool {
         if weight <= 0 || !(0..=1).contains(&side) || voter_id == 0 {
+            return false;
+        }
+        // The voter identity must be runtime-witnessed, otherwise an attacker
+        // iterates every staked account and casts its full balance (X2).
+        if !NeoRuntime::require_witness_i64(voter_id) {
             return false;
         }
         if has_voted(proposal_id, voter_id) {
@@ -432,6 +447,11 @@ impl NeoGovernanceDaoContract {
         if amount <= 0 || staker_id == 0 {
             return false;
         }
+        // The staker must be witnessed; otherwise an attacker forces unstake on
+        // any account, zeroing its governance power (X3).
+        if !NeoRuntime::require_witness_i64(staker_id) {
+            return false;
+        }
         let token = match load_config_token() {
             Some(t) => t,
             None => return false,
@@ -508,7 +528,34 @@ impl Default for NeoGovernanceDaoContract {
 
 #[cfg(test)]
 mod tests {
-    use super::{total_votes, voting_window_open};
+    use super::*;
+    use neo_devpack::{prelude::NeoByteString, NeoVMSyscall};
+    use std::sync::{Mutex, MutexGuard, OnceLock};
+
+    fn runtime_test_lock() -> MutexGuard<'static, ()> {
+        static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        match TEST_LOCK.get_or_init(|| Mutex::new(())).lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        }
+    }
+
+    fn witness_hash(account: i64) -> [u8; 20] {
+        let mut bytes = [0u8; 20];
+        bytes[..8].copy_from_slice(&account.to_le_bytes());
+        bytes
+    }
+
+    fn setup_witnesses(accounts: &[i64]) -> MutexGuard<'static, ()> {
+        let guard = runtime_test_lock();
+        NeoVMSyscall::reset_host_state().expect("host syscall state should reset");
+        let witnesses: Vec<NeoByteString> = accounts
+            .iter()
+            .map(|account| NeoByteString::from_slice(&witness_hash(*account)))
+            .collect();
+        NeoVMSyscall::set_active_witnesses(&witnesses).expect("active witnesses should update");
+        guard
+    }
 
     #[test]
     fn contract_compiles() {
@@ -528,5 +575,37 @@ mod tests {
     fn total_votes_rejects_overflow() {
         assert_eq!(total_votes(40, 2), Some(42));
         assert_eq!(total_votes(i64::MAX, 1), None);
+    }
+
+    #[test]
+    fn configure_requires_owner_witness() {
+        // Without owner in the witness set, configure is rejected (X18).
+        {
+            let _g = setup_witnesses(&[]);
+            assert!(!NeoGovernanceDaoContract::configure(1, 2, 3));
+        }
+        // With owner witnessed, configure succeeds.
+        {
+            let _g = setup_witnesses(&[1]);
+            assert!(NeoGovernanceDaoContract::configure(1, 2, 3));
+        }
+    }
+
+    #[test]
+    fn vote_requires_voter_witness() {
+        // Configure + create a proposal with witnesses [1].
+        let _g = setup_witnesses(&[1]);
+        assert!(NeoGovernanceDaoContract::configure(1, 2, 3));
+        assert!(NeoGovernanceDaoContract::propose(1, 2, 3, 4, 5, 0, 1000));
+        // Voter 7 is NOT witnessed -> vote rejected (X2 ballot-box stuffing).
+        assert!(!NeoGovernanceDaoContract::vote(1, 7, 0, 1));
+    }
+
+    #[test]
+    fn unstake_requires_staker_witness() {
+        let _g = setup_witnesses(&[1]);
+        assert!(NeoGovernanceDaoContract::configure(1, 2, 3));
+        // Staker 9 not witnessed, no stake recorded -> unstake rejected (X3).
+        assert!(!NeoGovernanceDaoContract::unstake(9, 1));
     }
 }
