@@ -10,6 +10,30 @@ follow the same repository version.
 
 ## [Unreleased]
 
+### Phase E — Professionalization
+
+CI supply-chain hygiene, docs accuracy, and deterministic release tooling.
+
+#### Changed (CI)
+- **X16:** pinned the moving `dtolnay/rust-toolchain@master` to `@stable`
+  (matching the rest of the file); added `--locked` to every `cargo install`
+  (cargo-tarpaulin/audit/deny/machete) so a broken upstream release can't
+  nondeterministically break CI.
+- **X22:** coverage now includes `solana-compat`; `cargo-deny` now covers
+  `solana-compat` and `integration-tests`; the build-verification job now
+  compiles **every** bundled contract to wasm (was only hello/nep17/nep11).
+
+#### Fixed
+- **X21:** `deny.toml` `allow-registry` now includes the modern sparse index
+  (`https://index.crates.io`) alongside the legacy git index.
+- **X23:** corrected the `Cargo-publishing.toml` header comment (was
+  `workspace-publishing.toml`).
+- **X24:** `neoexpress_deploy.sh` now uses a real bash array + safe expansion
+  for the optional `--account` flag (was relying on word-splitting).
+- **X15:** README status section corrected — the Solana/Move paths are labelled
+  experimental (not "available for practical use"); the contract examples are
+  labelled illustrative/not-audited-for-production (not "production-grade").
+
 ### Phase D — Cross-chain: correct-or-fail-loud
 
 The experimental Move and Solana paths now either produce correct results for

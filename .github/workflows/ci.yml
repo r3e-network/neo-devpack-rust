@@ -78,7 +78,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ matrix.rust }}
           targets: wasm32-unknown-unknown
@@ -330,7 +330,7 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Install cargo-tarpaulin
-        run: cargo install cargo-tarpaulin
+        run: cargo install cargo-tarpaulin --locked
 
       - name: Cache cargo registry
         uses: actions/cache@v4
@@ -355,6 +355,9 @@ jobs:
 
       - name: Generate coverage - neo-test
         run: cargo tarpaulin --manifest-path rust-devpack/neo-test/Cargo.toml --out xml --output-dir ./coverage-neo-test
+
+      - name: Generate coverage - solana-compat
+        run: cargo tarpaulin --manifest-path solana-compat/Cargo.toml --out xml --output-dir ./coverage-solana-compat
 
       - name: Upload coverage to Codecov - wasm-neovm
         uses: codecov/codecov-action@v4
@@ -384,6 +387,13 @@ jobs:
           flags: neo-test
           token: ${{ secrets.CODECOV_TOKEN }}
 
+      - name: Upload coverage to Codecov - solana-compat
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage-solana-compat/cobertura.xml
+          flags: solana-compat
+          token: ${{ secrets.CODECOV_TOKEN }}
+
   security:
     name: Security Audit
     needs: [daily-run-gate, neo-n3-conformance-gate]
@@ -409,10 +419,10 @@ jobs:
           key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Install cargo-audit
-        run: cargo install cargo-audit
+        run: cargo install cargo-audit --locked
 
       - name: Install cargo-deny
-        run: cargo install cargo-deny
+        run: cargo install cargo-deny --locked
 
       - name: Run cargo audit - wasm-neovm
         run: scripts/run_cargo_audit.sh wasm-neovm/Cargo.lock
@@ -437,6 +447,12 @@ jobs:
 
       - name: Run cargo deny - rust-devpack
         run: scripts/run_cargo_deny.sh rust-devpack/Cargo.toml
+
+      - name: Run cargo deny - solana-compat
+        run: scripts/run_cargo_deny.sh solana-compat/Cargo.toml
+
+      - name: Run cargo deny - integration-tests
+        run: scripts/run_cargo_deny.sh integration-tests/Cargo.toml
 
   package:
     name: Package Verification
@@ -556,7 +572,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install cargo-machete
-        run: cargo install cargo-machete
+        run: cargo install cargo-machete --locked
 
       - name: Check unused dependencies
         run: cargo machete --with-metadata
@@ -622,10 +638,15 @@ jobs:
         run: cargo build --manifest-path move-neovm/Cargo.toml --release
 
       - name: Build example contracts
+        # X22: build every bundled Rust contract to wasm, not just 3, so a
+        # wasm-target build break in any sample is caught by CI.
         run: |
-          cargo build --manifest-path contracts/hello-world/Cargo.toml --release --target wasm32-unknown-unknown
-          cargo build --manifest-path contracts/nep17-token/Cargo.toml --release --target wasm32-unknown-unknown
-          cargo build --manifest-path contracts/nep11-nft/Cargo.toml --release --target wasm32-unknown-unknown
+          set -e
+          for manifest in contracts/*/Cargo.toml; do
+            echo "::group::Building $manifest"
+            cargo build --manifest-path "$manifest" --release --target wasm32-unknown-unknown
+            echo "::endgroup::"
+          done
 
   # New: Version consistency check
   version-check:

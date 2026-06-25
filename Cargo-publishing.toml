@@ -1,4 +1,4 @@
-# workspace-publishing.toml
+# Cargo-publishing.toml
 #
 # This file contains version-based dependencies for publishing to crates.io.
 # Copy the relevant sections to Cargo.toml when publishing.

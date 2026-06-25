@@ -11,9 +11,11 @@ MANIFEST_PATH=$2
 CONTRACT_NAME=$3
 shift 3
 
-ACCOUNT_FLAG=""
+# Collect optional trailing args (e.g. --account <script-hash>) into an array
+# so they expand safely even if a value contains spaces (X24).
+ACCOUNT_FLAG=()
 if [ $# -gt 0 ]; then
-  ACCOUNT_FLAG="$*"
+  ACCOUNT_FLAG=("$@")
 fi
 
 if [ ! -f "$NEF_PATH" ]; then
@@ -41,4 +43,4 @@ echo "Deploying $CONTRACT_NAME via $NEO_EXPRESS_CLI (RPC: $NEO_EXPRESS_RPC)" >&2
   --nef "$NEF_PATH" \
   --manifest "$MANIFEST_PATH" \
   --force \
-  $ACCOUNT_FLAG
+  ${ACCOUNT_FLAG[@]+"${ACCOUNT_FLAG[@]}"}
