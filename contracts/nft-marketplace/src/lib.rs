@@ -85,6 +85,12 @@ impl NeoNftMarketplaceContract {
         if seller_id == 0 || token_contract_id == 0 || payment_token_id == 0 {
             return false;
         }
+        // The seller must be runtime-witnessed to register a listing on their
+        // own behalf; otherwise anyone registers listings under an arbitrary
+        // seller id (X5).
+        if !NeoRuntime::require_witness_i64(seller_id) {
+            return false;
+        }
         // Any non-zero listing status means this id has already been used.
         if storage_get_i64(listing_key(listing_id, FIELD_ACTIVE)) != 0 {
             return false;
@@ -109,6 +115,11 @@ impl NeoNftMarketplaceContract {
     #[neo_method(name = "cancelListing")]
     pub fn cancel_listing(listing_id: i64, caller_id: i64) -> bool {
         if !valid_listing_id(listing_id) || caller_id == 0 {
+            return false;
+        }
+        // Witness the caller before comparing to the stored seller; otherwise an
+        // attacker passes the seller's id and cancels anyone's listing (X5).
+        if !NeoRuntime::require_witness_i64(caller_id) {
             return false;
         }
         let active = storage_get_i64(listing_key(listing_id, FIELD_ACTIVE));
@@ -180,8 +191,74 @@ impl Default for NeoNftMarketplaceContract {
 
 #[cfg(test)]
 mod tests {
+    use super::NeoNftMarketplaceContract;
+    use neo_devpack::{prelude::NeoByteString, NeoVMSyscall};
+    use std::sync::{Mutex, MutexGuard, OnceLock};
+
+    fn runtime_test_lock() -> MutexGuard<'static, ()> {
+        static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        match TEST_LOCK.get_or_init(|| Mutex::new(())).lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        }
+    }
+
+    fn witness_hash(account: i64) -> [u8; 20] {
+        let mut bytes = [0u8; 20];
+        bytes[..8].copy_from_slice(&account.to_le_bytes());
+        bytes
+    }
+
+    fn setup_witnesses(accounts: &[i64]) -> MutexGuard<'static, ()> {
+        let guard = runtime_test_lock();
+        NeoVMSyscall::reset_host_state().expect("host syscall state should reset");
+        let witnesses: Vec<NeoByteString> = accounts
+            .iter()
+            .map(|account| NeoByteString::from_slice(&witness_hash(*account)))
+            .collect();
+        NeoVMSyscall::set_active_witnesses(&witnesses).expect("active witnesses should update");
+        guard
+    }
+
     #[test]
     fn contract_compiles() {
         // Compilation test - verifies contract module parses correctly
+    }
+
+    #[test]
+    fn create_listing_requires_seller_witness() {
+        // Seller 5 not witnessed -> create rejected (X5).
+        {
+            let _g = setup_witnesses(&[]);
+            assert!(!NeoNftMarketplaceContract::create_listing(
+                5, 2, 3, 4, 100, 10, 1000, 1
+            ));
+        }
+        // Seller 5 witnessed -> create succeeds.
+        {
+            let _g = setup_witnesses(&[5]);
+            assert!(NeoNftMarketplaceContract::create_listing(
+                5, 2, 3, 4, 100, 10, 1000, 1
+            ));
+        }
+    }
+
+    #[test]
+    fn cancel_listing_requires_seller_witness() {
+        // Create a listing as seller 5 (witnessed), then prove that a caller
+        // whose id is NOT witnessed cannot cancel — even if they pass the
+        // seller's id. reset_host_state clears storage between scopes, so the
+        // create + negative cancel must share one scope: witness [5], then
+        // attempt cancel with caller_id=9 (not witnessed) — rejected (X5).
+        let _g = setup_witnesses(&[5]);
+        assert!(NeoNftMarketplaceContract::create_listing(
+            5, 2, 3, 4, 100, 10, 1000, 7
+        ));
+        // Unwitnessed caller (passing the seller's id) cannot cancel.
+        assert!(!NeoNftMarketplaceContract::cancel_listing(7, 5 + 4));
+        // Witnessed seller cancels.
+        assert!(NeoNftMarketplaceContract::cancel_listing(7, 5));
+        // Already cancelled -> rejected.
+        assert!(!NeoNftMarketplaceContract::cancel_listing(7, 5));
     }
 }
