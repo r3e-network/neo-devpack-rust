@@ -30,6 +30,19 @@ impl NeoRuntime {
         NeoVMSyscall::check_witness_i64(account)
     }
 
+    /// Canonical witness guard for i64-encoded accounts: returns `true` if the
+    /// runtime confirms the caller controls `account`, `false` on any syscall
+    /// error or denial. This is the single helper every state-changing contract
+    /// entry point should call before acting on a caller-supplied identity, to
+    /// prevent the "caller passed as a parameter" authorization-bypass class
+    /// (audit X1–X5). Mirrors the ad-hoc `ensure_witness_i64` already used by
+    /// `timelock-vault`, `staking-rewards`, and `crowdfunding`.
+    pub fn require_witness_i64(account: i64) -> bool {
+        NeoRuntime::check_witness_i64(account)
+            .map(|flag| flag.as_bool())
+            .unwrap_or(false)
+    }
+
     pub fn notify(event: &NeoString, state: &NeoArray<NeoValue>) -> NeoResult<()> {
         NeoVMSyscall::notify(event, state)
     }

@@ -96,6 +96,12 @@ impl NeoEscrowContract {
         if payer <= 0 || payee <= 0 || arbiter <= 0 || token <= 0 {
             return false;
         }
+        // The funding payer (and only the payer) may register an escrow on its
+        // own behalf; require a runtime witness to prove the caller controls
+        // the payer account (X1).
+        if !NeoRuntime::require_witness_i64(payer) {
+            return false;
+        }
         // Prevent re-initialization
         if storage_get_i64(escrow_id, KEY_STATUS) != 0 {
             return false;
@@ -124,6 +130,11 @@ impl NeoEscrowContract {
         if escrow_id <= 0 || caller <= 0 {
             return false;
         }
+        // Caller identity must be runtime-witnessed, not trusted as a parameter
+        // (X1: otherwise an attacker passes the arbiter's id and releases).
+        if !NeoRuntime::require_witness_i64(caller) {
+            return false;
+        }
         let status = storage_get_i64(escrow_id, KEY_STATUS);
         if status != STATUS_ACTIVE {
             return false;
@@ -142,6 +153,10 @@ impl NeoEscrowContract {
     #[neo_method]
     pub fn refund(escrow_id: i64, caller: i64) -> bool {
         if escrow_id <= 0 || caller <= 0 {
+            return false;
+        }
+        // Witness the caller identity (X1).
+        if !NeoRuntime::require_witness_i64(caller) {
             return false;
         }
         let status = storage_get_i64(escrow_id, KEY_STATUS);
@@ -200,6 +215,33 @@ impl Default for NeoEscrowContract {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use neo_devpack::{prelude::NeoByteString, NeoVMSyscall};
+    use std::sync::{Mutex, MutexGuard, OnceLock};
+
+    fn runtime_test_lock() -> MutexGuard<'static, ()> {
+        static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        match TEST_LOCK.get_or_init(|| Mutex::new(())).lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        }
+    }
+
+    fn witness_hash(account: i64) -> [u8; 20] {
+        let mut bytes = [0u8; 20];
+        bytes[..8].copy_from_slice(&account.to_le_bytes());
+        bytes
+    }
+
+    fn setup_witnesses(accounts: &[i64]) -> MutexGuard<'static, ()> {
+        let guard = runtime_test_lock();
+        NeoVMSyscall::reset_host_state().expect("host syscall state should reset");
+        let witnesses: Vec<NeoByteString> = accounts
+            .iter()
+            .map(|account| NeoByteString::from_slice(&witness_hash(*account)))
+            .collect();
+        NeoVMSyscall::set_active_witnesses(&witnesses).expect("active witnesses should update");
+        guard
+    }
 
     #[test]
     fn contract_compiles() {
@@ -208,6 +250,7 @@ mod tests {
 
     #[test]
     fn configure_rejects_invalid_inputs() {
+        let _g = setup_witnesses(&[1]);
         // escrow_id must be > 0
         assert!(!NeoEscrowContract::configure(0, 1, 2, 3, 4, 100, 10, 20));
         // amount must be > 0
@@ -224,6 +267,49 @@ mod tests {
         assert!(!NeoEscrowContract::configure(1, 1, 2, 0, 4, 100, 10, 20));
         // token must be > 0
         assert!(!NeoEscrowContract::configure(1, 1, 2, 3, 0, 100, 10, 20));
+    }
+
+    #[test]
+    fn configure_requires_payer_witness() {
+        // Without payer in the witness set, configure must be rejected even
+        // when all other inputs are valid (X1 authorization bypass).
+        {
+            let _g = setup_witnesses(&[]);
+            assert!(!NeoEscrowContract::configure(1, 1, 2, 3, 4, 100, 10, 20));
+        }
+        // With payer witnessed, configure succeeds.
+        {
+            let _g = setup_witnesses(&[1]);
+            assert!(NeoEscrowContract::configure(1, 1, 2, 3, 4, 100, 10, 20));
+        }
+    }
+
+    #[test]
+    fn release_refund_require_caller_witness() {
+        // Single witness scope (reset_host_state clears storage between scopes).
+        // Configure as payer=1, payee=2, arbiter=3 with both 1 and 3 witnessed.
+        let _g = setup_witnesses(&[1, 3]);
+        assert!(NeoEscrowContract::configure(2, 1, 2, 3, 4, 100, 10, 20));
+
+        // A non-witnessed "caller" cannot release even by passing the arbiter's
+        // id (X1). We simulate the attacker by temporarily clearing witnesses
+        // is not possible in-scope; instead assert that a witnessed arbiter
+        // CAN release (positive auth), then the status change blocks refund.
+        assert!(NeoEscrowContract::release(2, 3));
+        // Already released -> refund rejected regardless of caller.
+        assert!(!NeoEscrowContract::refund(2, 3));
+    }
+
+    #[test]
+    fn release_rejects_unwitnessed_caller() {
+        // Configure under one scope, then prove a caller id that was NEVER
+        // witnessed is rejected. Reset clears storage, so configure + the
+        // negative release must share a scope. Use witnesses [1] (payer only);
+        // caller=3 (arbiter) is not witnessed, so release(2, 3) must fail.
+        let _g = setup_witnesses(&[1]);
+        assert!(NeoEscrowContract::configure(3, 1, 2, 3, 4, 100, 10, 20));
+        assert!(!NeoEscrowContract::release(3, 3));
+        assert!(!NeoEscrowContract::refund(3, 3));
     }
 
     #[test]
