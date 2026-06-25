@@ -22,6 +22,12 @@ extern "C" {
     #[link_name = "storage_get"]
     fn neo_storage_get(key: i32, key_len: i32) -> i64;
 
+    // Storage read into a caller-supplied buffer (X9): writes the stored value
+    // into `out` (capacity `out_cap`) and returns the number of bytes written,
+    // or -1 if the key is absent / the value exceeds `out_cap`.
+    #[link_name = "storage_get_into"]
+    fn neo_storage_get_into(key: i32, key_len: i32, out: i32, out_cap: i32) -> i32;
+
     #[link_name = "storage_put"]
     fn neo_storage_put(key: i32, key_len: i32, value: i32, value_len: i32);
 
@@ -89,6 +95,11 @@ pub fn sol_log_compute_units() {
 ///
 /// Maps to: System.Runtime.GetTime
 ///
+/// Returns the clock as **seconds** since the Unix epoch (Solana's
+/// `Clock::unix_timestamp` unit). `System.Runtime.GetTime` on Neo N3 returns
+/// milliseconds, so we divide by 1000 (X13: was returning milliseconds, off by
+/// 1000x vs Solana deadlines).
+///
 /// # Safety
 ///
 /// This function wraps the NeoVM syscall which returns an i64 value.
@@ -98,7 +109,7 @@ pub fn sol_get_clock_sysvar() -> i64 {
     // SAFETY: The NeoVM syscall returns a simple i64 value without
     // accessing any caller-provided memory.
     unsafe {
-        neo_get_time()
+        neo_get_time() / 1000
     }
     #[cfg(not(target_arch = "wasm32"))]
     0
@@ -143,37 +154,26 @@ pub fn sol_keccak256(data: &[u8], output: &mut [u8; 32]) {
 
 /// Verify Ed25519 signature
 ///
-/// Note: Neo uses different signature schemes (secp256r1, secp256k1)
-/// This is a compatibility stub that uses `CheckWitness`
+/// **Not implemented.** Solana's `sol_verify_signature` performs Ed25519
+/// verification of `signature` over `message` against `pubkey`. The Neo N3
+/// CryptoLib does not expose Ed25519, so a faithful implementation requires a
+/// host bridge that is not yet wired.
+///
+/// This function intentionally **does not return a witness-probe dressed up as
+/// a valid signature** (the previous behaviour answered "is this pubkey a
+/// signer?" regardless of whether they signed this message — a security
+/// footgun). It panics at first use with a clear message so callers fail
+/// loudly instead of getting false cryptographic confidence (X7).
 ///
 /// # Safety
 ///
-/// This function is safe because:
-/// - `signature`, `pubkey`, and `message` are valid references
-/// - The stack-allocated `hash160` buffer is always valid
-///
-/// All pointers are derived from valid Rust references.
+/// This function does not access any caller-provided memory; it always panics.
 pub fn sol_verify_signature(signature: &[u8; 64], pubkey: &Pubkey, message: &[u8]) -> bool {
-    #[cfg(target_arch = "wasm32")]
-    // SAFETY: All pointers come from valid references.
-    // hash160 is a stack-allocated array that remains valid for the duration.
-    unsafe {
-        // Derive script hash from the pubkey to check witness against the account identity.
-        let mut hash160 = [0u8; 20];
-        neo_hash160(
-            pubkey.as_ref().as_ptr() as i32,
-            pubkey.as_ref().len() as i32,
-            hash160.as_mut_ptr() as i32,
-        );
-        let _ = signature;
-        let _ = message;
-        neo_check_witness(hash160.as_ptr() as i32) != 0
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let _ = (signature, pubkey, message);
-        false
-    }
+    let _ = (signature, pubkey, message);
+    unimplemented!(
+        "sol_verify_signature: Ed25519 verification requires a Neo host bridge that is not \
+         yet wired. This stub refuses to return a witness-probe as a valid signature (X7)."
+    )
 }
 
 /// Invoke another program (CPI)
@@ -218,29 +218,40 @@ pub fn sol_invoke(program_id: &Pubkey, method: &str, args: &[u8]) -> Result<(), 
 
 /// Read from storage (simulates account data read)
 ///
+/// Read from storage (simulates account data read).
+///
+/// Fills the caller's `buffer` with the stored value and returns
+/// `Some(bytes_written)`, or `None` if the key is absent or the value does not
+/// fit in `buffer` (X9: previously returned `Some(0)` and never wrote a byte,
+/// so Solana programs read all-zero account data).
+///
 /// # Safety
 ///
-/// This function is safe because `key` is a valid reference.
-/// The buffer is currently unused but reserved for future API compatibility.
+/// This function is safe: `key` and `buffer` are valid references; the wasm
+/// import writes only within `buffer`'s bounds via the `out_cap` argument.
 pub fn storage_read(key: &[u8], buffer: &mut [u8]) -> Option<usize> {
     #[cfg(target_arch = "wasm32")]
     {
-        // SAFETY: key.as_ptr() comes from a valid reference.
-        let result = unsafe { neo_storage_get(key.as_ptr() as i32, key.len() as i32) };
-        let _ = buffer;
-        // The NeoVM syscall returns the value on the evaluation stack rather than
-        // writing to a buffer. We cannot populate `buffer` without a concrete
-        // storage bridge, but we can report whether the key existed.
-        if result < 0 {
+        // SAFETY: key.as_ptr()/buffer.as_mut_ptr() come from valid references;
+        // the import writes at most buffer.len() bytes (passed as out_cap).
+        let written = unsafe {
+            neo_storage_get_into(
+                key.as_ptr() as i32,
+                key.len() as i32,
+                buffer.as_mut_ptr() as i32,
+                buffer.len() as i32,
+            )
+        };
+        if written < 0 {
             None
         } else {
-            Some(0)
+            Some(written as usize)
         }
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
         let _ = (key, buffer);
-        Some(0)
+        None
     }
 }
 

@@ -361,3 +361,44 @@ fn pubkey_error_debug() {
     let err2 = PubkeyError::InvalidSeeds;
     assert_ne!(err, err2);
 }
+
+// ============================================================================
+// X8 / X13 — cross-chain correctness regressions
+// ============================================================================
+
+#[test]
+fn entrypoint_rejects_nonzero_account_count() {
+    // X8: previously the entrypoint silently passed `accounts = &[]` for any
+    // num_accounts; now it errors loudly when accounts are requested (the full
+    // deserializer is not yet implemented).
+    use neo_solana_compat::entrypoint::__neo_process_instruction;
+    // Input format: [32 program_id][4 num_accounts LE][...].
+    let mut input = [0u8; 40];
+    // num_accounts = 1 at bytes [32..36].
+    input[32] = 1;
+    let process = |_: &Pubkey, _: &[AccountInfo], _: &[u8]| Ok(());
+    // SAFETY: input is a valid stack array; length matches.
+    let result = unsafe { __neo_process_instruction(input.as_ptr(), input.len(), process) };
+    assert!(
+        result.is_err(),
+        "entrypoint must error when num_accounts > 0 (X8)"
+    );
+    assert_eq!(result.unwrap_err(), ProgramError::NotEnoughAccountKeys);
+}
+
+#[test]
+fn entrypoint_accepts_zero_accounts() {
+    use neo_solana_compat::entrypoint::__neo_process_instruction;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static CALLED: AtomicBool = AtomicBool::new(false);
+    CALLED.store(false, Ordering::SeqCst);
+    let input = [0u8; 40];
+    // num_accounts = 0 (already zero).
+    fn process(_: &Pubkey, _: &[AccountInfo], _: &[u8]) -> neo_solana_compat::entrypoint::ProgramResult {
+        CALLED.store(true, Ordering::SeqCst);
+        Ok(())
+    }
+    let result = unsafe { __neo_process_instruction(input.as_ptr(), input.len(), process) };
+    assert!(result.is_ok(), "zero-account entrypoint should succeed");
+    assert!(CALLED.load(Ordering::SeqCst));
+}

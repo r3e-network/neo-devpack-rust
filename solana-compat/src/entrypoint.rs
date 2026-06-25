@@ -115,13 +115,17 @@ pub unsafe fn __neo_process_instruction(
         data.get(35).copied().unwrap_or(0),
     ]) as usize;
 
-    // For now, pass empty accounts and remaining data as instruction_data
-    // Full implementation would parse account infos from the data
+    // X8: the previous implementation silently passed `accounts = &[]`, so any
+    // Solana program using the entrypoint! macro received an empty account
+    // slice and `next_account_info` always failed. Rather than silently
+    // dropping accounts, fail loudly when any are present: the full
+    // deserializer (owned Pubkey/data backing storage + a defined wire format)
+    // is not yet implemented. Programs that use no accounts continue to work.
+    if num_accounts > 0 {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    }
     let accounts: &[AccountInfo] = &[];
     let instruction_data = if data.len() > 36 { &data[36..] } else { &[] };
-
-    // Suppress unused variable warning
-    let _ = num_accounts;
 
     // Call the user's process instruction function
     process_instruction(&program_id, accounts, instruction_data)
