@@ -27,6 +27,26 @@ impl NeoInteger {
         Self(BigInt::one())
     }
 
+    /// Checked division: returns `Err(DivisionByZero)` instead of panicking
+    /// (the `Div` operator faults on a zero divisor — on-chain that becomes a
+    /// VM FAULT reverting the whole transaction). Use this in any contract
+    /// path that cannot guarantee a non-zero divisor (D5).
+    pub fn try_div(&self, rhs: &NeoInteger) -> crate::NeoResult<NeoInteger> {
+        if rhs.0.is_zero() {
+            return Err(crate::NeoError::DivisionByZero);
+        }
+        Ok(NeoInteger::new(&self.0 / &rhs.0))
+    }
+
+    /// Checked remainder: returns `Err(DivisionByZero)` instead of panicking
+    /// (see `try_div`). Matches the `Rem` operator's fault-on-zero behaviour.
+    pub fn try_rem(&self, rhs: &NeoInteger) -> crate::NeoResult<NeoInteger> {
+        if rhs.0.is_zero() {
+            return Err(crate::NeoError::DivisionByZero);
+        }
+        Ok(NeoInteger::new(&self.0 % &rhs.0))
+    }
+
     pub fn min_i32() -> Self {
         Self(BigInt::from(i32::MIN))
     }
@@ -494,5 +514,28 @@ impl BitXor<&NeoInteger> for &NeoInteger {
 impl Default for NeoInteger {
     fn default() -> Self {
         NeoInteger::zero()
+    }
+}
+
+#[cfg(test)]
+mod d5_tests {
+    use super::*;
+
+    #[test]
+    fn try_div_returns_division_by_zero_instead_of_panicking() {
+        let a = NeoInteger::new(10);
+        let zero = NeoInteger::zero();
+        assert_eq!(a.try_div(&zero), Err(crate::NeoError::DivisionByZero));
+        let two = NeoInteger::new(2);
+        assert_eq!(a.try_div(&two).unwrap(), NeoInteger::new(5));
+    }
+
+    #[test]
+    fn try_rem_returns_division_by_zero_instead_of_panicking() {
+        let a = NeoInteger::new(10);
+        let zero = NeoInteger::zero();
+        assert_eq!(a.try_rem(&zero), Err(crate::NeoError::DivisionByZero));
+        let three = NeoInteger::new(3);
+        assert_eq!(a.try_rem(&three).unwrap(), NeoInteger::new(1));
     }
 }

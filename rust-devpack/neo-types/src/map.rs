@@ -65,6 +65,13 @@ impl<K, V> NeoMap<K, V> {
     ///
     /// # Performance
     /// This operation is O(n) due to the element removal.
+    ///
+    /// # Order stability
+    /// Uses `Vec::remove` (shift) so iteration order of remaining entries is
+    /// preserved (D7: `swap_remove` reordered entries, diverging from on-chain
+    /// NeoVM Map semantics and breaking deterministic serialization). Note that
+    /// on-chain NeoVM `Map` is sorted by key; this `NeoMap` is a linear map
+    /// (insertion-stable), not the on-chain sorted map.
     pub fn remove(&mut self, key: &K) -> Option<V>
     where
         K: PartialEq,
@@ -72,7 +79,7 @@ impl<K, V> NeoMap<K, V> {
         self.data
             .iter()
             .position(|(k, _)| k == key)
-            .map(|i| self.data.swap_remove(i).1)
+            .map(|i| self.data.remove(i).1)
     }
 
     pub fn len(&self) -> usize {

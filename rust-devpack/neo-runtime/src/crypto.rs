@@ -63,39 +63,32 @@ impl NeoCrypto {
     /// **Test stub only.** Validates input shapes but does NOT perform real
     /// ECDSA verification. On-chain this maps to `Neo.Crypto.CheckSig`.
     ///
-    /// Returns `TRUE` if message is non-empty, signature is 64 bytes, and
-    /// public key is 33 bytes (compressed SEC1 format).
+    /// Returns `FALSE` by default even for well-shaped input (D11: the previous
+    /// shape-check returned TRUE for any well-formed forgery, a security
+    /// footgun that disagreed with the syscall mock's secure default). Tests
+    /// that need a positive result should route through `NeoVMSyscall`'s
+    /// `set_crypto_verification_results` host hook.
     pub fn verify_signature(
         message: &NeoByteString,
         signature: &NeoByteString,
         public_key: &NeoByteString,
     ) -> NeoResult<NeoBoolean> {
-        let is_shape_valid = !message.is_empty() && signature.len() == 64 && public_key.len() == 33;
-        Ok(if is_shape_valid {
-            NeoBoolean::TRUE
-        } else {
-            NeoBoolean::FALSE
-        })
+        let _ = (message, signature, public_key);
+        Ok(NeoBoolean::FALSE)
     }
 
     /// **Test stub only.** Validates input shapes but does NOT perform real
     /// ECDSA verification. On-chain this maps to `Neo.Crypto.VerifyWithECDsa`.
     ///
-    /// Returns `TRUE` if curve is secp256r1 (1), message is non-empty,
-    /// public key is 33 bytes, and signature is 64 bytes.
+    /// Returns `FALSE` by default (D11 — see `verify_signature`).
     pub fn verify_with_ecdsa(
         message: &NeoByteString,
         public_key: &NeoByteString,
         signature: &NeoByteString,
         curve: NeoInteger,
     ) -> NeoResult<NeoBoolean> {
-        let is_supported_curve = curve.try_as_i32() == Some(1);
-        let is_shape_valid = !message.is_empty() && public_key.len() == 33 && signature.len() == 64;
-        Ok(if is_supported_curve && is_shape_valid {
-            NeoBoolean::TRUE
-        } else {
-            NeoBoolean::FALSE
-        })
+        let _ = (message, public_key, signature, curve);
+        Ok(NeoBoolean::FALSE)
     }
 
     /// **Test stub only.** Returns a zero-padded 33-byte "public key" derived
