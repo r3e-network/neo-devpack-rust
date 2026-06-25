@@ -183,19 +183,23 @@ fn test_manifest_method_tokens_generated() {
 
     let translation = translate_with_config(&wasm, config).expect("translation should succeed");
 
-    // Check nefMethodTokens in extra
-    let extra = &translation.manifest.value["extra"];
-    let tokens = extra["nefMethodTokens"].as_array();
+    // C2: non-Contract.Call syscalls must NOT produce method tokens. The
+    // solana-hello sample uses only sol_log (System.Runtime.Log), so the
+    // emitted nefMethodTokens must be empty or absent, and must never contain
+    // a System.Runtime.Log entry.
+    let has_log_token = translation.manifest.value["extra"]["nefMethodTokens"]
+        .as_array()
+        .map(|tokens| {
+            tokens
+                .iter()
+                .any(|t| t["method"].as_str() == Some("System.Runtime.Log"))
+        })
+        .unwrap_or(false);
 
-    assert!(tokens.is_some(), "should have method tokens");
-    let tokens = tokens.unwrap();
-
-    // Should have at least one token for System.Runtime.Log
-    let has_log_token = tokens
-        .iter()
-        .any(|t| t["method"].as_str() == Some("System.Runtime.Log"));
-
-    assert!(has_log_token, "should have System.Runtime.Log token");
+    assert!(
+        !has_log_token,
+        "System.Runtime.Log must not produce a method token (C2)"
+    );
 }
 
 #[test]
@@ -278,16 +282,21 @@ fn test_solana_adapter_maps_syscalls() {
     let translation = translate_with_config(&wasm, config)
         .expect("translation should succeed via Solana adapter");
 
-    let tokens = translation.manifest.value["extra"]["nefMethodTokens"]
+    // C2: non-Contract.Call syscalls must NOT produce method tokens (a token
+    // for System.Runtime.Log would carry a meaningless [0;20] hash and pollute
+    // the NEF). The manifest may omit nefMethodTokens entirely or emit an
+    // empty array; either way, no System.Runtime.Log token may appear.
+    let has_log_token = translation.manifest.value["extra"]["nefMethodTokens"]
         .as_array()
-        .expect("nefMethodTokens should be present");
-
-    let has_log = tokens
-        .iter()
-        .any(|t| t["method"].as_str() == Some("System.Runtime.Log"));
+        .map(|tokens| {
+            tokens
+                .iter()
+                .any(|t| t["method"].as_str() == Some("System.Runtime.Log"))
+        })
+        .unwrap_or(false);
     assert!(
-        has_log,
-        "System.Runtime.Log token should be emitted for sol_log import"
+        !has_log_token,
+        "System.Runtime.Log must not produce a method token (C2)"
     );
 }
 

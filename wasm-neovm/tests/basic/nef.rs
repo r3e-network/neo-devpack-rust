@@ -209,8 +209,7 @@ fn encode_nef_rejects_method_token_name_starting_with_underscore() {
     token.method = "_internal".to_string();
 
     let err = encode_nef_with_metadata(&script, None, std::slice::from_ref(&token))
-        .err()
-        .expect("NEF encoding must reject '_'-prefixed method token name");
+        .unwrap_err();
     assert!(
         err.to_string().contains("must not start with '_'"),
         "unexpected error message: {err}"
@@ -225,8 +224,7 @@ fn encode_nef_rejects_more_than_128_method_tokens() {
     let tokens: Vec<MethodToken> = (0..129).map(|_| sample_token()).collect();
 
     let err = encode_nef_with_metadata(&script, None, &tokens)
-        .err()
-        .expect("NEF encoding must reject >128 method tokens");
+        .unwrap_err();
     assert!(
         err.to_string().contains("exceeds maximum"),
         "unexpected error message: {err}"

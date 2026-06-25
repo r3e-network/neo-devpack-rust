@@ -66,6 +66,8 @@ pub mod neo_syscalls;
 pub mod numeric;
 /// NeoVM opcode definitions and lookup tables
 pub mod opcodes;
+/// Well-known Neo N3 native contract hashes (CryptoLib, ...) and method tables.
+pub mod native_contracts;
 /// NeoVM syscall definitions and lookup functions
 pub mod syscalls;
 

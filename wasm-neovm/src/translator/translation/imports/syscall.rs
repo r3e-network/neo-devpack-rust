@@ -290,6 +290,19 @@ pub(super) fn emit_descriptor_syscall(
     descriptor: &str,
     script: &mut Vec<u8>,
 ) -> Result<&'static str> {
+    // CryptoLib methods must be invoked via System.Contract.Call, not a bare
+    // SYSCALL (no Register("Neo.Crypto.*") interop exists on Neo N3).
+    if let Some(method) = crate::native_contracts::crypto_lib_method(descriptor) {
+        return emit_cryptolib_call(script, method.contract_hash, method.method, descriptor);
+    }
+    // Composite Neo.Crypto.Hash160/Hash256 have no single native method; lower
+    // them as explicit call sequences elsewhere, not a dead syscall.
+    if crate::native_contracts::is_crypto_alias(descriptor) {
+        bail!(
+            "{descriptor} is a composite hash with no single CryptoLib method; \
+             lower it explicitly as sha256+ripemd160 (Hash160) or double-sha256 (Hash256)"
+        );
+    }
     let syscall = syscalls::lookup_extended(descriptor)
         .ok_or_else(|| anyhow!("syscall '{}' not found", descriptor))?;
     let opcode =
@@ -491,6 +504,25 @@ pub(super) fn emit_neo_syscall(
 
     let syscall_name = neo_syscalls::lookup_neo_syscall(&import.name)
         .ok_or_else(|| anyhow!("unknown Neo syscall import '{}'", import.name))?;
+
+    // CryptoLib methods (sha256/ripemd160/keccak256/murmur32/verifyWithECDsa)
+    // live on the CryptoLib *native contract* and must be invoked via
+    // `System.Contract.Call`. There is no `Register("Neo.Crypto.*")` interop,
+    // so emitting `SYSCALL <Neo.Crypto hash>` would deploy but fault at the
+    // first execution with "InteropService not found". Route these aliases to
+    // a real contract call instead of a dead syscall.
+    if let Some(method) = crate::native_contracts::crypto_lib_method(syscall_name) {
+        return emit_cryptolib_call(script, method.contract_hash, method.method, &import.name);
+    }
+    if crate::native_contracts::is_crypto_alias(syscall_name) {
+        bail!(
+            "{syscall_name} (import '{}') is a composite hash with no single \
+             CryptoLib method; lower it explicitly as sha256+ripemd160 (Hash160) \
+             or double-sha256 (Hash256)",
+            import.name
+        );
+    }
+
     let syscall = syscalls::lookup_extended(syscall_name)
         .ok_or_else(|| anyhow!("syscall '{}' not found", syscall_name))?;
     let opcode =
@@ -503,4 +535,49 @@ pub(super) fn emit_neo_syscall(
     script.push(opcode.byte);
     script.extend_from_slice(&syscall.hash.to_le_bytes());
     Ok(syscall.name)
+}
+
+/// Lower a `CryptoLib` native-contract method call to
+/// `System.Contract.Call(contractHash, method, callFlags, args)`.
+///
+/// The import is expected to take the same arguments the CryptoLib method
+/// takes (e.g. `sha256(data)`). We emit, bottom-to-top: `contractHash`,
+/// `method`, `callFlags` (AllowCall + AllowNotify = 0b1010 = 0x0E... actually
+/// read-only calls use CallFlags.ReadOnly = 0b0100 for the pure hashes; crypto
+/// verification also needs no state mutation so ReadOnly is correct), then the
+/// caller's argument list already on the Wasm stack is wrapped via the call
+/// convention used by the translator. For the import-bridge path the runtime
+/// helper owns arg marshalling, so we only need to emit the call frame: push
+/// hash, push method, push flags, `SYSCALL System.Contract.Call`.
+fn emit_cryptolib_call(
+    script: &mut Vec<u8>,
+    contract_hash: [u8; 20],
+    method: &str,
+    import_name: &str,
+) -> Result<&'static str> {
+    let call_syscall = syscalls::lookup_extended("System.Contract.Call")
+        .ok_or_else(|| anyhow!("System.Contract.Call syscall not found"))?;
+    let syscall_op =
+        opcodes::lookup("SYSCALL").ok_or_else(|| anyhow!("SYSCALL opcode metadata missing"))?;
+    if syscall_op.operand_size != 4 || syscall_op.operand_size_prefix != 0 {
+        bail!("unexpected SYSCALL operand metadata");
+    }
+
+    // Stack order required by System.Contract.Call (top to bottom):
+    //   args[]  (already supplied by the caller/import bridge)
+    //   callFlags
+    //   method  (ByteString)
+    //   contractHash (ByteString, 20 bytes)
+    // Emit bottom-up so the final top matches the syscall's expectation.
+    emit_push_data(script, &contract_hash)?;
+    emit_push_data(script, method.as_bytes())?;
+    // CallFlags.ReadOnly = 0b0100 = 4. CryptoLib hash/verify methods are pure
+    // and do not mutate contract state, so ReadOnly is sufficient and least
+    // privilege.
+    let _ = emit_push_int(script, 4);
+    script.push(syscall_op.byte);
+    script.extend_from_slice(&call_syscall.hash.to_le_bytes());
+    Ok(
+        Box::leak(format!("Neo.Crypto.{method} (via {import_name})").into_boxed_str()) as &str,
+    )
 }

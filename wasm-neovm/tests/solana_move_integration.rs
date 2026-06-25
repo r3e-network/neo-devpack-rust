@@ -228,9 +228,15 @@ fn test_solana_syscall_mapping() {
     assert!(result.is_ok());
 
     let translation = result.unwrap();
-    // Check method tokens for syscalls
-    let extra = &translation.manifest.value["extra"];
-    assert!(extra.get("nefMethodTokens").is_some());
+    // C1: crypto_sha256 lowers to a dynamic System.Contract.Call against
+    // CryptoLib (not a dead Neo.Crypto.SHA256 syscall). A dynamic
+    // System.Contract.Call via SYSCALL does not require a method token, so
+    // nefMethodTokens may be absent. Verify the Contract.Call hash is emitted.
+    let contract_call = wasm_neovm::syscalls::lookup("System.Contract.Call")
+        .expect("System.Contract.Call exists")
+        .hash;
+    assert_emits_syscall_hash(&translation.script, contract_call);
+    let _ = &translation.manifest.value["extra"];
 }
 
 // ============================================================================
@@ -555,7 +561,12 @@ fn test_solana_chain_accepts_mixed_case_syscall_module_for_extended_descriptors(
         .with_source_chain(SourceChain::Solana);
     let translation = translate_with_config(&wasm, config)
         .expect("solana chain should accept mixed-case syscall module");
-    assert_emits_syscall_hash(&translation.script, 0xcf822a6a);
+    // C1: Neo.Crypto.VerifyWithECDsa lowers to System.Contract.Call against
+    // CryptoLib, not the dead 0xcf822a6a syscall hash.
+    let contract_call = wasm_neovm::syscalls::lookup("System.Contract.Call")
+        .expect("System.Contract.Call exists")
+        .hash;
+    assert_emits_syscall_hash(&translation.script, contract_call);
 }
 
 #[test]
@@ -580,5 +591,9 @@ fn test_move_chain_accepts_mixed_case_syscall_module_for_extended_descriptors() 
         TranslationConfig::new("move-mixed-syscall-extended").with_source_chain(SourceChain::Move);
     let translation = translate_with_config(&wasm, config)
         .expect("move chain should accept mixed-case syscall module");
-    assert_emits_syscall_hash(&translation.script, 0xcf822a6a);
+    // C1: lowered via System.Contract.Call, not the dead 0xcf822a6a hash.
+    let contract_call = wasm_neovm::syscalls::lookup("System.Contract.Call")
+        .expect("System.Contract.Call exists")
+        .hash;
+    assert_emits_syscall_hash(&translation.script, contract_call);
 }
