@@ -270,8 +270,14 @@ fn overlay_overload_by_param_count_is_preserved() {
         .iter()
         .map(|m| m["parameters"].as_array().map(|a| a.len()).unwrap_or(0))
         .collect();
-    assert!(arities.contains(&1), "1-arg transfer must remain: {arities:?}");
-    assert!(arities.contains(&3), "3-arg transfer must be appended: {arities:?}");
+    assert!(
+        arities.contains(&1),
+        "1-arg transfer must remain: {arities:?}"
+    );
+    assert!(
+        arities.contains(&3),
+        "3-arg transfer must be appended: {arities:?}"
+    );
 }
 
 #[test]
@@ -289,7 +295,11 @@ fn overlay_same_name_same_arity_merges_in_place() {
     });
     merge(&mut base, &overlay);
     let methods = base["abi"]["methods"].as_array().unwrap();
-    assert_eq!(methods.len(), 1, "same name+arity must merge, not duplicate");
+    assert_eq!(
+        methods.len(),
+        1,
+        "same name+arity must merge, not duplicate"
+    );
     assert_eq!(methods[0]["safe"], true);
 }
 

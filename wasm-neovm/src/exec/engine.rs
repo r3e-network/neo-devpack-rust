@@ -135,7 +135,8 @@ impl<'a> Engine<'a> {
             "PUSHNULL" => self.stack.push(NeoItem::Null),
             "ISNULL" => {
                 let v = self.stack.pop().ok_or_else(|| st("ISNULL"))?;
-                self.stack.push(NeoItem::Boolean(matches!(v, NeoItem::Null)));
+                self.stack
+                    .push(NeoItem::Boolean(matches!(v, NeoItem::Null)));
             }
             "DUP" => self.dup_from_top(0)?,
             "SWAP" => {
@@ -203,7 +204,11 @@ impl<'a> Engine<'a> {
                 self.stack.push(v);
             }
             "DUPFROMALTSTACK" => {
-                let v = self.alt.last().cloned().ok_or_else(|| st("DUPFROMALTSTACK"))?;
+                let v = self
+                    .alt
+                    .last()
+                    .cloned()
+                    .ok_or_else(|| st("DUPFROMALTSTACK"))?;
                 self.stack.push(v);
             }
             // Arithmetic
@@ -223,7 +228,13 @@ impl<'a> Engine<'a> {
             }
             "SIGN" => {
                 let v = self.pop_int()?;
-                let s = if v.is_positive() { 1 } else if v.is_negative() { -1 } else { 0 };
+                let s = if v.is_positive() {
+                    1
+                } else if v.is_negative() {
+                    -1
+                } else {
+                    0
+                };
                 self.stack.push(NeoItem::int(s));
             }
             "NEGATE" => {
@@ -243,12 +254,48 @@ impl<'a> Engine<'a> {
                 self.stack.push(NeoItem::Integer(v - BigInt::from(1)));
             }
             // Comparisons
-            "EQ" => self.cmp(|a, b| if a == b { BigInt::from(1) } else { BigInt::from(0) })?,
-            "NE" => self.cmp(|a, b| if a != b { BigInt::from(1) } else { BigInt::from(0) })?,
-            "LT" => self.cmp(|a, b| if a < b { BigInt::from(1) } else { BigInt::from(0) })?,
-            "LE" => self.cmp(|a, b| if a <= b { BigInt::from(1) } else { BigInt::from(0) })?,
-            "GT" => self.cmp(|a, b| if a > b { BigInt::from(1) } else { BigInt::from(0) })?,
-            "GE" => self.cmp(|a, b| if a >= b { BigInt::from(1) } else { BigInt::from(0) })?,
+            "EQ" => self.cmp(|a, b| {
+                if a == b {
+                    BigInt::from(1)
+                } else {
+                    BigInt::from(0)
+                }
+            })?,
+            "NE" => self.cmp(|a, b| {
+                if a != b {
+                    BigInt::from(1)
+                } else {
+                    BigInt::from(0)
+                }
+            })?,
+            "LT" => self.cmp(|a, b| {
+                if a < b {
+                    BigInt::from(1)
+                } else {
+                    BigInt::from(0)
+                }
+            })?,
+            "LE" => self.cmp(|a, b| {
+                if a <= b {
+                    BigInt::from(1)
+                } else {
+                    BigInt::from(0)
+                }
+            })?,
+            "GT" => self.cmp(|a, b| {
+                if a > b {
+                    BigInt::from(1)
+                } else {
+                    BigInt::from(0)
+                }
+            })?,
+            "GE" => self.cmp(|a, b| {
+                if a >= b {
+                    BigInt::from(1)
+                } else {
+                    BigInt::from(0)
+                }
+            })?,
             "MIN" => self.cmp(|a, b| a.min(b))?,
             "MAX" => self.cmp(|a, b| a.max(b))?,
             // Buffers / items
@@ -265,21 +312,27 @@ impl<'a> Engine<'a> {
                 let s = start.to_usize().ok_or_else(|| st("SUBSTR range"))?;
                 let c = count.to_usize().ok_or_else(|| st("SUBSTR range"))?;
                 let end = s.checked_add(c).ok_or_else(|| ab("SUBSTR overflow"))?;
-                (end <= buf.len()).then_some(()).ok_or_else(|| ab("SUBSTR oob"))?;
+                (end <= buf.len())
+                    .then_some(())
+                    .ok_or_else(|| ab("SUBSTR oob"))?;
                 self.stack.push(NeoItem::buffer(buf[s..end].to_vec()));
             }
             "LEFT" => {
                 let n = self.pop_int()?;
                 let buf = self.pop_buf_owned()?;
                 let n = n.to_usize().ok_or_else(|| st("LEFT range"))?;
-                (n <= buf.len()).then_some(()).ok_or_else(|| ab("LEFT oob"))?;
+                (n <= buf.len())
+                    .then_some(())
+                    .ok_or_else(|| ab("LEFT oob"))?;
                 self.stack.push(NeoItem::buffer(buf[..n].to_vec()));
             }
             "RIGHT" => {
                 let n = self.pop_int()?;
                 let buf = self.pop_buf_owned()?;
                 let n = n.to_usize().ok_or_else(|| st("RIGHT range"))?;
-                (n <= buf.len()).then_some(()).ok_or_else(|| ab("RIGHT oob"))?;
+                (n <= buf.len())
+                    .then_some(())
+                    .ok_or_else(|| ab("RIGHT oob"))?;
                 let start = buf.len() - n;
                 self.stack.push(NeoItem::buffer(buf[start..].to_vec()));
             }
@@ -317,7 +370,9 @@ impl<'a> Engine<'a> {
             "PACK" => {
                 let n = self.pop_int()?;
                 let n = n.to_usize().ok_or_else(|| st("PACK range"))?;
-                (self.stack.len() >= n).then_some(()).ok_or_else(|| st("PACK underflow"))?;
+                (self.stack.len() >= n)
+                    .then_some(())
+                    .ok_or_else(|| st("PACK underflow"))?;
                 let items: Vec<NeoItem> = self.stack.split_off(self.stack.len() - n);
                 self.stack.push(NeoItem::Array(items));
             }
@@ -363,7 +418,9 @@ impl<'a> Engine<'a> {
                 match &col {
                     NeoItem::Buffer(b) => {
                         let mut bref = b.borrow_mut();
-                        (idx < bref.len()).then_some(()).ok_or_else(|| ab("SETITEM buf oob"))?;
+                        (idx < bref.len())
+                            .then_some(())
+                            .ok_or_else(|| ab("SETITEM buf oob"))?;
                         let v = value
                             .convert_to_int()
                             .and_then(|v| v.to_u8())
@@ -400,12 +457,18 @@ impl<'a> Engine<'a> {
                 self.locals = new_locals;
             }
             "LDLOC0" | "LDLOC1" | "LDLOC2" | "LDLOC3" | "LDLOC4" | "LDLOC5" | "LDLOC6" => {
-                let i = name.trim_start_matches("LDLOC").parse::<usize>().unwrap_or(0);
+                let i = name
+                    .trim_start_matches("LDLOC")
+                    .parse::<usize>()
+                    .unwrap_or(0);
                 let v = self.locals.get(i).cloned().unwrap_or(NeoItem::Null);
                 self.stack.push(v);
             }
             "STLOC0" | "STLOC1" | "STLOC2" | "STLOC3" | "STLOC4" | "STLOC5" | "STLOC6" => {
-                let i = name.trim_start_matches("STLOC").parse::<usize>().unwrap_or(0);
+                let i = name
+                    .trim_start_matches("STLOC")
+                    .parse::<usize>()
+                    .unwrap_or(0);
                 let v = self.stack.pop().unwrap_or(NeoItem::Null);
                 if i >= self.locals.len() {
                     self.locals.resize(i + 1, NeoItem::Null);
@@ -413,7 +476,10 @@ impl<'a> Engine<'a> {
                 self.locals[i] = v;
             }
             "LDARG0" | "LDARG1" | "LDARG2" | "LDARG3" | "LDARG4" | "LDARG5" | "LDARG6" => {
-                let i = name.trim_start_matches("LDARG").parse::<usize>().unwrap_or(0);
+                let i = name
+                    .trim_start_matches("LDARG")
+                    .parse::<usize>()
+                    .unwrap_or(0);
                 let v = self
                     .locals
                     .get(self.locals_arg_base + i)
@@ -422,12 +488,23 @@ impl<'a> Engine<'a> {
                 self.stack.push(v);
             }
             "LDSFLD0" | "LDSFLD1" | "LDSFLD2" | "LDSFLD3" | "LDSFLD4" | "LDSFLD5" | "LDSFLD6" => {
-                let i = name.trim_start_matches("LDSFLD").parse::<usize>().unwrap_or(0);
-                let v = self.host.static_fields.get(i).cloned().unwrap_or(NeoItem::Null);
+                let i = name
+                    .trim_start_matches("LDSFLD")
+                    .parse::<usize>()
+                    .unwrap_or(0);
+                let v = self
+                    .host
+                    .static_fields
+                    .get(i)
+                    .cloned()
+                    .unwrap_or(NeoItem::Null);
                 self.stack.push(v);
             }
             "STSFLD0" | "STSFLD1" | "STSFLD2" | "STSFLD3" | "STSFLD4" | "STSFLD5" | "STSFLD6" => {
-                let i = name.trim_start_matches("STSFLD").parse::<usize>().unwrap_or(0);
+                let i = name
+                    .trim_start_matches("STSFLD")
+                    .parse::<usize>()
+                    .unwrap_or(0);
                 let v = self.stack.pop().unwrap_or(NeoItem::Null);
                 if i >= self.host.static_fields.len() {
                     self.host.static_fields.resize(i + 1, NeoItem::Null);
@@ -716,14 +793,14 @@ mod tests {
         // Hand-built: PUSH8; NEWBUFFER; DUP; PUSH0; PUSH7; SETITEM; PUSH0; PICKITEM
         // (values must be <= 16 for inline PUSH<n> = 0x10+n).
         let script = [
-            0x10 + 8,                   // [8]
-            op("NEWBUFFER"),            // [B]
-            op("DUP"),                  // [B, B]
-            op("PUSH0"),                // [B, B, 0]
-            0x10 + 7,                   // [B, B, 0, 7]
-            op("SETITEM"),              // [B]  (consumed B,0,7; the DUP'd B remains)
-            op("PUSH0"),                // [B, 0]
-            op("PICKITEM"),             // [7]
+            0x10 + 8,        // [8]
+            op("NEWBUFFER"), // [B]
+            op("DUP"),       // [B, B]
+            op("PUSH0"),     // [B, B, 0]
+            0x10 + 7,        // [B, B, 0, 7]
+            op("SETITEM"),   // [B]  (consumed B,0,7; the DUP'd B remains)
+            op("PUSH0"),     // [B, 0]
+            op("PICKITEM"),  // [7]
         ];
         let mut host = Host::default();
         let mut e = Engine::new(&script, &mut host);

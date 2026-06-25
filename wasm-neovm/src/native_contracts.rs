@@ -130,7 +130,10 @@ mod tests {
 
     #[test]
     fn crypto_lib_method_resolves_all_aliases() {
-        assert_eq!(crypto_lib_method("Neo.Crypto.SHA256").unwrap().method, "sha256");
+        assert_eq!(
+            crypto_lib_method("Neo.Crypto.SHA256").unwrap().method,
+            "sha256"
+        );
         assert_eq!(crypto_lib_method("crypto_sha256").unwrap().method, "sha256");
         assert_eq!(
             crypto_lib_method("verify_with_ecdsa").unwrap().method,

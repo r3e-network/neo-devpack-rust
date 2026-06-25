@@ -95,8 +95,8 @@ pub fn emit_case_body(
             f.instruction(&Instruction::LocalGet(tmp_a_local));
             f.instruction(&Instruction::LocalGet(tmp_b_local));
             f.instruction(&Instruction::I64Add); // [sum]
-            // Save sum to tmp_b (b no longer needed) and probe sum<a without
-            // losing sum: compare a reloaded copy, then re-push sum afterward.
+                                                 // Save sum to tmp_b (b no longer needed) and probe sum<a without
+                                                 // losing sum: compare a reloaded copy, then re-push sum afterward.
             f.instruction(&Instruction::LocalTee(tmp_b_local)); // [sum]; tmp_b = sum
             f.instruction(&Instruction::LocalGet(tmp_a_local)); // [sum, a]
             f.instruction(&Instruction::I64LtU); // [sum<a] (consumes sum+a)
@@ -112,7 +112,7 @@ pub fn emit_case_body(
             f.instruction(&Instruction::LocalGet(tmp_a_local));
             f.instruction(&Instruction::LocalGet(tmp_b_local));
             f.instruction(&Instruction::I64Sub); // [a-b]
-            // Probe a<b: push a and b AFTER the result so the diff survives.
+                                                 // Probe a<b: push a and b AFTER the result so the diff survives.
             f.instruction(&Instruction::LocalGet(tmp_a_local)); // [a-b, a]
             f.instruction(&Instruction::LocalGet(tmp_b_local)); // [a-b, a, b]
             f.instruction(&Instruction::I64LtU); // [a-b, a<b]
@@ -126,12 +126,12 @@ pub fn emit_case_body(
             // division by a!=0 first (else WASM div-by-zero traps).
             f.instruction(&Instruction::LocalSet(tmp_b_local)); // tmp_b = b
             f.instruction(&Instruction::LocalSet(tmp_a_local)); // tmp_a = a
-            // Compute product into tmp_a (reuse; we still need a but can recompute).
+                                                                // Compute product into tmp_a (reuse; we still need a but can recompute).
             f.instruction(&Instruction::LocalGet(tmp_a_local));
             f.instruction(&Instruction::LocalGet(tmp_b_local));
             f.instruction(&Instruction::I64Mul);
             f.instruction(&Instruction::LocalSet(tmp_b_local)); // tmp_b = product (b gone)
-            // Probe: a != 0 && product / a != b. Branch on a != 0.
+                                                                // Probe: a != 0 && product / a != b. Branch on a != 0.
             f.instruction(&Instruction::LocalGet(tmp_a_local));
             f.instruction(&Instruction::I64Const(0));
             f.instruction(&Instruction::I64Ne); // [a!=0]
@@ -141,8 +141,8 @@ pub fn emit_case_body(
                 f.instruction(&Instruction::LocalGet(tmp_a_local)); // a
                 f.instruction(&Instruction::I64DivU); // product/a
                 f.instruction(&Instruction::LocalGet(tmp_a_local)); // (b is gone; recompute b? no)
-                // We lost b. Re-derive: reload b by recomputing is impossible.
-                // Instead, check (product/a) * a == product. If not, overflow.
+                                                                    // We lost b. Re-derive: reload b by recomputing is impossible.
+                                                                    // Instead, check (product/a) * a == product. If not, overflow.
                 f.instruction(&Instruction::I64Mul); // (product/a)*a
                 f.instruction(&Instruction::LocalGet(tmp_b_local)); // product
                 f.instruction(&Instruction::I64Ne); // [(product/a)*a != product]

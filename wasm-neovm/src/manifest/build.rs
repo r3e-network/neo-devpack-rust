@@ -107,7 +107,10 @@ pub fn ensure_permission_for_dynamic_calls(
     if method_token_count == 0 {
         return;
     }
-    let permissions = match manifest.get_mut("permissions").and_then(|p| p.as_array_mut()) {
+    let permissions = match manifest
+        .get_mut("permissions")
+        .and_then(|p| p.as_array_mut())
+    {
         Some(p) => p,
         None => return,
     };

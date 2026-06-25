@@ -60,17 +60,17 @@ pub mod metadata;
 pub mod nef;
 
 // Definition modules
+/// In-process NeoVM execution harness (feature `exec`).
+#[cfg(feature = "exec")]
+pub mod exec;
+/// Well-known Neo N3 native contract hashes (CryptoLib, ...) and method tables.
+pub mod native_contracts;
 /// Neo-specific syscall aliases and fingerprint mappings
 pub mod neo_syscalls;
 /// Numeric encoding utilities for NeoVM scripts
 pub mod numeric;
-/// In-process NeoVM execution harness (feature `exec`).
-#[cfg(feature = "exec")]
-pub mod exec;
 /// NeoVM opcode definitions and lookup tables
 pub mod opcodes;
-/// Well-known Neo N3 native contract hashes (CryptoLib, ...) and method tables.
-pub mod native_contracts;
 /// NeoVM syscall definitions and lookup functions
 pub mod syscalls;
 

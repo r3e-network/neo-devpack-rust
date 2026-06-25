@@ -394,7 +394,11 @@ fn entrypoint_accepts_zero_accounts() {
     CALLED.store(false, Ordering::SeqCst);
     let input = [0u8; 40];
     // num_accounts = 0 (already zero).
-    fn process(_: &Pubkey, _: &[AccountInfo], _: &[u8]) -> neo_solana_compat::entrypoint::ProgramResult {
+    fn process(
+        _: &Pubkey,
+        _: &[AccountInfo],
+        _: &[u8],
+    ) -> neo_solana_compat::entrypoint::ProgramResult {
         CALLED.store(true, Ordering::SeqCst);
         Ok(())
     }

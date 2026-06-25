@@ -284,7 +284,8 @@ impl DriverState {
         }
 
         let mut manifest_builder = ManifestBuilder::new(&self.contract_name, &self.methods);
-        let overlay_present = self.manifest_overlay.is_some() || self.extra_manifest_overlay.is_some();
+        let overlay_present =
+            self.manifest_overlay.is_some() || self.extra_manifest_overlay.is_some();
         if let Some(overlay) = self.manifest_overlay {
             manifest_builder
                 .merge_overlay(&overlay, Some("embedded neo.manifest sections".to_string()));

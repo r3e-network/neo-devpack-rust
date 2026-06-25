@@ -680,7 +680,10 @@ fn translate_chunked_memory_load_sign_extends_full_width() {
 
     let mut helper_region: Option<&[u8]> = None;
     for i in 0..script.len().saturating_sub(4) {
-        if script[i] == initslot && script[i + 1] == 5 && script[i + 2] == 0 && script[i + 3] == stloc0
+        if script[i] == initslot
+            && script[i + 1] == 5
+            && script[i + 2] == 0
+            && script[i + 3] == stloc0
         {
             let end = script[i..]
                 .iter()
@@ -710,8 +713,8 @@ fn single_page_store_load_roundtrip_executes() {
     // operand order, faulting at runtime for any single-page store. Run the
     // *actual* translated bytecode through the exec harness and assert a
     // store+load round-trip.
-    use wasm_neovm::exec::{Engine, ExecResult, Host, NeoItem};
     use num_bigint::BigInt;
+    use wasm_neovm::exec::{Engine, ExecResult, Host, NeoItem};
 
     let wasm = wat::parse_str(
         r#"(module
@@ -758,7 +761,10 @@ fn single_page_store_load_roundtrip_executes() {
     // Find the store helper (starts with SWAP; DUP; PUSH0; LT) and run it to its RET.
     let mut store_start = None;
     for i in 0..script.len().saturating_sub(4) {
-        if script[i] == swap && script[i + 1] == dup && script[i + 2] == push0 && script[i + 3] == lt
+        if script[i] == swap
+            && script[i + 1] == dup
+            && script[i + 2] == push0
+            && script[i + 3] == lt
         {
             store_start = Some(i);
             break;

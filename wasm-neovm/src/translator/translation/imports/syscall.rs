@@ -577,7 +577,5 @@ fn emit_cryptolib_call(
     let _ = emit_push_int(script, 4);
     script.push(syscall_op.byte);
     script.extend_from_slice(&call_syscall.hash.to_le_bytes());
-    Ok(
-        Box::leak(format!("Neo.Crypto.{method} (via {import_name})").into_boxed_str()) as &str,
-    )
+    Ok(Box::leak(format!("Neo.Crypto.{method} (via {import_name})").into_boxed_str()) as &str)
 }

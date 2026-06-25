@@ -56,7 +56,11 @@ impl Host {
     /// Dispatch a SYSCALL by its 4-byte hash. Returns the optional return item
     /// (None for void syscalls). The host owns its own static fields, so they
     /// are not passed separately.
-    pub fn syscall(&mut self, hash: u32, stack: &mut Vec<NeoItem>) -> Result<Option<NeoItem>, Fault> {
+    pub fn syscall(
+        &mut self,
+        hash: u32,
+        stack: &mut Vec<NeoItem>,
+    ) -> Result<Option<NeoItem>, Fault> {
         let name = syscalls::lookup_by_hash(hash).map(|i| i.name).unwrap_or("");
         match name {
             "System.Storage.GetContext" => Ok(Some(NeoItem::int(0))),
@@ -92,7 +96,9 @@ impl Host {
                 Ok(None)
             }
             "System.Storage.Delete" => {
-                let _ctx = stack.pop().ok_or(Fault::State("Delete: missing ctx".into()))?;
+                let _ctx = stack
+                    .pop()
+                    .ok_or(Fault::State("Delete: missing ctx".into()))?;
                 let key = stack
                     .pop()
                     .and_then(|i| match i {
@@ -125,8 +131,12 @@ impl Host {
             }
             "System.Runtime.Notify" => {
                 // name (ByteString), state (Array)
-                let state = stack.pop().ok_or(Fault::State("Notify: missing state".into()))?;
-                let name_item = stack.pop().ok_or(Fault::State("Notify: missing name".into()))?;
+                let state = stack
+                    .pop()
+                    .ok_or(Fault::State("Notify: missing state".into()))?;
+                let name_item = stack
+                    .pop()
+                    .ok_or(Fault::State("Notify: missing name".into()))?;
                 let name = match name_item {
                     NeoItem::Buffer(b) => String::from_utf8_lossy(&b.borrow()).into_owned(),
                     other => format!("{other:?}"),
@@ -157,9 +167,9 @@ impl Host {
                 // Host if they need call semantics.
                 Ok(Some(NeoItem::Null))
             }
-            _ => {
-                Err(Fault::Syscall(format!("unmodelled syscall {name} (0x{hash:08x})")))
-            }
+            _ => Err(Fault::Syscall(format!(
+                "unmodelled syscall {name} (0x{hash:08x})"
+            ))),
         }
     }
 

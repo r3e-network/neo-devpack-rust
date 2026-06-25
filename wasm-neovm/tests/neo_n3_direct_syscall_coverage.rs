@@ -91,7 +91,8 @@ fn direct_translation_covers_all_extended_crypto_descriptors() {
         );
         let wasm = wat::parse_str(&wat).expect("valid wat");
         let result = translate_module(&wasm, "CompositeCrypto");
-        let err = result.expect_err("{composite} must be rejected (no single CryptoLib method) (C1)");
+        let err =
+            result.expect_err("{composite} must be rejected (no single CryptoLib method) (C1)");
         // The error is wrapped with "failed to translate function"; walk the
         // full anyhow chain to confirm the composite-hash explanation.
         let full: Vec<String> = err.chain().map(|e| e.to_string()).collect();

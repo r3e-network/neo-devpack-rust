@@ -514,10 +514,7 @@ fn crypto_sha256_lowers_to_contract_call_not_dead_syscall() {
     // The dead SHA256 syscall hash (0x1174acd7) must never appear.
     let dead_sha256 = 0x1174acd7u32.to_le_bytes();
     assert!(
-        !translation
-            .script
-            .windows(4)
-            .any(|w| w == dead_sha256),
+        !translation.script.windows(4).any(|w| w == dead_sha256),
         "crypto_sha256 must not emit the dead Neo.Crypto.SHA256 syscall hash"
     );
 }
