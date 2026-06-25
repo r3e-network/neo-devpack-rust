@@ -65,6 +65,13 @@ impl NeoStorage {
         NeoVMSyscall::storage_as_read_only(context)
     }
 
+    /// Read a stored value.
+    ///
+    /// **Ambiguity warning (D8):** this returns an empty `NeoByteString` both
+    /// when the key is absent AND when the stored value is genuinely empty, so
+    /// the two cases are indistinguishable. For existence-sensitive reads,
+    /// prefer `NeoVMSyscall::storage_try_get` (returns `Option`) or
+    /// `RawStorage::get_into` (returns `RawStorageGet::Missing`).
     pub fn get(context: &NeoStorageContext, key: &NeoByteString) -> NeoResult<NeoByteString> {
         NeoVMSyscall::storage_get(context, key)
     }

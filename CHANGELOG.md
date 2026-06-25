@@ -10,6 +10,47 @@ follow the same repository version.
 
 ## [Unreleased]
 
+### Phase B (partial) — Devpack type/storage/crypto correctness
+
+The lower-risk correctness fixes from the devpack audit. The larger
+macro/export/wasm32-import redesign (D1–D4, D6, D13, D15, D17) is a coordinated
+breaking sub-project and is tracked as follow-up (see *Remaining work* below).
+
+#### Fixed
+- **D5:** `NeoInteger::try_div`/`try_rem` return `Err(DivisionByZero)` instead
+  of panicking (the `Div`/`Rem` operators fault on-chain → VM FAULT).
+- **D7:** `NeoMap::remove` now uses `Vec::remove` (insertion-stable) instead of
+  `swap_remove` (reordered entries, diverging from on-chain Map semantics).
+- **D9:** `Hash160`/`Hash256` `Display` now emits big-endian (canonical, matches
+  explorers/RPC); was little-endian (reversed).
+- **D11:** `NeoCrypto::verify_signature`/`verify_with_ecdsa` stubs default to
+  `FALSE` (secure) instead of `TRUE` for well-shaped input.
+- **D14:** `host_get_into` returns `-1` for a missing key so the host path
+  matches the wasm path's `RawStorageGet::Missing`.
+- **D16:** `NeoError` now implements `From<TryFromIntError>`/`From<ParseIntError>`.
+- **D8:** `NeoStorage::get` ambiguity (missing vs empty) is now documented;
+  existence-sensitive reads are steered to `storage_try_get`/`RawStorage::get_into`.
+- **D10:** `NeoCrypto::murmur32` is documented as a non-standard hash (not
+  MurmurHash; output won't match on-chain `Murmur128`); callers steered to
+  CryptoLib.
+- **D12:** `#[neo_method]`'s freestanding no-op behaviour is now documented
+  (enforcement deferred to the macro/export redesign).
+
+### Remaining Phase B work (follow-up)
+The macro/export + wasm32-import redesign is the largest remaining item and is
+intentionally split out: it requires coordinated, breaking changes across
+`neo-macros` and `wasm-neovm`. Tracked findings:
+- **D1:** `#[neo_event]`/`notify()` drop the event payload on wasm32 (need a
+  state-carrying wasm import + translator lowering).
+- **D2:** 20-byte script-hash accessors return hardcoded zeros on wasm32.
+- **D3:** most syscalls are wasm32 stubs returning defaults (`check_sig`→false).
+- **D4:** export wrappers only support `i64`/`bool` (not `NeoByteString`/`String`).
+- **D6:** `neo-test` harness is disconnected from the syscall-layer globals.
+- **D13:** `&mut self` export wrappers discard struct state.
+- **D15:** missing typed storage keys / base58 address helpers / NEP-17-11
+  boilerplate.
+- **D17:** per-export `<Name>LastError` doubles the wasm export table.
+
 ### Phase E — Professionalization
 
 CI supply-chain hygiene, docs accuracy, and deterministic release tooling.

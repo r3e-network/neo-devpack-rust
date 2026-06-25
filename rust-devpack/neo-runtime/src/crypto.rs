@@ -51,6 +51,13 @@ impl NeoCrypto {
         Ok(NeoByteString::new(output.to_vec()))
     }
 
+    /// **Non-standard hash — not MurmurHash (D10).** This helper multiplies by
+    /// Murmur's constant but is otherwise unrelated to any reference Murmur
+    /// implementation, and its output will not match `Neo.Crypto.Murmur128`
+    /// (the on-chain native is 128-bit). Do NOT use it for any cross-system
+    /// compatibility. It is retained only for legacy sample code; new code
+    /// should call the on-chain CryptoLib `murmur32` method via
+    /// `System.Contract.Call`.
     pub fn murmur32(data: &NeoByteString, seed: NeoInteger) -> NeoResult<NeoInteger> {
         let seed = seed.try_as_i32().unwrap_or(0) as u32;
         let mut hash = seed ^ (data.len() as u32);
