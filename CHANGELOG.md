@@ -10,6 +10,39 @@ follow the same repository version.
 
 ## [Unreleased]
 
+### Phase C — Contract security sweep
+
+Fixed the "caller passed as a parameter" authorization-bypass class across the
+bundled sample contracts by gating every state-changing entry point on a
+runtime witness check (`NeoRuntime::require_witness_i64`), matching the pattern
+already used by `timelock-vault`/`staking-rewards`/`crowdfunding`.
+
+#### Fixed
+- **X1 (escrow):** `configure`/`release`/`refund` now witness the payer/caller;
+  an attacker could previously release/refund any escrow by passing the
+  arbiter's id, or register an escrow on any payer's behalf.
+- **X2/X3/X18 (governance-dao):** `vote`/`unstake`/`propose`/`configure` now
+  witness the voter/staker/proposer/owner; the DAO was previously fully
+  captureable (ballot-box stuffing, forced unstake).
+- **X4 (nep11-nft):** `mint`/`transfer` now witness the owner/current-owner;
+  anyone could previously mint for free or move anyone's NFT.
+- **X5 (nft-marketplace):** `create_listing`/`cancel_listing` now witness the
+  seller/caller; anyone could previously register listings under an arbitrary
+  seller id or cancel anyone's listing.
+- **X20 (flashloan-pool):** `flash_loan` now witnesses the borrower; added a
+  prominent "illustrative, not audited for production" banner (the sample is
+  fee-math only — no token movement, debt ledger, or atomic repay).
+- **X19:** dropped the misleading `supportedstandards: [NEP-17]`/`[NEP-11]`
+  claim from the nep17-token/nep11-nft sample manifests (neither implements the
+  full standard).
+- **X14:** corrected the multisig-wallet README row to match the actual
+  reader-only stub (`threshold`/`ownerCount`), not the unimplemented
+  `configure`/`propose`/`approve`/`execute` surface.
+
+#### Added
+- `NeoRuntime::require_witness_i64` — the single canonical witness guard for
+  i64-encoded accounts, used by all the fixes above.
+
 ### Phase A — Compiler correctness, conformance & execution harness
 
 This phase is part of a systematic refactor (see
