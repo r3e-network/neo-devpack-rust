@@ -83,8 +83,17 @@ pub(in crate::translator::runtime) fn emit_memory_store_helper(
             let _ = emit_push_int(script, i as i128);
             script.push(lookup_opcode("ADD")?.byte);
         }
-        script.push(lookup_opcode("SWAP")?.byte);
-        script.push(lookup_opcode("LDSFLD0")?.byte);
+        // Stack (bottom->top): [.., masked_value, addr, byte_i, addr+i].
+        // NeoVM SETITEM consumes [collection, index, value] (collection deepest,
+        // value on top) — same convention SUBSTR uses. We need
+        // [memBuf, addr+i, byte_i] before SETITEM.
+        script.push(lookup_opcode("SWAP")?.byte); // -> [.., addr+i, byte_i]
+        script.push(lookup_opcode("LDSFLD0")?.byte); // push memBuf -> [.., addr+i, byte_i, memBuf]
+        // Two ROTs cycle the top three [addr+i, byte_i, memBuf] ->
+        // [byte_i, memBuf, addr+i] -> [memBuf, addr+i, byte_i], the exact
+        // (collection, index, value) order SETITEM requires. (A single ROT left
+        // byte_i as the "collection", which faults at runtime — T1.)
+        script.push(lookup_opcode("ROT")?.byte);
         script.push(lookup_opcode("ROT")?.byte);
         script.push(lookup_opcode("SETITEM")?.byte);
     }
