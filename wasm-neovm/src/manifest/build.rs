@@ -91,6 +91,42 @@ pub fn build_manifest_with_config(
     RenderedManifest { value: manifest }
 }
 
+/// If the contract makes static contract calls (`method_token_count > 0`) but
+/// declares no `permissions`, insert a wildcard `{"contract":"*","methods":"*"}`
+/// permission so the calls are not silently denied at runtime by Neo N3's
+/// permission check. Emits a `log::warn!` so authors can scope it down via an
+/// overlay. No-op when permissions are already declared or there are no tokens.
+///
+/// (C5: an empty `permissions` array is valid at deploy but denies every
+/// dynamic call at runtime, which is almost never what the author intended.)
+pub fn ensure_permission_for_dynamic_calls(
+    manifest: &mut serde_json::Value,
+    method_token_count: usize,
+    overlay_present: bool,
+) {
+    if method_token_count == 0 {
+        return;
+    }
+    let permissions = match manifest.get_mut("permissions").and_then(|p| p.as_array_mut()) {
+        Some(p) => p,
+        None => return,
+    };
+    if !permissions.is_empty() {
+        return;
+    }
+    if !overlay_present {
+        log::warn!(
+            "contract performs {method_token_count} static contract call(s) but declares no \
+             manifest permissions; auto-inserting a wildcard \"*\"/\"*\" permission. Scope this \
+             down via a manifest overlay for production contracts."
+        );
+    }
+    permissions.push(serde_json::json!({
+        "contract": "*",
+        "methods": "*"
+    }));
+}
+
 fn detect_supported_standards(methods: &[ManifestMethod]) -> Vec<String> {
     struct MethodSignatureRule {
         standard: &'static str,

@@ -233,3 +233,91 @@ fn propagate_safe_noop_without_methods() {
     propagate_safe_flags(&mut manifest);
     assert!(manifest["abi"].get("methods").is_none());
 }
+
+#[test]
+fn overlay_overload_by_param_count_is_preserved() {
+    // C3: Neo identifies ABI methods by (name, parameter-count), so an overlay
+    // introducing an overload (same name, different arity) must append a new
+    // method, not overwrite the existing one.
+    let mut base = json!({
+        "abi": {
+            "methods": [
+                {"name": "transfer", "parameters": [
+                    {"name": "from", "type": "Hash160"}
+                ]}
+            ]
+        }
+    });
+    let overlay = json!({
+        "abi": {
+            "methods": [
+                {"name": "transfer", "parameters": [
+                    {"name": "from", "type": "Hash160"},
+                    {"name": "to",   "type": "Hash160"},
+                    {"name": "amount","type": "Integer"}
+                ]}
+            ]
+        }
+    });
+    merge(&mut base, &overlay);
+    let methods = base["abi"]["methods"].as_array().unwrap();
+    assert_eq!(
+        methods.len(),
+        2,
+        "same-name different-arity overload must be preserved as a distinct method (C3)"
+    );
+    let arities: Vec<usize> = methods
+        .iter()
+        .map(|m| m["parameters"].as_array().map(|a| a.len()).unwrap_or(0))
+        .collect();
+    assert!(arities.contains(&1), "1-arg transfer must remain: {arities:?}");
+    assert!(arities.contains(&3), "3-arg transfer must be appended: {arities:?}");
+}
+
+#[test]
+fn overlay_same_name_same_arity_merges_in_place() {
+    // Same name AND same arity still field-merges (the original behavior).
+    let mut base = json!({
+        "abi": {"methods": [
+            {"name": "transfer", "parameters": [{"name": "from", "type": "Hash160"}]}
+        ]}
+    });
+    let overlay = json!({
+        "abi": {"methods": [
+            {"name": "transfer", "parameters": [{"name": "from", "type": "Hash160"}], "safe": true}
+        ]}
+    });
+    merge(&mut base, &overlay);
+    let methods = base["abi"]["methods"].as_array().unwrap();
+    assert_eq!(methods.len(), 1, "same name+arity must merge, not duplicate");
+    assert_eq!(methods[0]["safe"], true);
+}
+
+#[test]
+fn ensure_permission_inserts_wildcard_when_contract_calls_exist() {
+    use wasm_neovm::manifest::ensure_permission_for_dynamic_calls;
+    let mut manifest = json!({"permissions": []});
+    ensure_permission_for_dynamic_calls(&mut manifest, 2, false);
+    let perms = manifest["permissions"].as_array().unwrap();
+    assert_eq!(perms.len(), 1);
+    assert_eq!(perms[0]["contract"], "*");
+    assert_eq!(perms[0]["methods"], "*");
+}
+
+#[test]
+fn ensure_permission_noop_without_tokens() {
+    use wasm_neovm::manifest::ensure_permission_for_dynamic_calls;
+    let mut manifest = json!({"permissions": []});
+    ensure_permission_for_dynamic_calls(&mut manifest, 0, false);
+    assert!(manifest["permissions"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn ensure_permission_noop_when_permissions_already_declared() {
+    use wasm_neovm::manifest::ensure_permission_for_dynamic_calls;
+    let mut manifest = json!({"permissions": [
+        {"contract": "0x".to_string() + &"ab".repeat(20), "methods": "transfer"}
+    ]});
+    ensure_permission_for_dynamic_calls(&mut manifest, 3, false);
+    assert_eq!(manifest["permissions"].as_array().unwrap().len(), 1);
+}
