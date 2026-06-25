@@ -645,3 +645,60 @@ fn translate_memory_atomic_pattern() {
         last
     );
 }
+
+#[test]
+fn translate_chunked_memory_load_sign_extends_full_width() {
+    // Chunked-memory backing is selected whenever the module declares more
+    // than one initial page (or uses memory.grow). The chunked load helper
+    // accumulates bytes via `byte << (index*8)` + OR, which yields an
+    // UNSIGNED integer; full-width Wasm loads (`i32.load`/`i64.load`) are
+    // two's-complement signed, so the helper must sign-extend its result or
+    // every downstream signed op (lt_s, shr_s, div_s, ...) computes on the
+    // wrong magnitude. `(memory 2)` forces the chunked path deterministically.
+    let wasm = wat::parse_str(
+        r#"(module
+              (memory 2)
+              (func (export "load") (param i32) (result i32)
+                local.get 0
+                i32.load))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "ChunkedSignExt").expect("translation succeeds");
+    let script = &translation.script;
+
+    // The chunked load helper is uniquely identifiable by its prologue:
+    // `INITSLOT 5 0` followed by `STLOC0` (store the address argument). The
+    // compact (non-chunked) load helper does not allocate locals this way,
+    // and the store helper starts with `SWAP`, so this prologue is exclusive
+    // to the chunked load helper.
+    let initslot = opcodes::lookup("INITSLOT").unwrap().byte;
+    let stloc0 = opcodes::lookup("STLOC0").unwrap().byte;
+    let abort = opcodes::lookup("ABORT").unwrap().byte;
+    let xor = opcodes::lookup("XOR").unwrap().byte;
+    let sub = opcodes::lookup("SUB").unwrap().byte;
+
+    let mut helper_region: Option<&[u8]> = None;
+    for i in 0..script.len().saturating_sub(4) {
+        if script[i] == initslot && script[i + 1] == 5 && script[i + 2] == 0 && script[i + 3] == stloc0
+        {
+            let end = script[i..]
+                .iter()
+                .position(|&b| b == abort)
+                .map(|p| i + p)
+                .unwrap_or(script.len());
+            helper_region = Some(&script[i..end]);
+            break;
+        }
+    }
+    let helper = helper_region.expect("chunked load helper (INITSLOT 5 0; STLOC0) must be emitted");
+
+    assert!(
+        helper.contains(&xor),
+        "chunked load helper must sign-extend its result (expected XOR in helper body)"
+    );
+    assert!(
+        helper.contains(&sub),
+        "chunked load helper must sign-extend its result (expected SUB in helper body)"
+    );
+}
