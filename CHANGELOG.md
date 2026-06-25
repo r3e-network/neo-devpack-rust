@@ -10,6 +10,53 @@ follow the same repository version.
 
 ## [Unreleased]
 
+### Phase A — Compiler correctness, conformance & execution harness
+
+This phase is part of a systematic refactor (see
+`docs/superpowers/specs/2026-06-24-systematic-refactor-design.md`). It targets
+the `wasm-neovm` translator: every fix is proven by executing the generated
+bytecode through a new in-process NeoVM harness, not by opcode-shape matching.
+
+#### Fixed
+- **T1 (critical):** non-chunked memory `store` helper emitted crashing
+  bytecode for any single-page / no-`memory.grow` module — `SETITEM` received
+  operands in the wrong order (an Integer was treated as the collection). The
+  fault escaped detection because tests only asserted opcode shape. Now emits a
+  second `ROT` so the operand order is `[collection, index, value]`, matching
+  the proven chunked-store sibling. Verified by a store+load round-trip.
+- **T2:** `i32.rem_s` / `i64.rem_s` of `MIN % -1` panicked the const-fold
+  closure in debug builds (Wasm defines this as `0`, no trap).
+- **T3:** `return` did `value_stack.clear()`, diverging from the documented
+  stack model; now truncates to the function frame's `result_count`.
+- **C1:** `Neo.Crypto.*` aliases are methods on the CryptoLib *native contract*,
+  not registered syscalls — emitting `SYSCALL <hash>` deployed but faulted at
+  first execution with "InteropService not found". Now routed to a real
+  `System.Contract.Call(cryptoLibHash, method)`; composite `Hash160`/`Hash256`
+  (no single native method) are rejected loudly at translation time.
+- **C2:** method-token inference fabricated bogus `[0;20]`-hash tokens for every
+  non-`Contract.Call` syscall, polluting the NEF/manifest and risking the
+  128-token cap. Only concrete `System.Contract.Call` literals now produce tokens.
+- **C3:** manifest overlay merge collapsed ABI overloads by name only; Neo keys
+  methods by `(name, parameter-count)`. Overlays with explicit parameters and a
+  different arity are now preserved as distinct methods; overlays that omit
+  parameters still annotate any same-name method.
+- **C5:** contracts that make static contract calls but declare no `permissions`
+  silently had every dynamic call denied at runtime by Neo N3's permission
+  check. A wildcard `*`/`*` permission is now auto-inserted with a build warning.
+- **C4:** removed a stale comment referencing the non-existent `HASH160` opcode.
+
+#### Added
+- In-process NeoVM execution harness (cargo feature `exec`): a deterministic
+  engine over the emitted opcode subset with a pluggable `Host` (storage,
+  witnesses, notifications, syscalls). Used as the trust anchor for behavioural
+  fixes and as a substrate for later phases.
+- `wasm_neovm::native_contracts` module: CryptoLib native-contract hash and a
+  single source of truth for crypto-alias → native-method resolution.
+
+#### Changed
+- Removed the dead `EXTENDED_SYSCALLS` crypto entries; the adapters and feature
+  tracker now recognize `Neo.Crypto.*` via `native_contracts`.
+
 ## [0.5.8] - 2026-06-18
 
 ### Changed
