@@ -79,18 +79,13 @@ pub(crate) fn infer_contract_tokens(script: &[u8]) -> Vec<MethodToken> {
                     } else if info.name.len() > MAX_TOKEN_METHOD_LEN {
                         stack.push(Literal::Unknown);
                     } else {
-                        let has_return_value = if pc < script.len() {
-                            Some(script[pc]) != ops.drop_op
-                        } else {
-                            true
-                        };
-                        tokens.push(MethodToken {
-                            contract_hash: [0u8; HASH160_LENGTH],
-                            method: info.name.to_string(),
-                            parameters_count: 0,
-                            has_return_value,
-                            call_flags: 0,
-                        });
+                        // Only `System.Contract.Call` produces a meaningful
+                        // method token (a statically-callable contract method).
+                        // Other syscalls have no contract hash, so emitting a
+                        // token here would fabricate a bogus `[0;20]`-hash entry
+                        // that pollutes the NEF/manifest and can exhaust the
+                        // 128-token cap. Push Unknown and continue.
+                        stack.push(Literal::Unknown);
                     }
                 }
 
@@ -191,7 +186,7 @@ mod tests {
 
     #[test]
     fn infer_contract_tokens_ignores_jump_operand_bytes() {
-        let jmp_l = opcode("JMP_L");
+        let jmp_l = opcode("Jmp_L");
         let syscall = opcode("SYSCALL");
         let runtime_log_hash = crate::syscalls::lookup("System.Runtime.Log")
             .expect("System.Runtime.Log syscall exists")
@@ -209,5 +204,34 @@ mod tests {
 
         let tokens = infer_contract_tokens(&script);
         assert!(tokens.is_empty());
+    }
+
+    #[test]
+    fn infer_contract_tokens_emits_no_token_for_non_contract_call_syscall() {
+        // Regression for C2: a genuine System.Runtime.Log SYSCALL must NOT
+        // produce a method token. Previously the inference fabricated a bogus
+        // token with contract_hash=[0;20] and method=<syscall name> for every
+        // non-Contract.Call syscall, which is meaningless (syscalls have no
+        // contract hash) and could exhaust the 128-token NEF cap.
+        let pushdata1 = opcode("PUSHDATA1");
+        let syscall = opcode("SYSCALL");
+        let runtime_log_hash = crate::syscalls::lookup("System.Runtime.Log")
+            .expect("System.Runtime.Log syscall exists")
+            .hash
+            .to_le_bytes();
+
+        // System.Runtime.Log takes one ByteString arg.
+        let mut script = Vec::new();
+        script.push(pushdata1);
+        script.push(5);
+        script.extend_from_slice(b"hello");
+        script.push(syscall);
+        script.extend_from_slice(&runtime_log_hash);
+
+        let tokens = infer_contract_tokens(&script);
+        assert!(
+            tokens.is_empty(),
+            "non-Contract.Call syscalls must not produce method tokens, got: {tokens:?}"
+        );
     }
 }
