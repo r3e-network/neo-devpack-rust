@@ -10,6 +10,34 @@ follow the same repository version.
 
 ## [Unreleased]
 
+### Phase D — Cross-chain: correct-or-fail-loud
+
+The experimental Move and Solana paths now either produce correct results for
+the subset they claim or fail loudly at compile/translation/runtime. Full
+parity (every Move/Solana feature, real Ed25519) remains out of scope.
+
+#### Fixed (move-neovm)
+- **X6:** `Add`/`Sub`/`Mul` now emit overflow-trap sequences (Move arithmetic
+  aborts on overflow; was silently wrapping). `CastU8` now masks with `0xFF`.
+- **X10:** `MoveTo` probes existence and aborts if the resource already exists;
+  `MoveFrom` aborts if absent — restoring Move's resource-linearity guarantee.
+- **X11:** `LdU128` lowers loudly (bail at translation if `>i64::MAX`).
+- **X12:** `Pack`/`Unpack`/`BorrowField`/`Vec*` now bail at translation with a
+  clear "unsupported Move feature" message instead of emitting runtime
+  `Unreachable` traps or garbage.
+- **X17:** resource storage keys use a stable FNV-1a hash instead of the
+  non-stable `DefaultHasher` (whose output could shift across compiler versions
+  and orphan every on-chain resource key).
+
+#### Fixed (solana-compat)
+- **X7:** `sol_verify_signature` now panics with a clear message instead of
+  returning a witness-probe as a valid signature.
+- **X8:** `entrypoint!` errors loudly when `num_accounts > 0` (the full account
+  deserializer is unimplemented) instead of silently passing an empty slice.
+- **X9:** `storage_read` now fills the caller's buffer via
+  `neo_storage_get_into`; previously it returned `Some(0)` and wrote nothing.
+- **X13:** `sol_get_clock_sysvar` now returns seconds (Neo `GetTime` is ms).
+
 ### Phase C — Contract security sweep
 
 Fixed the "caller passed as a parameter" authorization-bypass class across the
