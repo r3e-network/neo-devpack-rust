@@ -688,3 +688,32 @@ fn translate_switch_like_pattern() {
     let ret_count = translation.script.iter().filter(|&&b| b == ret).count();
     assert!(ret_count >= 3, "expected multiple return paths");
 }
+
+#[test]
+fn early_return_inside_block_preserves_translation() {
+    // Regression for T3: an early `return` inside a nested block must not
+    // corrupt the abstract stack model. Previously `Return` did
+    // `value_stack.clear()`, diverging from `handle_branch`'s truncate-to-
+    // result_count. This module returns i32 from inside a block; translation
+    // must succeed and emit a RET for the early path.
+    let wasm = wat::parse_str(
+        r#"(module
+              (func (export "early") (param i32) (result i32)
+                (block
+                  local.get 0
+                  i32.const 0
+                  i32.lt_s
+                  br_if 0
+                  i32.const 7
+                  return)
+                i32.const 9))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "EarlyReturn").expect("translation succeeds");
+    let ret = opcodes::lookup("RET").unwrap().byte;
+    assert!(
+        translation.script.contains(&ret),
+        "early return must emit RET"
+    );
+}

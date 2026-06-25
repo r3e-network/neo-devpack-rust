@@ -282,6 +282,7 @@ pub(super) fn translate_function(ctx: &mut TranslationContext<'_>) -> Result<Str
             ctx.features,
             ctx.adapter,
             &mut is_unreachable,
+            returns.len(),
         )? {
             continue;
         }
