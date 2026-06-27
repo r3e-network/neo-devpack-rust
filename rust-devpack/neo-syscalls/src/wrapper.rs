@@ -31,11 +31,34 @@ extern "C" {
     #[link_name = "runtime_get_executing_script_hash_i64"]
     fn neo_runtime_get_executing_script_hash_i64() -> i64;
 
+    /// B1: ByteString-form (20-byte) script hashes. Returns the number
+    /// of bytes written into `out_ptr` (20 on success, negative on error).
+    /// Previously the wrappers returned `vec![0u8; 20]` on wasm32, silently
+    /// producing zero hashes on mainnet. B1 fix.
+    #[link_name = "runtime_get_calling_script_hash"]
+    fn neo_runtime_get_calling_script_hash(out_ptr: i32, out_cap: i32) -> i32;
+    #[link_name = "runtime_get_entry_script_hash"]
+    fn neo_runtime_get_entry_script_hash(out_ptr: i32, out_cap: i32) -> i32;
+    #[link_name = "runtime_get_executing_script_hash"]
+    fn neo_runtime_get_executing_script_hash(out_ptr: i32, out_cap: i32) -> i32;
+
     #[link_name = "runtime_log"]
     fn neo_runtime_log(ptr: i32, len: i32);
 
+    /// B2: state-carrying notify. The args array is serialised as a
+    /// NeoVM `Array` StackItem (1-byte tag, varint count, items…) and
+    /// handed to the VM. Previously `runtime_notify` only carried the
+    /// event name and dropped the state, so NEP-17/NEP-11 Transfer
+    /// events emitted `Transfer(<empty>)` on mainnet. B2 fix.
     #[link_name = "runtime_notify"]
     fn neo_runtime_notify(event_ptr: i32, event_len: i32);
+    #[link_name = "runtime_notify_with_state"]
+    fn neo_runtime_notify_with_state(
+        event_ptr: i32,
+        event_len: i32,
+        state_ptr: i32,
+        state_len: i32,
+    );
 
     /// D3: lowered to `SYSCALL System.Crypto.CheckSig(pubkey, signature)`.
     /// Verifies the ECDSA signature of the current script hash using `pubkey`.
@@ -244,6 +267,28 @@ impl NeoVMSyscall {
         let mut value = [0u8; 20];
         value.copy_from_slice(hash.as_slice());
         Ok(value)
+    }
+
+    /// B1: Read a 20-byte script hash from one of the
+    /// `runtime_get_*_script_hash` externs. The extern returns the
+    /// number of bytes written (20 on success, negative on error).
+    /// Used for the ByteString form of
+    /// `get_calling_script_hash` / `get_entry_script_hash` /
+    /// `get_executing_script_hash` on wasm32. Previously these
+    /// returned `vec![0u8; 20]` (silent zero hash on mainnet).
+    #[cfg(target_arch = "wasm32")]
+    fn read_script_hash_extern(
+        read: unsafe extern "C" fn(out_ptr: i32, out_cap: i32) -> i32,
+    ) -> NeoResult<NeoByteString> {
+        let mut buf = [0u8; 20];
+        let written = unsafe { (read)(buf.as_mut_ptr() as i32, buf.len() as i32) };
+        if written < 0 {
+            return Err(NeoError::InvalidState);
+        }
+        // Truncate to the bytes actually written (defensive: a future
+        // VM build could change the script-hash length).
+        let len = (written as usize).min(buf.len());
+        Ok(NeoByteString::from_slice(&buf[..len]))
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -722,7 +767,7 @@ impl NeoVMSyscall {
 
     #[cfg(target_arch = "wasm32")]
     pub fn get_calling_script_hash() -> NeoResult<NeoByteString> {
-        Ok(NeoByteString::new(vec![0u8; 20]))
+        Self::read_script_hash_extern(neo_runtime_get_calling_script_hash)
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -742,7 +787,7 @@ impl NeoVMSyscall {
 
     #[cfg(target_arch = "wasm32")]
     pub fn get_entry_script_hash() -> NeoResult<NeoByteString> {
-        Ok(NeoByteString::new(vec![0u8; 20]))
+        Self::read_script_hash_extern(neo_runtime_get_entry_script_hash)
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -762,7 +807,7 @@ impl NeoVMSyscall {
 
     #[cfg(target_arch = "wasm32")]
     pub fn get_executing_script_hash() -> NeoResult<NeoByteString> {
-        Ok(NeoByteString::new(vec![0u8; 20]))
+        Self::read_script_hash_extern(neo_runtime_get_executing_script_hash)
     }
 
     #[cfg(not(target_arch = "wasm32"))]
