@@ -122,3 +122,82 @@ impl<T: PartialEq> PartialEq<NeoArray<T>> for Vec<T> {
         *self == other.data
     }
 }
+
+/// Maximum number of items in a `NeoArray` on-chain (matches the C# NeoVM
+/// `Limits.MaxStackSize = 1024`). Exceeding this at runtime raises
+/// `FAULT` per `ApplicationEngine.Runtime.cs::RuntimeNotify`; here we
+/// provide an explicit `try_push` so contracts can handle the bound.
+pub const MAX_SIZE: usize = 1024;
+
+/// An error returned when a `NeoArray` would exceed `MAX_SIZE` items.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ArrayFullError {
+    /// The current length of the array when the push was attempted.
+    pub current_len: usize,
+}
+
+impl core::fmt::Display for ArrayFullError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "NeoArray is full (current_len = {}; MAX_SIZE = {})",
+            self.current_len, MAX_SIZE
+        )
+    }
+}
+
+impl std::error::Error for ArrayFullError {}
+
+impl<T> NeoArray<T> {
+    /// Try to push an item, returning `Err(ArrayFullError)` if the array
+    /// is already at `MAX_SIZE` (1024) items. Use this instead of `push`
+    /// when the array size is data-dependent and you need to handle the
+    /// bound explicitly (e.g. paginated reads).
+    pub fn try_push(&mut self, item: T) -> Result<(), ArrayFullError> {
+        if self.data.len() >= MAX_SIZE {
+            return Err(ArrayFullError {
+                current_len: self.data.len(),
+            });
+        }
+        self.data.push(item);
+        Ok(())
+    }
+
+    /// Returns the remaining capacity before the on-chain `MAX_SIZE`
+    /// limit is reached.
+    pub fn remaining_capacity(&self) -> usize {
+        MAX_SIZE.saturating_sub(self.data.len())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn try_push_within_limit() {
+        let mut arr: NeoArray<u32> = NeoArray::new();
+        for i in 0..100 {
+            arr.try_push(i).expect("well under MAX_SIZE");
+        }
+        assert_eq!(arr.len(), 100);
+        assert_eq!(arr.remaining_capacity(), MAX_SIZE - 100);
+    }
+
+    #[test]
+    fn try_push_at_limit_returns_error() {
+        let mut arr: NeoArray<u32> = NeoArray::new();
+        for i in 0..MAX_SIZE {
+            arr.try_push(i as u32).expect("fits within MAX_SIZE");
+        }
+        assert_eq!(arr.len(), MAX_SIZE);
+        assert_eq!(arr.remaining_capacity(), 0);
+        // 1025th push must fail.
+        let err = arr.try_push(MAX_SIZE as u32).unwrap_err();
+        assert_eq!(err.current_len, MAX_SIZE);
+        assert_eq!(
+            err.to_string(),
+            "NeoArray is full (current_len = 1024; MAX_SIZE = 1024)"
+        );
+    }
+}

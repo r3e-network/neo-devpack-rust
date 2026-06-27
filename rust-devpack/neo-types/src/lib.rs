@@ -39,3 +39,8 @@ pub use storage::NeoStorageContext;
 pub use string::NeoString;
 pub use traits::{NeoContract, NeoContractEntry, NeoContractMethodTrait};
 pub use value::{NeoStruct, NeoValue};
+
+// Re-export num-bigint so users don't need a direct dependency
+// to interop with `NeoInteger` via `BigInt`. The version is pinned
+// to the same major as `num-bigint = "0.4"` in this crate's Cargo.toml.
+pub use num_bigint::BigInt;

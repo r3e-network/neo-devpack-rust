@@ -59,6 +59,21 @@ impl NeoInteger {
         &self.0
     }
 
+    /// Owned `BigInt` (clones the inner `BigInt`). Use this when you
+    /// need to keep the value past the `NeoInteger`'s lifetime
+    /// (e.g. pass to an API that expects `BigInt` by value).
+    pub fn to_bigint(&self) -> BigInt {
+        self.0.clone()
+    }
+
+    /// Construct a `NeoInteger` from a `BigInt`. The `From<BigInt>`
+    /// impl already provides this, but spelled as a method for
+    /// uniformity with `to_bigint` and for code that has the
+    /// `BigInt` behind a reference.
+    pub fn from_bigint(value: &BigInt) -> Self {
+        Self(value.clone())
+    }
+
     /// Convert to i32, returning None if the value is out of range.
     /// This is the safe alternative to `as_i32()` that doesn't panic.
     pub fn try_as_i32(&self) -> Option<i32> {
