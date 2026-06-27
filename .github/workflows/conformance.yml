@@ -1,0 +1,47 @@
+name: Conformance
+
+on:
+  push:
+    branches: [ master ]
+    paths:
+      - 'conformance/**'
+      - 'wasm-neovm/tests/conformance.rs'
+      - 'contracts/**'
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  GOSUMDB: off
+
+jobs:
+  l7-conformance:
+    name: L7 neo-go conformance oracle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+      - name: Install Rust wasm32 target
+        run: rustup target add wasm32-unknown-unknown
+      - name: Build neo-n3-oracle
+        working-directory: conformance
+        run: go build -o neo-n3-oracle ./oracle
+      - name: Run conformance tests
+        run: cargo test -p wasm-neovm --features exec --test conformance
+      - name: Upload build artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: l7-conformance-artifacts
+          path: |
+            target/conformance-builds/
+            wasm-neovm/target/wasm32-unknown-unknown/release/*.wasm
