@@ -518,3 +518,28 @@ fn crypto_sha256_lowers_to_contract_call_not_dead_syscall() {
         "crypto_sha256 must not emit the dead Neo.Crypto.SHA256 syscall hash"
     );
 }
+
+#[test]
+fn check_sig_lowers_to_real_crypto_syscall() {
+    // D3 regression: `neo::check_sig` must lower to a real
+    // System.Crypto.CheckSig SYSCALL (not a default-zero stub).
+    let wasm = wat::parse_str(
+        r#"(module
+              (import "neo" "check_sig" (func $check (param i32 i32 i32 i32) (result i32)))
+              (func (export "verify") (param i32 i32 i32 i32) (result i32)
+                local.get 0  local.get 1  local.get 2  local.get 3
+                call $check))"#,
+    )
+    .expect("valid wat");
+    let translation = translate_module(&wasm, "D3CheckSig").expect("translation succeeds");
+    let check_sig_hash: u32 = wasm_neovm::syscalls::lookup("System.Crypto.CheckSig")
+        .expect("System.Crypto.CheckSig exists")
+        .hash;
+    let expected = check_sig_hash.to_le_bytes();
+    assert!(
+        translation.script.windows(5).any(|w| w[0]
+            == wasm_neovm::opcodes::lookup("SYSCALL").unwrap().byte
+            && w[1..5] == expected),
+        "neo::check_sig must lower to SYSCALL System.Crypto.CheckSig (D3)"
+    );
+}

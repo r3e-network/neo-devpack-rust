@@ -1,6 +1,6 @@
 [package]
 name = "nft-marketplace-neo"
-version = "0.5.8"
+version = "0.6.0"
 edition = "2021"
 description = "Neo N3 NFT marketplace smart contract with escrow, buyer commitments, and NEP-17 payments"
 keywords = ["neo", "n3", "smart-contract"]
@@ -13,7 +13,7 @@ categories = ["cryptography::cryptocurrencies", "wasm"]
 crate-type = ["cdylib"]
 
 [dependencies]
-neo-devpack = { path = "../../rust-devpack", version = "0.5.8", default-features = false }
+neo-devpack = { path = "../../rust-devpack", version = "0.6.0", default-features = false }
 
 [features]
 default = ["neo-devpack/std"]

@@ -10,6 +10,21 @@ follow the same repository version.
 
 ## [Unreleased]
 
+### Phase B remainder (D3 partial) — Crypto syscall lowering
+
+Contracts calling `NeoVMSyscall::check_sig` / `check_multisig` /
+`verify_with_ecdsa` previously failed to compile for `wasm32-unknown-unknown`
+(the generic `neovm_syscall` dispatcher had no wasm32 path, so any
+security-critical signature check was a hard build error). They now route
+through dedicated `extern "C"` imports that the translator lowers to the
+real `System.Crypto.*` SYSCALLs (CheckSig/CheckMultisig) or, for
+`verify_with_ecdsa`, the C1 native-contract routing via CryptoLib.
+
+#### Added
+- `neo_runtime_check_sig` / `neo_runtime_check_multisig` /
+  `neo_runtime_verify_with_ecdsa` wasm imports + dedicated wasm32 paths in
+  the devpack wrappers (D3).
+
 ### Phase B (partial) — Devpack type/storage/crypto correctness
 
 The lower-risk correctness fixes from the devpack audit. The larger

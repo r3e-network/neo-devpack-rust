@@ -37,6 +37,34 @@ extern "C" {
     #[link_name = "runtime_notify"]
     fn neo_runtime_notify(event_ptr: i32, event_len: i32);
 
+    /// D3: lowered to `SYSCALL System.Crypto.CheckSig(pubkey, signature)`.
+    /// Verifies the ECDSA signature of the current script hash using `pubkey`.
+    /// The translator's `neo::*` alias maps `check_sig` to that syscall.
+    #[link_name = "check_sig"]
+    fn neo_runtime_check_sig(pubkey_ptr: i32, pubkey_len: i32, sig_ptr: i32, sig_len: i32) -> i32;
+
+    /// D3: lowered to `SYSCALL System.Crypto.CheckMultisig(pubkeys, signatures)`.
+    #[link_name = "check_multisig"]
+    fn neo_runtime_check_multisig(
+        pubkeys_ptr: i32,
+        pubkeys_len: i32,
+        sigs_ptr: i32,
+        sigs_len: i32,
+    ) -> i32;
+
+    /// D3: lowered to `System.Contract.Call(cryptoLib, "verifyWithECDsa", ...)`
+    /// via the C1 native-contract routing.
+    #[link_name = "verify_with_ecdsa"]
+    fn neo_runtime_verify_with_ecdsa(
+        msg_ptr: i32,
+        msg_len: i32,
+        pubkey_ptr: i32,
+        pubkey_len: i32,
+        sig_ptr: i32,
+        sig_len: i32,
+        curve: i32,
+    ) -> i32;
+
     /// Lowered to `CALL_L` -> helper that emits
     ///   `SYSCALL System.Storage.GetContext;
     ///    SUBSTR <key>; SUBSTR <value>;
@@ -852,37 +880,107 @@ impl NeoVMSyscall {
     }
 
     pub fn check_sig(pubkey: &NeoByteString, signature: &NeoByteString) -> NeoResult<NeoBoolean> {
-        let values = [
-            NeoValue::from(pubkey.clone()),
-            NeoValue::from(signature.clone()),
-        ];
-        Self::call_boolean("System.Crypto.CheckSig", &values)
+        #[cfg(target_arch = "wasm32")]
+        {
+            // SAFETY: pointers/lengths come from valid byte-string slices.
+            let result = unsafe {
+                neo_runtime_check_sig(
+                    pubkey.as_slice().as_ptr() as i32,
+                    pubkey.len() as i32,
+                    signature.as_slice().as_ptr() as i32,
+                    signature.len() as i32,
+                )
+            };
+            return Ok(NeoBoolean::new(result != 0));
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let values = [
+                NeoValue::from(pubkey.clone()),
+                NeoValue::from(signature.clone()),
+            ];
+            Self::call_boolean("System.Crypto.CheckSig", &values)
+        }
     }
 
     pub fn check_multisig(
         pubkeys: &NeoArray<NeoValue>,
         signatures: &NeoArray<NeoValue>,
     ) -> NeoResult<NeoBoolean> {
-        let values = [
-            NeoValue::from(pubkeys.clone()),
-            NeoValue::from(signatures.clone()),
-        ];
-        Self::call_boolean("System.Crypto.CheckMultisig", &values)
+        #[cfg(target_arch = "wasm32")]
+        {
+            // Flatten the NeoArray<NeoValue> of ByteStrings into a contiguous
+            // buffer each (the simplest serialization the lowered SYSCALL
+            // helper accepts). D3: the devpack's NeoArray is host-side
+            // bookkeeping; on-chain CheckMultisig takes raw ByteStrings.
+            let mut pk = Vec::new();
+            for v in pubkeys.iter() {
+                let Some(b) = v.as_byte_string() else {
+                    return Err(NeoError::InvalidType);
+                };
+                pk.extend_from_slice(b.as_slice());
+            }
+            let mut sg = Vec::new();
+            for v in signatures.iter() {
+                let Some(b) = v.as_byte_string() else {
+                    return Err(NeoError::InvalidType);
+                };
+                sg.extend_from_slice(b.as_slice());
+            }
+            // SAFETY: pointers/lengths come from valid vec allocations.
+            let result = unsafe {
+                neo_runtime_check_multisig(
+                    pk.as_ptr() as i32,
+                    pk.len() as i32,
+                    sg.as_ptr() as i32,
+                    sg.len() as i32,
+                )
+            };
+            Ok(NeoBoolean::new(result != 0))
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let values = [
+                NeoValue::from(pubkeys.clone()),
+                NeoValue::from(signatures.clone()),
+            ];
+            Self::call_boolean("System.Crypto.CheckMultisig", &values)
+        }
     }
 
     pub fn verify_with_ecdsa(
         message: &NeoByteString,
-        pubkey: &NeoByteString,
+        public_key: &NeoByteString,
         signature: &NeoByteString,
         curve: &NeoInteger,
     ) -> NeoResult<NeoBoolean> {
-        let values = [
-            NeoValue::from(message.clone()),
-            NeoValue::from(pubkey.clone()),
-            NeoValue::from(signature.clone()),
-            NeoValue::from(curve.clone()),
-        ];
-        Self::call_boolean("Neo.Crypto.VerifyWithECDsa", &values)
+        #[cfg(target_arch = "wasm32")]
+        {
+            let curve_i = curve.try_as_i32().unwrap_or(0);
+            // SAFETY: pointers/lengths come from valid byte-string slices.
+            let result = unsafe {
+                neo_runtime_verify_with_ecdsa(
+                    message.as_slice().as_ptr() as i32,
+                    message.len() as i32,
+                    public_key.as_slice().as_ptr() as i32,
+                    public_key.len() as i32,
+                    signature.as_slice().as_ptr() as i32,
+                    signature.len() as i32,
+                    curve_i,
+                )
+            };
+            return Ok(NeoBoolean::new(result != 0));
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let values = [
+                NeoValue::from(message.clone()),
+                NeoValue::from(public_key.clone()),
+                NeoValue::from(signature.clone()),
+                NeoValue::from(curve.clone()),
+            ];
+            Self::call_boolean("Neo.Crypto.VerifyWithECDsa", &values)
+        }
     }
 
     pub fn iterator_next(items: &NeoArray<NeoValue>) -> NeoResult<NeoBoolean> {
