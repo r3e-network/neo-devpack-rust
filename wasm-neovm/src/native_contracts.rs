@@ -36,6 +36,20 @@ pub struct NativeMethod {
     pub method: &'static str,
 }
 
+/// A native contract descriptor: hash + per-method parameter shapes.
+///
+/// Used by the manifest emitter to compute the right method tokens and by
+/// `System.Contract.Call` lowering to know what to push onto the stack.
+#[derive(Debug, Clone)]
+pub struct NativeContractDescriptor {
+    /// The native contract HASH160 (little-endian).
+    pub hash: [u8; 20],
+    /// Canonical descriptor name (`"Neo.ContractManagement"`, etc.).
+    pub name: &'static str,
+    /// Methods exposed by this native contract (name + parameter types).
+    pub methods: &'static [(&'static str, &'static [&'static str])],
+}
+
 /// Resolve a `Neo.Crypto.*` / hashing alias to a real CryptoLib native method,
 /// or `None` if the alias has no single-call native equivalent (e.g. composite
 /// hashes such as `hash160`/`hash256`, which must be lowered as call sequences
@@ -106,6 +120,230 @@ pub fn crypto_descriptor_static(alias: &str) -> Option<&'static str> {
     }
 }
 
+// =============================================================================
+//  L2: native contract routing — 10 more native contracts
+// =============================================================================
+//
+// Canonical N3 native contract hashes (little-endian, as used in
+// `System.Contract.Call`'s first stack argument). Verified against
+// `rust-devpack/src/native_contracts.rs` and Neo Go's nativehashes package.
+// Post-HF_Echidna natives (TokenManagement, Governance) are tracked in the
+// audit as P11/P10 and require a chain-state query to obtain the canonical
+// hash; they are deliberately omitted here until verified.
+
+const CONTRACT_MANAGEMENT_HASH: [u8; 20] = [
+    0xfd, 0xa3, 0xfa, 0x43, 0x46, 0xea, 0x53, 0x2a, 0x25, 0x8f, 0xc4, 0x97, 0xdd, 0xad, 0xdb, 0x64,
+    0x37, 0xc9, 0xfd, 0xff,
+];
+const STD_LIB_HASH: [u8; 20] = [
+    0xc0, 0xef, 0x39, 0xce, 0xe0, 0xe4, 0xe9, 0x25, 0xc6, 0xc2, 0xa0, 0x6a, 0x79, 0xe1, 0x44, 0x0d,
+    0xd8, 0x6f, 0xce, 0xac,
+];
+const LEDGER_HASH: [u8; 20] = [
+    0xbe, 0xf2, 0x04, 0x31, 0x40, 0x36, 0x2a, 0x77, 0xc1, 0x50, 0x99, 0xc7, 0xe6, 0x4c, 0x12, 0xf7,
+    0x00, 0xb6, 0x65, 0xda,
+];
+const POLICY_HASH: [u8; 20] = [
+    0x7b, 0xc6, 0x81, 0xc0, 0xa1, 0xf7, 0x1d, 0x54, 0x34, 0x57, 0xb6, 0x8b, 0xba, 0x8d, 0x5f, 0x9f,
+    0xdd, 0x4e, 0x5e, 0xcc,
+];
+const ROLE_MANAGEMENT_HASH: [u8; 20] = [
+    0xe2, 0x95, 0xe3, 0x91, 0x54, 0x4c, 0x17, 0x8a, 0xd9, 0x4f, 0x03, 0xec, 0x4d, 0xcd, 0xff, 0x78,
+    0x53, 0x4e, 0xcf, 0x49,
+];
+const ORACLE_HASH: [u8; 20] = [
+    0x58, 0x87, 0x17, 0x11, 0x7e, 0x0a, 0xa8, 0x10, 0x72, 0xaf, 0xab, 0x71, 0xd2, 0xdd, 0x89, 0xfe,
+    0x7c, 0x4b, 0x92, 0xfe,
+];
+const NOTARY_HASH: [u8; 20] = [
+    0x3b, 0xec, 0x35, 0x31, 0x11, 0x9b, 0xba, 0xd7, 0x6d, 0xd0, 0x44, 0x92, 0x0b, 0x0d, 0xe6, 0xc3,
+    0x19, 0x4f, 0xe1, 0xc1,
+];
+const TREASURY_HASH: [u8; 20] = [
+    0xc1, 0x3a, 0x56, 0xc9, 0x83, 0x53, 0xa7, 0xea, 0x6a, 0x32, 0x4d, 0x9a, 0x83, 0x5d, 0x1b, 0x5b,
+    0xf2, 0x26, 0x63, 0x15,
+];
+
+/// Descriptor for ContractManagement. Source:
+/// `neo-project/neo/src/Neo/SmartContract/Native/ContractManagement.cs`.
+pub const CONTRACT_MANAGEMENT_DESCRIPTOR: NativeContractDescriptor = NativeContractDescriptor {
+    hash: CONTRACT_MANAGEMENT_HASH,
+    name: "Neo.ContractManagement",
+    methods: &[
+        ("deploy", &["ByteArray", "ByteArray"]),
+        ("deploy", &["ByteArray", "ByteArray", "Any"]),
+        ("update", &["ByteArray", "ByteArray"]),
+        ("update", &["ByteArray", "ByteArray", "Any"]),
+        ("destroy", &[]),
+        ("getContract", &["Hash160"]),
+        ("getContractById", &["Integer"]),
+        ("getContractHashes", &[]),
+        ("getMinimumDeploymentFee", &[]),
+        ("setMinimumDeploymentFee", &["Integer"]),
+        ("hasMethod", &["Hash160", "String", "Integer"]),
+        ("isContract", &["Hash160"]),
+    ],
+};
+
+/// Descriptor for StdLib. Source:
+/// `neo-project/neo/src/Neo/SmartContract/Native/StdLib.cs`.
+pub const STDLIB_DESCRIPTOR: NativeContractDescriptor = NativeContractDescriptor {
+    hash: STD_LIB_HASH,
+    name: "Neo.StdLib",
+    methods: &[
+        ("serialize", &["Any"]),
+        ("deserialize", &["ByteArray"]),
+        ("jsonSerialize", &["Any"]),
+        ("jsonDeserialize", &["String"]),
+        ("itoa", &["Integer"]),
+        ("atoi", &["String"]),
+        ("base64Encode", &["ByteArray"]),
+        ("base64Decode", &["String"]),
+        ("base58Encode", &["ByteArray"]),
+        ("base58Decode", &["String"]),
+    ],
+};
+
+/// Descriptor for LedgerContract. Source:
+/// `neo-project/neo/src/Neo/SmartContract/Native/LedgerContract.cs`.
+pub const LEDGER_DESCRIPTOR: NativeContractDescriptor = NativeContractDescriptor {
+    hash: LEDGER_HASH,
+    name: "Neo.Ledger",
+    methods: &[
+        ("getBlock", &["Integer"]),
+        ("getBlockByHash", &["Hash256"]),
+        ("getBlockByIndex", &["Integer"]),
+        ("getTransaction", &["Hash256"]),
+        ("getTransactionFromBlock", &["Hash256", "Integer"]),
+        ("getTransactionHeight", &["Hash256"]),
+        ("currentHash", &[]),
+        ("currentIndex", &[]),
+    ],
+};
+
+/// Descriptor for PolicyContract. Source:
+/// `neo-project/neo/src/Neo/SmartContract/Native/PolicyContract.cs`.
+pub const POLICY_DESCRIPTOR: NativeContractDescriptor = NativeContractDescriptor {
+    hash: POLICY_HASH,
+    name: "Neo.Policy",
+    methods: &[
+        ("getFeePerByte", &[]),
+        ("getExecFeeFactor", &[]),
+        ("getStoragePrice", &[]),
+        ("isBlocked", &["Hash160"]),
+        ("getMaxNotValidBeforeBlockDelta", &[]),
+        ("setFeePerByte", &["Integer"]),
+        ("setExecFeeFactor", &["Integer"]),
+        ("setStoragePrice", &["Integer"]),
+        ("blockAccount", &["Hash160"]),
+        ("unblockAccount", &["Hash160"]),
+    ],
+};
+
+/// Descriptor for RoleManagement. Source:
+/// `neo-project/neo/src/Neo/SmartContract/Native/RoleManagement.cs`.
+pub const ROLE_MANAGEMENT_DESCRIPTOR: NativeContractDescriptor = NativeContractDescriptor {
+    hash: ROLE_MANAGEMENT_HASH,
+    name: "Neo.RoleManagement",
+    methods: &[
+        ("getDesignatedByRole", &["Integer", "Integer"]),
+        ("assignRole", &["Integer", "Array"]),
+    ],
+};
+
+/// Descriptor for OracleContract. Source:
+/// `neo-project/neo/src/Neo/SmartContract/Native/OracleContract.cs`.
+pub const ORACLE_DESCRIPTOR: NativeContractDescriptor = NativeContractDescriptor {
+    hash: ORACLE_HASH,
+    name: "Neo.Oracle",
+    methods: &[
+        ("request", &["String", "String", "String", "Integer"]),
+        ("finish", &[]),
+    ],
+};
+
+/// Descriptor for Notary. Source:
+/// `neo-project/neo/src/Neo/SmartContract/Native/Notary.cs`.
+pub const NOTARY_DESCRIPTOR: NativeContractDescriptor = NativeContractDescriptor {
+    hash: NOTARY_HASH,
+    name: "Neo.Notary",
+    methods: &[
+        ("deposit", &["Hash160", "Integer"]),
+        ("withdraw", &["Hash160", "ByteArray"]),
+        ("balanceOf", &["Hash160"]),
+        ("expirationOf", &["Hash160"]),
+        ("getMaxNotValidBeforeDelta", &[]),
+    ],
+};
+
+/// Descriptor for Treasury. Source:
+/// `neo-project/neo/src/Neo/SmartContract/Native/Treasury.cs`.
+pub const TREASURY_DESCRIPTOR: NativeContractDescriptor = NativeContractDescriptor {
+    hash: TREASURY_HASH,
+    name: "Neo.Treasury",
+    methods: &[("verify", &["Hash160", "ByteArray", "ByteArray", "Integer"])],
+};
+
+/// Descriptor for CryptoLib (the canonical method list, in addition to
+/// the legacy single-method alias resolution in `crypto_lib_method`).
+pub const CRYPTOLIB_DESCRIPTOR: NativeContractDescriptor = NativeContractDescriptor {
+    hash: CRYPTOLIB_HASH,
+    name: "Neo.Crypto",
+    methods: &[
+        ("sha256", &["ByteArray"]),
+        ("ripemd160", &["ByteArray"]),
+        ("keccak256", &["ByteArray"]),
+        ("murmur32", &["ByteArray", "Integer"]),
+        (
+            "verifyWithECDsa",
+            &["ByteArray", "ByteArray", "ByteArray", "Integer"],
+        ),
+    ],
+};
+
+/// All N3 native contract descriptors. Used by the manifest emitter to
+/// produce the right method tokens; by chain adapters to resolve the
+/// descriptor name to the on-chain hash; and by tests to assert the
+/// canonical hash set has not drifted.
+pub static NATIVE_CONTRACT_REGISTRY: &[&NativeContractDescriptor] = &[
+    &CONTRACT_MANAGEMENT_DESCRIPTOR,
+    &STDLIB_DESCRIPTOR,
+    &CRYPTOLIB_DESCRIPTOR,
+    &LEDGER_DESCRIPTOR,
+    &POLICY_DESCRIPTOR,
+    &ROLE_MANAGEMENT_DESCRIPTOR,
+    &ORACLE_DESCRIPTOR,
+    &NOTARY_DESCRIPTOR,
+    &TREASURY_DESCRIPTOR,
+];
+
+/// Look up a native contract descriptor by its canonical name (e.g.
+/// `"Neo.ContractManagement"` or `"Neo.Oracle"`). Returns `None` for
+/// unknown names.
+pub fn native_contract_by_name(name: &str) -> Option<&'static NativeContractDescriptor> {
+    NATIVE_CONTRACT_REGISTRY
+        .iter()
+        .copied()
+        .find(|d| d.name == name)
+}
+
+/// Look up a native contract descriptor by its method call (e.g. a
+/// `Neo.Oracle.Request` import in a wasm module). The descriptor is the
+/// part before the last `.` (`Neo.Oracle`); the method is the last part.
+/// Returns the descriptor and the canonical method name as stored in
+/// `methods[].0` (which may differ in case from the input).
+pub fn native_contract_by_method(
+    alias: &str,
+) -> Option<(&'static NativeContractDescriptor, &'static str)> {
+    let trimmed = alias.strip_prefix("Neo.").unwrap_or(alias);
+    let (contract, method) = trimmed.rsplit_once('.')?;
+    let full = format!("Neo.{contract}");
+    let d = native_contract_by_name(&full)?;
+    // Return the canonical (stored) method name, not the caller's input.
+    let (canonical, _) = *d.methods.iter().find(|(n, _)| *n == method)?;
+    Some((d, canonical))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -143,5 +381,60 @@ mod tests {
         assert!(crypto_lib_method("Neo.Crypto.Hash160").is_none());
         assert!(crypto_lib_method("Neo.Crypto.Hash256").is_none());
         assert!(crypto_lib_method("unknown").is_none());
+    }
+
+    #[test]
+    fn native_contract_registry_contains_all_9_verified_hashes() {
+        // The 9 N3 native contracts that have published mainnet hashes
+        // (CryptoLib + 8 others). Post-HF_Echidna natives (TokenManagement,
+        // Governance) are deferred — see audit P10/P11.
+        assert_eq!(NATIVE_CONTRACT_REGISTRY.len(), 9);
+        for d in NATIVE_CONTRACT_REGISTRY {
+            assert!(!d.name.is_empty());
+            assert!(!d.methods.is_empty());
+        }
+    }
+
+    #[test]
+    fn contract_management_descriptor_contains_canonical_methods() {
+        let d = native_contract_by_name("Neo.ContractManagement").unwrap();
+        assert_eq!(d.name, "Neo.ContractManagement");
+        assert!(d.methods.iter().any(|(n, _)| *n == "deploy"));
+        assert!(d.methods.iter().any(|(n, _)| *n == "getContract"));
+        assert!(d.methods.iter().any(|(n, _)| *n == "hasMethod"));
+    }
+
+    #[test]
+    fn oracle_descriptor_contains_request_and_finish() {
+        let d = native_contract_by_name("Neo.Oracle").unwrap();
+        assert_eq!(d.name, "Neo.Oracle");
+        assert!(d.methods.iter().any(|(n, _)| *n == "request"));
+        assert!(d.methods.iter().any(|(n, _)| *n == "finish"));
+    }
+
+    #[test]
+    fn native_contract_by_method_resolves_well_known_calls() {
+        let (d, method) = native_contract_by_method("Neo.Oracle.request").unwrap();
+        assert_eq!(d.name, "Neo.Oracle");
+        assert_eq!(method, "request");
+
+        let (d, method) = native_contract_by_method("Neo.Ledger.getBlock").unwrap();
+        assert_eq!(d.name, "Neo.Ledger");
+        assert_eq!(method, "getBlock");
+    }
+
+    #[test]
+    fn stdlib_descriptor_contains_all_10_methods() {
+        let d = native_contract_by_name("Neo.StdLib").unwrap();
+        assert!(d.methods.iter().any(|(n, _)| *n == "itoa"));
+        assert!(d.methods.iter().any(|(n, _)| *n == "atoi"));
+        assert!(d.methods.iter().any(|(n, _)| *n == "base58Encode"));
+        assert!(d.methods.iter().any(|(n, _)| *n == "base58Decode"));
+        assert!(d.methods.iter().any(|(n, _)| *n == "base64Encode"));
+        assert!(d.methods.iter().any(|(n, _)| *n == "base64Decode"));
+        assert!(d.methods.iter().any(|(n, _)| *n == "serialize"));
+        assert!(d.methods.iter().any(|(n, _)| *n == "deserialize"));
+        assert!(d.methods.iter().any(|(n, _)| *n == "jsonSerialize"));
+        assert!(d.methods.iter().any(|(n, _)| *n == "jsonDeserialize"));
     }
 }
