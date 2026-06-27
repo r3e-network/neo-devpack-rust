@@ -8,10 +8,15 @@
 use neo_types::*;
 use std::slice::Iter;
 
+mod host_notifications;
 mod storage;
 mod syscalls;
 mod wrapper;
 
+pub use host_notifications::{
+    record as record_notification, reset as reset_recorded_notifications,
+    take as take_recorded_notifications, RecordedNotification,
+};
 pub use syscalls::SYSCALLS;
 pub use wrapper::{neovm_syscall, NeoVMSyscall};
 

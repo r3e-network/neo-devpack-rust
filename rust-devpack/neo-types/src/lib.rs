@@ -14,6 +14,7 @@ mod integer;
 mod iterator;
 mod manifest;
 mod map;
+mod stack_item;
 mod storage;
 mod string;
 mod traits;
@@ -31,6 +32,9 @@ pub use manifest::{
     NeoContractPermission,
 };
 pub use map::NeoMap;
+pub use stack_item::{
+    serialise_array, serialise_notification, serialise_value, MAX_NOTIFICATION_SIZE, MAX_STACK_SIZE,
+};
 pub use storage::NeoStorageContext;
 pub use string::NeoString;
 pub use traits::{NeoContract, NeoContractEntry, NeoContractMethodTrait};

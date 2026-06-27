@@ -684,8 +684,23 @@ impl NeoVMSyscall {
     pub fn notify(event: &NeoString, state: &NeoArray<NeoValue>) -> NeoResult<()> {
         #[cfg(target_arch = "wasm32")]
         {
-            let _ = state;
-            return Self::notify_event(event.as_str());
+            // B2: serialise the state array and hand it to the VM
+            // via `runtime_notify_with_state`. Previously the state
+            // was dropped on the floor, so NEP-17/NEP-11 Transfer
+            // events emitted `Transfer(<empty>)` on mainnet.
+            let state_bytes = serialise_array(state);
+            unsafe {
+                neo_runtime_notify_with_state(
+                    event.as_str().as_ptr() as i32,
+                    event.as_str().len() as i32,
+                    state_bytes.as_ptr() as i32,
+                    state_bytes.len() as i32,
+                );
+            }
+            // Also record in the host-side recorder so tests can
+            // assert the event+state were seen together.
+            crate::host_notifications::record(event, state);
+            return Ok(());
         }
 
         #[cfg(not(target_arch = "wasm32"))]
@@ -693,6 +708,7 @@ impl NeoVMSyscall {
             let event_bytes = NeoByteString::from_slice(event.as_str().as_bytes());
             let args = [NeoValue::from(event_bytes), NeoValue::from(state.clone())];
             neovm_syscall(syscall_hash("System.Runtime.Notify")?, &args)?;
+            crate::host_notifications::record(event, state);
             Ok(())
         }
     }
