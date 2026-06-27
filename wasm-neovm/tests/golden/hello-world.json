@@ -1,0 +1,11 @@
+{
+  "arguments": [],
+  "expected": {
+    "gas_consumed": 0,
+    "return_stack": [
+      "BigInteger"
+    ],
+    "state": "HALT"
+  },
+  "method": "hello"
+}

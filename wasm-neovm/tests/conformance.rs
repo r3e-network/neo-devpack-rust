@@ -249,3 +249,99 @@ fn l7_existing_samples_oracle() {
         );
     }
 }
+
+/// L7.v3 conformance: per-contract golden JSON.
+///
+/// For each `*.json` in `wasm-neovm/tests/golden/`, build the
+/// named contract, invoke the oracle, and assert the oracle's
+/// `state` / `gas_consumed` / `return_stack` match the committed
+/// `expected` block exactly. On mismatch, print a diff and fail.
+///
+/// To regenerate the golden files (e.g. after an intentional
+/// translator change), run with `UPDATE_L7_GOLDEN=1`.
+#[test]
+fn l7_v3_golden_json_conformance() {
+    let root = workspace_root();
+    let golden_dir = root.join("wasm-neovm/tests/golden");
+    let update = std::env::var("UPDATE_L7_GOLDEN").is_ok();
+
+    let mut entries: Vec<PathBuf> = std::fs::read_dir(&golden_dir)
+        .expect("read golden dir")
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("json"))
+        .collect();
+    entries.sort();
+
+    assert!(
+        !entries.is_empty(),
+        "no golden files found in {}",
+        golden_dir.display()
+    );
+
+    for golden_path in &entries {
+        let contract = golden_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .expect("file stem")
+            .to_string();
+        let golden_text =
+            std::fs::read_to_string(golden_path).expect("read golden file");
+        let golden: serde_json::Value =
+            serde_json::from_str(&golden_text).expect("parse golden file");
+
+        let method = golden["method"].as_str().expect("method field");
+        let args_json = golden["arguments"].as_array().expect("arguments array");
+        let args: Vec<(&str, &str)> = args_json
+            .iter()
+            .map(|a| {
+                let t = a["type"].as_str().expect("arg type");
+                let v = a["value"].as_str().expect("arg value");
+                (t, v)
+            })
+            .collect();
+        // Borrow the args strings so they live for the call.
+        let arg_refs: Vec<(&str, &str)> = args
+            .iter()
+            .map(|(t, v)| (*t, *v))
+            .collect();
+
+        let (nef, manifest) = build_and_emit(&contract);
+        let actual = run_oracle(&nef, &manifest, method, &arg_refs);
+        let actual_subset = serde_json::json!({
+            "state": actual["state"],
+            "gas_consumed": actual["gas_consumed"],
+            "return_stack": actual["return_stack"],
+        });
+
+        let expected = &golden["expected"];
+
+        if update {
+            // Overwrite the expected block in-place.
+            let mut new_golden = golden.clone();
+            new_golden["expected"] = actual_subset.clone();
+            std::fs::write(
+                golden_path,
+                serde_json::to_string_pretty(&new_golden)
+                    .expect("serialise new golden")
+                    + "\n",
+            )
+            .expect("write updated golden");
+            eprintln!("updated {}", golden_path.display());
+            continue;
+        }
+
+        if actual_subset != *expected {
+            let actual_pretty = serde_json::to_string_pretty(&actual_subset)
+                .expect("serialise actual");
+            let expected_pretty = serde_json::to_string_pretty(expected)
+                .expect("serialise expected");
+            panic!(
+                "{contract}: oracle output diverged from golden.\n\
+                 expected:\n{expected_pretty}\n\
+                 actual:\n{actual_pretty}\n\
+                 to regenerate, run:\n  \
+                 UPDATE_L7_GOLDEN=1 cargo test --features exec --test conformance l7_v3_golden_json_conformance"
+            );
+        }
+    }
+}
