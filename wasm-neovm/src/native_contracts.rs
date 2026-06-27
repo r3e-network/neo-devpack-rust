@@ -127,9 +127,14 @@ pub fn crypto_descriptor_static(alias: &str) -> Option<&'static str> {
 // Canonical N3 native contract hashes (little-endian, as used in
 // `System.Contract.Call`'s first stack argument). Verified against
 // `rust-devpack/src/native_contracts.rs` and Neo Go's nativehashes package.
-// Post-HF_Echidna natives (TokenManagement, Governance) are tracked in the
-// audit as P11/P10 and require a chain-state query to obtain the canonical
-// hash; they are deliberately omitted here until verified.
+// Post-HF_Echidna natives (TokenManagement, Governance) require a
+// chain-state query to obtain the canonical hash; we register them
+// with placeholder hashes and clearly mark the need to update them
+// at deploy time. Contracts that use them will deploy successfully
+// only after the chain admin populates the real hash; until then,
+// the placeholder zeros cause a "method token hash doesn't match
+// any contract" error at first invocation, which is loud rather
+// than silent.
 
 const CONTRACT_MANAGEMENT_HASH: [u8; 20] = [
     0xfd, 0xa3, 0xfa, 0x43, 0x46, 0xea, 0x53, 0x2a, 0x25, 0x8f, 0xc4, 0x97, 0xdd, 0xad, 0xdb, 0x64,
@@ -163,6 +168,17 @@ const TREASURY_HASH: [u8; 20] = [
     0xc1, 0x3a, 0x56, 0xc9, 0x83, 0x53, 0xa7, 0xea, 0x6a, 0x32, 0x4d, 0x9a, 0x83, 0x5d, 0x1b, 0x5b,
     0xf2, 0x26, 0x63, 0x15,
 ];
+
+/// Placeholder hash for `Neo.TokenManagement` (post-HF_Echidna).
+/// **MUST BE REPLACED** at deploy time with the chain-state lookup
+/// (`Neo.ContractManagement.getContractById(-12)`). Until then, calls
+/// to `Neo.TokenManagement.*` will fail at runtime with "method
+/// token hash doesn't match any contract".
+const TOKEN_MANAGEMENT_HASH_PLACEHOLDER: [u8; 20] = [0u8; 20];
+
+/// Placeholder hash for `Neo.Governance` (post-HF_Echidna). Same
+/// caveat as `TOKEN_MANAGEMENT_HASH_PLACEHOLDER`.
+const GOVERNANCE_HASH_PLACEHOLDER: [u8; 20] = [0u8; 20];
 
 /// Descriptor for ContractManagement. Source:
 /// `neo-project/neo/src/Neo/SmartContract/Native/ContractManagement.cs`.
@@ -301,6 +317,49 @@ pub const CRYPTOLIB_DESCRIPTOR: NativeContractDescriptor = NativeContractDescrip
     ],
 };
 
+/// Descriptor for TokenManagement (post-HF_Echidna). Source:
+/// `neo-project/neo/src/Neo/SmartContract/Native/TokenManagement.cs`
+/// (and `.Fungible.cs`, `.NonFungible.cs`).
+///
+/// The canonical hash is `[0u8; 20]` (placeholder) — see
+/// `TOKEN_MANAGEMENT_HASH_PLACEHOLDER` above. The descriptor is
+/// registered so that calls like `Neo.TokenManagement.transfer`
+/// resolve at translate time; deploy-time chain lookup is
+/// required to fill in the real hash.
+pub const TOKEN_MANAGEMENT_DESCRIPTOR: NativeContractDescriptor =
+    NativeContractDescriptor {
+        hash: TOKEN_MANAGEMENT_HASH_PLACEHOLDER,
+        name: "Neo.TokenManagement",
+        methods: &[
+            ("getToken", &["Hash256"]),
+            ("transfer", &["Hash160", "Hash160", "Integer", "Any"]),
+            ("getBalance", &["Hash160", "Hash256"]),
+            ("totalSupply", &["Hash256"]),
+            // NEP-11 (NFT) methods:
+            ("ownerOf", &["Hash256", "ByteArray"]),
+            ("tokensOf", &["Hash160"]),
+            ("balanceOf", &["Hash160", "Hash256"]),
+        ],
+    };
+
+/// Descriptor for Governance (post-HF_Echidna). Source:
+/// `neo-project/neo/src/Neo/SmartContract/Native/Governance.cs`.
+///
+/// The canonical hash is `[0u8; 20]` (placeholder) — see
+/// `GOVERNANCE_HASH_PLACEHOLDER` above.
+pub const GOVERNANCE_DESCRIPTOR: NativeContractDescriptor = NativeContractDescriptor {
+    hash: GOVERNANCE_HASH_PLACEHOLDER,
+    name: "Neo.Governance",
+    methods: &[
+        ("getVotersCount", &["Hash256"]),
+        ("getVoter", &["ECPoint", "Hash256"]),
+        ("getCandidate", &["ECPoint"]),
+        ("getCommittee", &[]),
+        ("getNextCommittee", &["Hash256"]),
+        ("getRegisteredCandidates", &[]),
+    ],
+};
+
 /// All N3 native contract descriptors. Used by the manifest emitter to
 /// produce the right method tokens; by chain adapters to resolve the
 /// descriptor name to the on-chain hash; and by tests to assert the
@@ -315,6 +374,8 @@ pub static NATIVE_CONTRACT_REGISTRY: &[&NativeContractDescriptor] = &[
     &ORACLE_DESCRIPTOR,
     &NOTARY_DESCRIPTOR,
     &TREASURY_DESCRIPTOR,
+    &TOKEN_MANAGEMENT_DESCRIPTOR,
+    &GOVERNANCE_DESCRIPTOR,
 ];
 
 /// Look up a native contract descriptor by its canonical name (e.g.
@@ -384,15 +445,28 @@ mod tests {
     }
 
     #[test]
-    fn native_contract_registry_contains_all_9_verified_hashes() {
-        // The 9 N3 native contracts that have published mainnet hashes
-        // (CryptoLib + 8 others). Post-HF_Echidna natives (TokenManagement,
-        // Governance) are deferred — see audit P10/P11.
-        assert_eq!(NATIVE_CONTRACT_REGISTRY.len(), 9);
+    fn native_contract_registry_contains_all_11_natives_with_2_placeholders() {
+        // The 9 N3 native contracts with published mainnet hashes +
+        // 2 placeholders (TokenManagement + Governance) for the
+        // post-HF_Echidna natives whose canonical hash requires a
+        // chain-state query. The placeholder hashes are `[0u8; 20]`
+        // and are clearly marked in their constant declarations; a
+        // deploy-time check (via Neo.ContractManagement.getContractById)
+        // is required to populate the real hash.
+        assert_eq!(NATIVE_CONTRACT_REGISTRY.len(), 11);
         for d in NATIVE_CONTRACT_REGISTRY {
             assert!(!d.name.is_empty());
             assert!(!d.methods.is_empty());
         }
+        // The two placeholders must remain placeholders until a
+        // proper chain-state lookup is implemented.
+        assert_eq!(
+            NATIVE_CONTRACT_REGISTRY[9].name,
+            "Neo.TokenManagement"
+        );
+        assert!(NATIVE_CONTRACT_REGISTRY[9].hash.iter().all(|&b| b == 0));
+        assert_eq!(NATIVE_CONTRACT_REGISTRY[10].name, "Neo.Governance");
+        assert!(NATIVE_CONTRACT_REGISTRY[10].hash.iter().all(|&b| b == 0));
     }
 
     #[test]

@@ -370,7 +370,7 @@ L6 conformance-oracle coverage is the next step.
 | ⚠️ Protocol-config extern | Network, AddressVersion, Trigger | 3 |
 | ⚠️ Re-uses runtime state | CheckWitness, CheckWitnessBytes (no new extern) | 1 |
 
-### Native contracts (9/11 routed; TokenManagement + Governance deferred)
+### Native contracts (11/11 routed; 2 with placeholder hashes)
 
 | Status | Native contract | Methods | Hash source |
 |---|---|---|---|
@@ -383,8 +383,8 @@ L6 conformance-oracle coverage is the next step.
 | ✅ | `Neo.Oracle` | 2 (request, finish) | same |
 | ✅ | `Neo.Notary` | 5 (deposit, withdraw, balanceOf, …) | same |
 | ✅ | `Neo.Treasury` | 1 (verify) | same |
-| ⏳ | `Neo.TokenManagement` | (post-HF_Echidna) | tracked in audit P11 |
-| ⏳ | `Neo.Governance` | (post-HF_Echidna) | tracked in audit P10 |
+| ⚠️ | `Neo.TokenManagement` | 7 (getToken, transfer, getBalance, totalSupply, ownerOf, tokensOf, balanceOf) | placeholder (post-HF_Echidna; needs chain-state lookup) |
+| ⚠️ | `Neo.Governance` | 6 (getVotersCount, getVoter, getCandidate, getCommittee, getNextCommittee, getRegisteredCandidates) | placeholder (post-HF_Echidna; needs chain-state lookup) |
 
 ### Test status
 
