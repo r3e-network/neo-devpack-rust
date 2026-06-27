@@ -139,7 +139,7 @@ pub fn serialise_notification(event: &NeoString, state: &NeoArray<NeoValue>) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{NeoByteString, NeoBoolean, NeoInteger};
+    use crate::{NeoBoolean, NeoByteString, NeoInteger};
 
     #[test]
     fn varint_single_byte() {

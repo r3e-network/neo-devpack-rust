@@ -110,6 +110,24 @@ extern "C" {
     ///   - `-needed_len` if the caller-supplied buffer was too small.
     #[link_name = "neo_storage_get_into"]
     fn neo_storage_get_into(key_ptr: i32, key_len: i32, out_ptr: i32, out_cap: i32) -> i32;
+
+    /// B4: cross-contract-call extern. NOT YET IMPLEMENTED. The wasm32
+    /// wrapper panics with a clear "see L6 design" message rather than
+    /// silently returning Null (the previous behaviour). The L6
+    /// conformance work provides the full cross-call executor that
+    /// invokes the target contract and returns its result.
+    #[link_name = "neo_contract_call"]
+    fn neo_contract_call(
+        hash_ptr: i32,
+        hash_len: i32,
+        method_ptr: i32,
+        method_len: i32,
+        args_ptr: i32,
+        args_len: i32,
+        call_flags: i32,
+        out_ptr: i32,
+        out_cap: i32,
+    ) -> i32;
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -872,8 +890,20 @@ impl NeoVMSyscall {
             NeoValue::from(call_flags.clone()),
             NeoValue::from(args.clone()),
         ];
-        Self::call_value("System.Runtime.LoadScript", &values)?;
-        Ok(())
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            Self::call_value("System.Runtime.LoadScript", &values)?;
+            Ok(())
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            // B4: panic-loud rather than silently returning Null.
+            let _ = values;
+            panic!(
+                "System.Runtime.LoadScript on wasm32 is not yet implemented; \
+                 see L6 design. The previous behaviour silently returned Null."
+            );
+        }
     }
 
     /// Call any contract method.
@@ -910,14 +940,37 @@ impl NeoVMSyscall {
 
         #[cfg(target_arch = "wasm32")]
         {
-            Self::call_value("System.Contract.Call", &values)
+            // B4: panic-loud rather than silently returning Null.
+            // The previous behaviour silently produced NeoValue::Null
+            // (via default_value_for(Any)), which meant contracts that
+            // chained to other contracts thought they got a real
+            // result and acted on it. L6 provides the full executor.
+            let _ = values;
+            panic!(
+                "System.Contract.Call on wasm32 is not yet implemented; \
+                 see docs/superpowers/specs/2026-06-27-neo-n3-platform-support-design.md \
+                 layer L6. The previous behaviour silently returned Null."
+            );
         }
     }
 
     /// Call a native contract by id.
     pub fn contract_call_native(native_id: &NeoInteger) -> NeoResult<NeoValue> {
         let values = [NeoValue::from(native_id.clone())];
-        Self::call_value("System.Contract.CallNative", &values)
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            Self::call_value("System.Contract.CallNative", &values)
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            // B4: panic-loud. Contract-to-native-call goes through
+            // the L6 cross-call executor.
+            let _ = values;
+            panic!(
+                "System.Contract.CallNative on wasm32 is not yet implemented; \
+                 see L6 design. The previous behaviour silently returned Null."
+            );
+        }
     }
 
     pub fn get_call_flags() -> NeoResult<NeoInteger> {
@@ -949,13 +1002,35 @@ impl NeoVMSyscall {
     }
 
     pub fn native_on_persist() -> NeoResult<()> {
-        Self::call_value("System.Contract.NativeOnPersist", &[])?;
-        Ok(())
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            Self::call_value("System.Contract.NativeOnPersist", &[])?;
+            Ok(())
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            // System.Contract.NativeOnPersist is only valid inside a native
+            // contract (the C# engine throws InvalidOperationException for
+            // user contracts). User contracts that mistakenly call this
+            // get a clean error rather than a panic at the engine layer.
+            Err(NeoError::new(
+                "System.Contract.NativeOnPersist is only valid inside native contracts",
+            ))
+        }
     }
 
     pub fn native_post_persist() -> NeoResult<()> {
-        Self::call_value("System.Contract.NativePostPersist", &[])?;
-        Ok(())
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            Self::call_value("System.Contract.NativePostPersist", &[])?;
+            Ok(())
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            Err(NeoError::new(
+                "System.Contract.NativePostPersist is only valid inside native contracts",
+            ))
+        }
     }
 
     pub fn check_sig(pubkey: &NeoByteString, signature: &NeoByteString) -> NeoResult<NeoBoolean> {
