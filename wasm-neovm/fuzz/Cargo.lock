@@ -479,7 +479,7 @@ checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
 
 [[package]]
 name = "move-neovm"
-version = "0.1.0"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "bytes",
@@ -492,9 +492,8 @@ dependencies = [
 
 [[package]]
 name = "neo-devpack"
-version = "0.1.0"
+version = "0.7.0"
 dependencies = [
- "anyhow",
  "neo-macros",
  "neo-runtime",
  "neo-syscalls",
@@ -502,12 +501,11 @@ dependencies = [
  "postcard",
  "serde",
  "serde_json",
- "thiserror 1.0.69",
 ]
 
 [[package]]
 name = "neo-macros"
-version = "0.1.0"
+version = "0.7.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -518,13 +516,12 @@ dependencies = [
 
 [[package]]
 name = "neo-runtime"
-version = "0.1.0"
+version = "0.7.0"
 dependencies = [
  "neo-syscalls",
  "neo-types",
  "num-bigint",
  "ripemd",
- "serde",
  "serde_json",
  "sha2",
  "tiny-keccak",
@@ -532,7 +529,7 @@ dependencies = [
 
 [[package]]
 name = "neo-syscalls"
-version = "0.1.0"
+version = "0.7.0"
 dependencies = [
  "neo-types",
  "once_cell",
@@ -540,13 +537,11 @@ dependencies = [
 
 [[package]]
 name = "neo-types"
-version = "0.1.0"
+version = "0.7.0"
 dependencies = [
- "anyhow",
  "num-bigint",
  "num-traits",
  "serde",
- "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -974,7 +969,7 @@ dependencies = [
 
 [[package]]
 name = "wasm-neovm"
-version = "0.5.5"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "bytes",

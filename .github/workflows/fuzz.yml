@@ -1,0 +1,67 @@
+name: Fuzz
+
+on:
+  schedule:
+    # Weekly Sunday 02:00 UTC — keep CI cost bounded.
+    - cron: '0 2 * * 0'
+  push:
+    branches: [ master ]
+    paths:
+      - 'wasm-neovm/fuzz/**'
+      - 'wasm-neovm/src/**'
+      - 'rust-devpack/**'
+      - '.github/workflows/fuzz.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  fuzz-translate:
+    name: fuzz_translate (60s)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz
+      - name: cargo fuzz run fuzz_translate
+        working-directory: wasm-neovm
+        run: cargo +nightly fuzz run fuzz_translate -- -max_total_time=60
+      - name: cargo fuzz run fuzz_translate_config
+        working-directory: wasm-neovm
+        run: cargo +nightly fuzz run fuzz_translate_config -- -max_total_time=60
+      - name: cargo fuzz run fuzz_structured_pipeline
+        working-directory: wasm-neovm
+        run: cargo +nightly fuzz run fuzz_structured_pipeline -- -max_total_time=60
+      - name: cargo fuzz run fuzz_syscall_surface
+        working-directory: wasm-neovm
+        run: cargo +nightly fuzz run fuzz_syscall_surface -- -max_total_time=60
+      - name: cargo fuzz run fuzz_rust_contract
+        working-directory: wasm-neovm
+        run: cargo +nightly fuzz run fuzz_rust_contract -- -max_total_time=60
+      - name: cargo fuzz run fuzz_rust_contract_differential
+        working-directory: wasm-neovm
+        run: cargo +nightly fuzz run fuzz_rust_contract_differential -- -max_total_time=60
+      - name: cargo fuzz run fuzz_nef
+        working-directory: wasm-neovm
+        run: cargo +nightly fuzz run fuzz_nef -- -max_total_time=60
+      - name: cargo fuzz run fuzz_numeric
+        working-directory: wasm-neovm
+        run: cargo +nightly fuzz run fuzz_numeric -- -max_total_time=60
+      - name: cargo fuzz run fuzz_devpack_codec
+        working-directory: wasm-neovm
+        run: cargo +nightly fuzz run fuzz_devpack_codec -- -max_total_time=60
+      - name: Upload fuzz corpus on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-corpus
+          path: |
+            wasm-neovm/fuzz/corpus/
+            wasm-neovm/fuzz/artifacts/
