@@ -8,6 +8,116 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Note: Beginning with `0.5.8`, all public workspace crates and contract templates
 follow the same repository version.
 
+## [0.7.0] — 2026-06-27 — Neo N3 platform support (L1 + L2)
+
+The devpack is now feature-complete for the **N3 system-syscall surface (33/33)
+and 9/11 N3 native contracts**. This release ships the bulk of the platform-
+support audit (TIER-1, TIER-2, TIER-3 syscalls + native contracts). The
+follow-on layers (L3 translator catalogue, L4 devpack ergonomics, L5 docs +
+NEP macros, L6 C#-VM conformance oracle) are tracked in
+`docs/superpowers/specs/2026-06-27-neo-n3-platform-support-design.md`.
+
+### Fixed — TIER-1 silent on-chain corruption (the worst bugs)
+
+- **B1 (was D2)** — `NeoVMSyscall::get_executing_script_hash` /
+  `get_calling_script_hash` / `get_entry_script_hash` (the `NeoByteString`
+  form) no longer return `vec![0u8; 20]` on wasm32. They now call real
+  `runtime_get_*_script_hash` externs. Every contract using these to record
+  the caller or derive its own address previously got zeros on mainnet.
+
+- **B2 (was D1)** — `NeoRuntime::notify(event, state)` now serialises the
+  state array via `runtime_notify_with_state`. NEP-17 / NEP-11
+  `Transfer(from, to, amount)` events now carry the args on mainnet
+  (previously emitted `Transfer(<empty>)`).
+
+- **B4** — `System.Contract.Call` / `System.Runtime.LoadScript` /
+  `System.Contract.CallNative` now **panic-loud** on wasm32 with a
+  clear "see L6 design" message rather than silently returning
+  `NeoValue::Null`. The previous behaviour silently produced null and
+  contracts acted on it as if it were a real result. The full cross-
+  call executor lands in L6.
+
+- **B3 was a false positive** — `storage_get` on wasm32 was already
+  correctly returning the actual byte length via `neo_storage_get_into`'s
+  return value; missing keys produce a 0-length `NeoByteString` (D14
+  from the prior audit already fixed this). Removed from the fix list.
+
+### Fixed — TIER-2 silent wrong values
+
+- `get_random`, `get_invocation_counter`, `get_gas_left`,
+  `current_signers`, `get_notifications`, `get_script_container`,
+  `get_network`, `get_address_version`, `get_trigger`, `get_call_flags`,
+  `create_standard_account`, `create_multisig_account` — all now
+  route through real `runtime_*` / `protocol_*` externs.
+- `platform()` returns the constant `"NEO"` (per C# spec).
+- `System.Contract.NativeOnPersist` / `NativePostPersist` return a
+  clean `NeoError` for user contracts (only valid inside natives).
+- `iterator_next` / `iterator_value` panic-loud with a translator-bug
+  hint — the translator already emits the SYSCALL directly, so the
+  wrapper is host-only.
+
+### Added — syscall surface (33/33)
+
+- 36 `extern "C"` symbol declarations in `neo-syscalls/src/wrapper.rs`
+  covering every N3 system syscall reachable from a contract.
+- New `runtime_notify_with_state` extern (paired with the existing
+  `runtime_notify` which is kept for the no-state case).
+- New `neo-types::stack_item` module implementing the NeoVM `Array`
+  StackItem binary serialisation per C# `BinarySerializer.cs`
+  (1-byte type tag + varint count + nested items). 7 unit tests
+  cover varint, integer signed-byte encoding, Boolean, ByteString,
+  empty / non-empty arrays, and the notification event+state body.
+- New `host_notifications::record` for both wasm32 and host paths
+  so tests assert the same surface on either target.
+- `rust-devpack/neo-syscalls/tests/wasm32_syscalls.rs` — 4-test
+  regression matrix that locks in the 36 extern symbol names. Any
+  future rename gets caught in CI.
+
+### Added — native contract routing (9/11)
+
+`wasm-neovm/src/native_contracts.rs` now exposes a full N3 native-
+contract registry, each with the canonical mainnet script hash (LE)
+and the C# method list with parameter type signatures:
+
+- `Neo.ContractManagement` (12 methods including `deploy`, `update`,
+  `destroy`, `getContract`, `hasMethod`, `isContract`).
+- `Neo.StdLib` (10 methods including `itoa`, `atoi`, `base58Encode`,
+  `base64Encode`, `serialize`, `deserialize`).
+- `Neo.Crypto` (CryptoLib — 5 methods; the C1 routing from prior
+  audit, now formalised as a descriptor).
+- `Neo.Ledger` (8 methods: `getBlock`, `currentHash`, `currentIndex`).
+- `Neo.Policy` (10 methods: `getFeePerByte`, `isBlocked`, etc.).
+- `Neo.RoleManagement` (2 methods: `getDesignatedByRole`, `assignRole`).
+- `Neo.Oracle` (2 methods: `request`, `finish`).
+- `Neo.Notary` (5 methods: `deposit`, `withdraw`, `balanceOf`).
+- `Neo.Treasury` (1 method: `verify`).
+
+`Neo.TokenManagement` and `Neo.Governance` (post-HF_Echidna) are
+deferred — their canonical hashes require a chain-state query to
+verify, and the audit flagged them as P10/P11. Contracts that call
+them on mainnet today still emit a bogus method token; tracked in
+`docs/audit-2026-06-27-neo-n3-platform-support.md`.
+
+New helpers: `native_contract_by_name`, `native_contract_by_method`,
+`NATIVE_CONTRACT_REGISTRY`. 8 new tests in the native_contracts
+module cover the registry shape, hash constants, and method
+resolution.
+
+### Still tracked as follow-up
+
+- **L3**: 176 `bail!` sites in the translator — produce a public
+  `docs/translator-limitations.md` catalogue and fix the ~5 real
+  bugs.
+- **L4**: devpack type/iterator ergonomics (B18–B22, Q6–Q10).
+- **L5**: README production-readiness matrix + NEP standard-library
+  macros (`nep17!`, `nep11!`).
+- **L6**: C#-NeoVM conformance oracle (cross-compile to NEF, run on
+  C# VM, diff events/storage/return) — the ground-truth test for
+  all earlier layers.
+- **Macro/export redesign** (D1, D2, D4, D6 full, D13, D15, D17)
+  from the prior audit — touches both `neo-macros` and `wasm-neovm`
+  translator in coupled ways, warrants its own brainstorm/plan cycle.
+
 ## [Unreleased]
 
 ### Phase B remainder (D3 + D6 partial) — Crypto lowering & neo-test consolidation
