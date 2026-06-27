@@ -33,6 +33,12 @@ Rust contract (neo-devpack) ──cargo build --target wasm32-unknown-unknown─
 
 ## 🚀 Current Status
 
+**v0.11.0** — 5 milestones shipped since v0.6.0: L1+L2 (v0.7.0),
+L3+L4+L5+L6 (v0.8.0), L7+L8+L9 (v0.9.0), L7.v3 golden JSON
+(v0.10.0), L6 minimal cross-call executor (v0.11.0). 65
+workspace test suites green; 0 clippy warnings; 4 L7
+conformance tests pass against `neo-go` v0.105.1.
+
 The core Rust/C Wasm → NeoVM pipeline targets **Neo N3 version 3.9.1**. Cross-chain support is experimental: the Solana and Move paths compile a useful subset but are not yet production-grade (see `docs/wasm-neovm-status.md` for the coverage matrix). Both paths now fail loudly on unsupported features rather than producing silently-wrong output.
 
 The repository is validated with:
@@ -356,9 +362,13 @@ Unsupported instructions (floating-point, reference types beyond funcref, and mu
 
 ## Neo N3 Platform Support — Production Readiness Matrix
 
-**v0.7.0** (2026-06-27). Every row is verified end-to-end on the
-C# `neo-project/neo` reference (see `docs/audit-2026-06-27-neo-n3-platform-support.md`).
-L6 conformance-oracle coverage is the next step.
+**v0.11.0** (2026-06-27). L1–L6 of the original 6-layer design are
+shipped. L7 (C#-NeoVM conformance oracle) and L8 (chain-state
+native-hash lookup) and L9 (typed cross-contract calls) are
+shipped on top. L6 minimal replaced the B4 panic-loud
+cross-call sites with structured `Result` returns; the real
+wasm32 cross-call executor remains months of work and is
+deferred.
 
 ### System syscalls (33/33)
 
@@ -366,11 +376,21 @@ L6 conformance-oracle coverage is the next step.
 |---|---|---|
 | ✅ Production-ready | Witness, Events, Crypto, Storage (Get/Put/Delete), Time, Platform | 11 |
 | ⚠️ Real-extern declared, host decoders stub | Runtime state, Script container, Notifications, Signers, Storage (Find/Context), Iterator | 14 |
-| ⚠️ Panic-loud stub (L6 work) | Contract.Call, LoadScript, Contract.Native\* | 4 |
+| ⚠️ Result-returning stub (L6 minimal) | Contract.Call, LoadScript, Contract.Native\* | 4 |
 | ⚠️ Protocol-config extern | Network, AddressVersion, Trigger | 3 |
 | ⚠️ Re-uses runtime state | CheckWitness, CheckWitnessBytes (no new extern) | 1 |
 
-### Native contracts (11/11 routed; 2 with placeholder hashes)
+The 4 cross-call syscalls (`System.Contract.Call`,
+`System.Runtime.LoadScript`, `System.Contract.CallNative`,
+`System.Contract.CallEx`) now return
+`Err(NeoError::Wasm32CrossCallUnavailable { syscall })` on
+wasm32 (L6 minimal). The contract author can `match` on
+`ContractCallError::Wasm32CrossCallUnavailable` and degrade
+gracefully. The actual cross-call execution on wasm32 is
+deferred to a future milestone (a real NeoVM in wasm32 form
+is months of work).
+
+### Native contracts (11/11 routed; 2 with chain-state lookup)
 
 | Status | Native contract | Methods | Hash source |
 |---|---|---|---|
@@ -383,31 +403,71 @@ L6 conformance-oracle coverage is the next step.
 | ✅ | `Neo.Oracle` | 2 (request, finish) | same |
 | ✅ | `Neo.Notary` | 5 (deposit, withdraw, balanceOf, …) | same |
 | ✅ | `Neo.Treasury` | 1 (verify) | same |
-| ⚠️ | `Neo.TokenManagement` | 7 (getToken, transfer, getBalance, totalSupply, ownerOf, tokensOf, balanceOf) | placeholder (post-HF_Echidna; needs chain-state lookup) |
-| ⚠️ | `Neo.Governance` | 6 (getVotersCount, getVoter, getCandidate, getCommittee, getNextCommittee, getRegisteredCandidates) | placeholder (post-HF_Echidna; needs chain-state lookup) |
+| 🔄 | `Neo.TokenManagement` | 7 (getToken, transfer, getBalance, totalSupply, ownerOf, tokensOf, balanceOf) | L8: `lookup_chain_native_hashes` resolves post-HF_Echidna hash via `getnativecontracts` RPC |
+| 🔄 | `Neo.Governance` | 6 (getVotersCount, getVoter, getCandidate, getCommittee, getNextCommittee, getRegisteredCandidates) | same L8 lookup |
+
+The 9 pre-HF native contracts (ContractManagement, StdLib,
+Crypto, Ledger, Policy, RoleManagement, Oracle, Notary,
+Treasury) are hardcoded because the published hashes are
+stable. The 2 post-HF contracts (TokenManagement, Governance)
+are placeholders in the descriptor; the L8 helper
+`lookup_chain_native_hashes(rpc_endpoint)` queries a node's
+`getnativecontracts` endpoint at deploy time and returns the
+real hashes. See `wasm-neovm/src/native_contracts.rs`.
 
 ### Test status
 
-- **62 workspace test suites** green (was 60 at v0.6.0)
+- **65 workspace test suites** green (was 60 at v0.6.0, 62 at
+  v0.7.0, 64 at v0.10.0)
 - **0 clippy warnings** workspace-wide
-- **All sample contracts** (nep17-token, nep11-nft, escrow, timelock-vault,
-  oracle-consumer, …) build to `wasm32-unknown-unknown`
-- **Translator limitations** catalogued in `docs/translator-limitations.md`
+- **4 L7 conformance tests** pass (3 from v0.9.0 L7 oracle +
+  1 from v0.10.0 L7.v3 golden JSON) against `neo-go` v0.105.1
+- **9 fuzz targets** running weekly via
+  `.github/workflows/fuzz.yml` (cargo-fuzz)
+- **All sample contracts** (nep17-token, nep11-nft, escrow,
+  timelock-vault, oracle-consumer, …) build to
+  `wasm32-unknown-unknown`
+- **Translator limitations** catalogued in
+  `docs/translator-limitations.md`
+
+### Layer status (L1–L9)
+
+| Layer | Status | Description |
+|---|---|---|
+| L1 | ✅ Shipped (v0.7.0) | 33/33 system syscalls routed to wasm32 (B1–B4 silent-Null bugs fixed) |
+| L2 | ✅ Shipped (v0.7.0) | 11/11 N3 native contracts routed (P2–P12 fixed) |
+| L3 | ✅ Shipped (v0.8.0) | 186 translator `bail!` sites catalogued; 6 BUGs TDD'd |
+| L4 | ✅ Shipped (v0.8.0) | `NeoArray::MAX_SIZE`, `remove_strict`, `NeoByteString::Deref`, `BigInt` interop |
+| L5 | ✅ Shipped (v0.8.0) | NEP-17 / NEP-11 standard-library macros + integration tests |
+| L6 | ✅ Minimal (v0.11.0) | 4 cross-call syscalls return `Result` instead of panic. Real wasm32 executor deferred. |
+| L7 | ✅ Shipped (v0.9.0) | C#-NeoVM conformance oracle via `neo-go` v0.105.1; 3 tests pass |
+| L7.v3 | ✅ Shipped (v0.10.0) | 7 per-contract golden JSON files; `l7_v3_golden_json_conformance` test |
+| L8 | ✅ Shipped (v0.9.0) | `lookup_chain_native_hashes` for post-HF_Echidna native hashes |
+| L9 | ✅ Shipped (v0.9.0) | `ContractCaller::call_typed<T>` + `FromNeoValue` trait |
 
 ### Still tracked as follow-up
 
-- **L3** (done): 186 `bail!` sites catalogued; 6 BUGs TDD'd; none reachable
-  from current test wasm.
-- **L4** (done): `NeoArray::MAX_SIZE=1024`, `remove_strict`, `NeoByteString::Deref`,
-  BigInt interop.
-- **L5** (done): This matrix + NEP standard-library macros (next batch).
-- **L6** (next): C#-NeoVM conformance oracle (the ground-truth test for
-  all earlier layers) + `cargo-fuzz` target for the translator.
-- **Macro/export redesign** (D1/D2/D4/D6-full/D13/D15/D17 from the prior
-  audit) — warrants its own brainstorm/plan cycle.
+- **L6 real executor** (months of work): a real wasm32 NeoVM
+  to actually execute cross-contract calls on the wasm32
+  target. The minimal L6 surfaces the limitation via the
+  type system (`ContractCallError::Wasm32CrossCallUnavailable`).
+- **L7.v4** (oracle event + storage capture): extend the
+  `neo-go` oracle to capture `System.Runtime.Notify` events
+  and storage diffs via the full InteropContext path. Would
+  make the L7.v3 golden JSON richer.
+- **C# `Helper.GetContractHash` algorithm gap**: the
+  algorithm doesn't match the published CryptoLib hash from
+  first principles. Documented inline; L8 chain-state
+  lookup is the workaround.
+- **Macro/export redesign** (D1/D2/D4/D6-full/D13/D15/D17
+  from the prior audit) — warrants its own brainstorm/plan
+  cycle.
 
 See `docs/superpowers/specs/2026-06-27-neo-n3-platform-support-design.md`
-for the full 6-layer design and the 8 testable done-criteria.
+for the full 6-layer design and the 8 testable done-criteria,
+and `docs/plans/2026-06-27-l7-v3-golden-json-design.md` and
+`docs/plans/2026-06-27-l6-cross-call-executor-design.md` for
+the L7.v3 and L6 minimal designs.
 
 ## Development
 
@@ -503,9 +563,18 @@ We welcome contributions from the community! Please read our [Contributing Guide
 
 ### Development Roadmap
 
+**Shipped (v0.7.0 → v0.11.0):** L1–L2 syscall + native routing,
+L3 translator catalogue, L4 ergonomics, L5 NEP macros,
+L6 minimal cross-call executor, L7 oracle, L7.v3 golden
+JSON, L8 chain-state lookup, L9 typed cross-contract calls.
+
+**Next:**
 - Broaden instruction coverage with floating-point/SIMD lowering once the current integer semantics are fully settled.
 - Surface additional devpack metadata (events, permissions, supported standards) directly into manifest generation so JSON overlays remain optional.
 - Tighten end-to-end validation by replaying generated NEFs in the NeoVM reference runner / neo-cli as part of CI.
+- L7.v4: extend the `neo-go` oracle to capture `System.Runtime.Notify` events + storage diffs.
+- L6 real executor: a real wasm32 NeoVM (months of work) to execute cross-contract calls on wasm32.
+- Macro/export redesign (D1/D2/D4/D6-full/D13/D15/D17 from the prior audit).
 
 ## License
 
