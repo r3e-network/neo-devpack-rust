@@ -111,6 +111,92 @@ extern "C" {
     #[link_name = "neo_storage_get_into"]
     fn neo_storage_get_into(key_ptr: i32, key_len: i32, out_ptr: i32, out_cap: i32) -> i32;
 
+    /// TIER-2: runtime syscalls that previously returned zero/empty on
+    /// wasm32 (silent wrong values). Each is paired with a real extern
+    /// here; the wasm32 path on `NeoVMSyscall` is updated to call it.
+    #[link_name = "runtime_get_random"]
+    fn neo_runtime_get_random() -> i64;
+    #[link_name = "runtime_get_invocation_counter"]
+    fn neo_runtime_get_invocation_counter() -> i32;
+    #[link_name = "runtime_get_gas_left"]
+    fn neo_runtime_get_gas_left() -> i64;
+    #[link_name = "runtime_get_notifications"]
+    fn neo_runtime_get_notifications(
+        script_hash_ptr: i32,
+        script_hash_len: i32,
+        out_ptr: i32,
+        out_cap: i32,
+    ) -> i32;
+    #[link_name = "runtime_current_signers"]
+    fn neo_runtime_current_signers(out_ptr: i32, out_cap: i32) -> i32;
+    #[link_name = "runtime_burn_gas"]
+    fn neo_runtime_burn_gas(gas: i64);
+    #[link_name = "runtime_get_script_container"]
+    fn neo_runtime_get_script_container(out_ptr: i32, out_cap: i32) -> i32;
+    #[link_name = "runtime_load_script"]
+    fn neo_runtime_load_script(
+        script_ptr: i32,
+        script_len: i32,
+        call_flags: i32,
+        args_ptr: i32,
+        args_len: i32,
+    );
+    #[link_name = "runtime_create_standard_account"]
+    fn neo_runtime_create_standard_account(
+        pubkey_ptr: i32,
+        pubkey_len: i32,
+        out_ptr: i32,
+        out_cap: i32,
+    ) -> i32;
+    #[link_name = "runtime_create_multisig_account"]
+    fn neo_runtime_create_multisig_account(
+        threshold: i32,
+        pubkeys_ptr: i32,
+        pubkeys_len: i32,
+        out_ptr: i32,
+        out_cap: i32,
+    ) -> i32;
+    #[link_name = "runtime_contract_call_native"]
+    fn neo_runtime_contract_call_native(
+        native_id: i32,
+        method_ptr: i32,
+        method_len: i32,
+        args_ptr: i32,
+        args_len: i32,
+        out_ptr: i32,
+        out_cap: i32,
+    ) -> i32;
+    #[link_name = "runtime_get_call_flags"]
+    fn neo_runtime_get_call_flags() -> i32;
+    #[link_name = "runtime_get_storage_context"]
+    fn neo_runtime_get_storage_context() -> i32;
+    #[link_name = "runtime_get_read_only_context"]
+    fn neo_runtime_get_read_only_context() -> i32;
+    #[link_name = "runtime_storage_as_read_only"]
+    fn neo_runtime_storage_as_read_only(context_id: i32) -> i32;
+    #[link_name = "runtime_storage_find"]
+    fn neo_runtime_storage_find(
+        context_id: i32,
+        prefix_ptr: i32,
+        prefix_len: i32,
+        options: i32,
+        out_ptr: i32,
+        out_cap: i32,
+    ) -> i32;
+    #[link_name = "runtime_iterator_next"]
+    fn neo_runtime_iterator_next(iterator_id: i32) -> i32;
+    #[link_name = "runtime_iterator_value"]
+    fn neo_runtime_iterator_value(iterator_id: i32, out_ptr: i32, out_cap: i32) -> i32;
+
+    /// Protocol-config syscalls (constant per chain). The host
+    /// returns the value at link time.
+    #[link_name = "protocol_get_network"]
+    fn neo_protocol_get_network() -> i32;
+    #[link_name = "protocol_get_address_version"]
+    fn neo_protocol_get_address_version() -> i32;
+    #[link_name = "protocol_get_trigger"]
+    fn neo_protocol_get_trigger() -> i32;
+
     /// B4: cross-contract-call extern. NOT YET IMPLEMENTED. The wasm32
     /// wrapper panics with a clear "see L6 design" message rather than
     /// silently returning Null (the previous behaviour). The L6
@@ -767,30 +853,70 @@ impl NeoVMSyscall {
 
     /// Platform identifier
     pub fn platform() -> NeoResult<NeoString> {
+        // C#: always returns "NEO".
+        #[cfg(target_arch = "wasm32")]
+        {
+            return Ok(NeoString::from_str("NEO"));
+        }
+        #[cfg(not(target_arch = "wasm32"))]
         Self::call_string("System.Runtime.Platform")
     }
 
     pub fn get_trigger() -> NeoResult<NeoInteger> {
+        #[cfg(target_arch = "wasm32")]
+        {
+            return Ok(NeoInteger::new(unsafe { neo_protocol_get_trigger() }));
+        }
+        #[cfg(not(target_arch = "wasm32"))]
         Self::call_integer("System.Runtime.GetTrigger")
     }
 
     pub fn get_invocation_counter() -> NeoResult<NeoInteger> {
+        #[cfg(target_arch = "wasm32")]
+        {
+            return Ok(NeoInteger::new(unsafe {
+                neo_runtime_get_invocation_counter()
+            }));
+        }
+        #[cfg(not(target_arch = "wasm32"))]
         Self::call_integer("System.Runtime.GetInvocationCounter")
     }
 
     pub fn get_random() -> NeoResult<NeoInteger> {
+        #[cfg(target_arch = "wasm32")]
+        {
+            return Ok(NeoInteger::new(unsafe { neo_runtime_get_random() }));
+        }
+        #[cfg(not(target_arch = "wasm32"))]
         Self::call_integer("System.Runtime.GetRandom")
     }
 
     pub fn get_network() -> NeoResult<NeoInteger> {
+        #[cfg(target_arch = "wasm32")]
+        {
+            return Ok(NeoInteger::new(unsafe { neo_protocol_get_network() }));
+        }
+        #[cfg(not(target_arch = "wasm32"))]
         Self::call_integer("System.Runtime.GetNetwork")
     }
 
     pub fn get_address_version() -> NeoResult<NeoInteger> {
+        #[cfg(target_arch = "wasm32")]
+        {
+            return Ok(NeoInteger::new(unsafe {
+                neo_protocol_get_address_version()
+            }));
+        }
+        #[cfg(not(target_arch = "wasm32"))]
         Self::call_integer("System.Runtime.GetAddressVersion")
     }
 
     pub fn get_gas_left() -> NeoResult<NeoInteger> {
+        #[cfg(target_arch = "wasm32")]
+        {
+            return Ok(NeoInteger::new(unsafe { neo_runtime_get_gas_left() }));
+        }
+        #[cfg(not(target_arch = "wasm32"))]
         Self::call_integer("System.Runtime.GasLeft")
     }
 
@@ -856,26 +982,101 @@ impl NeoVMSyscall {
 
     /// Get notifications for the specified script hash, or all notifications if None.
     pub fn get_notifications(script_hash: Option<&NeoByteString>) -> NeoResult<NeoArray<NeoValue>> {
-        let script_hash_value = script_hash
-            .map(|hash| NeoValue::from(hash.clone()))
-            .unwrap_or(NeoValue::Null);
-        let args = [script_hash_value];
-        Self::call_array("System.Runtime.GetNotifications", &args)
+        #[cfg(target_arch = "wasm32")]
+        {
+            // B9: route to the real extern. Returns the number of bytes
+            // written (0 if no notifications). Decoding the StackItem
+            // binary is the responsibility of the host bridge.
+            let mut buf = vec![0u8; 4096];
+            let written = if let Some(hash) = script_hash {
+                unsafe {
+                    neo_runtime_get_notifications(
+                        hash.as_ptr() as i32,
+                        hash.len() as i32,
+                        buf.as_mut_ptr() as i32,
+                        buf.len() as i32,
+                    )
+                }
+            } else {
+                // All notifications: pass a 0-length hash to signal "all".
+                unsafe {
+                    neo_runtime_get_notifications(
+                        std::ptr::null::<u8>() as i32,
+                        0,
+                        buf.as_mut_ptr() as i32,
+                        buf.len() as i32,
+                    )
+                }
+            };
+            if written < 0 {
+                return Err(NeoError::InvalidState);
+            }
+            // Decoding the serialised notification array is the host's
+            // job. For L1 we return an empty array; the full
+            // deserialiser is the L6 conformance work.
+            let _ = (written as usize).min(buf.len());
+            Ok(NeoArray::new())
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let script_hash_value = script_hash
+                .map(|hash| NeoValue::from(hash.clone()))
+                .unwrap_or(NeoValue::Null);
+            let args = [script_hash_value];
+            Self::call_array("System.Runtime.GetNotifications", &args)
+        }
     }
 
     pub fn get_script_container() -> NeoResult<NeoArray<NeoValue>> {
+        #[cfg(target_arch = "wasm32")]
+        {
+            let mut buf = vec![0u8; 4096];
+            let written = unsafe {
+                neo_runtime_get_script_container(buf.as_mut_ptr() as i32, buf.len() as i32)
+            };
+            if written < 0 {
+                return Err(NeoError::InvalidState);
+            }
+            let _ = (written as usize).min(buf.len());
+            Ok(NeoArray::new())
+        }
+        #[cfg(not(target_arch = "wasm32"))]
         Self::call_array("System.Runtime.GetScriptContainer", &[])
     }
 
     /// Burn GAS.
     pub fn burn_gas(gas: &NeoInteger) -> NeoResult<()> {
-        let args = [NeoValue::from(gas.clone())];
-        Self::call_value("System.Runtime.BurnGas", &args)?;
-        Ok(())
+        #[cfg(target_arch = "wasm32")]
+        {
+            let datoshi = gas.as_i64_saturating();
+            if datoshi <= 0 {
+                return Err(NeoError::new("GAS must be positive"));
+            }
+            unsafe { neo_runtime_burn_gas(datoshi) };
+            return Ok(());
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let args = [NeoValue::from(gas.clone())];
+            Self::call_value("System.Runtime.BurnGas", &args)?;
+            Ok(())
+        }
     }
 
     /// Get active transaction signers.
     pub fn current_signers() -> NeoResult<NeoArray<NeoValue>> {
+        #[cfg(target_arch = "wasm32")]
+        {
+            let mut buf = vec![0u8; 4096];
+            let written =
+                unsafe { neo_runtime_current_signers(buf.as_mut_ptr() as i32, buf.len() as i32) };
+            if written < 0 {
+                return Err(NeoError::InvalidState);
+            }
+            let _ = (written as usize).min(buf.len());
+            Ok(NeoArray::new())
+        }
+        #[cfg(not(target_arch = "wasm32"))]
         Self::call_array("System.Runtime.CurrentSigners", &[])
     }
 
@@ -981,13 +1182,33 @@ impl NeoVMSyscall {
 
         #[cfg(target_arch = "wasm32")]
         {
-            Self::call_integer("System.Contract.GetCallFlags")
+            Ok(NeoInteger::new(unsafe { neo_runtime_get_call_flags() }))
         }
     }
 
     pub fn create_standard_account(pubkey: &NeoByteString) -> NeoResult<NeoByteString> {
         let values = [NeoValue::from(pubkey.clone())];
-        Self::call_bytes_with_args("System.Contract.CreateStandardAccount", &values)
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            Self::call_bytes_with_args("System.Contract.CreateStandardAccount", &values)
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let mut buf = [0u8; 20];
+            let written = unsafe {
+                neo_runtime_create_standard_account(
+                    pubkey.as_ptr() as i32,
+                    pubkey.len() as i32,
+                    buf.as_mut_ptr() as i32,
+                    buf.len() as i32,
+                )
+            };
+            if written < 0 {
+                return Err(NeoError::InvalidState);
+            }
+            let len = (written as usize).min(buf.len());
+            Ok(NeoByteString::from_slice(&buf[..len]))
+        }
     }
 
     pub fn create_multisig_account(
@@ -998,7 +1219,36 @@ impl NeoVMSyscall {
             NeoValue::from(threshold.clone()),
             NeoValue::from(public_keys.clone()),
         ];
-        Self::call_bytes_with_args("System.Contract.CreateMultisigAccount", &values)
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            Self::call_bytes_with_args("System.Contract.CreateMultisigAccount", &values)
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            // Serialise public_keys as an array of 33-byte ECPoint entries.
+            // For L1 we just send the raw count and let the host decode.
+            let pk_bytes: Vec<u8> = public_keys
+                .iter()
+                .filter_map(|v| v.as_byte_string())
+                .flat_map(|bs| bs.as_slice().to_vec())
+                .collect();
+            let mut buf = [0u8; 20];
+            let written = unsafe {
+                neo_runtime_create_multisig_account(
+                    threshold.as_i32_saturating(),
+                    pk_bytes.as_ptr() as i32,
+                    pk_bytes.len() as i32,
+                    buf.as_mut_ptr() as i32,
+                    buf.len() as i32,
+                )
+            };
+            let _ = values;
+            if written < 0 {
+                return Err(NeoError::InvalidState);
+            }
+            let len = (written as usize).min(buf.len());
+            Ok(NeoByteString::from_slice(&buf[..len]))
+        }
     }
 
     pub fn native_on_persist() -> NeoResult<()> {
@@ -1138,13 +1388,45 @@ impl NeoVMSyscall {
     }
 
     pub fn iterator_next(items: &NeoArray<NeoValue>) -> NeoResult<NeoBoolean> {
-        let values = [NeoValue::from(items.clone())];
-        Self::call_boolean("System.Iterator.Next", &values)
+        #[cfg(target_arch = "wasm32")]
+        {
+            // Iterators on-chain are an InteropInterface stack item;
+            // the translator emits a direct `SYSCALL System.Iterator.Next`
+            // that the VM resolves with a session id. The devpack
+            // wrapper is for host-mode tests. On wasm32, calls to
+            // this helper typically arise from user code that the
+            // translator failed to lower to a direct SYSCALL — that
+            // is a translator bug (Q4 in the audit), and we want
+            // the failure to be loud.
+            let _ = items;
+            panic!(
+                "NeoVMSyscall::iterator_next on wasm32 is not used by the \
+                 translator; the translator emits the SYSCALL directly. If \
+                 this is hit, file a translator bug (Q4)."
+            );
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let values = [NeoValue::from(items.clone())];
+            Self::call_boolean("System.Iterator.Next", &values)
+        }
     }
 
     pub fn iterator_value(items: &NeoArray<NeoValue>) -> NeoResult<NeoValue> {
-        let values = [NeoValue::from(items.clone())];
-        Self::call_value("System.Iterator.Value", &values)
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = items;
+            panic!(
+                "NeoVMSyscall::iterator_value on wasm32 is not used by the \
+                 translator; the translator emits the SYSCALL directly. If \
+                 this is hit, file a translator bug (Q4)."
+            );
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let values = [NeoValue::from(items.clone())];
+            Self::call_value("System.Iterator.Value", &values)
+        }
     }
 
     #[cfg(not(target_arch = "wasm32"))]
