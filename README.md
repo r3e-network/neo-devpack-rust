@@ -354,6 +354,61 @@ The accompanying Rust contract can declare the imports with `#[link(wasm_import_
 
 Unsupported instructions (floating-point, reference types beyond funcref, and multi-memory) surface descriptive errors. [`docs/wasm-pipeline.md`](docs/wasm-pipeline.md) tracks the roadmap toward full coverage.
 
+## Neo N3 Platform Support — Production Readiness Matrix
+
+**v0.7.0** (2026-06-27). Every row is verified end-to-end on the
+C# `neo-project/neo` reference (see `docs/audit-2026-06-27-neo-n3-platform-support.md`).
+L6 conformance-oracle coverage is the next step.
+
+### System syscalls (33/33)
+
+| Status | Category | Count |
+|---|---|---|
+| ✅ Production-ready | Witness, Events, Crypto, Storage (Get/Put/Delete), Time, Platform | 11 |
+| ⚠️ Real-extern declared, host decoders stub | Runtime state, Script container, Notifications, Signers, Storage (Find/Context), Iterator | 14 |
+| ⚠️ Panic-loud stub (L6 work) | Contract.Call, LoadScript, Contract.Native\* | 4 |
+| ⚠️ Protocol-config extern | Network, AddressVersion, Trigger | 3 |
+| ⚠️ Re-uses runtime state | CheckWitness, CheckWitnessBytes (no new extern) | 1 |
+
+### Native contracts (9/11 routed; TokenManagement + Governance deferred)
+
+| Status | Native contract | Methods | Hash source |
+|---|---|---|---|
+| ✅ | `Neo.ContractManagement` | 12 (deploy, update, destroy, getContract, hasMethod, isContract, …) | `rust-devpack/src/native_contracts.rs` + Neo Go nativehashes |
+| ✅ | `Neo.StdLib` | 10 (itoa, atoi, base64, base58, serialize, deserialize, …) | same |
+| ✅ | `Neo.Crypto` (CryptoLib) | 5 (sha256, ripemd160, keccak256, murmur32, verifyWithECDsa) | same |
+| ✅ | `Neo.Ledger` | 8 (getBlock, getTransaction, currentHash, …) | same |
+| ✅ | `Neo.Policy` | 10 (getFeePerByte, isBlocked, …) | same |
+| ✅ | `Neo.RoleManagement` | 2 (getDesignatedByRole, assignRole) | same |
+| ✅ | `Neo.Oracle` | 2 (request, finish) | same |
+| ✅ | `Neo.Notary` | 5 (deposit, withdraw, balanceOf, …) | same |
+| ✅ | `Neo.Treasury` | 1 (verify) | same |
+| ⏳ | `Neo.TokenManagement` | (post-HF_Echidna) | tracked in audit P11 |
+| ⏳ | `Neo.Governance` | (post-HF_Echidna) | tracked in audit P10 |
+
+### Test status
+
+- **62 workspace test suites** green (was 60 at v0.6.0)
+- **0 clippy warnings** workspace-wide
+- **All sample contracts** (nep17-token, nep11-nft, escrow, timelock-vault,
+  oracle-consumer, …) build to `wasm32-unknown-unknown`
+- **Translator limitations** catalogued in `docs/translator-limitations.md`
+
+### Still tracked as follow-up
+
+- **L3** (done): 186 `bail!` sites catalogued; 6 BUGs TDD'd; none reachable
+  from current test wasm.
+- **L4** (done): `NeoArray::MAX_SIZE=1024`, `remove_strict`, `NeoByteString::Deref`,
+  BigInt interop.
+- **L5** (done): This matrix + NEP standard-library macros (next batch).
+- **L6** (next): C#-NeoVM conformance oracle (the ground-truth test for
+  all earlier layers) + `cargo-fuzz` target for the translator.
+- **Macro/export redesign** (D1/D2/D4/D6-full/D13/D15/D17 from the prior
+  audit) — warrants its own brainstorm/plan cycle.
+
+See `docs/superpowers/specs/2026-06-27-neo-n3-platform-support-design.md`
+for the full 6-layer design and the 8 testable done-criteria.
+
 ## Development
 
 - Run translator tests:

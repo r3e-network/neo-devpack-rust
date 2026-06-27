@@ -8,6 +8,7 @@
 #[cfg(feature = "serde")]
 pub mod codec;
 pub mod native_contracts;
+pub mod nep_macros;
 pub mod standards;
 #[cfg(feature = "serde")]
 pub mod storage;
