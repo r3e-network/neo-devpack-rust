@@ -1,9 +1,9 @@
 [package]
-name = "escrow-neo"
+name = "cross-call-wrapper-neo"
 version = "0.12.0"
 edition = "2021"
-description = "Neo N3 escrow smart contract with arbiter-controlled release and refund functionality"
-keywords = ["neo", "n3", "smart-contract"]
+description = "L6: sample contract that performs a cross-contract call to a NEP-17 token"
+keywords = ["neo", "n3", "smart-contract", "cross-call"]
 license = "MIT"
 repository = "https://github.com/r3e-network/neo-devpack-rust"
 homepage = "https://github.com/r3e-network/neo-devpack-rust"

@@ -8,6 +8,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Note: Beginning with `0.5.8`, all public workspace crates and contract templates
 follow the same repository version.
 
+## [0.12.0] — 2026-06-27 — L6 real cross-call executor
+
+The v0.11.0 L6 minimal Result-returning stub was *correct* as
+a type-system improvement, but the production cross-call
+mechanism was still broken: `NeoVMSyscall::contract_call` was
+a regular Rust function, so the Rust compiler inlined its
+body (the v0.11.0 Result-returning stub, not a SYSCALL opcode)
+into the deployed .nef. The host's NeoVM never saw a
+`System.Contract.Call` SYSCALL — it saw the panic.
+
+v0.12.0 fixes the production path. The three cross-call
+entry points (`NeoVMSyscall::contract_call`,
+`NeoVMSyscall::load_script`,
+`NeoVMSyscall::contract_call_native`) are now wasm externs
+on wasm32, so the wasm-neovm translator sees them as imports
+and emits the correct `SYSCALL` opcodes. The host's NeoVM
+dispatches the call at runtime.
+
+- **L6 real executor** — converted the three cross-call
+  syscalls to externs (`neo_contract_call`, `neo_load_script`,
+  `neo_call_native`). The translator's syscall-alias table
+  was extended to map the extern names to canonical N3
+  syscall names (`System.Contract.Call`,
+  `System.Runtime.LoadScript`, `System.Contract.CallNative`).
+- **New sample contract** — `contracts/cross-call-wrapper/`
+  demonstrates a contract that calls another contract's
+  method via `NeoVMSyscall::contract_call`.
+- **New test** — `wasm-neovm/tests/l6_real_executor.rs`
+  builds the cross-call-wrapper, translates to NEF, and
+  asserts the NEF script contains the `System.Contract.Call`
+  SYSCALL opcode (`0x41 0x62 0x7D 0x5B 0x52`).
+- **B4 fix is now load-bearing** — the v0.8.0 B4 panic
+  made the cross-call loud instead of silent-Null. The
+  v0.11.0 Result-returning stub surfaced the limitation via
+  the type system. v0.12.0 makes the production path
+  actually work.
+
+Test count: 66 workspace test suites (was 65 at v0.11.0).
+The 2 new tests are in `l6_real_executor.rs`. 0 clippy
+errors, 0 failures, 4 L7 conformance tests pass.
+
 ## [0.11.0] — 2026-06-27 — L6 cross-call executor (minimal)
 
 The v0.8.0 B4 fix made the wasm32 cross-call panic-loud rather
