@@ -6,6 +6,7 @@ on:
     paths:
       - 'conformance/**'
       - 'wasm-neovm/tests/conformance.rs'
+      - 'wasm-neovm/tests/golden/**'
       - 'contracts/**'
   pull_request:
     branches: [ master ]
