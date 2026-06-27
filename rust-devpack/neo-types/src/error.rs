@@ -30,6 +30,12 @@ pub enum NeoError {
     InvalidState,
     /// Application-specific error with custom message
     Custom(String),
+    /// L6: a wasm32 cross-call syscall (System.Contract.Call,
+    /// System.Runtime.LoadScript, System.Contract.CallNative) was
+    /// invoked, but the wasm32 cross-call executor is not yet
+    /// implemented. Replaces the v0.8.0 B4 panic-loud sites with
+    /// a structured error.
+    Wasm32CrossCallUnavailable { syscall: &'static str },
 }
 
 impl fmt::Display for NeoError {
@@ -45,6 +51,9 @@ impl fmt::Display for NeoError {
             NeoError::NullReference => write!(f, "Null reference: attempted to access a null or invalid reference"),
             NeoError::InvalidState => write!(f, "Invalid state: internal state is invalid or corrupted"),
             NeoError::Custom(msg) => write!(f, "{}", msg),
+            NeoError::Wasm32CrossCallUnavailable { syscall } => {
+                write!(f, "wasm32 cross-call unavailable: {syscall}")
+            }
         }
     }
 }
@@ -79,6 +88,7 @@ impl NeoError {
             NeoError::NullReference => 8,
             NeoError::InvalidState => 9,
             NeoError::Custom(_) => 10,
+            NeoError::Wasm32CrossCallUnavailable { .. } => 11,
         }
     }
 
@@ -86,6 +96,23 @@ impl NeoError {
     pub fn message(&self) -> &str {
         match self {
             NeoError::Custom(msg) => msg,
+            NeoError::Wasm32CrossCallUnavailable { syscall } => {
+                // The Display string is "wasm32 cross-call unavailable: <syscall>";
+                // for message() we return the same (it's a static-ish string).
+                // We use a thread-local to avoid allocating.
+                match *syscall {
+                    "System.Contract.Call" => {
+                        "wasm32 cross-call unavailable: System.Contract.Call"
+                    }
+                    "System.Runtime.LoadScript" => {
+                        "wasm32 cross-call unavailable: System.Runtime.LoadScript"
+                    }
+                    "System.Contract.CallNative" => {
+                        "wasm32 cross-call unavailable: System.Contract.CallNative"
+                    }
+                    _ => "wasm32 cross-call unavailable",
+                }
+            }
             _ => self.as_str(),
         }
     }
@@ -103,6 +130,7 @@ impl NeoError {
             NeoError::NullReference => "NullReference",
             NeoError::InvalidState => "InvalidState",
             NeoError::Custom(_) => "Custom",
+            NeoError::Wasm32CrossCallUnavailable { .. } => "Wasm32CrossCallUnavailable",
         }
     }
 }

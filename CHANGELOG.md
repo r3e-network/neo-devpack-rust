@@ -8,6 +8,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Note: Beginning with `0.5.8`, all public workspace crates and contract templates
 follow the same repository version.
 
+## [0.11.0] — 2026-06-27 — L6 cross-call executor (minimal)
+
+The v0.8.0 B4 fix made the wasm32 cross-call panic-loud rather
+than silently returning `NeoValue::Null`. v0.11.0 takes the
+next step: the panic sites now return a structured
+`Result<_, ContractCallError>`. Cross-call still does not
+execute on wasm32 (a real NeoVM in wasm32 form is months of
+work), but the failure mode is type-safe and the contract
+author can `match` on the new variant.
+
+- **L6 minimal** — three wasm32 syscall sites
+  (`System.Runtime.LoadScript`, `System.Contract.Call`,
+  `System.Contract.CallNative`) now return
+  `Err(NeoError::Wasm32CrossCallUnavailable { syscall })` instead
+  of `panic!`. New `ContractCallError::Wasm32CrossCallUnavailable
+  { syscall }` variant; new `NeoError::Wasm32CrossCallUnavailable
+  { syscall }` variant; `From<NeoError> for ContractCallError`
+  converts the underlying `NeoError` to the typed variant.
+  The two iterator panic sites (`iterator_next`, `iterator_value`)
+  are unchanged — they are translator-bug detectors (Q4), not
+  cross-call failures, and must remain panic.
+- 5 new tests in `rust-devpack/tests/l6_cross_call.rs`:
+  `host_path_cross_call_returns_result`,
+  `contract_call_error_constructs_wasm32_variant`,
+  `neo_error_wasm32_variant_carries_syscall`,
+  `contract_call_error_from_neo_error_wasm32`,
+  `neo_error_status_code_for_wasm32`.
+- New status code `11` for `Wasm32CrossCallUnavailable` in
+  `NeoError::status_code()` (codes 1–10 are the existing
+  variants).
+
+Test count: 65 workspace test suites (was 64 at v0.10.0; the
+5 L6 tests are combined into one new test suite), 0 clippy
+errors, 0 failures, 4 L7 conformance tests pass.
+
 ## [0.10.0] — 2026-06-27 — L7.v3 golden JSON conformance
 
 v0.10.0 hardens the L7 conformance oracle with per-contract golden
