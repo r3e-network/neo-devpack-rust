@@ -1,6 +1,6 @@
 [package]
 name = "governance-dao-neo"
-version = "0.12.0"
+version = "0.13.0"
 edition = "2021"
 description = "Neo N3 DAO governance smart contract with stake-weighted voting and proposal execution"
 keywords = ["neo", "n3", "smart-contract"]
@@ -13,7 +13,7 @@ categories = ["cryptography::cryptocurrencies", "wasm"]
 crate-type = ["cdylib"]
 
 [dependencies]
-neo-devpack = { path = "../../rust-devpack", version = "0.12.0", default-features = false }
+neo-devpack = { path = "../../rust-devpack", version = "0.13.0", default-features = false }
 
 [features]
 default = ["neo-devpack/std"]

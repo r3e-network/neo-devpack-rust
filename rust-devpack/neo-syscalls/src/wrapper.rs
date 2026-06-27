@@ -377,6 +377,82 @@ pub fn neovm_syscall(hash: u32, args: &[NeoValue]) -> NeoResult<NeoValue> {
         if info.name == "System.Contract.GetCallFlags" {
             return Ok(NeoInteger::new(current_call_flags()).into());
         }
+
+        // B5: get_random
+        if info.name == "System.Runtime.GetRandom" {
+            return Ok(NeoInteger::new(
+                *crate::storage::ACTIVE_RANDOM.read().expect("ACTIVE_RANDOM poisoned"),
+            )
+            .into());
+        }
+
+        // B6: get_time
+        if info.name == "System.Runtime.GetTime" {
+            return Ok(NeoInteger::new(
+                *crate::storage::ACTIVE_TIME.read().expect("ACTIVE_TIME poisoned"),
+            )
+            .into());
+        }
+
+        // B6: get_invocation_counter
+        if info.name == "System.Runtime.GetInvocationCounter" {
+            return Ok(NeoInteger::new(
+                *crate::storage::ACTIVE_INVOCATION_COUNTER
+                    .read()
+                    .expect("ACTIVE_INVOCATION_COUNTER poisoned"),
+            )
+            .into());
+        }
+
+        // B7: gas_left
+        if info.name == "System.Runtime.GasLeft" {
+            return Ok(NeoInteger::new(
+                *crate::storage::ACTIVE_GAS_LEFT.read().expect("ACTIVE_GAS_LEFT poisoned"),
+            )
+            .into());
+        }
+
+        // B8: current_signers. The C# struct has Account + Scopes;
+        // we serialise each signer as a 2-element array [account, scopes].
+        if info.name == "System.Runtime.CurrentSigners" {
+            let witnesses = crate::storage::ACTIVE_WITNESSES
+                .read()
+                .expect("ACTIVE_WITNESSES poisoned");
+            let arr: NeoArray<NeoValue> = witnesses
+                .iter()
+                .map(|w| {
+                    let entry: NeoArray<NeoValue> = vec![
+                        NeoValue::from(NeoByteString::from_slice(w)),
+                        NeoValue::from(NeoInteger::new(0x01)), // Global scope
+                    ]
+                    .into_iter()
+                    .collect();
+                    NeoValue::from(entry)
+                })
+                .collect();
+            return Ok(NeoValue::from(arr));
+        }
+
+        // B9: get_notifications(hash?). Hash arg: NeoValue::Null
+        // means "all notifications". Returns the recorded
+        // notifications as a NeoArray.
+        if info.name == "System.Runtime.GetNotifications" {
+            use crate::host_notifications::take;
+            let recorded = take();
+            let arr: NeoArray<NeoValue> = recorded
+                .into_iter()
+                .map(|n| {
+                    let entry: NeoArray<NeoValue> = vec![
+                        NeoValue::from(NeoString::from_str(&n.event)),
+                        NeoValue::from(n.state.into_iter().collect::<NeoArray<NeoValue>>()),
+                    ]
+                    .into_iter()
+                    .collect();
+                    NeoValue::from(entry)
+                })
+                .collect();
+            return Ok(NeoValue::from(arr));
+        }
     }
 
     Ok(default_value_for(info.return_type))
@@ -603,6 +679,16 @@ impl NeoVMSyscall {
         reset_current_contract_hash();
         clear_active_witnesses();
         reset_crypto_verification_results();
+        // B5-B9: clear the runtime syscall host state.
+        *crate::storage::ACTIVE_RANDOM.write().expect("ACTIVE_RANDOM poisoned") = 0;
+        *crate::storage::ACTIVE_TIME.write().expect("ACTIVE_TIME poisoned") = 0;
+        *crate::storage::ACTIVE_GAS_LEFT.write().expect("ACTIVE_GAS_LEFT poisoned") = 0;
+        *crate::storage::ACTIVE_INVOCATION_COUNTER
+            .write()
+            .expect("ACTIVE_INVOCATION_COUNTER poisoned") = 0;
+        // Also drain any recorded notifications so the B9
+        // dispatch doesn't see state leaked from prior tests.
+        crate::host_notifications::reset();
         Ok(())
     }
 
@@ -675,6 +761,58 @@ impl NeoVMSyscall {
     /// Replace the active witness set used by host-mode `check_witness`.
     #[cfg(target_arch = "wasm32")]
     pub fn set_active_witnesses(_witnesses: &[NeoByteString]) -> NeoResult<()> {
+        Ok(())
+    }
+
+    /// B5: set the value returned by host-mode `get_random`.
+    /// On the wasm32 path this is a no-op (the extern returns
+    /// the chain's real random value).
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn set_active_random(value: i64) -> NeoResult<()> {
+        *crate::storage::ACTIVE_RANDOM.write().expect("ACTIVE_RANDOM poisoned") = value;
+        Ok(())
+    }
+    #[cfg(target_arch = "wasm32")]
+    pub fn set_active_random(_value: i64) -> NeoResult<()> {
+        Ok(())
+    }
+
+    /// B6: set the value returned by host-mode `get_time`.
+    /// On the wasm32 path this is a no-op.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn set_active_time(value: i64) -> NeoResult<()> {
+        *crate::storage::ACTIVE_TIME.write().expect("ACTIVE_TIME poisoned") = value;
+        Ok(())
+    }
+    #[cfg(target_arch = "wasm32")]
+    pub fn set_active_time(_value: i64) -> NeoResult<()> {
+        Ok(())
+    }
+
+    /// B6: set the value returned by host-mode
+    /// `get_invocation_counter`. On the wasm32 path this is a
+    /// no-op.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn set_active_invocation_counter(value: i32) -> NeoResult<()> {
+        *crate::storage::ACTIVE_INVOCATION_COUNTER
+            .write()
+            .expect("ACTIVE_INVOCATION_COUNTER poisoned") = value;
+        Ok(())
+    }
+    #[cfg(target_arch = "wasm32")]
+    pub fn set_active_invocation_counter(_value: i32) -> NeoResult<()> {
+        Ok(())
+    }
+
+    /// B7: set the value returned by host-mode `get_gas_left`.
+    /// On the wasm32 path this is a no-op.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn set_active_gas_left(value: i64) -> NeoResult<()> {
+        *crate::storage::ACTIVE_GAS_LEFT.write().expect("ACTIVE_GAS_LEFT poisoned") = value;
+        Ok(())
+    }
+    #[cfg(target_arch = "wasm32")]
+    pub fn set_active_gas_left(_value: i64) -> NeoResult<()> {
         Ok(())
     }
 

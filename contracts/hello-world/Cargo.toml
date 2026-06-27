@@ -1,6 +1,6 @@
 [package]
 name = "hello-world-neo"
-version = "0.12.0"
+version = "0.13.0"
 edition = "2021"
 description = "Minimal Neo N3 smart contract example demonstrating basic contract structure"
 keywords = ["neo", "n3", "smart-contract"]
@@ -13,7 +13,7 @@ categories = ["cryptography::cryptocurrencies", "wasm"]
 crate-type = ["cdylib"]
 
 [dependencies]
-neo-devpack = { path = "../../rust-devpack", version = "0.12.0", default-features = false }
+neo-devpack = { path = "../../rust-devpack", version = "0.13.0", default-features = false }
 
 [features]
 default = ["neo-devpack/std"]

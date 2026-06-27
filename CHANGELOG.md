@@ -8,6 +8,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Note: Beginning with `0.5.8`, all public workspace crates and contract templates
 follow the same repository version.
 
+## [0.13.0] — 2026-06-27 — B5–B9 host-mode state for runtime syscalls
+
+v0.13.0 closes out the v0.7.0 audit's TIER 1+2 findings
+(B1–B9). The wasm32 path for B5–B9 (get_random, get_time,
+get_invocation_counter, get_gas_left, current_signers,
+get_notifications) was already correct (each wrapper calls
+an extern). The host-mode test framework, however, returned
+0 / empty because the host had no state to return — making
+it impossible to test contracts that use these syscalls.
+
+- **B5** — `get_random` host-mode state. New
+  `NeoVMSyscall::set_active_random(i64)` setter; dispatch
+  reads `ACTIVE_RANDOM`.
+- **B6** — `get_time` + `get_invocation_counter` host-mode
+  state. New `set_active_time(i64)` and
+  `set_active_invocation_counter(i32)` setters; dispatch reads
+  the corresponding statics.
+- **B7** — `get_gas_left` host-mode state. New
+  `set_active_gas_left(i64)` setter; dispatch reads
+  `ACTIVE_GAS_LEFT`.
+- **B8** — `current_signers` host-mode state. The dispatch
+  reads `ACTIVE_WITNESSES` and serialises each witness as a
+  `[account, Global-scope]` 2-element array (the C# struct
+  has Account + Scopes).
+- **B9** — `get_notifications` host-mode state. The dispatch
+  drains the existing notification recorder and returns the
+  recorded notifications. `reset_host_state` now also clears
+  the recorder.
+- 6 new tests in `rust-devpack/tests/b5_b9_host_state.rs`:
+  `b5_get_random_returns_active_value`,
+  `b6_get_time_returns_active_value`,
+  `b6_invocation_counter_returns_active_value`,
+  `b7_get_gas_left_returns_active_value`,
+  `b8_current_signers_returns_active_signers`,
+  `b9_get_notifications_returns_recorded_notifications`.
+
+Test count: 67 workspace test suites (was 66 at v0.12.0). 0
+clippy errors, 0 failures, 4 L7 conformance tests pass.
+
+The audit's TIER 1+2 (B1–B9) is now fully closed. The
+remaining audit items (P2–P12 native contract routing,
+Q1–Q9 quality improvements, macro redesign) are tracked as
+follow-up.
+
 ## [0.12.0] — 2026-06-27 — L6 real cross-call executor
 
 The v0.11.0 L6 minimal Result-returning stub was *correct* as
