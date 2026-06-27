@@ -991,7 +991,7 @@ impl NeoVMSyscall {
             let written = if let Some(hash) = script_hash {
                 unsafe {
                     neo_runtime_get_notifications(
-                        hash.as_ptr() as i32,
+                        hash.as_slice().as_ptr() as i32,
                         hash.len() as i32,
                         buf.as_mut_ptr() as i32,
                         buf.len() as i32,
@@ -1197,7 +1197,7 @@ impl NeoVMSyscall {
             let mut buf = [0u8; 20];
             let written = unsafe {
                 neo_runtime_create_standard_account(
-                    pubkey.as_ptr() as i32,
+                    pubkey.as_slice().as_ptr() as i32,
                     pubkey.len() as i32,
                     buf.as_mut_ptr() as i32,
                     buf.len() as i32,
