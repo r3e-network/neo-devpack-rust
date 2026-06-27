@@ -123,6 +123,13 @@ fn parse_method_token_object(
         index,
         MAX_TOKEN_METHOD_LENGTH
     );
+    ensure!(
+        !method.starts_with('_'),
+        "{} method token #{} has method name '{}' starting with '_', which Neo N3 rejects at deploy",
+        context,
+        index,
+        method
+    );
 
     let paramcount = obj
         .get(TOKEN_PARAMCOUNT_KEY)

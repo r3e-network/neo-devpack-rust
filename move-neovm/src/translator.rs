@@ -62,6 +62,13 @@ mod tests {
             std::fs::write("/tmp/move_add.wasm", &bytes).unwrap();
         }
         validate_wasm(&bytes).expect("valid wasm for add");
+        // X6: checked arithmetic must emit an `unreachable` trap for the
+        // overflow path (Move Add aborts on overflow; the lowering may no
+        // longer silently wrap). 0x00 is the wasm `unreachable` opcode.
+        assert!(
+            bytes.contains(&0x00),
+            "Move Add lowering must include an overflow trap (X6)"
+        );
     }
 
     #[test]

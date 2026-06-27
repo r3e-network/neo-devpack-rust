@@ -126,7 +126,10 @@ impl Hash256 {
 impl fmt::Display for Hash160 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "0x")?;
-        for byte in &self.0 {
+        // Internal bytes are little-endian; canonical Neo addresses/explorer
+        // hashes are big-endian, so emit in reverse (D9: was printing LE,
+        // reversed vs what RPC/explorers show).
+        for byte in self.0.iter().rev() {
             write!(f, "{:02x}", byte)?;
         }
         Ok(())
@@ -136,7 +139,7 @@ impl fmt::Display for Hash160 {
 impl fmt::Display for Hash256 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "0x")?;
-        for byte in &self.0 {
+        for byte in self.0.iter().rev() {
             write!(f, "{:02x}", byte)?;
         }
         Ok(())

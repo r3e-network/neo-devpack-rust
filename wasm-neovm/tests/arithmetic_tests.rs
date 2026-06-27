@@ -515,3 +515,38 @@ fn translate_rem_both_negative() {
     // -10 % -3 = -1
     assert!(!translation.script.is_empty());
 }
+
+#[test]
+fn translate_i32_rem_s_int_min_neg_one_does_not_panic() {
+    // i32.rem_s of INT_MIN by -1 is well-defined in Wasm (result 0, no trap).
+    // The const-fold closure must not evaluate `i32::MIN % -1`, which overflows
+    // and panics in debug builds. Mirrors the existing div_s guard.
+    let wasm = wat::parse_str(
+        r#"(module
+              (func (export "rem_min_neg_one") (result i32)
+                i32.const -2147483648
+                i32.const -1
+                i32.rem_s))"#,
+    )
+    .expect("valid wat");
+
+    let translation =
+        translate_module(&wasm, "RemIntMinNegOne").expect("translation must not panic");
+    assert!(!translation.script.is_empty());
+}
+
+#[test]
+fn translate_i64_rem_s_int_min_neg_one_does_not_panic() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (func (export "rem_min_neg_one_64") (result i64)
+                i64.const -9223372036854775808
+                i64.const -1
+                i64.rem_s))"#,
+    )
+    .expect("valid wat");
+
+    let translation =
+        translate_module(&wasm, "RemIntMinNegOne64").expect("translation must not panic");
+    assert!(!translation.script.is_empty());
+}

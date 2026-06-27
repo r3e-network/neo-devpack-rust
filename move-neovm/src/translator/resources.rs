@@ -5,13 +5,24 @@ use super::lowering::{SCRATCH_KEY_OFFSET, SCRATCH_VALUE_OFFSET};
 use crate::bytecode::{AbilitySet, MoveModule, MoveOpcode, StructDef, TypeTag};
 use anyhow::{anyhow, bail, Result};
 use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
 use wasm_encoder::{Function, Instruction};
 
+/// FNV-1a 64-bit offset basis and prime (the canonical constants).
+const FNV64_OFFSET_BASIS: u64 = 0xcbf29ce484222325;
+const FNV64_PRIME: u64 = 0x100000001b3;
+
+/// Compute a stable, versioned resource-key hash for a struct name using
+/// FNV-1a 64-bit. `DefaultHasher` (SipHash) is intentionally avoided because
+/// its output is not guaranteed stable across compiler/library versions — a
+/// shift would orphan every on-chain resource key (X17). FNV-1a is a fixed,
+/// documented, frozen algorithm.
 pub(super) fn struct_hash(name: &str) -> u64 {
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    name.hash(&mut hasher);
-    hasher.finish()
+    let mut hash = FNV64_OFFSET_BASIS;
+    for byte in name.as_bytes() {
+        hash ^= *byte as u64;
+        hash = hash.wrapping_mul(FNV64_PRIME);
+    }
+    hash
 }
 
 pub(super) fn build_struct_lookup(structs: &[StructDef]) -> HashMap<String, AbilitySet> {

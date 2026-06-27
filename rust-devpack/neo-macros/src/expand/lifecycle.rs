@@ -8,6 +8,18 @@ use syn::ItemFn;
 use crate::codegen;
 
 pub(crate) fn neo_method(input: ItemFn) -> TokenStream2 {
+    // D12: as a freestanding attribute, `#[neo_method]` is a no-op — export
+    // wrappers are generated ONLY by `#[neo_contract] impl`, which consumes
+    // the `#[neo_method]` attribute itself. Reaching this attribute macro
+    // means the method is OUTSIDE a `#[neo_contract] impl` and will silently
+    // produce no on-chain export.
+    //
+    // We considered emitting a `compile_error!` here, but that breaks the
+    // illustrative examples whose `impl` blocks use types (`&self`,
+    // `NeoString`) that the export generator does not yet support (D4/D13).
+    // Full enforcement is deferred until the macro/export redesign; until
+    // then, the method is passed through unchanged and the limitation is
+    // documented (see the crate-level docs and the audit D12 note).
     let vis = &input.vis;
     let sig = &input.sig;
     let block = &input.block;

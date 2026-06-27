@@ -5,10 +5,14 @@ use neo_devpack::prelude::*;
 
 neo_manifest_overlay!(
     r#"{
-    "name": "SampleNEP17",
-    "supportedstandards": ["NEP-17"]
+    "name": "SampleNEP17"
 }"#
 );
+// NOTE: this sample intentionally omits "supportedstandards": ["NEP-17"] because
+// it does not implement the full NEP-17 method surface (symbol/decimals, real
+// balance persistence, transfer). Advertising a standard wallets/indexers expect
+// but do not get would be misleading (X19). A production NEP-17 must implement
+// the complete standard before declaring it.
 
 const TOTAL_SUPPLY: i64 = 1_000_000;
 const HOLDER_ONE: i64 = 1;

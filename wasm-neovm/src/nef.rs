@@ -40,6 +40,9 @@ const COMPILER_FIELD_SIZE: usize = 64;
 pub(crate) const HASH160_LENGTH: usize = 20;
 const CHECKSUM_LENGTH: usize = 4;
 const METHOD_TOKEN_RESERVED_BYTES: usize = 2;
+/// Maximum number of method tokens a NEF file may contain (Neo N3
+/// `NefFile` deserializes via `ReadSerializableArray<MethodToken>(128)`).
+pub const MAX_METHOD_TOKENS: usize = 128;
 // Note: Reserved byte value is 0, inlined in code
 
 /// Write a NEF artefact containing the provided script payload.
@@ -161,6 +164,12 @@ pub struct MethodToken {
 const MAX_CALL_FLAGS: u8 = 0x0F;
 
 fn write_method_tokens(buffer: &mut Vec<u8>, method_tokens: &[MethodToken]) -> Result<()> {
+    ensure!(
+        method_tokens.len() <= MAX_METHOD_TOKENS,
+        "NEF method token count {} exceeds maximum of {} (Neo N3 NefFile limit)",
+        method_tokens.len(),
+        MAX_METHOD_TOKENS
+    );
     write_var_uint(buffer, method_tokens.len() as u64);
     for token in method_tokens {
         ensure!(
@@ -168,6 +177,15 @@ fn write_method_tokens(buffer: &mut Vec<u8>, method_tokens: &[MethodToken]) -> R
             "method token name '{}' exceeds {} bytes",
             token.method,
             MAX_METHOD_NAME_LENGTH
+        );
+        // Neo N3 `MethodToken` rejects method names beginning with '_' on
+        // deserialize (`if (Method.StartsWith('_')) throw new FormatException`),
+        // so a token that passes our writer would still be refused by every
+        // consensus node at deploy time. Fail fast here instead.
+        ensure!(
+            !token.method.starts_with('_'),
+            "method token name '{}' must not start with '_' (rejected by Neo N3 at deploy)",
+            token.method
         );
 
         // Validate contract_hash is exactly 20 bytes (HASH160)

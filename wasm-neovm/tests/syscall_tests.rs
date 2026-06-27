@@ -400,10 +400,11 @@ fn translate_syscall_populates_method_tokens() {
 
     let translation = translate_module(&wasm, "TokenTracking").expect("translation succeeds");
 
-    // Syscalls should be tracked in method_tokens
+    // C2: System.Storage.Get is a syscall, not a static contract call, so it
+    // must NOT produce a method token.
     assert!(
-        !translation.method_tokens.is_empty(),
-        "should track syscall tokens"
+        translation.method_tokens.is_empty(),
+        "non-Contract.Call syscalls must not produce method tokens (C2)"
     );
 }
 
@@ -428,8 +429,9 @@ fn translate_multiple_syscalls_all_tracked() {
 
     let translation = translate_module(&wasm, "MultiSyscall").expect("translation succeeds");
 
-    // Multiple syscalls should all be tracked
-    assert!(!translation.method_tokens.is_empty());
+    // C2: storage_get/storage_put are syscalls, not static contract calls, so
+    // no method tokens are produced.
+    assert!(translation.method_tokens.is_empty());
 }
 
 // ============================================================================
@@ -476,4 +478,68 @@ fn translate_syscall_with_complex_args() {
     // Complex expressions as syscall arguments
     let syscall = wasm_neovm::opcodes::lookup("SYSCALL").unwrap().byte;
     assert!(translation.script.contains(&syscall));
+}
+
+#[test]
+fn crypto_sha256_lowers_to_contract_call_not_dead_syscall() {
+    // Regression for C1: `neo::crypto_sha256` must NOT lower to the dead
+    // `SYSCALL 0x1174acd7` (Neo.Crypto.SHA256 is not a registered interop).
+    // It must lower to `System.Contract.Call` against the CryptoLib native
+    // contract. We assert the emitted script contains the System.Contract.Call
+    // hash (0x627d5b52) and does NOT contain the dead SHA256 syscall hash.
+    let wasm = wat::parse_str(
+        r#"(module
+              (import "neo" "crypto_sha256" (func $sha (param i32) (result i32)))
+              (func (export "hash") (param i32) (result i32)
+                local.get 0
+                call $sha))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "CryptoSha256").expect("translation succeeds");
+
+    let contract_call_hash: u32 = wasm_neovm::syscalls::lookup("System.Contract.Call")
+        .expect("System.Contract.Call exists")
+        .hash;
+    let contract_call_bytes = contract_call_hash.to_le_bytes();
+
+    assert!(
+        translation
+            .script
+            .windows(4)
+            .any(|w| w == contract_call_bytes),
+        "crypto_sha256 must lower to System.Contract.Call"
+    );
+
+    // The dead SHA256 syscall hash (0x1174acd7) must never appear.
+    let dead_sha256 = 0x1174acd7u32.to_le_bytes();
+    assert!(
+        !translation.script.windows(4).any(|w| w == dead_sha256),
+        "crypto_sha256 must not emit the dead Neo.Crypto.SHA256 syscall hash"
+    );
+}
+
+#[test]
+fn check_sig_lowers_to_real_crypto_syscall() {
+    // D3 regression: `neo::check_sig` must lower to a real
+    // System.Crypto.CheckSig SYSCALL (not a default-zero stub).
+    let wasm = wat::parse_str(
+        r#"(module
+              (import "neo" "check_sig" (func $check (param i32 i32 i32 i32) (result i32)))
+              (func (export "verify") (param i32 i32 i32 i32) (result i32)
+                local.get 0  local.get 1  local.get 2  local.get 3
+                call $check))"#,
+    )
+    .expect("valid wat");
+    let translation = translate_module(&wasm, "D3CheckSig").expect("translation succeeds");
+    let check_sig_hash: u32 = wasm_neovm::syscalls::lookup("System.Crypto.CheckSig")
+        .expect("System.Crypto.CheckSig exists")
+        .hash;
+    let expected = check_sig_hash.to_le_bytes();
+    assert!(
+        translation.script.windows(5).any(|w| w[0]
+            == wasm_neovm::opcodes::lookup("SYSCALL").unwrap().byte
+            && w[1..5] == expected),
+        "neo::check_sig must lower to SYSCALL System.Crypto.CheckSig (D3)"
+    );
 }

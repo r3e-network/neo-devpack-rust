@@ -59,7 +59,15 @@ pub(super) fn register_import_features(
     let module = import.module.to_ascii_lowercase();
     match module.as_str() {
         "syscall" => {
-            let syscall = syscalls::lookup_extended(&import.name)
+            // Neo.Crypto.* are CryptoLib native-contract methods invoked via
+            // System.Contract.Call; register that syscall rather than erroring
+            // (they are intentionally absent from the syscall hash table).
+            let name = if crate::native_contracts::crypto_lib_descriptor(&import.name).is_some() {
+                "System.Contract.Call"
+            } else {
+                &import.name
+            };
+            let syscall = syscalls::lookup_extended(name)
                 .ok_or_else(|| anyhow!("unknown syscall '{}'", import.name))?;
             features.register_syscall(syscall.name);
         }

@@ -95,12 +95,18 @@ pub(super) fn try_handle(
     features: &mut FeatureTracker,
     adapter: &dyn ChainAdapter,
     is_unreachable: &mut bool,
+    func_result_count: usize,
 ) -> Result<bool> {
     match op {
         Operator::Return => {
             script.push(RET);
             *is_unreachable = true;
-            value_stack.clear();
+            // Mirror `handle_branch` for a Function frame: keep exactly the
+            // function's `result_count` values on the abstract stack for the
+            // return. Clearing the whole stack (the previous behaviour) violated
+            // the documented stack model and could mask bugs in nested-block
+            // end handling after a `return`.
+            value_stack.truncate(func_result_count);
             Ok(true)
         }
         Operator::Call { function_index } => {

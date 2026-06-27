@@ -56,6 +56,14 @@ fn devpack_syscalls_have_descriptor_and_hash_parity_with_translator() {
             syscall.name
         );
 
+        // C1: Neo.Crypto.* names are CryptoLib native-contract methods invoked
+        // via System.Contract.Call, not registered syscalls. The devpack host
+        // mock keeps the descriptor for behavioral simulation; the translator
+        // deliberately has no syscall-hash entry for them, so skip parity here.
+        if wasm_neovm::native_contracts::is_crypto_alias(syscall.name) {
+            continue;
+        }
+
         let translator_entry =
             translator_syscalls::lookup_extended(syscall.name).unwrap_or_else(|| {
                 panic!(

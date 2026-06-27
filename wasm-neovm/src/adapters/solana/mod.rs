@@ -37,6 +37,9 @@ impl ChainAdapter for SolanaAdapter {
 
     fn resolve_syscall(&self, module: &str, name: &str) -> Option<&'static str> {
         if module.eq_ignore_ascii_case("syscall") {
+            if let Some(crypto) = crate::native_contracts::crypto_descriptor_static(name) {
+                return Some(crypto);
+            }
             return crate::syscalls::lookup_extended(name).map(|s| s.name);
         }
 

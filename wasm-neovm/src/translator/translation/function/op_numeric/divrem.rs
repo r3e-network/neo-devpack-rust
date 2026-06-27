@@ -46,6 +46,11 @@ pub(super) fn try_handle(
                 if divisor == 0 {
                     return None;
                 }
+                // i32::MIN % -1 overflows in Rust (and would panic in debug);
+                // Wasm defines rem_s of MIN by -1 as 0 with no trap.
+                if dividend == i32::MIN && divisor == -1 {
+                    return Some(0);
+                }
                 Some((dividend % divisor) as i128)
             })?;
             value_stack.push(result);
@@ -93,6 +98,11 @@ pub(super) fn try_handle(
                 let divisor = b as i64;
                 if divisor == 0 {
                     return None;
+                }
+                // i64::MIN % -1 overflows in Rust (and would panic in debug);
+                // Wasm defines rem_s of MIN by -1 as 0 with no trap.
+                if dividend == i64::MIN && divisor == -1 {
+                    return Some(0);
                 }
                 Some((dividend % divisor) as i128)
             })?;

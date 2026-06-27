@@ -162,6 +162,27 @@ impl StorageState {
         Ok(())
     }
 
+    /// Put a single key/value pair into the default (current contract) store.
+    /// This is the host-mode equivalent of a `System.Storage.Put` issued by a
+    /// contract — used by the neo-test harness to seed state that contract
+    /// code then reads via `NeoStorage` / `RawStorage` (D6: harness was
+    /// disconnected from this global).
+    ///
+    /// NOTE (D6 partial): writes under the executing contract hash at the
+    /// time of the write (default: all-zeros sentinel). Reads via
+    /// `NeoVMSyscall::storage_get` resolve the same hash at read time, so
+    /// round-trips work when no explicit contract hash has been set. The full
+    /// fix (exposing context creation + explicit hash routing for neo-test)
+    /// is deferred to the macro/import redesign.
+    pub(crate) fn put(&self, key: Vec<u8>, value: Vec<u8>) {
+        if let Ok(mut map) = self
+            .get_or_create_store(crate::storage::current_executing_script_hash())
+            .write()
+        {
+            map.insert(key, value);
+        }
+    }
+
     fn get_or_create_store(&self, contract: [u8; 20]) -> ContractStore {
         let mut stores = match self.contract_stores.write() {
             Ok(guard) => guard,

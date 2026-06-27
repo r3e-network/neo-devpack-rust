@@ -65,6 +65,13 @@ impl NeoStorage {
         NeoVMSyscall::storage_as_read_only(context)
     }
 
+    /// Read a stored value.
+    ///
+    /// **Ambiguity warning (D8):** this returns an empty `NeoByteString` both
+    /// when the key is absent AND when the stored value is genuinely empty, so
+    /// the two cases are indistinguishable. For existence-sensitive reads,
+    /// prefer `NeoVMSyscall::storage_try_get` (returns `Option`) or
+    /// `RawStorage::get_into` (returns `RawStorageGet::Missing`).
     pub fn get(context: &NeoStorageContext, key: &NeoByteString) -> NeoResult<NeoByteString> {
         NeoVMSyscall::storage_get(context, key)
     }
@@ -376,7 +383,10 @@ fn host_get_into(key: &[u8], buf: &mut [u8]) -> i32 {
     };
     let stored = match NeoVMSyscall::storage_try_get(&ctx, &NeoByteString::from_slice(key)) {
         Ok(Some(b)) => b,
-        Ok(None) => return 0,
+        // D14: return -1 for a missing key so the host path matches the wasm
+        // path's `RawStorageGet::Missing` (was returning 0, i.e. Found(0), so
+        // host and wasm disagreed on absence).
+        Ok(None) => return -1,
         Err(_) => return -1,
     };
     let bytes = stored.as_slice();

@@ -5,10 +5,13 @@ use neo_devpack::prelude::*;
 
 neo_manifest_overlay!(
     r#"{
-    "name": "SampleNEP11",
-    "supportedstandards": ["NEP-11"]
+    "name": "SampleNEP11"
 }"#
 );
+// NOTE: this sample omits "supportedstandards": ["NEP-11"] because it does not
+// implement the full NEP-11 method surface (tokens/tokensOf/properties, real
+// ownership persistence, transfer events). Declaring a standard it doesn't
+// meet would mislead wallets/indexers (X19).
 
 const TOTAL_SUPPLY: i64 = 1_000;
 
@@ -62,11 +65,21 @@ impl SampleNep11Contract {
 
     #[neo_method]
     pub fn mint(owner: i64, token_id: i64) -> bool {
+        // Only a witnessed minter/owner may mint (X4: otherwise anyone mints
+        // for free). The contract's sample owner is the witnessed caller.
+        if !NeoRuntime::require_witness_i64(owner) {
+            return false;
+        }
         mint_internal(owner, token_id)
     }
 
     #[neo_method]
     pub fn transfer(from: i64, to: i64, token_id: i64) -> bool {
+        // The current owner (`from`) must authorize the transfer; otherwise
+        // anyone moves anyone's NFT (X4 token theft).
+        if !NeoRuntime::require_witness_i64(from) {
+            return false;
+        }
         transfer_internal(from, to, token_id)
     }
 }
@@ -80,6 +93,33 @@ impl Default for SampleNep11Contract {
 #[cfg(test)]
 mod tests {
     use super::SampleNep11Contract;
+    use neo_devpack::{prelude::NeoByteString, NeoVMSyscall};
+    use std::sync::{Mutex, MutexGuard, OnceLock};
+
+    fn runtime_test_lock() -> MutexGuard<'static, ()> {
+        static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        match TEST_LOCK.get_or_init(|| Mutex::new(())).lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        }
+    }
+
+    fn witness_hash(account: i64) -> [u8; 20] {
+        let mut bytes = [0u8; 20];
+        bytes[..8].copy_from_slice(&account.to_le_bytes());
+        bytes
+    }
+
+    fn setup_witnesses(accounts: &[i64]) -> MutexGuard<'static, ()> {
+        let guard = runtime_test_lock();
+        NeoVMSyscall::reset_host_state().expect("host syscall state should reset");
+        let witnesses: Vec<NeoByteString> = accounts
+            .iter()
+            .map(|account| NeoByteString::from_slice(&witness_hash(*account)))
+            .collect();
+        NeoVMSyscall::set_active_witnesses(&witnesses).expect("active witnesses should update");
+        guard
+    }
 
     #[test]
     fn supply_and_read_paths_are_consistent() {
@@ -92,10 +132,29 @@ mod tests {
 
     #[test]
     fn mint_and_transfer_validate_inputs() {
+        // Owner=1 is witnessed so the input-validation assertions still hold.
+        let _g = setup_witnesses(&[1]);
         assert!(SampleNep11Contract::mint(1, 1));
         assert!(!SampleNep11Contract::mint(0, 1));
         assert!(SampleNep11Contract::transfer(1, 2, 1));
         assert!(!SampleNep11Contract::transfer(1, 1, 1));
         assert!(!SampleNep11Contract::transfer(1, 2, 0));
+    }
+
+    #[test]
+    fn mint_and_transfer_require_witness() {
+        // Without owner=1 in the witness set, mint and transfer are rejected
+        // even with otherwise-valid inputs (X4: free mint / token theft).
+        {
+            let _g = setup_witnesses(&[]);
+            assert!(!SampleNep11Contract::mint(1, 1));
+            assert!(!SampleNep11Contract::transfer(1, 2, 1));
+        }
+        // With owner=1 witnessed, both succeed.
+        {
+            let _g = setup_witnesses(&[1]);
+            assert!(SampleNep11Contract::mint(1, 1));
+            assert!(SampleNep11Contract::transfer(1, 2, 1));
+        }
     }
 }

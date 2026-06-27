@@ -10,6 +10,218 @@ follow the same repository version.
 
 ## [Unreleased]
 
+### Phase B remainder (D3 + D6 partial) — Crypto lowering & neo-test consolidation
+
+Two of the remaining Phase B items landed. The macro/export redesign (D1, D2,
+D4, D6 full, D13, D15, D17) remains tracked as follow-up.
+
+#### Fixed (D3)
+- `NeoVMSyscall::check_sig` / `check_multisig` / `verify_with_ecdsa` now compile
+  for `wasm32-unknown-unknown` (they previously failed to build because the
+  generic `neovm_syscall` dispatcher had no wasm32 path). They route through
+  dedicated `extern "C"` imports that the translator lowers to the real
+  `System.Crypto.CheckSig` / `CheckMultisig` SYSCALLs and, for
+  `verify_with_ecdsa`, the C1 native-contract routing via CryptoLib.
+- Regression test: `check_sig_lowers_to_real_crypto_syscall` asserts
+  `neo::check_sig` emits the `System.Crypto.CheckSig` SYSCALL hash.
+
+#### Fixed (D6 partial)
+- `neo-test::TestEnvironment::set_storage` now also seeds the global syscall
+  mock store via the new `NeoVMSyscall::seed_storage` helper, so contract code
+  reading via `NeoStorage` / `RawStorage` sees values written by the harness
+  (previously the harness kept a private MockRuntime map that the syscall
+  layer never read). Writes are keyed by the executing contract hash (default
+  zero-sentinel), matching the read path's default. Full context/hash routing
+  remains deferred to the macro redesign.
+
+### Phase B remainder (D3 partial) — Crypto syscall lowering
+
+Contracts calling `NeoVMSyscall::check_sig` / `check_multisig` /
+`verify_with_ecdsa` previously failed to compile for `wasm32-unknown-unknown`
+(the generic `neovm_syscall` dispatcher had no wasm32 path, so any
+security-critical signature check was a hard build error). They now route
+through dedicated `extern "C"` imports that the translator lowers to the
+real `System.Crypto.*` SYSCALLs (CheckSig/CheckMultisig) or, for
+`verify_with_ecdsa`, the C1 native-contract routing via CryptoLib.
+
+#### Added
+- `neo_runtime_check_sig` / `neo_runtime_check_multisig` /
+  `neo_runtime_verify_with_ecdsa` wasm imports + dedicated wasm32 paths in
+  the devpack wrappers (D3).
+
+### Phase B (partial) — Devpack type/storage/crypto correctness
+
+The lower-risk correctness fixes from the devpack audit. The larger
+macro/export/wasm32-import redesign (D1–D4, D6, D13, D15, D17) is a coordinated
+breaking sub-project and is tracked as follow-up (see *Remaining work* below).
+
+#### Fixed
+- **D5:** `NeoInteger::try_div`/`try_rem` return `Err(DivisionByZero)` instead
+  of panicking (the `Div`/`Rem` operators fault on-chain → VM FAULT).
+- **D7:** `NeoMap::remove` now uses `Vec::remove` (insertion-stable) instead of
+  `swap_remove` (reordered entries, diverging from on-chain Map semantics).
+- **D9:** `Hash160`/`Hash256` `Display` now emits big-endian (canonical, matches
+  explorers/RPC); was little-endian (reversed).
+- **D11:** `NeoCrypto::verify_signature`/`verify_with_ecdsa` stubs default to
+  `FALSE` (secure) instead of `TRUE` for well-shaped input.
+- **D14:** `host_get_into` returns `-1` for a missing key so the host path
+  matches the wasm path's `RawStorageGet::Missing`.
+- **D16:** `NeoError` now implements `From<TryFromIntError>`/`From<ParseIntError>`.
+- **D8:** `NeoStorage::get` ambiguity (missing vs empty) is now documented;
+  existence-sensitive reads are steered to `storage_try_get`/`RawStorage::get_into`.
+- **D10:** `NeoCrypto::murmur32` is documented as a non-standard hash (not
+  MurmurHash; output won't match on-chain `Murmur128`); callers steered to
+  CryptoLib.
+- **D12:** `#[neo_method]`'s freestanding no-op behaviour is now documented
+  (enforcement deferred to the macro/export redesign).
+
+### Remaining Phase B work (follow-up)
+The macro/export + wasm32-import redesign is the largest remaining item and is
+intentionally split out: it requires coordinated, breaking changes across
+`neo-macros` and `wasm-neovm`. Tracked findings:
+- **D1:** `#[neo_event]`/`notify()` drop the event payload on wasm32 (need a
+  state-carrying wasm import + translator lowering).
+- **D2:** 20-byte script-hash accessors return hardcoded zeros on wasm32.
+- **D3:** most syscalls are wasm32 stubs returning defaults (`check_sig`→false).
+- **D4:** export wrappers only support `i64`/`bool` (not `NeoByteString`/`String`).
+- **D6:** `neo-test` harness is disconnected from the syscall-layer globals.
+- **D13:** `&mut self` export wrappers discard struct state.
+- **D15:** missing typed storage keys / base58 address helpers / NEP-17-11
+  boilerplate.
+- **D17:** per-export `<Name>LastError` doubles the wasm export table.
+
+### Phase E — Professionalization
+
+CI supply-chain hygiene, docs accuracy, and deterministic release tooling.
+
+#### Changed (CI)
+- **X16:** pinned the moving `dtolnay/rust-toolchain@master` to `@stable`
+  (matching the rest of the file); added `--locked` to every `cargo install`
+  (cargo-tarpaulin/audit/deny/machete) so a broken upstream release can't
+  nondeterministically break CI.
+- **X22:** coverage now includes `solana-compat`; `cargo-deny` now covers
+  `solana-compat` and `integration-tests`; the build-verification job now
+  compiles **every** bundled contract to wasm (was only hello/nep17/nep11).
+
+#### Fixed
+- **X21:** `deny.toml` `allow-registry` now includes the modern sparse index
+  (`https://index.crates.io`) alongside the legacy git index.
+- **X23:** corrected the `Cargo-publishing.toml` header comment (was
+  `workspace-publishing.toml`).
+- **X24:** `neoexpress_deploy.sh` now uses a real bash array + safe expansion
+  for the optional `--account` flag (was relying on word-splitting).
+- **X15:** README status section corrected — the Solana/Move paths are labelled
+  experimental (not "available for practical use"); the contract examples are
+  labelled illustrative/not-audited-for-production (not "production-grade").
+
+### Phase D — Cross-chain: correct-or-fail-loud
+
+The experimental Move and Solana paths now either produce correct results for
+the subset they claim or fail loudly at compile/translation/runtime. Full
+parity (every Move/Solana feature, real Ed25519) remains out of scope.
+
+#### Fixed (move-neovm)
+- **X6:** `Add`/`Sub`/`Mul` now emit overflow-trap sequences (Move arithmetic
+  aborts on overflow; was silently wrapping). `CastU8` now masks with `0xFF`.
+- **X10:** `MoveTo` probes existence and aborts if the resource already exists;
+  `MoveFrom` aborts if absent — restoring Move's resource-linearity guarantee.
+- **X11:** `LdU128` lowers loudly (bail at translation if `>i64::MAX`).
+- **X12:** `Pack`/`Unpack`/`BorrowField`/`Vec*` now bail at translation with a
+  clear "unsupported Move feature" message instead of emitting runtime
+  `Unreachable` traps or garbage.
+- **X17:** resource storage keys use a stable FNV-1a hash instead of the
+  non-stable `DefaultHasher` (whose output could shift across compiler versions
+  and orphan every on-chain resource key).
+
+#### Fixed (solana-compat)
+- **X7:** `sol_verify_signature` now panics with a clear message instead of
+  returning a witness-probe as a valid signature.
+- **X8:** `entrypoint!` errors loudly when `num_accounts > 0` (the full account
+  deserializer is unimplemented) instead of silently passing an empty slice.
+- **X9:** `storage_read` now fills the caller's buffer via
+  `neo_storage_get_into`; previously it returned `Some(0)` and wrote nothing.
+- **X13:** `sol_get_clock_sysvar` now returns seconds (Neo `GetTime` is ms).
+
+### Phase C — Contract security sweep
+
+Fixed the "caller passed as a parameter" authorization-bypass class across the
+bundled sample contracts by gating every state-changing entry point on a
+runtime witness check (`NeoRuntime::require_witness_i64`), matching the pattern
+already used by `timelock-vault`/`staking-rewards`/`crowdfunding`.
+
+#### Fixed
+- **X1 (escrow):** `configure`/`release`/`refund` now witness the payer/caller;
+  an attacker could previously release/refund any escrow by passing the
+  arbiter's id, or register an escrow on any payer's behalf.
+- **X2/X3/X18 (governance-dao):** `vote`/`unstake`/`propose`/`configure` now
+  witness the voter/staker/proposer/owner; the DAO was previously fully
+  captureable (ballot-box stuffing, forced unstake).
+- **X4 (nep11-nft):** `mint`/`transfer` now witness the owner/current-owner;
+  anyone could previously mint for free or move anyone's NFT.
+- **X5 (nft-marketplace):** `create_listing`/`cancel_listing` now witness the
+  seller/caller; anyone could previously register listings under an arbitrary
+  seller id or cancel anyone's listing.
+- **X20 (flashloan-pool):** `flash_loan` now witnesses the borrower; added a
+  prominent "illustrative, not audited for production" banner (the sample is
+  fee-math only — no token movement, debt ledger, or atomic repay).
+- **X19:** dropped the misleading `supportedstandards: [NEP-17]`/`[NEP-11]`
+  claim from the nep17-token/nep11-nft sample manifests (neither implements the
+  full standard).
+- **X14:** corrected the multisig-wallet README row to match the actual
+  reader-only stub (`threshold`/`ownerCount`), not the unimplemented
+  `configure`/`propose`/`approve`/`execute` surface.
+
+#### Added
+- `NeoRuntime::require_witness_i64` — the single canonical witness guard for
+  i64-encoded accounts, used by all the fixes above.
+
+### Phase A — Compiler correctness, conformance & execution harness
+
+This phase is part of a systematic refactor (see
+`docs/superpowers/specs/2026-06-24-systematic-refactor-design.md`). It targets
+the `wasm-neovm` translator: every fix is proven by executing the generated
+bytecode through a new in-process NeoVM harness, not by opcode-shape matching.
+
+#### Fixed
+- **T1 (critical):** non-chunked memory `store` helper emitted crashing
+  bytecode for any single-page / no-`memory.grow` module — `SETITEM` received
+  operands in the wrong order (an Integer was treated as the collection). The
+  fault escaped detection because tests only asserted opcode shape. Now emits a
+  second `ROT` so the operand order is `[collection, index, value]`, matching
+  the proven chunked-store sibling. Verified by a store+load round-trip.
+- **T2:** `i32.rem_s` / `i64.rem_s` of `MIN % -1` panicked the const-fold
+  closure in debug builds (Wasm defines this as `0`, no trap).
+- **T3:** `return` did `value_stack.clear()`, diverging from the documented
+  stack model; now truncates to the function frame's `result_count`.
+- **C1:** `Neo.Crypto.*` aliases are methods on the CryptoLib *native contract*,
+  not registered syscalls — emitting `SYSCALL <hash>` deployed but faulted at
+  first execution with "InteropService not found". Now routed to a real
+  `System.Contract.Call(cryptoLibHash, method)`; composite `Hash160`/`Hash256`
+  (no single native method) are rejected loudly at translation time.
+- **C2:** method-token inference fabricated bogus `[0;20]`-hash tokens for every
+  non-`Contract.Call` syscall, polluting the NEF/manifest and risking the
+  128-token cap. Only concrete `System.Contract.Call` literals now produce tokens.
+- **C3:** manifest overlay merge collapsed ABI overloads by name only; Neo keys
+  methods by `(name, parameter-count)`. Overlays with explicit parameters and a
+  different arity are now preserved as distinct methods; overlays that omit
+  parameters still annotate any same-name method.
+- **C5:** contracts that make static contract calls but declare no `permissions`
+  silently had every dynamic call denied at runtime by Neo N3's permission
+  check. A wildcard `*`/`*` permission is now auto-inserted with a build warning.
+- **C4:** removed a stale comment referencing the non-existent `HASH160` opcode.
+
+#### Added
+- In-process NeoVM execution harness (cargo feature `exec`): a deterministic
+  engine over the emitted opcode subset with a pluggable `Host` (storage,
+  witnesses, notifications, syscalls). Used as the trust anchor for behavioural
+  fixes and as a substrate for later phases.
+- `wasm_neovm::native_contracts` module: CryptoLib native-contract hash and a
+  single source of truth for crypto-alias → native-method resolution.
+
+#### Changed
+- Removed the dead `EXTENDED_SYSCALLS` crypto entries; the adapters and feature
+  tracker now recognize `Neo.Crypto.*` via `native_contracts`.
+
 ## [0.5.8] - 2026-06-18
 
 ### Changed

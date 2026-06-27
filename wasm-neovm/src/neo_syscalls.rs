@@ -173,8 +173,12 @@ pub static NEO_SYSCALL_MAP: Lazy<HashMap<String, &'static str>> = Lazy::new(|| {
     alias("crypto_sha256", "Neo.Crypto.SHA256");
     alias("crypto_hash160", "Neo.Crypto.Hash160");
     alias("crypto_hash256", "Neo.Crypto.Hash256");
-    // Hashing helpers are not exposed as Neo syscalls. Callers should lower
-    // to opcodes (e.g. `opcode::HASH160`) or native contract calls instead.
+    // Neo.Crypto.* names are NOT NeoVM opcodes (there is no SHA256/HASH160/
+    // HASH256 opcode on N3 — those slots are SHL/SHR/NOT). They are methods on
+    // the CryptoLib native contract, invoked via System.Contract.Call. The
+    // translator re-routes these aliases to a real contract call (see
+    // `native_contracts::crypto_lib_method`); `hash160`/`hash256` have no
+    // single native method and must be lowered as call sequences explicitly.
 
     // Contract management syscalls
     alias("call_contract", "System.Contract.Call");
@@ -257,6 +261,12 @@ mod tests {
     fn assert_alias_maps_to_known_syscall(alias: &str) {
         let descriptor = lookup_neo_syscall(alias)
             .unwrap_or_else(|| panic!("missing alias mapping for {alias}"));
+        // Neo.Crypto.* aliases resolve to CryptoLib native-contract methods
+        // (invoked via System.Contract.Call) or composite hash sequences, not
+        // to syscall-hash entries.
+        if crate::native_contracts::is_crypto_alias(descriptor) {
+            return;
+        }
         let resolved = syscalls::lookup_extended(descriptor)
             .unwrap_or_else(|| panic!("mapped descriptor '{descriptor}' is unknown"));
         assert_eq!(resolved.name, descriptor);

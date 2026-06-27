@@ -284,6 +284,8 @@ impl DriverState {
         }
 
         let mut manifest_builder = ManifestBuilder::new(&self.contract_name, &self.methods);
+        let overlay_present =
+            self.manifest_overlay.is_some() || self.extra_manifest_overlay.is_some();
         if let Some(overlay) = self.manifest_overlay {
             manifest_builder
                 .merge_overlay(&overlay, Some("embedded neo.manifest sections".to_string()));
@@ -304,6 +306,15 @@ impl DriverState {
         if metadata.source.is_none() {
             metadata.source = self.section_source;
         }
+
+        // C5: if the contract makes static contract calls (method tokens) but
+        // declares no manifest permissions, auto-insert a wildcard so the calls
+        // are not silently denied at runtime.
+        crate::manifest::ensure_permission_for_dynamic_calls(
+            manifest_builder.manifest_value_mut(),
+            metadata.method_tokens.len(),
+            overlay_present,
+        );
 
         update_manifest_metadata(
             manifest_builder.manifest_value_mut(),

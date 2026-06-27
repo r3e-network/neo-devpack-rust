@@ -109,5 +109,19 @@ impl NeoError {
 
 impl std::error::Error for NeoError {}
 
+// D16: ergonomic `From` conversions so `?` works across common stdlib error
+// types encountered when parsing integers/bytes in contract code.
+impl From<std::num::TryFromIntError> for NeoError {
+    fn from(_: std::num::TryFromIntError) -> Self {
+        NeoError::Overflow
+    }
+}
+
+impl From<std::num::ParseIntError> for NeoError {
+    fn from(_: std::num::ParseIntError) -> Self {
+        NeoError::InvalidArgument
+    }
+}
+
 /// Neo N3 Result type
 pub type NeoResult<T> = Result<T, NeoError>;

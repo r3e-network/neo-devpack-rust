@@ -187,3 +187,52 @@ fn translate_simple_constant_addition() {
     assert_eq!(checksum, expected_checksum);
     assert_eq!(cursor + 4, bytes.len());
 }
+
+/// Helper: a method token with sane defaults, overridable per field.
+fn sample_token() -> MethodToken {
+    MethodToken {
+        contract_hash: [0xAA; 20],
+        method: "callExternal".to_string(),
+        parameters_count: 0,
+        has_return_value: false,
+        call_flags: 0x07,
+    }
+}
+
+#[test]
+fn encode_nef_rejects_method_token_name_starting_with_underscore() {
+    // Neo N3 `MethodToken` throws FormatException on deserialize when the
+    // method name starts with '_'. The writer must reject such tokens so we
+    // never emit a NEF that every consensus node will refuse at deploy.
+    let script = vec![0x01, 0x00, 0x12, 0x40];
+    let mut token = sample_token();
+    token.method = "_internal".to_string();
+
+    let err = encode_nef_with_metadata(&script, None, std::slice::from_ref(&token)).unwrap_err();
+    assert!(
+        err.to_string().contains("must not start with '_'"),
+        "unexpected error message: {err}"
+    );
+}
+
+#[test]
+fn encode_nef_rejects_more_than_128_method_tokens() {
+    // Neo N3 `NefFile` deserializes the token array via
+    // `ReadSerializableArray<MethodToken>(128)`; exceeding 128 throws.
+    let script = vec![0x01, 0x00, 0x12, 0x40];
+    let tokens: Vec<MethodToken> = (0..129).map(|_| sample_token()).collect();
+
+    let err = encode_nef_with_metadata(&script, None, &tokens).unwrap_err();
+    assert!(
+        err.to_string().contains("exceeds maximum"),
+        "unexpected error message: {err}"
+    );
+}
+
+#[test]
+fn encode_nef_accepts_exactly_128_method_tokens() {
+    let script = vec![0x01, 0x00, 0x12, 0x40];
+    let tokens: Vec<MethodToken> = (0..128).map(|_| sample_token()).collect();
+    encode_nef_with_metadata(&script, None, &tokens)
+        .expect("128 tokens is the Neo N3 maximum and must be accepted");
+}

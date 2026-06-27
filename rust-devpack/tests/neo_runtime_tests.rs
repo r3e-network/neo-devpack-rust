@@ -124,9 +124,11 @@ fn raw_storage_empty_and_missing_read_as_zero_length() {
         RawStorage::get_into(b"empty", &mut empty),
         RawStorageGet::Found(0)
     );
+    // D14: a missing key must report `Missing` on the host path (was Found(0),
+    // disagreeing with the wasm path which reports Missing).
     assert_eq!(
         RawStorage::get_into(b"missing", &mut empty),
-        RawStorageGet::Found(0)
+        RawStorageGet::Missing
     );
 }
 
@@ -254,11 +256,13 @@ fn crypto_helpers_produce_deterministic_lengths() {
 
     let signature = NeoByteString::from_slice(&[0x42; 64]);
     let public_key = NeoByteString::from_slice(&[0x02; 33]);
-    assert!(NeoCrypto::verify_signature(&data, &signature, &public_key)
+    // D11: the verify stubs default to FALSE (secure) for any input — they do
+    // not perform real crypto and must not return TRUE for well-shaped forgeries.
+    assert!(!NeoCrypto::verify_signature(&data, &signature, &public_key)
         .unwrap()
         .as_bool());
     assert!(
-        NeoCrypto::verify_with_ecdsa(&data, &public_key, &signature, NeoInteger::new(1))
+        !NeoCrypto::verify_with_ecdsa(&data, &public_key, &signature, NeoInteger::new(1))
             .unwrap()
             .as_bool()
     );
@@ -278,7 +282,10 @@ fn crypto_verification_argument_order_is_explicit() {
     let signature = NeoByteString::from_slice(&[0xAA; 64]);
     let public_key = NeoByteString::from_slice(&[0x02; 33]);
 
-    assert!(NeoCrypto::verify_signature(&data, &signature, &public_key)
+    // D11: both stubs return FALSE regardless of argument order (secure default;
+    // the order check these tests originally asserted was the insecure
+    // shape-valid->TRUE behaviour).
+    assert!(!NeoCrypto::verify_signature(&data, &signature, &public_key)
         .unwrap()
         .as_bool());
     assert!(!NeoCrypto::verify_signature(&data, &public_key, &signature)
@@ -286,7 +293,7 @@ fn crypto_verification_argument_order_is_explicit() {
         .as_bool());
 
     assert!(
-        NeoCrypto::verify_with_ecdsa(&data, &public_key, &signature, NeoInteger::new(1))
+        !NeoCrypto::verify_with_ecdsa(&data, &public_key, &signature, NeoInteger::new(1))
             .unwrap()
             .as_bool()
     );

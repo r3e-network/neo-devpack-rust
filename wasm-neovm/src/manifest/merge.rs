@@ -237,20 +237,44 @@ fn merge_permission_methods(target: &mut Value, incoming: &Value) {
 
 /// Deduplicates a JSON array of objects by merging entries that share the same
 /// `"name"` field. Later entries overlay earlier ones (key-by-key merge).
-/// Used for both ABI methods and events in manifest overlay merging.
+///
+/// When the incoming entry **omits** `parameters`, it annotates any existing
+/// same-name method (matching by name only) — this is the common overlay case
+/// where the author only sets e.g. `{"name":"transfer","safe":true}` and expects
+/// the baseline parameters to be preserved.
+///
+/// When the incoming entry **includes** `parameters`, Neo identifies ABI methods
+/// by `(name, parameter-count)`: an entry with the same name but a different
+/// arity is a distinct legal overload and is preserved as a separate method,
+/// while an entry with the same name AND arity field-merges in place. (C3.)
 fn dedup_named_entries(value: &mut Value) {
     if let Some(items) = value.as_array_mut() {
         let mut merged: Vec<serde_json::Value> = Vec::new();
-        let mut index_by_name: HashMap<String, usize> = HashMap::new();
+        let mut name_index: HashMap<String, usize> = HashMap::new();
+        let mut arity_index: HashMap<(String, usize), usize> = HashMap::new();
 
         for entry in items.drain(..) {
             let entry_name = entry
                 .get("name")
                 .and_then(serde_json::Value::as_str)
                 .map(|s| s.to_string());
+            let entry_param_count = entry
+                .get("parameters")
+                .and_then(serde_json::Value::as_array)
+                .map(|p| p.len());
 
             if let Some(name) = entry_name {
-                if let Some(existing_index) = index_by_name.get(&name).copied() {
+                // Entries that declare `parameters` are matched on
+                // (name, arity): a different arity is a distinct overload and
+                // must be appended, NOT merged into the same-name method.
+                // Entries WITHOUT `parameters` annotate any existing same-name
+                // method (name-only match), preserving the baseline parameters.
+                let merged_pos = match entry_param_count {
+                    Some(c) => arity_index.get(&(name.clone(), c)).copied(),
+                    None => name_index.get(&name).copied(),
+                };
+
+                if let Some(existing_index) = merged_pos {
                     if let (Some(existing), Some(overlay)) =
                         (merged[existing_index].as_object_mut(), entry.as_object())
                     {
@@ -261,8 +285,12 @@ fn dedup_named_entries(value: &mut Value) {
                     continue;
                 }
 
-                index_by_name.insert(name, merged.len());
+                let i = merged.len();
                 merged.push(entry);
+                name_index.entry(name.clone()).or_insert(i);
+                if let Some(c) = entry_param_count {
+                    arity_index.insert((name, c), i);
+                }
             } else {
                 merged.push(entry);
             }

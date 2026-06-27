@@ -83,10 +83,12 @@ fn translate_populates_method_tokens_for_syscalls() {
 
     let translation = translate_module(&wasm, "MethodTokens").expect("translation succeeds");
 
-    // Syscalls should populate method_tokens array in NEF
+    // C2: System.Storage.Get is a syscall, not a static contract call, so it
+    // must NOT produce a method token (tokens are only for System.Contract.Call
+    // literals). The token array must be empty.
     assert!(
-        !translation.method_tokens.is_empty(),
-        "should track syscall tokens"
+        translation.method_tokens.is_empty(),
+        "non-Contract.Call syscalls must not produce method tokens (C2)"
     );
 }
 
@@ -116,10 +118,10 @@ fn translate_method_tokens_track_multiple_syscalls() {
 
     let translation = translate_module(&wasm, "MultiTokens").expect("translation succeeds");
 
-    // Multiple different syscalls should all be tracked
+    // C2: none of these are System.Contract.Call, so no method tokens.
     assert!(
-        !translation.method_tokens.is_empty(),
-        "should track all syscall tokens"
+        translation.method_tokens.is_empty(),
+        "non-Contract.Call syscalls must not produce method tokens (C2)"
     );
 }
 
@@ -142,10 +144,11 @@ fn translate_method_tokens_no_duplicates() {
 
     let translation = translate_module(&wasm, "NoDuplicateTokens").expect("translation succeeds");
 
-    // Same syscall called multiple times should only appear once in method_tokens
+    // C2: storage_get is a syscall, so no tokens are produced (vacuously
+    // duplicate-free).
     assert!(
-        !translation.method_tokens.is_empty(),
-        "should track syscall tokens"
+        translation.method_tokens.is_empty(),
+        "non-Contract.Call syscalls must not produce method tokens (C2)"
     );
 }
 
@@ -374,9 +377,10 @@ fn translate_handles_import_feature() {
         !translation.script.is_empty(),
         "should handle import feature"
     );
+    // C2: storage_get is a syscall, not a contract call, so no method token.
     assert!(
-        !translation.method_tokens.is_empty(),
-        "should track imported syscalls"
+        translation.method_tokens.is_empty(),
+        "non-Contract.Call syscalls must not produce method tokens (C2)"
     );
 }
 

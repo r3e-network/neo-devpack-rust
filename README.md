@@ -33,7 +33,7 @@ Rust contract (neo-devpack) ──cargo build --target wasm32-unknown-unknown─
 
 ## 🚀 Current Status
 
-The core Rust/C Wasm → NeoVM pipeline is production-ready and targets **Neo N3 version 3.9.1**. Cross-chain support is mixed maturity: the Solana path is available for practical use, while the Move path remains experimental as coverage continues to expand.
+The core Rust/C Wasm → NeoVM pipeline targets **Neo N3 version 3.9.1**. Cross-chain support is experimental: the Solana and Move paths compile a useful subset but are not yet production-grade (see `docs/wasm-neovm-status.md` for the coverage matrix). Both paths now fail loudly on unsupported features rather than producing silently-wrong output.
 
 The repository is validated with:
 
@@ -44,7 +44,7 @@ The repository is validated with:
 - ✅ Benchmark regression detection
 - ✅ Cross-chain compatibility verification
 
-## Cross-Chain Compilation (Solana ready; Move experimental)
+## Cross-Chain Compilation (experimental: Solana & Move)
 
 The toolchain supports cross-chain smart contract compilation from Solana and Move ecosystems:
 
@@ -316,7 +316,7 @@ The accompanying Rust contract can declare the imports with `#[link(wasm_import_
 - [x] Manifest overlay merge + permission deduplication
 - [x] Method-token inference for `System.Contract.Call` and syscall usage
 - [x] Comprehensive unit tests for translator modules
-- [x] Production-grade Rust contract examples (17 templates covering NEP‑17, NEP‑11, AMM/Uniswap-style routing, staking, timelocks, flashloans, multisig, escrow, DAO, oracle, NFT marketplace, cross-chain Solana/Move, etc.)
+- [x] Illustrative Rust contract examples (17 templates covering NEP‑17, NEP‑11, AMM/Uniswap-style routing, staking, timelocks, flashloans, multisig, escrow, DAO, oracle, NFT marketplace, cross-chain Solana/Move, etc.) — bundled as learning/deploy-smoke samples, **not audited for production** value handling
 - [x] Makefile automation (`make examples`) to build and translate every contract
 - [x] Documentation for quick start, contract catalogue, and Neo Express deployment
 - [x] **Solana compatibility layer** (`neo-solana-compat`) with full API support (Pubkey, AccountInfo, ProgramError, invoke)

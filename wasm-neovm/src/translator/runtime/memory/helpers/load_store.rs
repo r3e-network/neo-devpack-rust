@@ -83,8 +83,17 @@ pub(in crate::translator::runtime) fn emit_memory_store_helper(
             let _ = emit_push_int(script, i as i128);
             script.push(lookup_opcode("ADD")?.byte);
         }
-        script.push(lookup_opcode("SWAP")?.byte);
-        script.push(lookup_opcode("LDSFLD0")?.byte);
+        // Stack (bottom->top): [.., masked_value, addr, byte_i, addr+i].
+        // NeoVM SETITEM consumes [collection, index, value] (collection deepest,
+        // value on top) — same convention SUBSTR uses. We need
+        // [memBuf, addr+i, byte_i] before SETITEM.
+        script.push(lookup_opcode("SWAP")?.byte); // -> [.., addr+i, byte_i]
+        script.push(lookup_opcode("LDSFLD0")?.byte); // push memBuf -> [.., addr+i, byte_i, memBuf]
+                                                     // Two ROTs cycle the top three [addr+i, byte_i, memBuf] ->
+                                                     // [byte_i, memBuf, addr+i] -> [memBuf, addr+i, byte_i], the exact
+                                                     // (collection, index, value) order SETITEM requires. (A single ROT left
+                                                     // byte_i as the "collection", which faults at runtime — T1.)
+        script.push(lookup_opcode("ROT")?.byte);
         script.push(lookup_opcode("ROT")?.byte);
         script.push(lookup_opcode("SETITEM")?.byte);
     }
@@ -159,6 +168,22 @@ pub(in crate::translator::runtime) fn emit_chunked_memory_load_helper(
 
     let exit_label = script.len();
     script.push(lookup_opcode("LDLOC1")?.byte);
+    // The loop above accumulates bytes via `byte << (index*8)` + OR, which
+    // produces an UNSIGNED integer. Wasm's full-width loads (`i32.load`/
+    // `i64.load`) require a two's-complement sign-extended result, otherwise
+    // every downstream signed op (lt_s, shr_s, div_s, ...) sees the wrong
+    // magnitude. Recover the sign with the XOR-SUB idiom:
+    //   u in [0, 2^W)  ->  (u XOR sign_bit) - sign_bit
+    // which yields u for non-negative values and u - 2^W when the top bit is
+    // set. Sub-word `_s` loads re-sign-extend at the call site (idempotent)
+    // and `_u` loads re-mask via `emit_zero_extend`, so this is safe for all
+    // load flavors while costing nothing for the (already-signed) compact
+    // `SUBSTR`+`CONVERT` helper used in non-chunked mode.
+    let sign_bit = 1i128 << ((bytes * 8) - 1);
+    let _ = emit_push_int(script, sign_bit);
+    script.push(lookup_opcode("XOR")?.byte);
+    let _ = emit_push_int(script, sign_bit);
+    script.push(lookup_opcode("SUB")?.byte);
     script.push(RET);
 
     let trap_label = script.len();

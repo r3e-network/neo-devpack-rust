@@ -645,3 +645,191 @@ fn translate_memory_atomic_pattern() {
         last
     );
 }
+
+#[test]
+fn translate_chunked_memory_load_sign_extends_full_width() {
+    // Chunked-memory backing is selected whenever the module declares more
+    // than one initial page (or uses memory.grow). The chunked load helper
+    // accumulates bytes via `byte << (index*8)` + OR, which yields an
+    // UNSIGNED integer; full-width Wasm loads (`i32.load`/`i64.load`) are
+    // two's-complement signed, so the helper must sign-extend its result or
+    // every downstream signed op (lt_s, shr_s, div_s, ...) computes on the
+    // wrong magnitude. `(memory 2)` forces the chunked path deterministically.
+    let wasm = wat::parse_str(
+        r#"(module
+              (memory 2)
+              (func (export "load") (param i32) (result i32)
+                local.get 0
+                i32.load))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "ChunkedSignExt").expect("translation succeeds");
+    let script = &translation.script;
+
+    // The chunked load helper is uniquely identifiable by its prologue:
+    // `INITSLOT 5 0` followed by `STLOC0` (store the address argument). The
+    // compact (non-chunked) load helper does not allocate locals this way,
+    // and the store helper starts with `SWAP`, so this prologue is exclusive
+    // to the chunked load helper.
+    let initslot = opcodes::lookup("INITSLOT").unwrap().byte;
+    let stloc0 = opcodes::lookup("STLOC0").unwrap().byte;
+    let abort = opcodes::lookup("ABORT").unwrap().byte;
+    let xor = opcodes::lookup("XOR").unwrap().byte;
+    let sub = opcodes::lookup("SUB").unwrap().byte;
+
+    let mut helper_region: Option<&[u8]> = None;
+    for i in 0..script.len().saturating_sub(4) {
+        if script[i] == initslot
+            && script[i + 1] == 5
+            && script[i + 2] == 0
+            && script[i + 3] == stloc0
+        {
+            let end = script[i..]
+                .iter()
+                .position(|&b| b == abort)
+                .map(|p| i + p)
+                .unwrap_or(script.len());
+            helper_region = Some(&script[i..end]);
+            break;
+        }
+    }
+    let helper = helper_region.expect("chunked load helper (INITSLOT 5 0; STLOC0) must be emitted");
+
+    assert!(
+        helper.contains(&xor),
+        "chunked load helper must sign-extend its result (expected XOR in helper body)"
+    );
+    assert!(
+        helper.contains(&sub),
+        "chunked load helper must sign-extend its result (expected SUB in helper body)"
+    );
+}
+
+#[cfg(feature = "exec")]
+#[test]
+fn single_page_store_load_roundtrip_executes() {
+    // T1 regression: the non-chunked memory store helper fed SETITEM the wrong
+    // operand order, faulting at runtime for any single-page store. Run the
+    // *actual* translated bytecode through the exec harness and assert a
+    // store+load round-trip.
+    use num_bigint::BigInt;
+    use wasm_neovm::exec::{Engine, ExecResult, Host, NeoItem};
+
+    let wasm = wat::parse_str(
+        r#"(module
+              (memory 1)
+              (func (export "store") (param i32 i32)
+                local.get 0
+                local.get 1
+                i32.store)
+              (func (export "load") (param i32) (result i32)
+                local.get 0
+                i32.load))"#,
+    )
+    .expect("valid wat");
+    let translation = translate_module(&wasm, "T1StoreLoad").expect("translation succeeds");
+    let script = &translation.script;
+
+    // The translated script's memory helpers read memBuf from static field 0
+    // (LDSFLD0) and its byte-length from static field 1 (LDSFLD1). Initialise
+    // a 64KiB buffer (one Wasm page) and its size, then run the store region
+    // (push addr, value, then execute the store helper body) followed by the
+    // load region. Because we don't know exact helper offsets, run the whole
+    // script by simulating two calls: store(0, 0x7FFFFFFF) then load(0).
+
+    let page: usize = 65_536;
+    let mut host = Host::default();
+    host.static_fields.push(NeoItem::buffer(vec![0u8; page])); // sfield0 = memBuf
+    host.static_fields.push(NeoItem::int(page as i64)); // sfield1 = size
+
+    // Execute the full script: it contains both helpers inlined. We exercise
+    // the store helper by pushing addr=0, value=0x7FFFFFFF and running; then
+    // the load helper by pushing addr=0. The exec harness runs the script from
+    // pc=0; since helpers are emitted as sub-routines with RET, run the store
+    // helper region first (it's the first emitted function's body).
+    //
+    // Simpler & robust: build two tiny driver scripts from the helper bodies by
+    // locating them via their INITSLOT-less prologue. For the non-chunked
+    // store helper the prologue is `SWAP; DUP; PUSH0; LT; JMPIF_L`.
+    let swap = opcodes::lookup("SWAP").unwrap().byte;
+    let dup = opcodes::lookup("DUP").unwrap().byte;
+    let push0 = opcodes::lookup("PUSH0").unwrap().byte;
+    let lt = opcodes::lookup("LT").unwrap().byte;
+    let ret = opcodes::lookup("RET").unwrap().byte;
+
+    // Find the store helper (starts with SWAP; DUP; PUSH0; LT) and run it to its RET.
+    let mut store_start = None;
+    for i in 0..script.len().saturating_sub(4) {
+        if script[i] == swap
+            && script[i + 1] == dup
+            && script[i + 2] == push0
+            && script[i + 3] == lt
+        {
+            store_start = Some(i);
+            break;
+        }
+    }
+    let store_start = store_start.expect("non-chunked store helper must be present");
+
+    // Bound the store helper region by its RET (so the load-helper search can
+    // skip false positives that live inside the store helper).
+    let store_end = script[store_start..]
+        .iter()
+        .position(|&b| b == ret)
+        .map(|p| store_start + p + 1)
+        .unwrap_or(script.len());
+
+    // The load helper prologue is `DUP; PUSH0; LT` (it does NOT start with
+    // SWAP — that's the store helper). Search the whole script but skip any
+    // candidate that lies inside the store helper region [store_start, store_end).
+    let mut load_start = None;
+    for i in 0..script.len().saturating_sub(3) {
+        if i >= store_start && i < store_end {
+            continue;
+        }
+        if script[i] == dup && script[i + 1] == push0 && script[i + 2] == lt {
+            load_start = Some(i);
+            break;
+        }
+    }
+    let load_start = load_start.expect("non-chunked load helper must be present");
+
+    let load_end = script[load_start..]
+        .iter()
+        .position(|&b| b == ret)
+        .map(|p| load_start + p + 1)
+        .unwrap_or(script.len());
+    let _ = load_end;
+
+    // Drive store(addr=0, value=0x7FFFFFFF): the store helper expects the
+    // stack [addr, value] (value on top) per Wasm i32.store convention. Run it
+    // IN PLACE so its jump patching (relative to original offsets) stays valid.
+    let mut e = Engine::new_starting_at(script, store_start, &mut host);
+    e.push_initial(NeoItem::int(0i64)); // addr (bottom)
+    e.push_initial(NeoItem::int(0x7FFFFFFFi64)); // value (top)
+    let res = e.run();
+    assert!(
+        matches!(res, ExecResult::Halt),
+        "store helper must execute without fault, got {res:?}"
+    );
+
+    // Drive load(addr=0): expects [addr] on stack, returns the integer.
+    let mut e = Engine::new_starting_at(script, load_start, &mut host);
+    e.push_initial(NeoItem::int(0i64)); // addr
+    let res = e.run();
+    assert!(
+        matches!(res, ExecResult::Halt),
+        "load helper must execute without fault, got {res:?}"
+    );
+    let top = e
+        .stack()
+        .last()
+        .and_then(|i| i.as_int())
+        .expect("load returns an integer");
+    assert_eq!(
+        top,
+        &BigInt::from(0x7FFFFFFFi64),
+        "single-page store/load round-trip must preserve the value (T1)"
+    );
+}
