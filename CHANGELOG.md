@@ -10,6 +10,30 @@ follow the same repository version.
 
 ## [Unreleased]
 
+### Phase B remainder (D3 + D6 partial) — Crypto lowering & neo-test consolidation
+
+Two of the remaining Phase B items landed. The macro/export redesign (D1, D2,
+D4, D6 full, D13, D15, D17) remains tracked as follow-up.
+
+#### Fixed (D3)
+- `NeoVMSyscall::check_sig` / `check_multisig` / `verify_with_ecdsa` now compile
+  for `wasm32-unknown-unknown` (they previously failed to build because the
+  generic `neovm_syscall` dispatcher had no wasm32 path). They route through
+  dedicated `extern "C"` imports that the translator lowers to the real
+  `System.Crypto.CheckSig` / `CheckMultisig` SYSCALLs and, for
+  `verify_with_ecdsa`, the C1 native-contract routing via CryptoLib.
+- Regression test: `check_sig_lowers_to_real_crypto_syscall` asserts
+  `neo::check_sig` emits the `System.Crypto.CheckSig` SYSCALL hash.
+
+#### Fixed (D6 partial)
+- `neo-test::TestEnvironment::set_storage` now also seeds the global syscall
+  mock store via the new `NeoVMSyscall::seed_storage` helper, so contract code
+  reading via `NeoStorage` / `RawStorage` sees values written by the harness
+  (previously the harness kept a private MockRuntime map that the syscall
+  layer never read). Writes are keyed by the executing contract hash (default
+  zero-sentinel), matching the read path's default. Full context/hash routing
+  remains deferred to the macro redesign.
+
 ### Phase B remainder (D3 partial) — Crypto syscall lowering
 
 Contracts calling `NeoVMSyscall::check_sig` / `check_multisig` /

@@ -444,6 +444,24 @@ impl NeoVMSyscall {
         Ok(())
     }
 
+    /// Seed host-mode storage with the given key/value pairs (D6: bridges
+    /// `neo-test::TestEnvironment::set_storage` to the global syscall mock so
+    /// contract code reading via `NeoStorage`/`RawStorage` sees the same
+    /// store). Pairs are written under the *currently executing* contract
+    /// hash (set via `set_active_contract_hash` / `set_current_contract_hash`;
+    /// default zero-sentinel). On wasm32 this is a no-op.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn seed_storage(entries: &[(&[u8], &[u8])]) -> NeoResult<()> {
+        for (k, v) in entries {
+            STORAGE_STATE.put(k.to_vec(), v.to_vec());
+        }
+        Ok(())
+    }
+    #[cfg(target_arch = "wasm32")]
+    pub fn seed_storage(_entries: &[(&[u8], &[u8])]) -> NeoResult<()> {
+        Ok(())
+    }
+
     fn call_value(name: &str, args: &[NeoValue]) -> NeoResult<NeoValue> {
         neovm_syscall(syscall_hash(name)?, args)
     }

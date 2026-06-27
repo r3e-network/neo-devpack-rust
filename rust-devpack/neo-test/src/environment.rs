@@ -75,7 +75,12 @@ impl TestEnvironment {
     }
 
     pub fn set_storage(&mut self, key: &[u8], value: &[u8]) {
+        // D6: route to the global syscall mock so contract code reading via
+        // `NeoStorage`/`RawStorage`/`NeoVMSyscall::storage_get` sees the same
+        // store (previously this only updated a private MockRuntime map that
+        // the syscall layer never read).
         self.runtime.storage_mut().put(key, value);
+        let _ = neo_syscalls::NeoVMSyscall::seed_storage(&[(key, value)]);
     }
 
     pub fn get_storage_context(&mut self) -> MockStorageContext {
