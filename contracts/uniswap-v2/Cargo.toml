@@ -1,6 +1,6 @@
 [package]
 name = "uniswap-v2-neo"
-version = "0.10.0"
+version = "0.11.0"
 edition = "2021"
 description = "Uniswap V2 style AMM example contract for Neo N3"
 keywords = ["neo", "n3", "smart-contract", "defi", "uniswap"]
@@ -13,7 +13,7 @@ categories = ["cryptography::cryptocurrencies", "wasm"]
 crate-type = ["cdylib"]
 
 [dependencies]
-neo-devpack = { path = "../../rust-devpack", version = "0.10.0", default-features = false }
+neo-devpack = { path = "../../rust-devpack", version = "0.11.0", default-features = false }
 
 [features]
 default = ["neo-devpack/std"]

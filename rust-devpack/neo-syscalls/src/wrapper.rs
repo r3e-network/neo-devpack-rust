@@ -1098,12 +1098,15 @@ impl NeoVMSyscall {
         }
         #[cfg(target_arch = "wasm32")]
         {
-            // B4: panic-loud rather than silently returning Null.
+            // L6 minimal: the v0.8.0 B4 panic-loud site is now
+            // a structured Result. The wasm32 cross-call executor
+            // is not yet implemented; the contract author can
+            // `match` on `ContractCallError::Wasm32CrossCallUnavailable`
+            // and degrade gracefully.
             let _ = values;
-            panic!(
-                "System.Runtime.LoadScript on wasm32 is not yet implemented; \
-                 see L6 design. The previous behaviour silently returned Null."
-            );
+            Err(NeoError::Wasm32CrossCallUnavailable {
+                syscall: "System.Runtime.LoadScript",
+            })
         }
     }
 
@@ -1141,17 +1144,15 @@ impl NeoVMSyscall {
 
         #[cfg(target_arch = "wasm32")]
         {
-            // B4: panic-loud rather than silently returning Null.
-            // The previous behaviour silently produced NeoValue::Null
-            // (via default_value_for(Any)), which meant contracts that
-            // chained to other contracts thought they got a real
-            // result and acted on it. L6 provides the full executor.
+            // L6 minimal: the v0.8.0 B4 panic-loud site is now
+            // a structured Result. The wasm32 cross-call executor
+            // is not yet implemented; the contract author can
+            // `match` on `ContractCallError::Wasm32CrossCallUnavailable`
+            // and degrade gracefully.
             let _ = values;
-            panic!(
-                "System.Contract.Call on wasm32 is not yet implemented; \
-                 see docs/superpowers/specs/2026-06-27-neo-n3-platform-support-design.md \
-                 layer L6. The previous behaviour silently returned Null."
-            );
+            Err(NeoError::Wasm32CrossCallUnavailable {
+                syscall: "System.Contract.Call",
+            })
         }
     }
 
@@ -1164,13 +1165,15 @@ impl NeoVMSyscall {
         }
         #[cfg(target_arch = "wasm32")]
         {
-            // B4: panic-loud. Contract-to-native-call goes through
-            // the L6 cross-call executor.
+            // L6 minimal: the v0.8.0 B4 panic-loud site is now
+            // a structured Result. The wasm32 cross-call executor
+            // is not yet implemented; the contract author can
+            // `match` on `ContractCallError::Wasm32CrossCallUnavailable`
+            // and degrade gracefully.
             let _ = values;
-            panic!(
-                "System.Contract.CallNative on wasm32 is not yet implemented; \
-                 see L6 design. The previous behaviour silently returned Null."
-            );
+            Err(NeoError::Wasm32CrossCallUnavailable {
+                syscall: "System.Contract.CallNative",
+            })
         }
     }
 

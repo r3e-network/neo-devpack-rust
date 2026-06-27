@@ -63,6 +63,13 @@ pub enum ContractCallError {
     /// The call panicked (L6: cross-call executor will replace
     /// this with a proper Result).
     Panicked(String),
+    /// L6 minimal: the wasm32 cross-call stub (System.Contract.Call
+    /// / System.Runtime.LoadScript / System.Contract.CallNative)
+    /// was invoked, but a real wasm32 cross-call executor is not
+    /// yet implemented. The contract author can `match` on this
+    /// variant and degrade gracefully (e.g. return a default
+    /// value) instead of crashing the VM.
+    Wasm32CrossCallUnavailable { syscall: &'static str },
     /// Other (delegated from `NeoError`).
     Other(NeoError),
 }
@@ -73,6 +80,9 @@ impl std::fmt::Display for ContractCallError {
             ContractCallError::NoReturn => write!(f, "contract call returned no value"),
             ContractCallError::TypeMismatch(s) => write!(f, "type mismatch: {s}"),
             ContractCallError::Panicked(s) => write!(f, "contract call panicked: {s}"),
+            ContractCallError::Wasm32CrossCallUnavailable { syscall } => {
+                write!(f, "wasm32 cross-call unavailable: {syscall}")
+            }
             ContractCallError::Other(e) => write!(f, "{e}"),
         }
     }
@@ -82,7 +92,12 @@ impl std::error::Error for ContractCallError {}
 
 impl From<NeoError> for ContractCallError {
     fn from(e: NeoError) -> Self {
-        ContractCallError::Other(e)
+        match e {
+            NeoError::Wasm32CrossCallUnavailable { syscall } => {
+                ContractCallError::Wasm32CrossCallUnavailable { syscall }
+            }
+            other => ContractCallError::Other(other),
+        }
     }
 }
 
