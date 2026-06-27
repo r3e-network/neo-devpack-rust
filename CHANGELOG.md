@@ -8,6 +8,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Note: Beginning with `0.5.8`, all public workspace crates and contract templates
 follow the same repository version.
 
+## [0.9.0] — 2026-06-27 — L7 + L8 + L9 of N3 platform support
+
+v0.9.0 completes the last three layers of the platform-support design,
+adding an external conformance oracle, deploy-time native-hash lookup,
+and typed cross-contract calls.
+
+- **L7** — C#-VM conformance oracle. A Go-based oracle binary in
+  `conformance/oracle/main.go` uses `neo-go` v0.105.1's embedded VM
+  (`vm.LoadNEFMethod`) to execute compiled NEF + manifest contracts
+  and produce a JSON reference. Three conformance tests pass in
+  `wasm-neovm/tests/conformance.rs`: `l7_nep17_macro_sample_oracle`,
+  `l7_nep11_macro_sample_oracle`, `l7_existing_samples_oracle`. A
+  CI workflow (`.github/workflows/conformance.yml`) builds the oracle
+  and runs the tests. Per-contract `CARGO_TARGET_DIR` avoids wasm-file
+  races in parallel test runs.
+- **L8** — Chain-state native-hash lookup. New
+  `lookup_chain_native_hashes(rpc_endpoint)` in
+  `wasm-neovm/src/native_contracts.rs` queries an N3 RPC node's
+  `getnativecontracts` endpoint and returns a `Vec<NativeHashLookup>`
+  with each post-HF_Echidna native's real hash. The 9 pre-HF natives
+  stay hardcoded (C# `Helper.GetContractHash` doesn't produce the
+  published CryptoLib hash from first principles — known limitation
+  documented inline).
+- **L9** — Typed cross-contract calls. New `FromNeoValue` trait with
+  impls for `NeoValue`, `()`, `bool`, `String`, `Vec<u8>`, `NeoInteger`,
+  `i64`. New `ContractCaller` trait with abstract `call_raw` + default
+  `call_typed<T>` in `rust-devpack/neo-types/src/traits.rs`.
+  `DefaultContractCaller` (in `neo-runtime::contract_caller`) routes
+  `call_raw` to `NeoVMSyscall::contract_call`. A new
+  `call_typed` helper function + `ContractCallError` type. All
+  re-exported in `neo-devpack::prelude::*`. New integration tests
+  in `rust-devpack/tests/l9_typed_calls.rs` (7 tests).
+
+Test count: 64 workspace test suites (was 63 at v0.8.0), 0 clippy
+warnings, 0 failures, all sample contracts + macro samples build to
+`wasm32-unknown-unknown`.
+
 ## [0.8.0] — 2026-06-27 — L3 + L4 + L5 + L6 of N3 platform support
 
 After v0.7.0 fixed the 4 TIER-1 silent on-chain corruption bugs (B1–B4) and

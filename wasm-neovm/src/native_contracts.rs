@@ -758,10 +758,16 @@ mod tests {
     #[test]
     fn lookup_name_in_static_handles_all_post_hf_natives() {
         // The chain-state contract names map to the descriptor names.
-        assert_eq!(lookup_name_in_static("TokenManagement"), Some("Neo.TokenManagement"));
+        assert_eq!(
+            lookup_name_in_static("TokenManagement"),
+            Some("Neo.TokenManagement")
+        );
         assert_eq!(lookup_name_in_static("Governance"), Some("Neo.Governance"));
         assert_eq!(lookup_name_in_static("CryptoLib"), Some("Neo.Crypto"));
-        assert_eq!(lookup_name_in_static("ContractManagement"), Some("Neo.ContractManagement"));
+        assert_eq!(
+            lookup_name_in_static("ContractManagement"),
+            Some("Neo.ContractManagement")
+        );
         assert_eq!(lookup_name_in_static("Unknown"), None);
     }
 }
