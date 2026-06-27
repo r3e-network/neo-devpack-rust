@@ -19,3 +19,10 @@ nep17! {
         // No additional fields.
     }
 }
+
+// A trivial no-op method so the wasm module has a code section
+// (the translator requires one). The actual NEP-17 surface comes
+// from the macro; this is just to satisfy the wasm shape.
+#[no_mangle]
+pub extern "C" fn _init() {}
+

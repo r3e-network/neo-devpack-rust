@@ -11,3 +11,8 @@ nep11! {
         name: "MacroNep11Sample",
     }
 }
+
+// A trivial no-op method so the wasm module has a code section
+// (the translator requires one).
+#[no_mangle]
+pub extern "C" fn _init() {}
