@@ -8,6 +8,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Note: Beginning with `0.5.8`, all public workspace crates and contract templates
 follow the same repository version.
 
+## [0.13.1] — 2026-06-27 — L7.v3 cross-call-wrapper golden
+
+v0.13.1 is a follow-up to v0.13.0. The v0.12.0 work added
+`contracts/cross-call-wrapper/` and `wasm-neovm/tests/l6_real_executor.rs`
+(bytecode-shape test for `System.Contract.Call` SYSCALL emission),
+but didn't add the wrapper to the L7.v3 golden set. v0.13.1
+adds the missing golden.
+
+- **L7.v3 cross-call-wrapper golden** — new
+  `wasm-neovm/tests/golden/cross-call-wrapper.json`. The
+  oracle invokes `totalSupplyOfTarget` on the wrapper; the
+  cross-call dispatches to a zero-hash target, the host
+  FAULTs (no contract to dispatch to), and the golden
+  captures the FAULT state. The L7.v3 conformance test now
+  iterates **8 goldens** (was 7).
+- This documents the real cross-call behaviour: a contract
+  that calls another contract's method via
+  `System.Contract.Call` produces a SYSCALL in the .nef
+  (proven by `l6_real_executor`), and the host's NeoVM
+  dispatches it at runtime. When the target contract is
+  not deployed (zero hash), the dispatch FAULTs. Both are
+  correct and stable.
+
+Test count: 67 workspace test suites (unchanged from
+v0.13.0; the new golden is captured by the existing
+`l7_v3_golden_json_conformance` test). 0 clippy errors,
+0 failures, 4 L7 conformance tests pass.
+
 ## [0.13.0] — 2026-06-27 — B5–B9 host-mode state for runtime syscalls
 
 v0.13.0 closes out the v0.7.0 audit's TIER 1+2 findings

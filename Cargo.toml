@@ -24,7 +24,7 @@ exclude = [
 resolver = "2"
 
 [workspace.package]
-version = "0.13.0"
+version = "0.13.1"
 edition = "2021"
 authors = ["R3E Network <team@r3e.network>"]
 license = "MIT"
@@ -52,14 +52,14 @@ wasm-encoder = "0.239"
 clap = { version = "4.5", features = ["derive"] }
 
 # Neo N3 workspace crates. All public crates follow workspace.package.version.
-neo-types = { path = "rust-devpack/neo-types", version = "0.13.0", default-features = false }
-neo-syscalls = { path = "rust-devpack/neo-syscalls", version = "0.13.0", default-features = false }
-neo-runtime = { path = "rust-devpack/neo-runtime", version = "0.13.0", default-features = false }
-neo-macros = { path = "rust-devpack/neo-macros", version = "0.13.0" }
-neo-devpack = { path = "rust-devpack", version = "0.13.0", default-features = false }
-wasm-neovm = { path = "wasm-neovm", version = "0.13.0" }
-move-neovm = { path = "move-neovm", version = "0.13.0" }
-neo-solana-compat = { path = "solana-compat", version = "0.13.0" }
+neo-types = { path = "rust-devpack/neo-types", version = "0.13.1", default-features = false }
+neo-syscalls = { path = "rust-devpack/neo-syscalls", version = "0.13.1", default-features = false }
+neo-runtime = { path = "rust-devpack/neo-runtime", version = "0.13.1", default-features = false }
+neo-macros = { path = "rust-devpack/neo-macros", version = "0.13.1" }
+neo-devpack = { path = "rust-devpack", version = "0.13.1", default-features = false }
+wasm-neovm = { path = "wasm-neovm", version = "0.13.1" }
+move-neovm = { path = "move-neovm", version = "0.13.1" }
+neo-solana-compat = { path = "solana-compat", version = "0.13.1" }
 
 # Dev dependencies
 assert_cmd = "2.0"
