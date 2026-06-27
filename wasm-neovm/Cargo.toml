@@ -36,6 +36,7 @@ num-traits = { version = "0.2", optional = true }
 [dev-dependencies]
 assert_cmd = { workspace = true }
 regex = { workspace = true }
+serde_json = { workspace = true }
 tempfile = { workspace = true }
 walkdir = { workspace = true }
 wat = { workspace = true }

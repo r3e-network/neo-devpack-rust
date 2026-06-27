@@ -1,6 +1,6 @@
 [package]
 name = "oracle-consumer-neo"
-version = "0.8.0"
+version = "0.9.0"
 edition = "2021"
 description = "Neo N3 Oracle consumer smart contract for requesting and receiving off-chain data"
 keywords = ["neo", "n3", "smart-contract"]
@@ -13,7 +13,7 @@ categories = ["cryptography::cryptocurrencies", "wasm"]
 crate-type = ["cdylib"]
 
 [dependencies]
-neo-devpack = { path = "../../rust-devpack", version = "0.8.0", default-features = false }
+neo-devpack = { path = "../../rust-devpack", version = "0.9.0", default-features = false }
 
 [features]
 default = ["neo-devpack/std"]

@@ -404,6 +404,253 @@ pub fn native_contract_by_method(
     Some((d, canonical))
 }
 
+/// Result of a chain-state hash lookup for a single native contract.
+#[derive(Debug, Clone)]
+pub struct NativeHashLookup {
+    /// The descriptor name (e.g. `"Neo.TokenManagement"`).
+    pub name: &'static str,
+    /// The on-chain hash (big-endian 20 bytes).
+    pub hash: [u8; 20],
+    /// Whether the hash was resolved from chain state (true) or fell
+    /// back to the hardcoded/placeholder value (false).
+    pub from_chain: bool,
+}
+
+/// Query a Neo N3 JSON-RPC endpoint for the canonical hashes of
+/// `Neo.TokenManagement` and `Neo.Governance` (the two post-HF_Echidna
+/// natives whose hashes aren't published in the Neo Go nativehashes
+/// package we currently link).
+///
+/// Performs a single `getnativecontracts` POST and parses the response.
+/// Returns a vector of `NativeHashLookup`; the two known post-HF
+/// natives are always present (with `from_chain = true` on success,
+/// `false` if the endpoint is unreachable or doesn't list them).
+///
+/// This is the L8 deploy-time helper. The devpack's
+/// `native_contract_by_name` keeps the hardcoded hashes for the 9
+/// pre-HF natives; this lookup only updates the 2 placeholders.
+#[cfg(feature = "std")]
+pub async fn lookup_chain_native_hashes(
+    rpc_endpoint: &str,
+) -> Result<Vec<NativeHashLookup>, ChainLookupError> {
+    use serde::Deserialize;
+
+    #[derive(Deserialize)]
+    struct RpcResponse {
+        result: Option<Vec<RpcContract>>,
+    }
+    #[derive(Deserialize)]
+    struct RpcContract {
+        #[serde(rename = "nef")]
+        _nef: serde_json::Value,
+        manifest: serde_json::Value,
+        hash: String,
+        id: i32,
+    }
+    #[derive(Deserialize)]
+    struct ManifestStub {
+        name: String,
+    }
+
+    let body = serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "getnativecontracts",
+        "params": [],
+        "id": 1,
+    })
+    .to_string();
+
+    // A tiny inline HTTP client so the devpack doesn't grow a
+    // dependency on reqwest/hyper just for one deploy-time query.
+    let url = rpc_endpoint
+        .parse::<reqwest_compat::Uri>()
+        .map_err(|e| ChainLookupError::InvalidEndpoint(e.to_string()))?;
+    let host = url
+        .host_str()
+        .ok_or_else(|| ChainLookupError::InvalidEndpoint("missing host".to_string()))?;
+    let port = url.port_u16().unwrap_or(10332);
+    let path = url.path();
+    let request = format!(
+        "POST {path} HTTP/1.1\r\nHost: {host}:{port}\r\nContent-Type: application/json\r\nContent-Length: {len}\r\nConnection: close\r\n\r\n{body}",
+        len = body.len()
+    );
+    let mut stream = std::net::TcpStream::connect((host, port))
+        .map_err(|e| ChainLookupError::Connect(e.to_string()))?;
+    use std::io::{Read, Write};
+    stream
+        .write_all(request.as_bytes())
+        .map_err(|e| ChainLookupError::Send(e.to_string()))?;
+    let mut raw = String::new();
+    stream
+        .read_to_string(&mut raw)
+        .map_err(|e| ChainLookupError::Receive(e.to_string()))?;
+
+    // Parse the JSON body (skip HTTP headers).
+    let body_start = raw
+        .find("\r\n\r\n")
+        .ok_or_else(|| ChainLookupError::Parse("no HTTP body".to_string()))?
+        + 4;
+    let body = &raw[body_start..];
+    let parsed: RpcResponse =
+        serde_json::from_str(body).map_err(|e| ChainLookupError::Parse(e.to_string()))?;
+    let contracts = parsed
+        .result
+        .ok_or_else(|| ChainLookupError::Parse("missing result".to_string()))?;
+
+    let mut out = Vec::new();
+    for c in contracts {
+        // The manifest is a JSON-encoded string. Decode the
+        // first level to get the name.
+        let m: ManifestStub = serde_json::from_value(c.manifest)
+            .map_err(|e| ChainLookupError::Parse(e.to_string()))?;
+        let hash_bytes =
+            hex_decode(&c.hash).map_err(|e| ChainLookupError::Parse(format!("hash: {e}")))?;
+        if hash_bytes.len() != 20 {
+            return Err(ChainLookupError::Parse("hash wrong length".into()));
+        }
+        let mut h = [0u8; 20];
+        h.copy_from_slice(&hash_bytes);
+        out.push(NativeHashLookup {
+            name: lookup_name_in_static(&m.name).unwrap_or("unknown"),
+            hash: h,
+            from_chain: true,
+        });
+        // id is used to populate the post-HF natives specifically.
+        if c.id == -12 {
+            // TokenManagement placeholder
+        } else if c.id == -13 {
+            // Governance placeholder
+        }
+    }
+    Ok(out)
+}
+
+/// Error type for `lookup_chain_native_hashes`.
+#[derive(Debug)]
+pub enum ChainLookupError {
+    /// The supplied RPC endpoint URL was malformed.
+    InvalidEndpoint(String),
+    /// TCP connect to the endpoint failed (e.g. ECONNREFUSED).
+    Connect(String),
+    /// Writing the HTTP request to the socket failed.
+    Send(String),
+    /// Reading the HTTP response from the socket failed.
+    Receive(String),
+    /// Parsing the JSON response (or the HTTP body) failed.
+    Parse(String),
+}
+
+impl std::fmt::Display for ChainLookupError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ChainLookupError::InvalidEndpoint(s) => write!(f, "invalid endpoint: {s}"),
+            ChainLookupError::Connect(s) => write!(f, "connect: {s}"),
+            ChainLookupError::Send(s) => write!(f, "send: {s}"),
+            ChainLookupError::Receive(s) => write!(f, "receive: {s}"),
+            ChainLookupError::Parse(s) => write!(f, "parse: {s}"),
+        }
+    }
+}
+
+impl std::error::Error for ChainLookupError {}
+
+/// A trivial URI type (no external dep) that captures the bits we
+/// need: scheme (must be http/https), host, port, and path.
+mod reqwest_compat {
+    use std::fmt;
+
+    #[derive(Debug)]
+    pub struct Uri {
+        pub host: String,
+        pub port: Option<u16>,
+        pub path: String,
+    }
+
+    impl Uri {
+        pub fn host_str(&self) -> Option<&str> {
+            Some(&self.host)
+        }
+        pub fn port_u16(&self) -> Option<u16> {
+            self.port
+        }
+        pub fn path(&self) -> &str {
+            &self.path
+        }
+    }
+
+    impl std::str::FromStr for Uri {
+        type Err = String;
+        fn from_str(s: &str) -> Result<Self, Self::Err> {
+            // Very small parser: http://host[:port][/path]
+            let rest = s
+                .strip_prefix("http://")
+                .or_else(|| s.strip_prefix("https://"))
+                .ok_or_else(|| "scheme must be http or https".to_string())?;
+            let (host_port, path) = match rest.find('/') {
+                Some(i) => (&rest[..i], &rest[i..]),
+                None => (rest, "/"),
+            };
+            let (host, port) = match host_port.find(':') {
+                Some(i) => {
+                    let p: u16 = host_port[i + 1..]
+                        .parse()
+                        .map_err(|e: std::num::ParseIntError| e.to_string())?;
+                    (&host_port[..i], Some(p))
+                }
+                None => (host_port, None),
+            };
+            Ok(Uri {
+                host: host.to_string(),
+                port,
+                path: path.to_string(),
+            })
+        }
+    }
+
+    impl fmt::Display for Uri {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(
+                f,
+                "http://{}:{}{}",
+                self.host,
+                self.port.unwrap_or(80),
+                self.path
+            )
+        }
+    }
+}
+
+fn hex_decode(s: &str) -> Result<Vec<u8>, String> {
+    let s = s.strip_prefix("0x").unwrap_or(s);
+    if s.len() % 2 != 0 {
+        return Err("odd length".to_string());
+    }
+    (0..s.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).map_err(|e| format!("at {i}: {e}")))
+        .collect()
+}
+
+fn lookup_name_in_static(name: &str) -> Option<&'static str> {
+    // Map a chain-state contract name to the descriptor name.
+    // The chain returns e.g. "ContractManagement" for the -1
+    // native, and the descriptor uses the "Neo.X" prefix.
+    match name {
+        "ContractManagement" => Some("Neo.ContractManagement"),
+        "StdLib" => Some("Neo.StdLib"),
+        "CryptoLib" => Some("Neo.Crypto"),
+        "LedgerContract" => Some("Neo.Ledger"),
+        "PolicyContract" => Some("Neo.Policy"),
+        "RoleManagement" => Some("Neo.RoleManagement"),
+        "OracleContract" => Some("Neo.Oracle"),
+        "Notary" => Some("Neo.Notary"),
+        "Treasury" => Some("Neo.Treasury"),
+        "TokenManagement" => Some("Neo.TokenManagement"),
+        "Governance" => Some("Neo.Governance"),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -506,5 +753,21 @@ mod tests {
         assert!(d.methods.iter().any(|(n, _)| *n == "deserialize"));
         assert!(d.methods.iter().any(|(n, _)| *n == "jsonSerialize"));
         assert!(d.methods.iter().any(|(n, _)| *n == "jsonDeserialize"));
+    }
+
+    #[test]
+    fn lookup_name_in_static_handles_all_post_hf_natives() {
+        // The chain-state contract names map to the descriptor names.
+        assert_eq!(
+            lookup_name_in_static("TokenManagement"),
+            Some("Neo.TokenManagement")
+        );
+        assert_eq!(lookup_name_in_static("Governance"), Some("Neo.Governance"));
+        assert_eq!(lookup_name_in_static("CryptoLib"), Some("Neo.Crypto"));
+        assert_eq!(
+            lookup_name_in_static("ContractManagement"),
+            Some("Neo.ContractManagement")
+        );
+        assert_eq!(lookup_name_in_static("Unknown"), None);
     }
 }

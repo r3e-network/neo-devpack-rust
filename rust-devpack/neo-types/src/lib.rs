@@ -37,7 +37,9 @@ pub use stack_item::{
 };
 pub use storage::NeoStorageContext;
 pub use string::NeoString;
-pub use traits::{NeoContract, NeoContractEntry, NeoContractMethodTrait};
+pub use traits::{
+    ContractCaller, FromNeoValue, NeoContract, NeoContractEntry, NeoContractMethodTrait,
+};
 pub use value::{NeoStruct, NeoValue};
 
 // Re-export num-bigint so users don't need a direct dependency
