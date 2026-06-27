@@ -21,6 +21,8 @@
 
 mod context;
 mod contract;
+pub mod contract_caller;
+pub use contract_caller::{call_typed, ContractCallError, DefaultContractCaller};
 #[cfg(feature = "crypto-hashes")]
 mod crypto;
 #[cfg(feature = "json")]
