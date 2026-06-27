@@ -1,6 +1,6 @@
 [package]
 name = "nep11-macro-sample-neo"
-version = "0.7.0"
+version = "0.8.0"
 edition = "2021"
 description = "Integration test for the nep11! standard-library macro (L5)"
 license = "MIT"
@@ -10,7 +10,7 @@ repository = "https://github.com/r3e-network/neo-devpack-rust"
 crate-type = ["cdylib"]
 
 [dependencies]
-neo-devpack = { path = "../../rust-devpack", version = "0.7.0", default-features = false }
+neo-devpack = { path = "../../rust-devpack", version = "0.8.0", default-features = false }
 
 [features]
 default = ["neo-devpack/std"]

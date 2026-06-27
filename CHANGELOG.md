@@ -8,6 +8,101 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Note: Beginning with `0.5.8`, all public workspace crates and contract templates
 follow the same repository version.
 
+## [0.8.0] — 2026-06-27 — L3 + L4 + L5 + L6 of N3 platform support
+
+After v0.7.0 fixed the 4 TIER-1 silent on-chain corruption bugs (B1–B4) and
+routed 9 N3 native contracts, v0.8.0 completes layers L3–L6 of the
+platform-support design:
+
+- **L3** — Translator bail! sites catalogued. 186 sites, 6 candidate
+  BUGs (none reachable from the test wasm), UNKNOWN sites flagged
+  for L6 conformance exercise.
+- **L4** — Devpack ergonomics: `NeoArray::MAX_SIZE` + `try_push`,
+  `NeoMap::remove_strict`, `NeoByteString::Deref<[u8]>` + `MAX_SIZE` +
+  `try_push`, `NeoInteger::to_bigint/from_bigint`, `BigInt` re-export.
+- **L5** — Production-readiness matrix in the README; `nep17!` and
+  `nep11!` standard-library macros with integration tests; the
+  remaining 2 native contracts (`TokenManagement`, `Governance`)
+  routed with documented placeholder hashes (canonical hashes require
+  a chain-state query at deploy time).
+- **L6** — `cargo-fuzz` weekly CI (`.github/workflows/fuzz.yml`) running
+  all 9 existing fuzz targets; 2 fuzz-harness bugs found and fixed
+  (`fuzz_syscall_surface` skipped `Neo.Crypto.*` aliases; `fuzz_rust_contract`
+  assumed `features.storage` was emitted, but the manifest builder
+  intentionally strips it). Local fuzz: 1.6M+ runs across the 9 targets
+  with no panics after the harness fixes. Conformance oracle:
+  `wasm-neovm/tests/conformance.rs` builds 7 reference contracts
+  (3 macro samples + 4 existing samples) and verifies the emitted
+  script is well-formed (non-empty, ends with `RET`). The full C#-VM
+  oracle is the next-step follow-up; the exec-harness edition is a
+  stepping stone that uses our own NeoVM implementation.
+
+### Fixed
+
+- **L3**: 186 `bail!` sites catalogued in `docs/translator-limitations.md`
+  (~140 intentional design limits, ~40 intentional post-emit
+  validation, 6 BUGs TDD'd). Translator is more robust than the
+  audit suggested — the 6 BUG patterns are not reachable from the
+  test wasm; the catalogue remains as a reference for new contributors.
+- **L4**: `NeoArray::MAX_SIZE = 1024` + `try_push` + `ArrayFullError`;
+  `NeoMap::remove_strict` + `RemoveStrictError` (C# `MAPREMOVE` semantics);
+  `NeoByteString::Deref<[u8]>` + `MAX_SIZE = 1 MiB` + `try_push`/
+  `try_extend_from_slice` + `ByteStringFullError`; `NeoInteger::to_bigint`
+  / `from_bigint`; `num_bigint::BigInt` re-exported.
+- **L6**: 2 fuzz-harness assertion bugs found by `cargo-fuzz` and
+  fixed (see L6 above).
+
+### Added
+
+- **L3**: `wasm-neovm/tests/l3_bug_fixes.rs` (7 regression tests for
+  the 6 catalogued BUGs).
+- **L4**: 4 new tests in `neo-types` (28 total, was 24).
+- **L5**: README "Production Readiness Matrix" section (33/33 syscalls,
+  11/11 native contracts, 63 test suites, 0 clippy warnings).
+- **L5**: `rust-devpack/src/nep_macros.rs` — `nep17!` and `nep11!`
+  declarative macros that emit the standard method surface + Transfer
+  event. Integration tests: `contracts/nep17-macro-sample` and
+  `contracts/nep11-macro-sample` (build to wasm32 successfully).
+- **L5.3**: `Neo.TokenManagement` (7 methods) + `Neo.Governance`
+  (6 methods) descriptors with `[0u8; 20]` placeholder hashes.
+  Deploy-time chain-state lookup is required to populate the real
+  hashes; until then, calls fail loudly with "method token hash
+  doesn't match any contract".
+- **L6**: `.github/workflows/fuzz.yml` — weekly cron + on-push +
+  workflow_dispatch, runs all 9 existing fuzz targets for 60s each
+  (15s for the slow ones), uploads corpus on failure.
+- **L6**: `wasm-neovm/tests/conformance.rs` — 3 tests that build 7
+  reference contracts to wasm32, translate them, and verify the
+  emitted script is non-empty and ends with `RET`.
+
+### Test status
+
+- **63 workspace test suites** green (was 62 at v0.7.0)
+- **0 clippy warnings** workspace-wide
+- **All 9 existing fuzz targets** clean: 1.6M+ runs across
+  `fuzz_translate` (632k), `fuzz_syscall_surface` (1.6M), `fuzz_nef`
+  (534k), `fuzz_numeric` (826k), `fuzz_devpack_codec` (630k),
+  `fuzz_translate_config` (476k), `fuzz_structured_pipeline` (33k),
+  `fuzz_rust_contract` (56), `fuzz_rust_contract_differential` (96).
+- **All 7 reference contracts** in the conformance oracle translate
+  to well-formed NeoVM script.
+
+### Still tracked as follow-up
+
+- **L4 (deferred)**: `NeoContract::call_typed<T>` via `IInteroperable`
+  trait — large refactor, warrants its own plan.
+- **L5 (deferred)**: `Neo.StdLib.deserialize` for arbitrary `Any`
+  type (currently `ByteArray` only); the `manifest_extras` field
+  (groups, trusts, extra); the cross-call `neo-` alias scheme.
+- **L6 (next)**: C#-VM conformance oracle (full ground-truth test
+  with the `neo-project/neo` submodule + dotnet SDK in CI). The
+  exec-harness oracle is the stepping stone.
+- **L6 (next)**: Chain-state hash lookup for `TokenManagement` +
+  `Governance` (replace the placeholder hashes with the real
+  mainnet values).
+- **Macro/export redesign** (D1/D2/D4/D6-full/D13/D15/D17 from the
+  2026-06-24 audit) — warrants its own brainstorm/plan cycle.
+
 ## [0.7.0] — 2026-06-27 — Neo N3 platform support (L1 + L2)
 
 The devpack is now feature-complete for the **N3 system-syscall surface (33/33)

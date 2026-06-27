@@ -326,21 +326,20 @@ pub const CRYPTOLIB_DESCRIPTOR: NativeContractDescriptor = NativeContractDescrip
 /// registered so that calls like `Neo.TokenManagement.transfer`
 /// resolve at translate time; deploy-time chain lookup is
 /// required to fill in the real hash.
-pub const TOKEN_MANAGEMENT_DESCRIPTOR: NativeContractDescriptor =
-    NativeContractDescriptor {
-        hash: TOKEN_MANAGEMENT_HASH_PLACEHOLDER,
-        name: "Neo.TokenManagement",
-        methods: &[
-            ("getToken", &["Hash256"]),
-            ("transfer", &["Hash160", "Hash160", "Integer", "Any"]),
-            ("getBalance", &["Hash160", "Hash256"]),
-            ("totalSupply", &["Hash256"]),
-            // NEP-11 (NFT) methods:
-            ("ownerOf", &["Hash256", "ByteArray"]),
-            ("tokensOf", &["Hash160"]),
-            ("balanceOf", &["Hash160", "Hash256"]),
-        ],
-    };
+pub const TOKEN_MANAGEMENT_DESCRIPTOR: NativeContractDescriptor = NativeContractDescriptor {
+    hash: TOKEN_MANAGEMENT_HASH_PLACEHOLDER,
+    name: "Neo.TokenManagement",
+    methods: &[
+        ("getToken", &["Hash256"]),
+        ("transfer", &["Hash160", "Hash160", "Integer", "Any"]),
+        ("getBalance", &["Hash160", "Hash256"]),
+        ("totalSupply", &["Hash256"]),
+        // NEP-11 (NFT) methods:
+        ("ownerOf", &["Hash256", "ByteArray"]),
+        ("tokensOf", &["Hash160"]),
+        ("balanceOf", &["Hash160", "Hash256"]),
+    ],
+};
 
 /// Descriptor for Governance (post-HF_Echidna). Source:
 /// `neo-project/neo/src/Neo/SmartContract/Native/Governance.cs`.
@@ -460,10 +459,7 @@ mod tests {
         }
         // The two placeholders must remain placeholders until a
         // proper chain-state lookup is implemented.
-        assert_eq!(
-            NATIVE_CONTRACT_REGISTRY[9].name,
-            "Neo.TokenManagement"
-        );
+        assert_eq!(NATIVE_CONTRACT_REGISTRY[9].name, "Neo.TokenManagement");
         assert!(NATIVE_CONTRACT_REGISTRY[9].hash.iter().all(|&b| b == 0));
         assert_eq!(NATIVE_CONTRACT_REGISTRY[10].name, "Neo.Governance");
         assert!(NATIVE_CONTRACT_REGISTRY[10].hash.iter().all(|&b| b == 0));
