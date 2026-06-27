@@ -8,6 +8,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Note: Beginning with `0.5.8`, all public workspace crates and contract templates
 follow the same repository version.
 
+## [0.10.0] — 2026-06-27 — L7.v3 golden JSON conformance
+
+v0.10.0 hardens the L7 conformance oracle with per-contract golden
+JSON expected outputs. The oracle still only captures `state`,
+`gas_consumed`, and `return_stack` (event + storage capture is
+deferred to a future milestone), but those three are now pinned.
+
+- **L7.v3** — Golden JSON. 7 per-contract files in
+  `wasm-neovm/tests/golden/` (nep17-token, nep11-nft,
+  nep17-macro-sample, nep11-macro-sample, hello-world, escrow,
+  timelock-vault), each capturing the oracle's expected output
+  for one read-only method. New test `l7_v3_golden_json_conformance`
+  in `wasm-neovm/tests/conformance.rs` reads the golden files,
+  invokes the oracle, asserts exact match. On mismatch, prints
+  a diff and the developer can regenerate with
+  `UPDATE_L7_GOLDEN=1 cargo test ...`. CI
+  (`.github/workflows/conformance.yml`) picks up golden-file
+  changes via the new `wasm-neovm/tests/golden/**` path filter.
+
+Test count: 64 workspace test suites (unchanged from v0.9.0; the
+golden-JSON test is added to the L7 conformance suite, not the
+unit-test count), 0 clippy warnings, 0 failures, 4 L7 conformance
+tests pass (3 from v0.9.0 + 1 from v0.10.0).
+
+Known limitations of the v0.10.0 oracle (carried forward from
+v0.9.0): no event capture, no storage diff. The two FAULT-state
+golden files (`escrow.json`, `timelock-vault.json`) document
+real contract logic issues that surface when the read-only
+methods try to read uninitialised storage.
+
 ## [0.9.0] — 2026-06-27 — L7 + L8 + L9 of N3 platform support
 
 v0.9.0 completes the last three layers of the platform-support design,
