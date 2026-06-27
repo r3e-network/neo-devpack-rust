@@ -183,6 +183,14 @@ pub static NEO_SYSCALL_MAP: Lazy<HashMap<String, &'static str>> = Lazy::new(|| {
     // Contract management syscalls
     alias("call_contract", "System.Contract.Call");
     alias("contract_call", "System.Contract.Call");
+    // L6: the externs declared in neo-syscalls/src/wrapper.rs use
+    // `#[link_name = "neo_contract_call"]` etc., so the wasm
+    // import name is `neo_contract_call` (not `contract_call`).
+    // The translator needs to map these to the canonical N3
+    // syscall name.
+    alias("neo_contract_call", "System.Contract.Call");
+    alias("neo_load_script", "System.Runtime.LoadScript");
+    alias("neo_call_native", "System.Contract.CallNative");
     alias("contract_create", "System.Contract.Call"); // Creation done via Call to ContractManagement
     alias("contract_destroy", "System.Contract.Call"); // Destruction done via Call to ContractManagement
     alias("call_native", "System.Contract.CallNative");

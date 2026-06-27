@@ -42,6 +42,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "cross-call-wrapper-neo"
+version = "0.11.0"
+dependencies = [
+ "neo-devpack",
+]
+
+[[package]]
 name = "crunchy"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -159,13 +166,6 @@ dependencies = [
  "num-bigint",
  "num-traits",
  "serde",
-]
-
-[[package]]
-name = "nep11-macro-sample-neo"
-version = "0.11.0"
-dependencies = [
- "neo-devpack",
 ]
 
 [[package]]
