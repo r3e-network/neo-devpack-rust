@@ -109,7 +109,7 @@ checksum = "88904434abc2901f197fe8cc55f0445e7ded921dba5911dad2e2b39b48e663c4"
 
 [[package]]
 name = "neo-devpack"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "neo-macros",
  "neo-runtime",
@@ -122,7 +122,7 @@ dependencies = [
 
 [[package]]
 name = "neo-macros"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -133,7 +133,7 @@ dependencies = [
 
 [[package]]
 name = "neo-runtime"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "neo-syscalls",
  "neo-types",
@@ -146,7 +146,7 @@ dependencies = [
 
 [[package]]
 name = "neo-syscalls"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "neo-types",
  "once_cell",
@@ -154,7 +154,7 @@ dependencies = [
 
 [[package]]
 name = "neo-types"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "num-bigint",
  "num-traits",
@@ -163,7 +163,7 @@ dependencies = [
 
 [[package]]
 name = "nep11-macro-sample-neo"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "neo-devpack",
 ]

@@ -7,10 +7,22 @@ use neo_types::*;
 
 #[cfg(not(target_arch = "wasm32"))]
 use crate::storage::*;
+// The registry (`SYSCALLS`) and its row type back the host-mode dispatch
+// only; wasm32 wrappers call link-time externs directly.
+#[cfg(not(target_arch = "wasm32"))]
 use crate::syscalls::SYSCALLS;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::NeoVMSyscallInfo;
 
+// Some declarations here are the reserved host ABI for syscalls whose
+// wasm32 wrapper is still a stub (e.g. `runtime_storage_find`,
+// `runtime_iterator_*`, the storage-context accessors) or are superseded by
+// a differently-named extern (`runtime_load_script` /
+// `runtime_contract_call_native`). They are intentionally declared so the
+// ABI surface is documented in one place; `allow(dead_code)` keeps the
+// wasm32 contract build warning-free until each wrapper is wired up.
 #[cfg(target_arch = "wasm32")]
+#[allow(dead_code)]
 #[link(wasm_import_module = "neo")]
 extern "C" {
     #[link_name = "runtime_check_witness_bytes"]
@@ -246,10 +258,14 @@ const CALL_FLAGS_READ_STATES: i32 = 0x01;
 #[cfg(not(target_arch = "wasm32"))]
 const CALL_FLAGS_WRITE_STATES: i32 = 0x02;
 
+// Host-mode (non-wasm32) syscall dispatch helpers. On wasm32 the wrappers
+// call link-time externs directly, so these registry lookups are unused.
+#[cfg(not(target_arch = "wasm32"))]
 fn find_syscall(name: &str) -> Option<&'static NeoVMSyscallInfo> {
     SYSCALLS.iter().find(|info| info.name == name)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn syscall_hash(name: &str) -> NeoResult<u32> {
     find_syscall(name)
         .map(|info| info.hash)
@@ -381,7 +397,9 @@ pub fn neovm_syscall(hash: u32, args: &[NeoValue]) -> NeoResult<NeoValue> {
         // B5: get_random
         if info.name == "System.Runtime.GetRandom" {
             return Ok(NeoInteger::new(
-                *crate::storage::ACTIVE_RANDOM.read().expect("ACTIVE_RANDOM poisoned"),
+                *crate::storage::ACTIVE_RANDOM
+                    .read()
+                    .expect("ACTIVE_RANDOM poisoned"),
             )
             .into());
         }
@@ -389,7 +407,9 @@ pub fn neovm_syscall(hash: u32, args: &[NeoValue]) -> NeoResult<NeoValue> {
         // B6: get_time
         if info.name == "System.Runtime.GetTime" {
             return Ok(NeoInteger::new(
-                *crate::storage::ACTIVE_TIME.read().expect("ACTIVE_TIME poisoned"),
+                *crate::storage::ACTIVE_TIME
+                    .read()
+                    .expect("ACTIVE_TIME poisoned"),
             )
             .into());
         }
@@ -407,7 +427,9 @@ pub fn neovm_syscall(hash: u32, args: &[NeoValue]) -> NeoResult<NeoValue> {
         // B7: gas_left
         if info.name == "System.Runtime.GasLeft" {
             return Ok(NeoInteger::new(
-                *crate::storage::ACTIVE_GAS_LEFT.read().expect("ACTIVE_GAS_LEFT poisoned"),
+                *crate::storage::ACTIVE_GAS_LEFT
+                    .read()
+                    .expect("ACTIVE_GAS_LEFT poisoned"),
             )
             .into());
         }
@@ -680,9 +702,15 @@ impl NeoVMSyscall {
         clear_active_witnesses();
         reset_crypto_verification_results();
         // B5-B9: clear the runtime syscall host state.
-        *crate::storage::ACTIVE_RANDOM.write().expect("ACTIVE_RANDOM poisoned") = 0;
-        *crate::storage::ACTIVE_TIME.write().expect("ACTIVE_TIME poisoned") = 0;
-        *crate::storage::ACTIVE_GAS_LEFT.write().expect("ACTIVE_GAS_LEFT poisoned") = 0;
+        *crate::storage::ACTIVE_RANDOM
+            .write()
+            .expect("ACTIVE_RANDOM poisoned") = 0;
+        *crate::storage::ACTIVE_TIME
+            .write()
+            .expect("ACTIVE_TIME poisoned") = 0;
+        *crate::storage::ACTIVE_GAS_LEFT
+            .write()
+            .expect("ACTIVE_GAS_LEFT poisoned") = 0;
         *crate::storage::ACTIVE_INVOCATION_COUNTER
             .write()
             .expect("ACTIVE_INVOCATION_COUNTER poisoned") = 0;
@@ -720,30 +748,39 @@ impl NeoVMSyscall {
         Ok(())
     }
 
+    // Host-mode (non-wasm32) typed syscall helpers: route through the
+    // registry-based `neovm_syscall` dispatch. On wasm32 the public
+    // wrappers call link-time externs directly, so these are unused there.
+    #[cfg(not(target_arch = "wasm32"))]
     fn call_value(name: &str, args: &[NeoValue]) -> NeoResult<NeoValue> {
         neovm_syscall(syscall_hash(name)?, args)
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn call_integer(name: &str) -> NeoResult<NeoInteger> {
         let value = Self::call_value(name, &[])?;
         value.as_integer().cloned().ok_or(NeoError::InvalidType)
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn call_boolean(name: &str, args: &[NeoValue]) -> NeoResult<NeoBoolean> {
         let value = Self::call_value(name, args)?;
         value.as_boolean().ok_or(NeoError::InvalidType)
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn call_bytes_with_args(name: &str, args: &[NeoValue]) -> NeoResult<NeoByteString> {
         let value = Self::call_value(name, args)?;
         value.as_byte_string().cloned().ok_or(NeoError::InvalidType)
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn call_string(name: &str) -> NeoResult<NeoString> {
         let value = Self::call_value(name, &[])?;
         value.as_string().cloned().ok_or(NeoError::InvalidType)
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn call_array(name: &str, args: &[NeoValue]) -> NeoResult<NeoArray<NeoValue>> {
         let value = Self::call_value(name, args)?;
         value.as_array().cloned().ok_or(NeoError::InvalidType)
@@ -769,7 +806,9 @@ impl NeoVMSyscall {
     /// the chain's real random value).
     #[cfg(not(target_arch = "wasm32"))]
     pub fn set_active_random(value: i64) -> NeoResult<()> {
-        *crate::storage::ACTIVE_RANDOM.write().expect("ACTIVE_RANDOM poisoned") = value;
+        *crate::storage::ACTIVE_RANDOM
+            .write()
+            .expect("ACTIVE_RANDOM poisoned") = value;
         Ok(())
     }
     #[cfg(target_arch = "wasm32")]
@@ -781,7 +820,9 @@ impl NeoVMSyscall {
     /// On the wasm32 path this is a no-op.
     #[cfg(not(target_arch = "wasm32"))]
     pub fn set_active_time(value: i64) -> NeoResult<()> {
-        *crate::storage::ACTIVE_TIME.write().expect("ACTIVE_TIME poisoned") = value;
+        *crate::storage::ACTIVE_TIME
+            .write()
+            .expect("ACTIVE_TIME poisoned") = value;
         Ok(())
     }
     #[cfg(target_arch = "wasm32")]
@@ -808,7 +849,9 @@ impl NeoVMSyscall {
     /// On the wasm32 path this is a no-op.
     #[cfg(not(target_arch = "wasm32"))]
     pub fn set_active_gas_left(value: i64) -> NeoResult<()> {
-        *crate::storage::ACTIVE_GAS_LEFT.write().expect("ACTIVE_GAS_LEFT poisoned") = value;
+        *crate::storage::ACTIVE_GAS_LEFT
+            .write()
+            .expect("ACTIVE_GAS_LEFT poisoned") = value;
         Ok(())
     }
     #[cfg(target_arch = "wasm32")]
@@ -1247,13 +1290,13 @@ impl NeoVMSyscall {
         call_flags: &NeoInteger,
         args: &NeoArray<NeoValue>,
     ) -> NeoResult<()> {
-        let values = [
-            NeoValue::from(script.clone()),
-            NeoValue::from(call_flags.clone()),
-            NeoValue::from(args.clone()),
-        ];
         #[cfg(not(target_arch = "wasm32"))]
         {
+            let values = [
+                NeoValue::from(script.clone()),
+                NeoValue::from(call_flags.clone()),
+                NeoValue::from(args.clone()),
+            ];
             Self::call_value("System.Runtime.LoadScript", &values)?;
             Ok(())
         }
@@ -1261,6 +1304,10 @@ impl NeoVMSyscall {
         {
             // L6 real executor: call the `neo_load_script` extern
             // so the translator emits `SYSCALL System.Runtime.LoadScript`.
+            // NOTE: call flags and args are not yet marshalled across the
+            // boundary (the extern receives a hard-coded 0x0F / empty args);
+            // wiring them through is tracked with the cross-call ABI work.
+            let _ = (call_flags, args);
             let script_bytes = script.as_slice();
             let status = unsafe {
                 neo_load_script(
@@ -1287,15 +1334,14 @@ impl NeoVMSyscall {
         call_flags: &NeoInteger,
         args: &NeoArray<NeoValue>,
     ) -> NeoResult<NeoValue> {
-        let values = [
-            NeoValue::from(script_hash.clone()),
-            NeoValue::from(method.clone()),
-            NeoValue::from(call_flags.clone()),
-            NeoValue::from(args.clone()),
-        ];
-
         #[cfg(not(target_arch = "wasm32"))]
         {
+            let values = [
+                NeoValue::from(script_hash.clone()),
+                NeoValue::from(method.clone()),
+                NeoValue::from(call_flags.clone()),
+                NeoValue::from(args.clone()),
+            ];
             let parsed_flags = Self::parse_call_flags(call_flags)?;
             Self::begin_contract_invocation_with_flags(script_hash, parsed_flags)?;
             let call_result = Self::call_value("System.Contract.Call", &values);
@@ -1326,6 +1372,10 @@ impl NeoVMSyscall {
             // the implementation. We pass an empty args buffer;
             // the host will treat it as "no args" or error out,
             // either way the SYSCALL emission is what we're testing.
+            // NOTE: call flags and args are not yet marshalled across the
+            // boundary (a hard-coded 0x0F / empty args buffer is passed);
+            // wiring them through is tracked with the cross-call ABI work.
+            let _ = (call_flags, args);
             let hash_bytes = script_hash.as_slice();
             let method_bytes = method.as_str().as_bytes();
             let mut out_buf = [0u8; 16];
@@ -1352,9 +1402,9 @@ impl NeoVMSyscall {
 
     /// Call a native contract by id.
     pub fn contract_call_native(native_id: &NeoInteger) -> NeoResult<NeoValue> {
-        let values = [NeoValue::from(native_id.clone())];
         #[cfg(not(target_arch = "wasm32"))]
         {
+            let values = [NeoValue::from(native_id.clone())];
             Self::call_value("System.Contract.CallNative", &values)
         }
         #[cfg(target_arch = "wasm32")]
@@ -1395,9 +1445,9 @@ impl NeoVMSyscall {
     }
 
     pub fn create_standard_account(pubkey: &NeoByteString) -> NeoResult<NeoByteString> {
-        let values = [NeoValue::from(pubkey.clone())];
         #[cfg(not(target_arch = "wasm32"))]
         {
+            let values = [NeoValue::from(pubkey.clone())];
             Self::call_bytes_with_args("System.Contract.CreateStandardAccount", &values)
         }
         #[cfg(target_arch = "wasm32")]
@@ -1601,17 +1651,15 @@ impl NeoVMSyscall {
             // Iterators on-chain are an InteropInterface stack item;
             // the translator emits a direct `SYSCALL System.Iterator.Next`
             // that the VM resolves with a session id. The devpack
-            // wrapper is for host-mode tests. On wasm32, calls to
-            // this helper typically arise from user code that the
-            // translator failed to lower to a direct SYSCALL — that
-            // is a translator bug (Q4 in the audit), and we want
-            // the failure to be loud.
+            // wrapper is for host-mode tests. On wasm32, reaching this
+            // helper means the translator failed to lower the call to a
+            // direct SYSCALL (a translator bug, Q4). Fault gracefully
+            // with a structured error rather than aborting the VM with an
+            // `unreachable` trap.
             let _ = items;
-            panic!(
-                "NeoVMSyscall::iterator_next on wasm32 is not used by the \
-                 translator; the translator emits the SYSCALL directly. If \
-                 this is hit, file a translator bug (Q4)."
-            );
+            Err(NeoError::Wasm32CrossCallUnavailable {
+                syscall: "System.Iterator.Next",
+            })
         }
         #[cfg(not(target_arch = "wasm32"))]
         {
@@ -1624,11 +1672,9 @@ impl NeoVMSyscall {
         #[cfg(target_arch = "wasm32")]
         {
             let _ = items;
-            panic!(
-                "NeoVMSyscall::iterator_value on wasm32 is not used by the \
-                 translator; the translator emits the SYSCALL directly. If \
-                 this is hit, file a translator bug (Q4)."
-            );
+            Err(NeoError::Wasm32CrossCallUnavailable {
+                syscall: "System.Iterator.Value",
+            })
         }
         #[cfg(not(target_arch = "wasm32"))]
         {

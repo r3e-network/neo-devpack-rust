@@ -22,6 +22,11 @@ use wasm_neovm::{
     SourceChain, TranslationConfig,
 };
 
+/// Maximum on-chain manifest size in bytes (`ContractManifest.MaxLength`
+/// in C# `neo-project/neo`, i.e. `ushort.MaxValue`). Deploys with a larger
+/// manifest are rejected by the network.
+const MANIFEST_MAX_LENGTH: usize = u16::MAX as usize;
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
@@ -72,6 +77,20 @@ fn main() -> Result<()> {
 
     let manifest_string =
         serde_json::to_string_pretty(&manifest_value).context("failed to render manifest JSON")?;
+
+    // Neo deploys the *compact* manifest JSON and rejects anything longer
+    // than `ushort.MaxValue` bytes (`ContractManifest.MaxLength`). Fail
+    // here rather than emit an artefact that cannot be deployed on-chain.
+    let compact_len = serde_json::to_vec(&manifest_value)
+        .context("failed to render manifest JSON")?
+        .len();
+    if compact_len > MANIFEST_MAX_LENGTH {
+        anyhow::bail!(
+            "manifest is {compact_len} bytes, exceeding the Neo N3 on-chain limit of \
+             {MANIFEST_MAX_LENGTH} bytes; reduce the number of methods/events, the size \
+             of the `extra` field, or split the contract"
+        );
+    }
 
     let metadata = extract_nef_metadata(&manifest_value)?;
 

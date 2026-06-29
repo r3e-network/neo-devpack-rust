@@ -60,6 +60,8 @@ change.
 | Active element segments (only passive supported) | `helpers_impl/tables.rs:43/45/190/205` | Passive segments + explicit table.init. |
 | Active data segments (only passive supported) | `helpers_impl/memory.rs:133/149/181/190/219` | Same — passive data segments. |
 | Memory init / data.drop on active segments | `helpers_impl/memory.rs:133/149` | Same. |
+| Non-const active data/element segment offset (e.g. `global.get`) | `runtime/memory/const_eval.rs:6-25` | Use an `i32.const` offset, or a passive segment + explicit `*.init`. Fails loudly at translate time. |
+| `memory.grow` beyond 65536 pages (4 GiB) with no declared max | `runtime/memory/helpers/grow.rs` | NeoVM cannot hold a > 4 GiB buffer; the grow ABORTs (FAULT) instead of returning `-1`. Keep total memory well under 65536 pages. |
 | RefAsNonNull trap on null funcref | `op_refs.rs:30` (ABORT emit) | Runtime trap; intentional. |
 | Branch to function frame with fewer values | `control.rs:142` | Function return must have the result on stack. |
 | Loop continue with wrong stack height | `control.rs:133` | Wasm spec requires exact match. |

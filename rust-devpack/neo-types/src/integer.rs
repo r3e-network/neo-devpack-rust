@@ -27,6 +27,27 @@ impl NeoInteger {
         Self(BigInt::one())
     }
 
+    /// Maximum byte length of an integer the NeoVM will hold
+    /// (`ExecutionEngineLimits.MaxIntegerSize` in C# `neo-project/neo` —
+    /// 32 bytes / 256 bits, two's-complement). The VM FAULTs when an
+    /// operation produces an integer wider than this.
+    pub const MAX_BYTE_LENGTH: usize = 32;
+
+    /// Whether this value fits within the NeoVM's 256-bit integer bound.
+    ///
+    /// Host-mode arithmetic on `NeoInteger` is arbitrary-precision, so a
+    /// computation that overflows 256 bits succeeds off-chain but FAULTs
+    /// on-chain. Call this on values derived from untrusted input or
+    /// unbounded accumulation to detect the divergence before it reaches
+    /// the VM. Zero is one byte in `num-bigint`'s representation but is
+    /// trivially within bounds.
+    pub fn fits_in_neovm(&self) -> bool {
+        if self.0.is_zero() {
+            return true;
+        }
+        self.0.to_signed_bytes_le().len() <= Self::MAX_BYTE_LENGTH
+    }
+
     /// Checked division: returns `Err(DivisionByZero)` instead of panicking
     /// (the `Div` operator faults on a zero divisor — on-chain that becomes a
     /// VM FAULT reverting the whole transaction). Use this in any contract
@@ -552,5 +573,27 @@ mod d5_tests {
         assert_eq!(a.try_rem(&zero), Err(crate::NeoError::DivisionByZero));
         let three = NeoInteger::new(3);
         assert_eq!(a.try_rem(&three).unwrap(), NeoInteger::new(1));
+    }
+
+    #[test]
+    fn fits_in_neovm_tracks_the_256_bit_bound() {
+        assert!(NeoInteger::zero().fits_in_neovm());
+        assert!(NeoInteger::new(i64::MAX).fits_in_neovm());
+        assert!(NeoInteger::new(i64::MIN).fits_in_neovm());
+
+        // 2^255 - 1 is the largest positive value that fits in 32 bytes.
+        let max_pos = (BigInt::one() << 255) - BigInt::one();
+        assert!(NeoInteger::from_bigint(&max_pos).fits_in_neovm());
+        assert_eq!(
+            max_pos.to_signed_bytes_le().len(),
+            NeoInteger::MAX_BYTE_LENGTH
+        );
+
+        // 2^255 needs 33 bytes (a sign byte), so it overflows the bound.
+        let over = BigInt::one() << 255;
+        assert!(!NeoInteger::from_bigint(&over).fits_in_neovm());
+
+        // A clearly oversized value (2^256) also fails.
+        assert!(!NeoInteger::from_bigint(&(BigInt::one() << 256)).fits_in_neovm());
     }
 }
