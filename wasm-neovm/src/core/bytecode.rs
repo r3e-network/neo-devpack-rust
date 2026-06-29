@@ -1,10 +1,16 @@
 // Copyright (c) 2025-2026 R3E Network
 // Licensed under the MIT License
 
-//! Bytecode encoding utilities.
+//! Standalone NeoVM `PUSHINT*` integer encoding, used by the byte-level fuzz
+//! harness (`fuzz/fuzz_targets/fuzz_numeric.rs`).
 //!
-//! Compact NeoVM `PUSHINT*` integer encoding shared by the translator's
-//! numeric lowering and the fuzz harness.
+//! NOTE: this is the minimal canonical-opcode encoding. The **production**
+//! integer emitter is `translator::helpers::push::emit_push_int`, which adds
+//! size optimizations (power-of-two → `PUSH1`/`SHL`, `PUSHINT128`) and emits
+//! into the script buffer with `StackValue` bookkeeping. The two intentionally
+//! differ in output for some inputs; this one is not on the production path.
+//! (`emit_push_int` is `pub(crate)`, hence not directly reachable from the
+//! separate fuzz crate, which is why this standalone encoder exists.)
 
 /// Calculate the size of an integer when encoded as a NeoVM PUSHINT* opcode.
 ///

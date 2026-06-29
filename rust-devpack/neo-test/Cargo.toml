@@ -14,7 +14,6 @@ categories = ["cryptography::cryptocurrencies", "development-tools::testing"]
 include = ["src/**/*", "Cargo.toml", "README.md", "../../LICENSE"]
 
 [dependencies]
-neo-devpack = { workspace = true }
 neo-types = { workspace = true }
 neo-syscalls = { workspace = true }
 num-traits = "0.2"

@@ -151,12 +151,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5d20789868f4b01b2f2caec9f5c4e0213b41e3e5702a50157d699ae31ced2fcb"
 
 [[package]]
-name = "bytes"
-version = "1.11.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e748733b7cbc798e1434b6ac524f0c1ff2ab456fe201501e6497c8417a4fc33"
-
-[[package]]
 name = "cast"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -571,12 +565,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "leb128"
-version = "0.2.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "884e2677b40cc8c339eaefcb701c32ef1fd2493d71118dc0ca4b6a736c93bd67"
-
-[[package]]
 name = "leb128fmt"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -614,12 +602,7 @@ name = "move-neovm"
 version = "0.13.1"
 dependencies = [
  "anyhow",
- "bytes",
  "criterion",
- "leb128",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
  "wasm-encoder 0.239.0",
  "wasmparser 0.239.0",
 ]
@@ -685,7 +668,6 @@ dependencies = [
 name = "neo-test"
 version = "0.13.1"
 dependencies = [
- "neo-devpack",
  "neo-syscalls",
  "neo-types",
  "num-traits",
@@ -1353,7 +1335,6 @@ version = "0.13.1"
 dependencies = [
  "anyhow",
  "assert_cmd",
- "bytes",
  "clap",
  "criterion",
  "diff",
@@ -1362,7 +1343,6 @@ dependencies = [
  "log",
  "move-neovm",
  "num-bigint",
- "num-integer",
  "num-traits",
  "once_cell",
  "regex",

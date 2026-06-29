@@ -21,7 +21,6 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 wasmparser = { workspace = true }
-bytes = { workspace = true }
 hex = { workspace = true }
 sha2 = { workspace = true }
 diff = { workspace = true }
@@ -30,7 +29,6 @@ log = { version = "0.4", features = ["std", "serde"], optional = true }
 env_logger = { version = "0.11", default-features = false, features = ["auto-color"], optional = true }
 rustc_version_runtime = "0.3"
 num-bigint = { version = "0.4", optional = true }
-num-integer = { version = "0.1", optional = true }
 num-traits = { version = "0.2", optional = true }
 
 [dev-dependencies]
@@ -43,7 +41,6 @@ wat = { workspace = true }
 wasm-encoder = { workspace = true }
 criterion = { workspace = true }
 num-bigint = "0.4"
-num-integer = "0.1"
 num-traits = "0.2"
 
 [build-dependencies]
@@ -63,7 +60,7 @@ std = []
 # Enable logging support
 logging = ["log", "env_logger"]
 # Enable the in-process NeoVM execution harness (for tests/benches).
-exec = ["dep:num-bigint", "dep:num-integer", "dep:num-traits"]
+exec = ["dep:num-bigint", "dep:num-traits"]
 # Enable all optional features
 full = ["logging", "profiling", "pgo", "validation", "exec"]
 # Enable profiling instrumentation for performance analysis (Round 70)

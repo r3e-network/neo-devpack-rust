@@ -14,11 +14,6 @@ include = ["src/**/*", "tests/**/*", "benches/**/*", "Cargo.toml", "README.md", 
 
 [dependencies]
 anyhow = { workspace = true }
-bytes = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-thiserror = { workspace = true }
-leb128 = "0.2"
 wasm-encoder = { workspace = true }
 
 [dev-dependencies]

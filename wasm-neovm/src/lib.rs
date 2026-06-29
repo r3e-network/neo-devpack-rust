@@ -11,8 +11,8 @@
 //! # Module Organization
 //!
 //! ## Core Modules
-//! - [`core`]: Core abstractions and shared traits
-//! - [`types`]: Type-safe identifiers and primitive wrappers
+//! - [`core`]: Encoding and byte utilities
+//! - [`types`]: The `ContractName` newtype
 //! - [`config`]: Centralized configuration management
 //!
 //! ## Translation Modules
@@ -84,10 +84,7 @@ pub use nef::{
     encode_nef, encode_nef_with_metadata, write_nef, write_nef_with_metadata, MethodToken,
 };
 pub use translator::{translate_module, translate_with_config, ManifestOverlay, Translation};
-pub use types::{
-    BytecodeOffset, ContractName, GlobalIndex, LocalIndex, MemoryOffset, MethodIndex,
-    SyscallDescriptor, WasmValueType,
-};
+pub use types::ContractName;
 
 /// Version information for the wasm-neovm crate
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
