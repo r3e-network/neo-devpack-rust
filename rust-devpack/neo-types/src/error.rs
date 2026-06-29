@@ -97,9 +97,10 @@ impl NeoError {
         match self {
             NeoError::Custom(msg) => msg,
             NeoError::Wasm32CrossCallUnavailable { syscall } => {
-                // The Display string is "wasm32 cross-call unavailable: <syscall>";
-                // for message() we return the same (it's a static-ish string).
-                // We use a thread-local to avoid allocating.
+                // `message()` returns `&str`, so it cannot allocate the
+                // "<prefix>: <syscall>" form that `Display` builds. Since the
+                // syscall is a `&'static str` from a closed set, return a
+                // matching static literal per known syscall.
                 match *syscall {
                     "System.Contract.Call" => "wasm32 cross-call unavailable: System.Contract.Call",
                     "System.Runtime.LoadScript" => {

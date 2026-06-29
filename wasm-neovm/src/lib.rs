@@ -77,7 +77,6 @@ pub mod syscalls;
 // Re-exports for convenient access
 pub use adapters::SourceChain;
 pub use config::{BehaviorConfig, DebugConfig, OutputConfig, TranslationConfig};
-pub use core::traits;
 pub use logging::LogLevel;
 pub use manifest::RenderedManifest;
 pub use metadata::{extract_nef_metadata, NefMetadata};
@@ -103,11 +102,10 @@ pub fn version_info() -> String {
 }
 
 pub mod prelude {
-    //! Commonly used types and traits
+    //! Commonly used types and functions.
 
     pub use crate::adapters::SourceChain;
     pub use crate::config::{BehaviorConfig, DebugConfig, OutputConfig, TranslationConfig};
-    pub use crate::core::traits::{BytecodeEmitter, ToBytecode, Translatable};
     pub use crate::translator::{translate_module, translate_with_config, Translation};
     pub use crate::types::ContractName;
 }

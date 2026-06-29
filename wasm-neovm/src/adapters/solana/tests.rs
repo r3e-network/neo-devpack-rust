@@ -40,11 +40,9 @@ fn test_solana_syscall_mapping() {
         Some("System.Runtime.GetTime")
     );
 
-    // Signature
-    assert_eq!(
-        map_solana_syscall("sol_verify_signature"),
-        Some("System.Runtime.CheckWitness")
-    );
+    // Signature verification has no safe Neo equivalent: it must be refused
+    // (mapping it to CheckWitness would be a silent security downgrade).
+    assert_eq!(map_solana_syscall("sol_verify_signature"), None);
 }
 
 #[test]

@@ -42,14 +42,12 @@
 //! These require runtime emulation or compile-time transformation.
 
 pub mod bytecode;
-pub mod runtime;
 pub mod translator;
 
 pub use bytecode::{
     parse_move_bytecode, validate_move_bytecode, BytecodeVersion, FieldDef, FunctionDef,
     MoveModule, MoveOpcode, StructDef, TypeTag,
 };
-pub use runtime::{global_storage_key, signer_to_checkwitness, ResourceError, ResourceTracker};
 pub use translator::translate_to_wasm;
 
 use anyhow::Result;

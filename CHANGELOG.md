@@ -8,14 +8,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Note: Beginning with `0.5.8`, all public workspace crates and contract templates
 follow the same repository version.
 
-## [Unreleased] — correctness, robustness, and polish pass
+## [Unreleased] — architecture unification pass
+
+A systematic review of structs, traits, modules, and error handling across
+the workspace for a unified architecture with no duplication. 915 workspace
+tests pass; 0 clippy warnings; `cargo fmt` clean; 4 L7 conformance tests pass
+against `neo-go` v0.105.1.
+
+### Fixed — correctness
+
+- **The CryptoLib native-contract hash was wrong** in `wasm-neovm`
+  (`0x747cb61e…` instead of the canonical `0x726cb6e0cd8628a1350a611384688911ab75f51b`,
+  verified against `neo-go` v0.105.1 `getnativecontracts`). Any contract
+  calling `sha256`/`ripemd160`/`verifyWithECDsa` via the CryptoLib descriptor
+  would dispatch to a non-existent contract and FAULT on-chain. A self-
+  confirming test had pinned the wrong value; a drift-guard test now pins all
+  8 native hashes to their canonical big-endian RPC strings.
+  (`wasm-neovm/src/native_contracts.rs`)
+- **Solana `sol_verify_signature` and Move `ed25519_verify` were lowered to
+  `System.Runtime.CheckWitness`** — a witness-presence probe, not signature
+  verification. Both now refuse the mapping (no safe Neo equivalent), matching
+  the `solana-compat` X7 stub, instead of granting false cryptographic
+  confidence.
+
+### Changed — unification & dedup
+
+- **Encoding consolidated to one source.** `nef.rs`'s hand-rolled Neo VarInt
+  writer now delegates to the canonical `core::encoding::encode_varint`
+  (byte-identical; NEF is serialized once per compile). The crate's test
+  helper now calls the canonical `decode_varint`. `core/encoding` is now
+  production-used rather than a dead parallel abstraction.
+- **Removed the dead trait layer** in `wasm-neovm` `core/traits.rs` (14 traits
+  with zero implementors/call sites) and the dead `BytecodeBuilder`/
+  `BytecodeView`/`BytecodeChunks`; kept the fuzz-used integer encoders.
+- **Removed dead code**: the never-constructed `ManifestData`; `api/mod.rs`'s
+  unused `WasmFeatures`/`ContractInfo`/`LIB_VERSION`/`TranslationResult`/
+  `TranslationError` and its redundant crate-root re-export mirror; the dead
+  `move-neovm` `runtime` module (whose resource-key scheme contradicted the
+  shipping one).
+- **Module hygiene**: converted the three `file.rs + dir/` modules to the
+  repo's dominant `mod.rs` convention; renamed `manifest/build.rs` →
+  `manifest/render.rs` (avoids the cargo build-script name hazard).
+
+### Changed — error handling
+
+- **Documented the crate-boundary error policy** in `CONTRIBUTING.md` (typed
+  errors in SDK/contract crates; `anyhow` at the compiler/tooling boundary)
+  and converted `EncodingError`/`ChainLookupError` to `#[derive(thiserror::Error)]`
+  (Display text preserved exactly).
+
+### Added / exports
+
+- Exported the previously-unnameable `ArrayFullError`/`ByteStringFullError`/
+  `RemoveStrictError` from `neo-types`; made `NeoArray::MAX_SIZE` an associated
+  const referencing the single `MAX_STACK_SIZE` source of truth.
+- Cross-reference docs marking the compiler-side and SDK-side ABI type
+  families (`ManifestMethod`/`NeoContractMethod`) as mirrors of one spec.
+
+---
+
+### Earlier this cycle — correctness, robustness, and polish pass
 
 A review pass over the compiler and devpack. Highlights are several
 silent-wrong-output fixes on the StackItem serialisation path (which feeds
 `Runtime.Notify` state and `Contract.Call` args) and a critical
-NEP-macro export bug. All 937 workspace tests pass; 0 clippy warnings;
-`cargo fmt` clean; all 20 bundled contracts build to wasm32; and the 4 L7
-conformance tests pass against `neo-go` v0.105.1.
+NEP-macro export bug.
 
 ### Fixed — silent on-chain data corruption
 

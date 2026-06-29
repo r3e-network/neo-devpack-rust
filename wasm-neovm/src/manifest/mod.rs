@@ -13,17 +13,17 @@
 //! - [`ManifestMethod`]: Description of a contract method
 //! - [`ManifestParameter`]: Description of a method parameter
 
-mod build;
 mod builder;
 mod merge;
 mod parity;
+mod render;
 mod types;
 
 #[cfg(test)]
 mod tests;
 
-pub use build::{build_manifest, ensure_permission_for_dynamic_calls};
 pub use builder::ManifestBuilder;
 pub use merge::{merge_manifest, propagate_safe_flags};
 pub use parity::{collect_method_names, ensure_manifest_methods_match};
+pub use render::{build_manifest, ensure_permission_for_dynamic_calls};
 pub use types::{ManifestMethod, ManifestParameter, RenderedManifest};

@@ -3,6 +3,13 @@
 
 use serde::Serialize;
 
+// NOTE: these compiler-side, serialize-only manifest ABI types mirror the
+// deserialize-capable `NeoContractMethod`/`NeoContractParameter` in the
+// `neo-types` SDK crate. They model the same Neo N3 ABI spec and must evolve
+// together. They are intentionally kept separate for now (neo-types is
+// `no_std`-oriented and used by on-chain contract code); a shared `neo-abi`
+// crate is the tracked path to a single source of truth.
+
 /// A parameter in a Neo N3 contract manifest method.
 #[derive(Debug, Clone, Serialize)]
 pub struct ManifestParameter {

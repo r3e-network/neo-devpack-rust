@@ -11,7 +11,9 @@
 //! - Clock: `sol_get_clock_sysvar` → `System.Runtime.GetTime`
 //! - Crypto: `sol_sha256`, `sol_keccak256` → `Neo.Crypto.*`
 //! - CPI: `sol_invoke*` → `System.Contract.Call`
-//! - Signatures: `sol_verify_signature` → `System.Runtime.CheckWitness`
+//! - Signatures: `sol_verify_signature` is **refused** (Ed25519 has no safe
+//!   Neo equivalent; lowering it to `CheckWitness` would be a security
+//!   downgrade)
 //! - Storage: Account data operations → `System.Storage.*`
 
 use super::{ChainAdapter, SourceChain};

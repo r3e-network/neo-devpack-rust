@@ -9,22 +9,9 @@ pub fn double_sha256_checksum(data: &[u8]) -> u32 {
     u32::from_le_bytes(hash[..4].try_into().unwrap())
 }
 
+/// Decode a Neo `VarInt` length prefix. Delegates to the crate's canonical
+/// decoder so tests share one definition of the wire format; panics on
+/// malformed input (test-only).
 pub fn read_var_uint(bytes: &[u8]) -> (u64, usize) {
-    let prefix = bytes[0];
-    match prefix {
-        n if n < 0xFD => (u64::from(n), 1),
-        0xFD => {
-            let value = u16::from_le_bytes(bytes[1..3].try_into().unwrap());
-            (u64::from(value), 3)
-        }
-        0xFE => {
-            let value = u32::from_le_bytes(bytes[1..5].try_into().unwrap());
-            (u64::from(value), 5)
-        }
-        0xFF => {
-            let value = u64::from_le_bytes(bytes[1..9].try_into().unwrap());
-            (value, 9)
-        }
-        _ => unreachable!(),
-    }
+    wasm_neovm::core::decode_varint(bytes).expect("valid Neo VarInt")
 }
