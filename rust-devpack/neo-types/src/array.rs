@@ -123,13 +123,7 @@ impl<T: PartialEq> PartialEq<NeoArray<T>> for Vec<T> {
     }
 }
 
-/// Maximum number of items in a `NeoArray` on-chain (matches the C# NeoVM
-/// `Limits.MaxStackSize = 1024`). Exceeding this at runtime raises
-/// `FAULT` per `ApplicationEngine.Runtime.cs::RuntimeNotify`; here we
-/// provide an explicit `try_push` so contracts can handle the bound.
-pub const MAX_SIZE: usize = 1024;
-
-/// An error returned when a `NeoArray` would exceed `MAX_SIZE` items.
+/// An error returned when a `NeoArray` would exceed `NeoArray::MAX_SIZE` items.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ArrayFullError {
     /// The current length of the array when the push was attempted.
@@ -141,7 +135,8 @@ impl core::fmt::Display for ArrayFullError {
         write!(
             f,
             "NeoArray is full (current_len = {}; MAX_SIZE = {})",
-            self.current_len, MAX_SIZE
+            self.current_len,
+            crate::MAX_STACK_SIZE
         )
     }
 }
@@ -149,12 +144,18 @@ impl core::fmt::Display for ArrayFullError {
 impl std::error::Error for ArrayFullError {}
 
 impl<T> NeoArray<T> {
+    /// Maximum number of items in a `NeoArray` on-chain. Mirrors the single
+    /// source of truth `MAX_STACK_SIZE` (the C# NeoVM `Limits.MaxStackSize`,
+    /// 1024); exceeding it at runtime raises `FAULT`. Spelled as an
+    /// associated const for parity with `NeoByteString::MAX_SIZE`.
+    pub const MAX_SIZE: usize = crate::MAX_STACK_SIZE;
+
     /// Try to push an item, returning `Err(ArrayFullError)` if the array
     /// is already at `MAX_SIZE` (1024) items. Use this instead of `push`
     /// when the array size is data-dependent and you need to handle the
     /// bound explicitly (e.g. paginated reads).
     pub fn try_push(&mut self, item: T) -> Result<(), ArrayFullError> {
-        if self.data.len() >= MAX_SIZE {
+        if self.data.len() >= Self::MAX_SIZE {
             return Err(ArrayFullError {
                 current_len: self.data.len(),
             });
@@ -166,13 +167,20 @@ impl<T> NeoArray<T> {
     /// Returns the remaining capacity before the on-chain `MAX_SIZE`
     /// limit is reached.
     pub fn remaining_capacity(&self) -> usize {
-        MAX_SIZE.saturating_sub(self.data.len())
+        Self::MAX_SIZE.saturating_sub(self.data.len())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const MAX_SIZE: usize = NeoArray::<u32>::MAX_SIZE;
+
+    #[test]
+    fn max_size_tracks_single_source() {
+        assert_eq!(NeoArray::<u32>::MAX_SIZE, crate::MAX_STACK_SIZE);
+    }
 
     #[test]
     fn try_push_within_limit() {

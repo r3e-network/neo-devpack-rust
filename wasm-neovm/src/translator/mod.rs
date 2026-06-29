@@ -37,7 +37,7 @@ pub mod arena;
 pub mod profiling;
 
 pub use translation::{translate_module, translate_with_config};
-pub use types::{ManifestData, ManifestOverlay, Translation, TranslationConfig};
+pub use types::{ManifestOverlay, Translation, TranslationConfig};
 
 pub(crate) use frontend::ModuleFrontend;
 pub(crate) use ir::{FunctionImport, ModuleTypes};

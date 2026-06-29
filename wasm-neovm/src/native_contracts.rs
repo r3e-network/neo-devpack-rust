@@ -15,16 +15,17 @@
 //! Resolve the hash exactly once via [`native_contract_method`] and reference
 //! the returned descriptor everywhere; do not hand-copy hash literals.
 
-/// The CryptoLib native contract HASH160 (little-endian byte order, as used in
-/// `System.Contract.Call`'s first stack argument).
+/// The CryptoLib native contract HASH160 in little-endian byte order, as used
+/// in `System.Contract.Call`'s first stack argument.
 ///
-/// Verified against the Neo N3 mainnet `CryptoLib` deployment. The value is
-/// the first 20 bytes of SHA256("CryptoLib")... no — native contract hashes
-/// are derived from the contract's deployed script hash at genesis; this
-/// constant matches every public Neo N3 network.
+/// Canonical value on every Neo N3 network: explorer/RPC hash
+/// `0x726cb6e0cd8628a1350a611384688911ab75f51b` (big-endian); these bytes are
+/// that value reversed. Verified against `neo-go` v0.105.1
+/// `getnativecontracts` (id `-3`, name `CryptoLib`). The drift-guard test
+/// below pins it.
 pub const CRYPTOLIB_HASH: [u8; 20] = [
-    0xd5, 0xa8, 0xe4, 0x27, 0x6d, 0x98, 0x3c, 0xcd, 0x0f, 0x6a, 0x6e, 0x9e, 0x9b, 0x8d, 0xdc, 0x1d,
-    0x1e, 0xb6, 0x7c, 0x74,
+    0x1b, 0xf5, 0x75, 0xab, 0x11, 0x89, 0x68, 0x84, 0x13, 0x61, 0x0a, 0x35, 0xa1, 0x28, 0x86, 0xcd,
+    0xe0, 0xb6, 0x6c, 0x72,
 ];
 
 /// A native-contract method we can statically call via `System.Contract.Call`.
@@ -526,33 +527,24 @@ pub async fn lookup_chain_native_hashes(
 }
 
 /// Error type for `lookup_chain_native_hashes`.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum ChainLookupError {
     /// The supplied RPC endpoint URL was malformed.
+    #[error("invalid endpoint: {0}")]
     InvalidEndpoint(String),
     /// TCP connect to the endpoint failed (e.g. ECONNREFUSED).
+    #[error("connect: {0}")]
     Connect(String),
     /// Writing the HTTP request to the socket failed.
+    #[error("send: {0}")]
     Send(String),
     /// Reading the HTTP response from the socket failed.
+    #[error("receive: {0}")]
     Receive(String),
     /// Parsing the JSON response (or the HTTP body) failed.
+    #[error("parse: {0}")]
     Parse(String),
 }
-
-impl std::fmt::Display for ChainLookupError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ChainLookupError::InvalidEndpoint(s) => write!(f, "invalid endpoint: {s}"),
-            ChainLookupError::Connect(s) => write!(f, "connect: {s}"),
-            ChainLookupError::Send(s) => write!(f, "send: {s}"),
-            ChainLookupError::Receive(s) => write!(f, "receive: {s}"),
-            ChainLookupError::Parse(s) => write!(f, "parse: {s}"),
-        }
-    }
-}
-
-impl std::error::Error for ChainLookupError {}
 
 /// A trivial URI type (no external dep) that captures the bits we
 /// need: scheme (must be http/https), host, port, and path.
@@ -657,20 +649,80 @@ mod tests {
 
     #[test]
     fn cryptolib_hash_is_the_canonical_mainnet_value() {
-        // The CryptoLib native contract script hash on every Neo N3 network,
-        // rendered big-endian as an explorer address, is
-        // 0x747cb61e1ddc8d9b9e6e6a0fcd3c986d27e4a8d5. Internally we store it
-        // little-endian (the byte order System.Contract.Call consumes).
-        let be: Vec<String> = CRYPTOLIB_HASH
+        // CryptoLib's native-contract script hash on every Neo N3 network,
+        // rendered big-endian as an explorer/RPC address, is
+        // 0x726cb6e0cd8628a1350a611384688911ab75f51b (neo-go v0.105.1
+        // `getnativecontracts`, id -3). Internally we store it little-endian
+        // (the byte order System.Contract.Call consumes), so reversing the
+        // constant must reproduce the canonical big-endian string.
+        let be: String = CRYPTOLIB_HASH
             .iter()
             .rev()
             .map(|b| format!("{b:02x}"))
             .collect();
         assert_eq!(
-            be.join(""),
-            "747cb61e1ddc8d9b9e6e6a0fcd3c986d27e4a8d5",
+            be, "726cb6e0cd8628a1350a611384688911ab75f51b",
             "CRYPTOLIB_HASH must match the canonical Neo N3 CryptoLib hash"
         );
+    }
+
+    /// Drift guard: every native-contract hash, reversed to its big-endian
+    /// explorer/RPC form, must equal the canonical value. The non-Treasury
+    /// values are pinned against `neo-go` v0.105.1 `getnativecontracts`.
+    #[test]
+    fn native_contract_hashes_match_canonical_values() {
+        fn be(h: &[u8; 20]) -> String {
+            h.iter().rev().map(|b| format!("{b:02x}")).collect()
+        }
+        let cases: &[(&str, &[u8; 20], &str)] = &[
+            (
+                "ContractManagement",
+                &CONTRACT_MANAGEMENT_HASH,
+                "fffdc93764dbaddd97c48f252a53ea4643faa3fd",
+            ),
+            (
+                "StdLib",
+                &STD_LIB_HASH,
+                "acce6fd80d44e1796aa0c2c625e9e4e0ce39efc0",
+            ),
+            (
+                "CryptoLib",
+                &CRYPTOLIB_HASH,
+                "726cb6e0cd8628a1350a611384688911ab75f51b",
+            ),
+            (
+                "Ledger",
+                &LEDGER_HASH,
+                "da65b600f7124ce6c79950c1772a36403104f2be",
+            ),
+            (
+                "Policy",
+                &POLICY_HASH,
+                "cc5e4edd9f5f8dba8bb65734541df7a1c081c67b",
+            ),
+            (
+                "RoleManagement",
+                &ROLE_MANAGEMENT_HASH,
+                "49cf4e5378ffcd4dec034fd98a174c5491e395e2",
+            ),
+            (
+                "Oracle",
+                &ORACLE_HASH,
+                "fe924b7cfe89ddd271abaf7210a80a7e11178758",
+            ),
+            (
+                "Notary",
+                &NOTARY_HASH,
+                "c1e14f19c3e60d0b9244d06dd7ba9b113135ec3b",
+            ),
+        ];
+        for (name, hash, expected) in cases {
+            assert_eq!(
+                &be(hash),
+                expected,
+                "{name} native hash drifted from canonical value"
+            );
+        }
     }
 
     #[test]

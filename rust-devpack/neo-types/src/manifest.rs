@@ -120,6 +120,11 @@ pub struct NeoContractABI {
     pub events: Vec<NeoContractEvent>,
 }
 
+// NOTE: this SDK-side, (de)serialize-capable ABI type mirrors the compiler's
+// serialize-only `ManifestMethod`/`ManifestParameter` in `wasm-neovm`. Both
+// model the same Neo N3 ABI spec and must evolve together; a shared `neo-abi`
+// crate is the tracked path to unifying them.
+
 /// Neo N3 Contract Method
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]

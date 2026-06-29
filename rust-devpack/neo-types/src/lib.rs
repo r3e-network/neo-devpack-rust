@@ -20,9 +20,9 @@ mod string;
 mod traits;
 mod value;
 
-pub use array::NeoArray;
+pub use array::{ArrayFullError, NeoArray};
 pub use boolean::NeoBoolean;
-pub use bytestring::NeoByteString;
+pub use bytestring::{ByteStringFullError, NeoByteString};
 pub use error::{NeoError, NeoResult};
 pub use hash::{Hash160, Hash256};
 pub use integer::NeoInteger;
@@ -31,7 +31,7 @@ pub use manifest::{
     NeoContractABI, NeoContractEvent, NeoContractManifest, NeoContractMethod, NeoContractParameter,
     NeoContractPermission,
 };
-pub use map::NeoMap;
+pub use map::{NeoMap, RemoveStrictError};
 pub use stack_item::{
     serialise_array, serialise_notification, serialise_value, MAX_NOTIFICATION_SIZE, MAX_STACK_SIZE,
 };

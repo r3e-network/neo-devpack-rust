@@ -221,10 +221,23 @@ pub fn translate(wasm_bytes: &[u8], config: TranslationConfig) -> Result<NefFile
 
 #### Error Handling
 
-- **Use `Result<T, E>`**: Prefer `Result` over panics for recoverable errors
-- **Use `thiserror`**: Define custom error types with `thiserror` crate
-- **Avoid `unwrap()`**: Use `?` operator or `expect()` with descriptive messages
-- **Context**: Add context to errors using `anyhow::Context` or custom error types
+The workspace follows a crate-boundary error policy — match it when adding code:
+
+- **SDK / contract crates** (`rust-devpack/*` and the cross-chain SDK crates):
+  return **typed errors** — `NeoError`/`NeoResult`, or a focused domain enum
+  (e.g. `ContractCallError`). These crates are dependency-light and
+  `no_std`-conscious, so **do not** pull in `anyhow`.
+- **Compiler / tooling crates** (`wasm-neovm`, `move-neovm`): use
+  `anyhow::Result` with `.context(...)` at the public boundary, and may define
+  internal typed sub-domain enums (e.g. `EncodingError`, `ConfigValidationError`,
+  `Fault`) that convert into `anyhow` at the edge. Crates that already depend on
+  `thiserror` should derive it (`#[derive(thiserror::Error)]`) rather than
+  hand-writing `Display`/`Error`.
+- **Result aliases**: name them `<Domain>Result<T> = Result<T, <Domain>Error>`
+  (e.g. `NeoResult`, `EncodingResult`, `ValidationResult`).
+- **Prefer `Result` over panics** for recoverable errors; on the contract
+  execution path return a graceful error rather than `panic!` (which traps the
+  VM). Avoid `unwrap()` — use `?` or `expect()` with a descriptive message.
 
 #### Testing
 

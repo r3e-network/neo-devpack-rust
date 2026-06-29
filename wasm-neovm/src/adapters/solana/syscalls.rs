@@ -47,7 +47,12 @@ pub(super) fn map_solana_syscall(name: &str) -> Option<&'static str> {
         "sol_get_last_restart_slot" => None,
 
         // ===== Signature Verification =====
-        "sol_verify_signature" => Some("System.Runtime.CheckWitness"),
+        // `sol_verify_signature` is Ed25519 signature verification. There is
+        // NO safe Neo equivalent: `CheckWitness` only probes whether an
+        // account signed the transaction, a different primitive. Lowering it
+        // to `CheckWitness` would silently grant false cryptographic
+        // confidence, so refuse it (matching `solana-compat`'s X7 stub).
+        "sol_verify_signature" => None,
 
         // ===== Address Lookup Tables =====
         "sol_get_epoch_rewards_sysvar" => None,

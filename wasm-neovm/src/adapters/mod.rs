@@ -100,7 +100,13 @@ impl ChainAdapter for NeoAdapter {
     }
 }
 
-/// Move adapter placeholder
+/// Adapter for Move-sourced WASM.
+///
+/// NOTE: the `move_stdlib` / `move_resource` import mappings below serve
+/// **hand-written WASM** that imports those modules by name. They are NOT
+/// reached by the `move-neovm` `.mv` bytecode path, which pre-translates to
+/// WASM emitting only `neo`-module imports (see `move_support.rs`). Keep this
+/// in mind before assuming a Move `.mv` contract exercises these branches.
 struct MoveAdapter;
 
 impl ChainAdapter for MoveAdapter {
@@ -156,8 +162,12 @@ fn map_move_stdlib(name: &str) -> Option<&'static str> {
         "hash_sha3_256" | "sha3_256" => Some("Neo.Crypto.SHA256"), // Fallback
         "hash_keccak256" | "keccak256" => Some("Neo.Crypto.Keccak256"),
 
-        // Signature verification
-        "ed25519_verify" | "verify_signature" => Some("System.Runtime.CheckWitness"),
+        // Signature verification. Ed25519 has no Neo equivalent
+        // (`VerifyWithECDsa` only does secp256r1/secp256k1, and `CheckWitness`
+        // is a witness-presence probe, not a signature check) — refuse it
+        // rather than lower it to a different, weaker primitive. secp256k1
+        // maps correctly to `VerifyWithECDsa`.
+        "ed25519_verify" | "verify_signature" => None,
         "secp256k1_verify" => Some("Neo.Crypto.VerifyWithECDsa"),
 
         // Time

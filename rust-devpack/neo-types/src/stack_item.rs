@@ -52,6 +52,10 @@ const TAG_STRUCT: u8 = 0x41;
 /// byte, otherwise a `0xFD`/`0xFE`/`0xFF` marker is followed by a
 /// little-endian `u16`/`u32`/`u64`. Using LEB128 here would mis-encode
 /// any length `>= 0x80` and desynchronise the entire downstream stream.
+///
+/// This mirrors the same wire format the `wasm-neovm` compiler implements
+/// in its `core::encoding` module; the two are kept in lockstep by hand
+/// because the crates do not (yet) share a common low-level encoding crate.
 fn push_varint(out: &mut Vec<u8>, value: usize) {
     let value = value as u64;
     if value < 0xFD {
