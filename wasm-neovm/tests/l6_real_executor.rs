@@ -95,7 +95,9 @@ fn build_and_get_script(contract: &str) -> Vec<u8> {
 
 fn contains_syscall(script: &[u8], hash: u32) -> bool {
     let hash_bytes = hash.to_le_bytes();
-    script.windows(5).any(|w| w[0] == SYSCALL_OPCODE && w[1..5] == hash_bytes)
+    script
+        .windows(5)
+        .any(|w| w[0] == SYSCALL_OPCODE && w[1..5] == hash_bytes)
 }
 
 #[test]

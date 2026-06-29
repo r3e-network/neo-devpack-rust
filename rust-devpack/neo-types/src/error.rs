@@ -101,9 +101,7 @@ impl NeoError {
                 // for message() we return the same (it's a static-ish string).
                 // We use a thread-local to avoid allocating.
                 match *syscall {
-                    "System.Contract.Call" => {
-                        "wasm32 cross-call unavailable: System.Contract.Call"
-                    }
+                    "System.Contract.Call" => "wasm32 cross-call unavailable: System.Contract.Call",
                     "System.Runtime.LoadScript" => {
                         "wasm32 cross-call unavailable: System.Runtime.LoadScript"
                     }

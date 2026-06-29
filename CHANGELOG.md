@@ -8,6 +8,101 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Note: Beginning with `0.5.8`, all public workspace crates and contract templates
 follow the same repository version.
 
+## [Unreleased] — correctness, robustness, and polish pass
+
+A review pass over the compiler and devpack. Highlights are several
+silent-wrong-output fixes on the StackItem serialisation path (which feeds
+`Runtime.Notify` state and `Contract.Call` args) and a critical
+NEP-macro export bug. All 937 workspace tests pass; 0 clippy warnings;
+`cargo fmt` clean; all 20 bundled contracts build to wasm32; and the 4 L7
+conformance tests pass against `neo-go` v0.105.1.
+
+### Fixed — silent on-chain data corruption
+
+- **StackItem integers were serialised big-endian.** Neo (and .NET
+  `BigInteger.ToByteArray()`) use **little-endian** two's-complement.
+  Every multi-byte integer in a serialised `StackItem` — e.g. a NEP-17
+  `Transfer` amount ≥ 256 — was byte-reversed. Zero now serialises as the
+  empty byte string, matching `Integer.GetSpan()`.
+  (`rust-devpack/neo-types/src/stack_item.rs`)
+- **StackItem type tags were wrong.** `Boolean` was `0x21` and `Integer`
+  was `0x01` (an undefined `StackItemType`); the canonical values are
+  `Boolean = 0x20`, `Integer = 0x21`. Booleans decoded as integers and
+  integers as an invalid type, corrupting / FAULTing deserialisation of
+  any notification or call state carrying them.
+- **Length prefixes used LEB128 instead of Neo `VarInt`.** Neo's
+  `BinarySerializer` writes lengths/counts as `0xFD/0xFE/0xFF` markers, not
+  7-bit LEB128. Any payload with a length ≥ 128 (e.g. a 128-byte
+  `ByteString`) got a wrong prefix that desynchronised the entire
+  downstream byte stream. New regression tests cover the LE integer form,
+  the tag values, and the `VarInt` markers.
+
+### Fixed — NEP macros & method export
+
+- **`#[neo_method]` written as a qualified path was ignored.** The export
+  collector matched the attribute with `Path::is_ident`, which only
+  recognises the bare `#[neo_method]` form, not `#[neo_devpack::neo_method]`
+  / `#[crate::neo_method]` as emitted by declarative macros. Contracts
+  built through such macros exported **zero callable methods**. Matching
+  now uses the last path segment.
+  (`rust-devpack/neo-macros/src/expand/contract.rs`)
+- **Auto-export marshaller widened** to carry `i8/i16/i32/u8/u16/u32`
+  scalars over the i64 export ABI, with actionable errors for the
+  genuinely-unsupported string/`ByteString`/array types (pointing to
+  `contracts/nep17-token`).
+- **`nep17!` / `nep11!` no longer emit silently-broken contracts.** The
+  scalar-only export ABI cannot represent a string `symbol()` or Hash160
+  `ByteString` accounts, so these macros now fail at compile time with
+  guidance instead of producing a contract with no callable methods. The
+  `nep17-macro-sample` / `nep11-macro-sample` examples were rewritten to
+  the working `#[neo_contract]` + `#[neo_method]` i64 pattern; they now
+  export real methods (verified against `neo-go`).
+
+### Fixed — compiler correctness
+
+- **Memory effective-address overflow now traps instead of wrapping.** For a
+  load/store with a non-zero `memarg.offset`, the translator masked the
+  *sum* `base + offset` to 32 bits, so a negative/high base could cancel
+  against the offset and silently access the wrong in-bounds location
+  (`0xFFFFFFFC + 8` folded to `4`). The base is now normalised to its
+  unsigned 32-bit value *before* adding the offset, and the effective
+  address is left unmasked so the bounds check traps any out-of-bounds
+  access — matching WASM semantics.
+  (`wasm-neovm/src/translator/runtime/memory/translate.rs`)
+- The numeric/arithmetic, control-flow, NEF binary, and memory
+  load/store/copy/globals translation paths were audited end-to-end and
+  confirmed correct (little-endian byte assembly, sign/zero extension,
+  bounds checks, copy-overlap direction, trap-before-write). Two further
+  memory edge cases (`memory.grow` past 65536 pages; non-const active
+  segment offsets) are documented in `docs/translator-limitations.md`.
+
+### Added
+
+- **`NeoInteger::fits_in_neovm()` and `NeoInteger::MAX_BYTE_LENGTH`** expose
+  the NeoVM 256-bit integer bound so contracts can detect host/on-chain
+  arithmetic divergence before it FAULTs on-chain.
+
+### Fixed — robustness & tooling
+
+- **`b5_b9_host_state` tests were flaky** under the default parallel test
+  runner: they raced on process-global host state. They now serialise via a
+  shared guard (consistent with the other host-state suites).
+- **Iterator wrappers no longer `panic!` on wasm32.** `iterator_next` /
+  `iterator_value` return a structured `Wasm32CrossCallUnavailable` error
+  instead of aborting the VM with an `unreachable` trap.
+- **Clear errors for non-WASM input.** The translator now rejects a bad
+  magic number / version / truncated header up front with an actionable
+  message instead of the misleading "failed to analyze function
+  dependencies" context.
+- **CLI enforces the 64 KB manifest limit** (`ContractManifest.MaxLength`),
+  measured on the compact JSON as Neo does at deploy time, instead of
+  emitting an undeployable artefact.
+- **The wasm32 contract build is warning-free again** (was 15 warnings in
+  `neo-syscalls`): host-only dispatch helpers are `cfg`-gated, reserved
+  host-ABI externs are annotated, and unused bindings were removed.
+- Fixed a `clippy` empty-line-after-doc-comment warning and brought the
+  whole workspace back to `cargo fmt` clean.
+
 ## [0.13.1] — 2026-06-27 — L7.v3 cross-call-wrapper golden
 
 v0.13.1 is a follow-up to v0.13.0. The v0.12.0 work added

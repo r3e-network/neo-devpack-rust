@@ -76,6 +76,7 @@ impl DriverState {
     }
 
     pub(super) fn translate(mut self, bytes: &[u8]) -> Result<Translation> {
+        validate_wasm_header(bytes)?;
         self.function_dependency_graph = Some(
             analyze_function_dependency_graph(bytes)
                 .context("failed to analyze function dependencies for runtime init stubs")?,
@@ -86,5 +87,78 @@ impl DriverState {
         );
         self.parse_payloads(bytes)?;
         self.finalize()
+    }
+}
+
+/// The 8-byte WebAssembly module preamble: magic `\0asm` + version 1.
+const WASM_PREAMBLE: [u8; 8] = [0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00];
+
+/// Reject obviously non-WASM input up front with a clear, actionable
+/// message. Without this, a wrong/truncated file surfaces as the
+/// misleading "failed to analyze function dependencies" context from the
+/// first internal parse pass. Structurally-valid-but-broken modules still
+/// fall through to the detailed `wasmparser` diagnostics downstream.
+fn validate_wasm_header(bytes: &[u8]) -> Result<()> {
+    if bytes.len() < 8 {
+        anyhow::bail!(
+            "input is not a valid WebAssembly module: expected at least an 8-byte \
+             header, got {} byte(s); pass a `.wasm` file built with \
+             `cargo build --target wasm32-unknown-unknown`",
+            bytes.len()
+        );
+    }
+    if bytes[..4] != WASM_PREAMBLE[..4] {
+        anyhow::bail!(
+            "input is not a valid WebAssembly module: bad magic number \
+             (expected 00 61 73 6d \"\\0asm\", got {:02x} {:02x} {:02x} {:02x})",
+            bytes[0],
+            bytes[1],
+            bytes[2],
+            bytes[3]
+        );
+    }
+    if bytes[4..8] != WASM_PREAMBLE[4..8] {
+        anyhow::bail!(
+            "unsupported WebAssembly version: expected 1 (01 00 00 00), got \
+             {:02x} {:02x} {:02x} {:02x}",
+            bytes[4],
+            bytes[5],
+            bytes[6],
+            bytes[7]
+        );
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod header_tests {
+    use super::validate_wasm_header;
+
+    #[test]
+    fn rejects_short_input() {
+        let err = validate_wasm_header(&[]).unwrap_err().to_string();
+        assert!(err.contains("not a valid WebAssembly module"), "{err}");
+        assert!(validate_wasm_header(&[0x00, 0x61, 0x73]).is_err());
+    }
+
+    #[test]
+    fn rejects_bad_magic() {
+        let err = validate_wasm_header(&[0xde, 0xad, 0xbe, 0xef, 0x01, 0x00, 0x00, 0x00])
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("bad magic number"), "{err}");
+    }
+
+    #[test]
+    fn rejects_bad_version() {
+        let err = validate_wasm_header(&[0x00, 0x61, 0x73, 0x6d, 0x02, 0x00, 0x00, 0x00])
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("unsupported WebAssembly version"), "{err}");
+    }
+
+    #[test]
+    fn accepts_valid_preamble() {
+        assert!(validate_wasm_header(&[0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]).is_ok());
     }
 }

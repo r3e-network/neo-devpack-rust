@@ -160,7 +160,8 @@ pub struct MethodToken {
 
 // HASH160_LENGTH is defined above with other constants
 
-/// Maximum valid value for call_flags (4 bits: ReadStates=1, WriteStates=2, AllowCall=4, AllowModifyAccount=8)
+/// Maximum valid value for call_flags (C# `CallFlags.All`, 4 bits:
+/// ReadStates=1, WriteStates=2, AllowCall=4, AllowNotify=8)
 const MAX_CALL_FLAGS: u8 = 0x0F;
 
 fn write_method_tokens(buffer: &mut Vec<u8>, method_tokens: &[MethodToken]) -> Result<()> {

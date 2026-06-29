@@ -87,19 +87,15 @@ pub trait ContractCaller {
     }
 }
 
-/// Default `ContractCaller` impl: routes to the existing
-/// `NeoVMSyscall::contract_call`. The host-mode test harness
-/// uses this; production wasm32 calls go through the L6
-/// cross-call executor.
-///
-/// **Note**: the default `call_raw` body is defined in
-/// `neo-runtime::contract_caller` (which has the dependency on
-/// `neo-syscalls`); this trait here just declares the interface.
-/// Contract code uses `DefaultContractCaller` via
-/// `neo-devpack::prelude::*`.
+// Default `ContractCaller` impl: routes to the existing
+// `NeoVMSyscall::contract_call`. The host-mode test harness uses this;
+// production wasm32 calls go through the L6 cross-call executor. The
+// default `call_raw` body is defined in `neo-runtime::contract_caller`
+// (which has the dependency on `neo-syscalls`); the trait here just
+// declares the interface. Contract code uses `DefaultContractCaller`
+// via `neo-devpack::prelude::*`.
 
-/// Common FromNeoValue impls for the standard Neo N3 types.
-
+// Common FromNeoValue impls for the standard Neo N3 types.
 impl FromNeoValue for NeoValue {
     fn from_value(value: &NeoValue) -> NeoResult<Self> {
         Ok(value.clone())

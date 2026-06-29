@@ -33,13 +33,9 @@ fn host_path_cross_call_returns_result() {
     // is well-typed and the error doesn't mention wasm32.
     let script_hash = NeoByteString::from_slice(&[0u8; 20]);
     let call_flags = NeoInteger::new(0x0F);
-    let result: Result<NeoValue, ContractCallError> = call_typed::<NeoValue>(
-        &script_hash,
-        "method",
-        &[],
-        &call_flags,
-    )
-    .map_err(ContractCallError::from);
+    let result: Result<NeoValue, ContractCallError> =
+        call_typed::<NeoValue>(&script_hash, "method", &[], &call_flags)
+            .map_err(ContractCallError::from);
     if let Err(ContractCallError::Other(e)) = &result {
         assert!(
             !e.message().contains("wasm32"),
@@ -72,7 +68,10 @@ fn neo_error_wasm32_variant_carries_syscall() {
     let display = format!("{err}");
     assert!(display.contains("wasm32"), "got: {display}");
     assert!(display.contains("System.Contract.Call"), "got: {display}");
-    assert_eq!(err.message(), "wasm32 cross-call unavailable: System.Contract.Call");
+    assert_eq!(
+        err.message(),
+        "wasm32 cross-call unavailable: System.Contract.Call"
+    );
     assert_eq!(err.as_str(), "Wasm32CrossCallUnavailable");
 }
 
@@ -97,6 +96,12 @@ fn neo_error_status_code_for_wasm32() {
     };
     // Should have a stable status code different from Custom (10).
     let code = err.status_code();
-    assert_ne!(code, 10, "Wasm32CrossCallUnavailable should have its own status code");
-    assert!(code > 0 && code < 100, "status code should be small int, got {code}");
+    assert_ne!(
+        code, 10,
+        "Wasm32CrossCallUnavailable should have its own status code"
+    );
+    assert!(
+        code > 0 && code < 100,
+        "status code should be small int, got {code}"
+    );
 }

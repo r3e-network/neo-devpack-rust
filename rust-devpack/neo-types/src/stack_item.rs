@@ -10,19 +10,24 @@
 //! can read them.
 //!
 //! This module is the Rust devpack's re-implementation of that format.
-//! Reference values (round-tripped against the C# implementation):
+//! The tag bytes are the canonical `Neo.VM.Types.StackItemType` enum
+//! values; the integer payload is little-endian two's-complement to
+//! match .NET `BigInteger.ToByteArray()`:
 //!
 //! | Tag (1 byte) | Type |
 //! |--------------|------|
-//! | `0x21` | Boolean (followed by 0x00/0x01) |
-//! | `0x01` | Integer (varint length, then big-endian signed bytes) |
+//! | `0x00` | Any/Null (no payload) |
+//! | `0x20` | Boolean (followed by 0x00/0x01) |
+//! | `0x21` | Integer (varint length, then little-endian signed bytes) |
 //! | `0x28` | ByteString (varint length, then bytes) |
-//! | `0x29` | Buffer (same as ByteString; treated as a writable buffer) |
-//! | `0x40` | Array/Struct (varint count, then nested items) |
-//! | `0x00` | Null/Any (no payload) |
+//! | `0x30` | Buffer (same wire form as ByteString; writable buffer) |
+//! | `0x40` | Array (varint count, then nested items) |
+//! | `0x41` | Struct (varint count, then nested items) |
+//! | `0x48` | Map (varint count, then key/value item pairs) |
 //!
 //! Reference: C# `ApplicationEngine.Runtime.cs` `RuntimeNotify` calls
-//! `BinarySerializer.Serialize(writer, state, MaxNotificationSize, ...)`.
+//! `BinarySerializer.Serialize(writer, state, MaxNotificationSize, ...)`,
+//! and `Neo.VM.Types.StackItemType` for the tag values.
 
 use crate::{NeoArray, NeoString, NeoValue};
 
@@ -32,24 +37,49 @@ pub const MAX_NOTIFICATION_SIZE: usize = 1024;
 /// Max items in a serialised Array/Struct (C#: `Limits.MaxStackSize`).
 pub const MAX_STACK_SIZE: usize = 1024;
 
-const TAG_BOOLEAN: u8 = 0x21;
-const TAG_INTEGER: u8 = 0x01;
+// Canonical `Neo.VM.Types.StackItemType` discriminants.
+const TAG_NULL: u8 = 0x00;
+const TAG_BOOLEAN: u8 = 0x20;
+const TAG_INTEGER: u8 = 0x21;
 const TAG_BYTESTRING: u8 = 0x28;
 const TAG_ARRAY: u8 = 0x40;
 const TAG_STRUCT: u8 = 0x41;
-const TAG_NULL: u8 = 0x00;
 
-fn push_varint(out: &mut Vec<u8>, mut value: usize) {
-    while value >= 0x80 {
-        out.push(((value as u8) & 0x7F) | 0x80);
-        value >>= 7;
+/// Append a Neo `VarInt` length/count prefix.
+///
+/// Neo's `BinaryWriter.WriteVarInt` (used by `BinarySerializer` via
+/// `WriteVarBytes`) is **not** LEB128: values `< 0xFD` are a single
+/// byte, otherwise a `0xFD`/`0xFE`/`0xFF` marker is followed by a
+/// little-endian `u16`/`u32`/`u64`. Using LEB128 here would mis-encode
+/// any length `>= 0x80` and desynchronise the entire downstream stream.
+fn push_varint(out: &mut Vec<u8>, value: usize) {
+    let value = value as u64;
+    if value < 0xFD {
+        out.push(value as u8);
+    } else if value <= u16::MAX as u64 {
+        out.push(0xFD);
+        out.extend_from_slice(&(value as u16).to_le_bytes());
+    } else if value <= u32::MAX as u64 {
+        out.push(0xFE);
+        out.extend_from_slice(&(value as u32).to_le_bytes());
+    } else {
+        out.push(0xFF);
+        out.extend_from_slice(&value.to_le_bytes());
     }
-    out.push(value as u8);
 }
 
 fn push_integer(out: &mut Vec<u8>, n: &crate::NeoInteger) {
-    let bytes = n.as_bigint().to_signed_bytes_be();
+    let bigint = n.as_bigint();
     out.push(TAG_INTEGER);
+    // Neo serialises integers as little-endian two's-complement, matching
+    // .NET `BigInteger.ToByteArray()`. Zero is the empty byte string (the
+    // VM's `Integer.GetSpan()` returns `Empty` for zero); `num-bigint`
+    // would otherwise emit a single `0x00`.
+    if bigint.sign() == num_bigint::Sign::NoSign {
+        push_varint(out, 0);
+        return;
+    }
+    let bytes = bigint.to_signed_bytes_le();
     push_varint(out, bytes.len());
     out.extend_from_slice(&bytes);
 }
@@ -143,18 +173,60 @@ mod tests {
 
     #[test]
     fn varint_single_byte() {
+        // Neo VarInt encodes everything below 0xFD (253) as one byte,
+        // including 128..252 (where LEB128 would use two bytes).
         let mut out = Vec::new();
         push_varint(&mut out, 0);
-        assert_eq!(out, vec![0]);
         push_varint(&mut out, 127);
-        assert_eq!(out, vec![0, 127]);
+        push_varint(&mut out, 128);
+        push_varint(&mut out, 252);
+        assert_eq!(out, vec![0, 127, 128, 252]);
     }
 
     #[test]
-    fn varint_multi_byte() {
+    fn varint_0xfd_marker() {
+        // 253 needs the 0xFD marker + little-endian u16.
         let mut out = Vec::new();
-        push_varint(&mut out, 128);
-        assert_eq!(out, vec![0x80, 0x01]);
+        push_varint(&mut out, 253);
+        assert_eq!(out, vec![0xFD, 0xFD, 0x00]);
+
+        let mut out = Vec::new();
+        push_varint(&mut out, 0x1234);
+        assert_eq!(out, vec![0xFD, 0x34, 0x12]);
+    }
+
+    #[test]
+    fn varint_0xfe_marker() {
+        // 0x10000 (just past u16) needs the 0xFE marker + little-endian u32.
+        let mut out = Vec::new();
+        push_varint(&mut out, 0x0001_0000);
+        assert_eq!(out, vec![0xFE, 0x00, 0x00, 0x01, 0x00]);
+    }
+
+    #[test]
+    fn bytestring_length_128_uses_single_byte_prefix() {
+        // Regression: a 128-byte payload must use a one-byte VarInt
+        // length (0x80), not the two-byte LEB128 form [0x80, 0x01].
+        let payload = vec![0xABu8; 128];
+        let bytes = serialise_value(&NeoValue::ByteString(crate::NeoByteString::from_slice(
+            &payload,
+        )));
+        assert_eq!(bytes[0], TAG_BYTESTRING);
+        assert_eq!(bytes[1], 0x80); // single-byte length prefix
+        assert_eq!(&bytes[2..], &payload[..]);
+        assert_eq!(bytes.len(), 130);
+    }
+
+    #[test]
+    fn tag_values_match_neo_stack_item_type() {
+        // Pin the canonical `Neo.VM.Types.StackItemType` discriminants so a
+        // future edit cannot silently reintroduce the 0x01/0x21 swap bug.
+        assert_eq!(TAG_NULL, 0x00);
+        assert_eq!(TAG_BOOLEAN, 0x20);
+        assert_eq!(TAG_INTEGER, 0x21);
+        assert_eq!(TAG_BYTESTRING, 0x28);
+        assert_eq!(TAG_ARRAY, 0x40);
+        assert_eq!(TAG_STRUCT, 0x41);
     }
 
     #[test]
@@ -163,25 +235,53 @@ mod tests {
         let mut out = Vec::new();
         push_integer(&mut out, &n);
         // tag + varint(len=1) + 0x2A
-        assert_eq!(out, vec![TAG_INTEGER, 0x01, 0x2A]);
+        assert_eq!(out, vec![0x21, 0x01, 0x2A]);
+    }
+
+    #[test]
+    fn integer_zero_is_empty() {
+        // Neo's `Integer.GetSpan()` returns Empty for zero.
+        let mut out = Vec::new();
+        push_integer(&mut out, &NeoInteger::new(0i32));
+        assert_eq!(out, vec![0x21, 0x00]);
+    }
+
+    #[test]
+    fn integer_multibyte_is_little_endian() {
+        // 1000 = 0x03E8 → little-endian two's-complement minimal form
+        // is [0xE8, 0x03]. This is the NEP-17 `Transfer` amount shape;
+        // a big-endian bug would emit [0x03, 0xE8] and corrupt the value.
+        let mut out = Vec::new();
+        push_integer(&mut out, &NeoInteger::new(1000i32));
+        assert_eq!(out, vec![0x21, 0x02, 0xE8, 0x03]);
+
+        // 128 needs a zero sign byte so it stays positive: [0x80, 0x00].
+        let mut out = Vec::new();
+        push_integer(&mut out, &NeoInteger::new(128i32));
+        assert_eq!(out, vec![0x21, 0x02, 0x80, 0x00]);
     }
 
     #[test]
     fn integer_negative_minimum_length() {
-        // -1 in two's complement big-endian is 0xFF (1 byte)
+        // -1 in two's complement is 0xFF (1 byte, endianness-agnostic).
         let n = NeoInteger::new(-1i32);
         let mut out = Vec::new();
         push_integer(&mut out, &n);
-        assert_eq!(out, vec![TAG_INTEGER, 0x01, 0xFF]);
+        assert_eq!(out, vec![0x21, 0x01, 0xFF]);
+
+        // -256 = 0xFF00 → little-endian two's-complement is [0x00, 0xFF].
+        let mut out = Vec::new();
+        push_integer(&mut out, &NeoInteger::new(-256i32));
+        assert_eq!(out, vec![0x21, 0x02, 0x00, 0xFF]);
     }
 
     #[test]
     fn boolean() {
         let mut out = Vec::new();
         push_boolean(&mut out, true);
-        assert_eq!(out, vec![TAG_BOOLEAN, 0x01]);
+        assert_eq!(out, vec![0x20, 0x01]);
         push_boolean(&mut out, false);
-        assert_eq!(out, vec![TAG_BOOLEAN, 0x01, TAG_BOOLEAN, 0x00]);
+        assert_eq!(out, vec![0x20, 0x01, 0x20, 0x00]);
     }
 
     #[test]

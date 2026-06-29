@@ -61,17 +61,13 @@ pub(crate) static ACTIVE_CRYPTO_RESULTS: Lazy<RwLock<CryptoVerificationResults>>
 
 // B5-B9: host-mode state for runtime syscalls.
 #[cfg(not(target_arch = "wasm32"))]
-pub(crate) static ACTIVE_TIME: Lazy<RwLock<i64>> =
-    Lazy::new(|| RwLock::new(0));
+pub(crate) static ACTIVE_TIME: Lazy<RwLock<i64>> = Lazy::new(|| RwLock::new(0));
 #[cfg(not(target_arch = "wasm32"))]
-pub(crate) static ACTIVE_RANDOM: Lazy<RwLock<i64>> =
-    Lazy::new(|| RwLock::new(0));
+pub(crate) static ACTIVE_RANDOM: Lazy<RwLock<i64>> = Lazy::new(|| RwLock::new(0));
 #[cfg(not(target_arch = "wasm32"))]
-pub(crate) static ACTIVE_GAS_LEFT: Lazy<RwLock<i64>> =
-    Lazy::new(|| RwLock::new(0));
+pub(crate) static ACTIVE_GAS_LEFT: Lazy<RwLock<i64>> = Lazy::new(|| RwLock::new(0));
 #[cfg(not(target_arch = "wasm32"))]
-pub(crate) static ACTIVE_INVOCATION_COUNTER: Lazy<RwLock<i32>> =
-    Lazy::new(|| RwLock::new(0));
+pub(crate) static ACTIVE_INVOCATION_COUNTER: Lazy<RwLock<i32>> = Lazy::new(|| RwLock::new(0));
 
 #[cfg(not(target_arch = "wasm32"))]
 #[derive(Clone, Copy, Default)]

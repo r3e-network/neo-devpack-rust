@@ -3,192 +3,94 @@
 
 //! NEP standard-library macros (L5).
 //!
-//! These are **declarative** macros that emit the canonical NEP method
-//! surface + Transfer event for the standard, removing the boilerplate
-//! that every NEP-17 / NEP-11 contract needs. They wrap the existing
-//! `#[neo_contract]` / `#[neo_method]` / `#[neo_event]` infrastructure
-//! without changing it.
+//! These declarative macros were intended to emit the canonical NEP method
+//! surface + Transfer event for a standard in one invocation.
 //!
-//! ## Example: NEP-17 token
+//! ## Status: unavailable on the current wasm32 export ABI
 //!
-//! ```ignore
-//! use neo_devpack::prelude::*;
-//! use neo_devpack::nep17;
+//! A compliant NEP-17 / NEP-11 contract needs string method returns
+//! (`symbol`, `name`) and Hash160 (`ByteString`) account/token-id
+//! parameters. The `#[neo_method]` auto-export wrappers currently marshal
+//! **scalar integer/boolean types only** across the wasm32 → NeoVM
+//! boundary, so these macros cannot generate a working, standards-compliant
+//! contract yet.
 //!
-//! nep17! {
-//!     contract Token {
-//!         symbol: &str = "MYT";
-//!         decimals: u8 = 8;
-//!         total_supply: i64 = 1_000_000;
-//!         balances: map<NeoByteString, NeoInteger>;
-//!     }
-//! }
-//! ```
+//! Before v0.13.2 the macros emitted those signatures but the export
+//! collector silently dropped every method (it matched the `#[neo_method]`
+//! attribute by bare ident and missed the macro-emitted qualified
+//! `#[$crate::neo_method]` form), so contracts built with them deployed
+//! with **no callable methods**. As of v0.13.2 the attribute matching is
+//! fixed and the macros fail to compile with actionable guidance instead of
+//! producing a silently-broken contract.
 //!
-//! Expands to a contract that exposes `symbol`, `decimals`,
-//! `totalSupply`, `balanceOf`, `transfer`, plus the `Transfer`
-//! event — the full NEP-17 surface.
+//! ## What to do instead
 //!
-//! ## Example: NEP-11 NFT
-//!
-//! ```ignore
-//! use neo_devpack::prelude::*;
-//! use neo_devpack::nep11;
-//!
-//! nep11! {
-//!     contract Nft {
-//!         symbol: &str = "NFT";
-//!         name: &str = "MyNFT";
-//!     }
-//! }
-//! ```
-//!
-//! Expands to a contract that exposes `symbol`, `decimals`,
-//! `totalSupply`, `balanceOf`, `tokensOf`, `ownerOf`, `transfer`,
-//! plus the `Transfer` event — the full NEP-11 surface.
+//! Write the contract by hand with `#[neo_contract]` + `#[neo_method]`
+//! using integer account ids — the same pattern every working example in
+//! this repo uses. See `contracts/nep17-token` and `contracts/nep11-nft`
+//! for complete, exported, callable token contracts.
 
-/// NEP-17 (fungible token) standard macro. See module docs for usage.
+/// NEP-17 (fungible token) standard macro.
+///
+/// **Currently unavailable on the wasm32 export ABI.** A compliant NEP-17
+/// contract needs a `symbol()` method that returns a string and
+/// `balanceOf`/`transfer` methods that take Hash160 (`ByteString`)
+/// accounts. The `#[neo_method]` auto-export wrappers marshal scalar
+/// integer/boolean types only, so this macro cannot emit a working,
+/// standards-compliant contract yet. Any invocation therefore fails to
+/// compile with guidance rather than silently exporting no methods (the
+/// behaviour before v0.13.2).
+///
+/// Until the typed-parameter export ABI lands, write the contract by hand
+/// with `#[neo_contract]` + `#[neo_method]` using integer account ids —
+/// see `contracts/nep17-token` for a complete working example.
 #[macro_export]
 macro_rules! nep17 {
-    (
-        contract $name:ident {
-            symbol: $sym:expr,
-            decimals: $dec:expr,
-            total_supply: $supply:expr,
-            $($rest:tt)*
-        }
-    ) => {
-        // NEP-17 standard manifest marker.
-        $crate::neo_supported_standards!(["NEP-17"]);
-
-        // Canonical Transfer event (NEP-17 § Events).
-        #[$crate::neo_event]
-        pub struct Transfer {
-            pub from: $crate::NeoByteString,
-            pub to: $crate::NeoByteString,
-            pub amount: $crate::NeoInteger,
-        }
-
-        #[$crate::neo_contract]
-        pub struct $name;
-
-        #[$crate::neo_contract]
-        impl $name {
-            pub fn new() -> Self { Self }
-
-            #[$crate::neo_method(safe)]
-            pub fn symbol() -> &'static str { $sym }
-
-            #[$crate::neo_method(safe)]
-            pub fn decimals() -> u8 { $dec }
-
-            #[$crate::neo_method(safe)]
-            pub fn total_supply() -> i64 { $supply }
-
-            #[$crate::neo_method(safe)]
-            pub fn balance_of(_account: $crate::NeoByteString) -> i64 {
-                0
-            }
-
-            #[$crate::neo_method]
-            pub fn transfer(
-                _from: $crate::NeoByteString,
-                _to: $crate::NeoByteString,
-                _amount: i64,
-            ) -> bool {
-                false
-            }
-        }
-
-        // Forward any extra fields/methods the user supplied.
-        $($rest)*
+    ($($tokens:tt)*) => {
+        ::core::compile_error!(
+            "`nep17!` cannot auto-generate a NEP-17 contract on the current wasm32 export \
+             ABI: `symbol()` must return a string and `balanceOf`/`transfer` take Hash160 \
+             (ByteString) accounts, but exported `#[neo_method]` wrappers marshal scalar \
+             integer/boolean types only. Write the contract by hand with `#[neo_contract]` \
+             + `#[neo_method]` using integer account ids until the typed-parameter export \
+             ABI is available — see `contracts/nep17-token` for a complete working example."
+        );
     };
 }
 
-/// NEP-11 (non-fungible token) standard macro. See module docs.
+/// NEP-11 (non-fungible token) standard macro.
+///
+/// **Currently unavailable on the wasm32 export ABI**, for the same reason
+/// as [`nep17!`]: the NEP-11 surface (`symbol`/`name` string returns,
+/// Hash160/ByteString accounts and token ids) cannot be marshalled through
+/// the scalar-only `#[neo_method]` export wrappers. Any invocation fails to
+/// compile with guidance rather than silently exporting no methods.
+///
+/// Write the contract by hand with `#[neo_contract]` + `#[neo_method]`
+/// until the typed-parameter export ABI lands — see `contracts/nep11-nft`.
 #[macro_export]
 macro_rules! nep11 {
-    (
-        contract $name:ident {
-            symbol: $sym:expr,
-            name: $nm:expr,
-            $($rest:tt)*
-        }
-    ) => {
-        // NEP-11 standard manifest marker.
-        $crate::neo_supported_standards!(["NEP-11"]);
-
-        // Canonical Transfer event (NEP-11 § Events).
-        #[$crate::neo_event]
-        pub struct Transfer {
-            pub from: $crate::NeoByteString,
-            pub to: $crate::NeoByteString,
-            pub token_id: $crate::NeoByteString,
-        }
-
-        #[$crate::neo_contract]
-        pub struct $name;
-
-        #[$crate::neo_contract]
-        impl $name {
-            pub fn new() -> Self { Self }
-
-            #[$crate::neo_method(safe)]
-            pub fn symbol() -> &'static str { $sym }
-
-            // NEP-11's `name` is also a standard method; surface the
-            // user-supplied name so the on-chain manifest method list
-            // advertises it.
-            #[$crate::neo_method(safe)]
-            #[allow(dead_code)]
-            fn name() -> &'static str { $nm }
-
-            #[$crate::neo_method(safe)]
-            pub fn decimals() -> u8 { 0 }
-
-            #[$crate::neo_method(safe)]
-            pub fn total_supply() -> i64 { 0 }
-
-            #[$crate::neo_method(safe)]
-            pub fn balance_of(_account: $crate::NeoByteString) -> i64 {
-                0
-            }
-
-            #[$crate::neo_method(safe)]
-            pub fn tokens_of(_account: $crate::NeoByteString) -> $crate::NeoArray<$crate::NeoByteString> {
-                $crate::NeoArray::new()
-            }
-
-            #[$crate::neo_method(safe)]
-            pub fn owner_of(_token_id: $crate::NeoByteString) -> $crate::NeoByteString {
-                $crate::NeoByteString::new(::std::vec::Vec::new())
-            }
-
-            #[$crate::neo_method]
-            pub fn transfer(
-                _from: $crate::NeoByteString,
-                _to: $crate::NeoByteString,
-                _token_id: $crate::NeoByteString,
-            ) -> bool {
-                false
-            }
-        }
-
-        // Forward any extra user-supplied tokens.
-        $($rest)*
+    ($($tokens:tt)*) => {
+        ::core::compile_error!(
+            "`nep11!` cannot auto-generate a NEP-11 contract on the current wasm32 export \
+             ABI: the NEP-11 method surface needs string (`symbol`/`name`) returns and \
+             Hash160 (ByteString) accounts/token ids, but exported `#[neo_method]` wrappers \
+             marshal scalar integer/boolean types only. Write the contract by hand with \
+             `#[neo_contract]` + `#[neo_method]` until the typed-parameter export ABI is \
+             available — see `contracts/nep11-nft` for a complete working example."
+        );
     };
 }
 
 #[cfg(test)]
 mod tests {
-    // Macro tests are typically compile-only; we run the macros in
-    // the contract examples (contracts/nep17-token / nep11-nft) and
-    // assert the expanded module compiles. Here we just confirm the
-    // macro_rules! definitions exist by ensuring the module loads.
+    // The `nep17!`/`nep11!` macros currently expand to `compile_error!`
+    // (see the module docs), so they cannot be invoked in a passing test.
+    // The working token pattern they point to is exercised by the
+    // hand-written `contracts/nep17-token` and `contracts/nep11-nft`
+    // examples (built to wasm32 in CI). Here we only confirm the
+    // `macro_rules!` definitions are syntactically valid by loading the
+    // module.
     #[test]
-    fn nep_macros_module_loads() {
-        // Sanity: the module compiles, so the macros are syntactically
-        // valid. The full contract examples (contracts/nep17-token,
-        // contracts/nep11-nft) are the integration tests.
-    }
+    fn nep_macros_module_loads() {}
 }

@@ -284,8 +284,7 @@ fn l7_v3_golden_json_conformance() {
             .and_then(|s| s.to_str())
             .expect("file stem")
             .to_string();
-        let golden_text =
-            std::fs::read_to_string(golden_path).expect("read golden file");
+        let golden_text = std::fs::read_to_string(golden_path).expect("read golden file");
         let golden: serde_json::Value =
             serde_json::from_str(&golden_text).expect("parse golden file");
 
@@ -300,10 +299,7 @@ fn l7_v3_golden_json_conformance() {
             })
             .collect();
         // Borrow the args strings so they live for the call.
-        let arg_refs: Vec<(&str, &str)> = args
-            .iter()
-            .map(|(t, v)| (*t, *v))
-            .collect();
+        let arg_refs: Vec<(&str, &str)> = args.iter().map(|(t, v)| (*t, *v)).collect();
 
         let (nef, manifest) = build_and_emit(&contract);
         let actual = run_oracle(&nef, &manifest, method, &arg_refs);
@@ -321,9 +317,7 @@ fn l7_v3_golden_json_conformance() {
             new_golden["expected"] = actual_subset.clone();
             std::fs::write(
                 golden_path,
-                serde_json::to_string_pretty(&new_golden)
-                    .expect("serialise new golden")
-                    + "\n",
+                serde_json::to_string_pretty(&new_golden).expect("serialise new golden") + "\n",
             )
             .expect("write updated golden");
             eprintln!("updated {}", golden_path.display());
@@ -331,10 +325,10 @@ fn l7_v3_golden_json_conformance() {
         }
 
         if actual_subset != *expected {
-            let actual_pretty = serde_json::to_string_pretty(&actual_subset)
-                .expect("serialise actual");
-            let expected_pretty = serde_json::to_string_pretty(expected)
-                .expect("serialise expected");
+            let actual_pretty =
+                serde_json::to_string_pretty(&actual_subset).expect("serialise actual");
+            let expected_pretty =
+                serde_json::to_string_pretty(expected).expect("serialise expected");
             panic!(
                 "{contract}: oracle output diverged from golden.\n\
                  expected:\n{expected_pretty}\n\

@@ -81,6 +81,8 @@ enum ExportOutputKind {
     NeoInteger,
     NeoBoolean,
     I64,
+    /// A narrow integer return (i8/i16/i32/u8/u16/u32) widened to i64.
+    ScalarInt,
     Bool,
     Void,
 }
@@ -207,6 +209,14 @@ impl ExportedMethod {
                 },
                 false,
             ),
+            ExportOutputKind::ScalarInt => (
+                quote! { i64 },
+                quote! {
+                    let __neo_ret = { #invoke };
+                    __neo_ret as i64
+                },
+                false,
+            ),
             ExportOutputKind::Bool => (
                 quote! { i64 },
                 quote! {
@@ -300,9 +310,21 @@ fn collect_export_methods(item_impl: &ItemImpl) -> syn::Result<Vec<ExportedMetho
     Ok(methods)
 }
 
+/// True if `path` names the `neo_method` attribute, whether written bare
+/// (`#[neo_method]`) or fully qualified (`#[neo_devpack::neo_method]` /
+/// `#[crate::neo_method]`). `syn::Path::is_ident` only matches the bare
+/// single-segment form, so declarative macros that emit the attribute via
+/// `#[$crate::neo_method(...)]` (e.g. `nep17!`/`nep11!`) would otherwise be
+/// missed and their methods silently dropped from the export surface.
+fn is_neo_method_attr(path: &syn::Path) -> bool {
+    path.segments
+        .last()
+        .is_some_and(|segment| segment.ident == "neo_method")
+}
+
 fn parse_neo_method_config(attrs: &[syn::Attribute]) -> syn::Result<Option<NeoMethodConfig>> {
     for attr in attrs {
-        if !attr.path().is_ident("neo_method") {
+        if !is_neo_method_attr(attr.path()) {
             continue;
         }
 
@@ -381,10 +403,20 @@ fn argument_conversion(ty: &Type, ident: &syn::Ident) -> syn::Result<TokenStream
         "NeoBoolean" => Ok(quote! { ::neo_devpack::NeoBoolean::new(#ident != 0) }),
         "i64" => Ok(quote! { #ident }),
         "bool" => Ok(quote! { #ident != 0 }),
+        // Narrower integer widths are carried over the i64 export ABI and
+        // truncated back to the declared type for the call.
+        width @ ("i8" | "i16" | "i32" | "u8" | "u16" | "u32") => {
+            let width_ident = format_ident!("{width}");
+            Ok(quote! { #ident as #width_ident })
+        }
         unsupported => Err(syn::Error::new_spanned(
             ty,
             format!(
-                "Unsupported #[neo_method] argument type `{unsupported}` for auto-export wrappers"
+                "Unsupported #[neo_method] argument type `{unsupported}`. The auto-export ABI \
+                 marshals scalar integer/boolean types only (i8/i16/i32/i64, u8/u16/u32, bool, \
+                 NeoInteger, NeoBoolean). String, ByteString, and array parameters are not yet \
+                 supported; pass account ids as integers and marshal richer types manually \
+                 (see contracts/nep17-token)."
             ),
         )),
     }
@@ -442,7 +474,9 @@ fn parse_output_kind(output: &ReturnType) -> syn::Result<ExportOutputKind> {
             _ => {
                 return Err(syn::Error::new_spanned(
                     inner_type,
-                    "Unsupported nested NeoResult return type",
+                    "Unsupported nested NeoResult return type; the error-tracking export form \
+                     supports NeoResult<NeoInteger>, NeoResult<NeoBoolean>, and NeoResult<()> \
+                     only",
                 ));
             }
         });
@@ -470,10 +504,14 @@ fn parse_inner_output_kind(ty: &Type) -> syn::Result<ExportOutputKind> {
         "NeoBoolean" => Ok(ExportOutputKind::NeoBoolean),
         "i64" => Ok(ExportOutputKind::I64),
         "bool" => Ok(ExportOutputKind::Bool),
+        "i8" | "i16" | "i32" | "u8" | "u16" | "u32" => Ok(ExportOutputKind::ScalarInt),
         unsupported => Err(syn::Error::new_spanned(
             ty,
             format!(
-                "Unsupported #[neo_method] return type `{unsupported}` for auto-export wrappers"
+                "Unsupported #[neo_method] return type `{unsupported}`. The auto-export ABI \
+                 marshals scalar integer/boolean types only (i8/i16/i32/i64, u8/u16/u32, bool, \
+                 NeoInteger, NeoBoolean) plus `()`. String, ByteString, and array returns are \
+                 not yet supported; marshal richer types manually (see contracts/nep17-token)."
             ),
         )),
     }
@@ -506,4 +544,40 @@ fn snake_to_camel(name: &str) -> String {
     }
 
     output
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{is_neo_method_attr, snake_to_camel};
+
+    fn path(s: &str) -> syn::Path {
+        syn::parse_str(s).expect("valid path")
+    }
+
+    #[test]
+    fn matches_bare_and_qualified_neo_method() {
+        // Bare form, as written by hand via `use neo_devpack::prelude::*`.
+        assert!(is_neo_method_attr(&path("neo_method")));
+        // Qualified forms, as emitted by declarative macros expanding
+        // `#[$crate::neo_method(...)]`. These previously slipped past
+        // `Path::is_ident` and silently dropped every method.
+        assert!(is_neo_method_attr(&path("neo_devpack::neo_method")));
+        assert!(is_neo_method_attr(&path("crate::neo_method")));
+        assert!(is_neo_method_attr(&path("::neo_devpack::neo_method")));
+    }
+
+    #[test]
+    fn rejects_unrelated_attributes() {
+        assert!(!is_neo_method_attr(&path("neo_event")));
+        assert!(!is_neo_method_attr(&path("neo_devpack::neo_event")));
+        assert!(!is_neo_method_attr(&path("inline")));
+    }
+
+    #[test]
+    fn snake_to_camel_examples() {
+        assert_eq!(snake_to_camel("total_supply"), "totalSupply");
+        assert_eq!(snake_to_camel("balance_of"), "balanceOf");
+        assert_eq!(snake_to_camel("transfer"), "transfer");
+        assert_eq!(snake_to_camel("on_nep17_payment"), "onNep17Payment");
+    }
 }

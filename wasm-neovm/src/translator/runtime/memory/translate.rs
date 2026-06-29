@@ -60,8 +60,16 @@ fn apply_memory_offset(script: &mut Vec<u8>, base: StackValue, offset: u64) -> R
         pending_sign_extend: None,
     };
 
+    // Normalise the base to its unsigned 32-bit value FIRST. WASM memory
+    // addresses are unsigned i32, but the operand can arrive sign-extended
+    // (a "negative" BigInteger standing for a high address). Masking before
+    // adding the offset is essential: masking the *sum* instead would let a
+    // high base cancel against the offset (e.g. base 0xFFFFFFFC + offset 8
+    // would fold to 4) and silently access the wrong location.
+    let base = emit_zero_extend(script, base, 32)?;
+
     if offset == 0 {
-        return emit_zero_extend(script, base, 32);
+        return Ok(base);
     }
 
     // Validate offset doesn't exceed i64::MAX to prevent overflow when casting to i128
@@ -75,21 +83,27 @@ fn apply_memory_offset(script: &mut Vec<u8>, base: StackValue, offset: u64) -> R
 
     let offset_value = emit_push_int(script, offset as i128);
 
-    // Check for potential overflow in constant folding
+    // Effective address = unsigned base + static offset, computed exactly
+    // (NeoVM integers are arbitrary precision). It is intentionally NOT
+    // re-masked to 32 bits: the downstream bounds check rejects any address
+    // that reaches or exceeds the memory size, which is the WASM
+    // out-of-bounds trap. Re-masking would wrap a >= 2^32 address back into
+    // range and turn a trap into a silent wrong-address access.
     let added = emit_binary_op(script, "ADD", base, offset_value, |a, b| {
-        // Check if the addition would overflow i64 bounds
+        // Both operands are now non-negative (base in [0, 2^32), offset in
+        // [0, i64::MAX]); defer to the runtime ADD if the constant sum would
+        // not fit in i64 (it is still bounds-checked downstream).
         let result = a.checked_add(b)?;
-        if result > i64::MAX as i128 || result < i64::MIN as i128 {
-            return None; // Let runtime handle overflow
+        if result > i64::MAX as i128 {
+            return None;
         }
         Some(result)
     })?;
-    let added = StackValue {
+    Ok(StackValue {
         const_value: added.const_value,
         bytecode_start: None,
         pending_sign_extend: None,
-    };
-    emit_zero_extend(script, added, 32)
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
