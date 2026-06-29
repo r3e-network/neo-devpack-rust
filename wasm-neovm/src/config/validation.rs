@@ -67,7 +67,7 @@ pub fn validate_config(config: &TranslationConfig) -> ValidationResult<()> {
 }
 
 /// Validate behavior configuration
-pub fn validate_behavior(config: &BehaviorConfig) -> ValidationResult<()> {
+pub(crate) fn validate_behavior(config: &BehaviorConfig) -> ValidationResult<()> {
     const MAX_MEMORY_PAGES: u32 = 65536; // 4GB in 64KB pages
 
     if config.max_memory_pages == 0 || config.max_memory_pages > MAX_MEMORY_PAGES {
@@ -106,7 +106,7 @@ pub fn validate_behavior(config: &BehaviorConfig) -> ValidationResult<()> {
 }
 
 /// Validate output configuration
-pub fn validate_output(config: &super::options::OutputConfig) -> ValidationResult<()> {
+pub(crate) fn validate_output(config: &super::options::OutputConfig) -> ValidationResult<()> {
     // Check that output paths are valid if specified
     if let Some(ref nef_path) = config.nef_path {
         if nef_path.as_os_str().is_empty() {

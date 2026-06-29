@@ -20,14 +20,11 @@ use super::{ChainAdapter, SourceChain};
 
 mod env;
 mod spl_token;
-mod storage;
 mod syscalls;
 
 use env::map_env_import;
 use spl_token::map_spl_token_syscall;
 use syscalls::map_solana_syscall;
-
-pub use storage::{account_layout, solana_pubkey_to_storage_key};
 
 /// Solana-to-Neo syscall adapter
 pub struct SolanaAdapter;

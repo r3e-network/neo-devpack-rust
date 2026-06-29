@@ -7,7 +7,7 @@
 //! during translation so `RuntimeHelpers::finalize` can emit the helper bodies
 //! once and patch all call sites.
 
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default)]
 pub(crate) struct MemoryConfig {
     pub(super) initial_pages: u32,
     pub(super) maximum_pages: Option<u32>,
@@ -86,7 +86,7 @@ pub(crate) enum CallTarget {
     Defined(usize),
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(crate) struct HelperRecord {
     pub(super) offset: Option<usize>,
     pub(super) calls: Vec<usize>,

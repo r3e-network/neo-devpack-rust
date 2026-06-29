@@ -11,9 +11,41 @@ follow the same repository version.
 ## [Unreleased] — architecture unification pass
 
 A systematic review of structs, traits, modules, and error handling across
-the workspace for a unified architecture with no duplication. 915 workspace
+the workspace for a unified architecture with no duplication. 905 workspace
 tests pass; 0 clippy warnings; `cargo fmt` clean; 4 L7 conformance tests pass
 against `neo-go` v0.105.1.
+
+### Fixed — native-contract descriptor correctness (deep-review wave 2)
+
+Verified every native-contract descriptor against the neo-go v0.105.1 source
+(`pkg/core/native/*.go`) and `getnativecontracts` fixture, and corrected
+fabricated / mis-named / mis-typed entries (a phantom method name resolves at
+translate time but FAULTs on-chain):
+
+- **Ledger**: removed the non-existent `getBlockByHash`/`getBlockByIndex`;
+  `getBlock` and `getTransactionFromBlock` take an index-or-hash `ByteArray`.
+- **Policy**: removed the non-existent `getMaxNotValidBeforeBlockDelta`.
+- **RoleManagement**: `assignRole` → the real `designateAsRole`.
+- **Oracle**: `request` now includes its `userData: Any` parameter.
+- **ContractManagement**: removed `isContract` (not in v0.105.1).
+- **Notary**: removed the fabricated `deposit`; `withdraw(Hash160, Hash160)`;
+  added `lockDepositUntil`/`verify`/`setMaxNotValidBeforeDelta`.
+- **Treasury / TokenManagement / Governance**: marked **experimental /
+  unverified** (these natives are absent from the v0.105.1 reference, so their
+  ABIs are speculative). A new test guards against phantom method names.
+
+### Changed — further dead-code & dedup (deep-review wave 2)
+
+- Removed **10 dead public newtypes** from `wasm-neovm` `types/` (only
+  `ContractName` was used); deleted the now-empty `types/primitives.rs` and the
+  dead `adapters/solana/storage.rs`.
+- Removed **unused dependencies**: `bytes`/`num-integer` (wasm-neovm),
+  `bytes`/`serde`/`serde_json`/`thiserror`/`leb128` (move-neovm), `neo-devpack`
+  (neo-test).
+- Replaced a hand-rolled `hex_decode` with the `hex` crate; demoted
+  internal-only config validators to `pub(crate)`; added `Debug` to two
+  `runtime` types for consistency. (The full 37-entry syscall-hash table was
+  independently re-verified against `SHA256(name)[..4]`.)
 
 ### Fixed — correctness
 

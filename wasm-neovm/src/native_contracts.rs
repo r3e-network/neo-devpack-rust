@@ -198,7 +198,6 @@ pub const CONTRACT_MANAGEMENT_DESCRIPTOR: NativeContractDescriptor = NativeContr
         ("getMinimumDeploymentFee", &[]),
         ("setMinimumDeploymentFee", &["Integer"]),
         ("hasMethod", &["Hash160", "String", "Integer"]),
-        ("isContract", &["Hash160"]),
     ],
 };
 
@@ -227,11 +226,12 @@ pub const LEDGER_DESCRIPTOR: NativeContractDescriptor = NativeContractDescriptor
     hash: LEDGER_HASH,
     name: "Neo.Ledger",
     methods: &[
-        ("getBlock", &["Integer"]),
-        ("getBlockByHash", &["Hash256"]),
-        ("getBlockByIndex", &["Integer"]),
+        // `getBlock` and `getTransactionFromBlock` take an index-or-hash
+        // `ByteArray`, not a typed `Integer`/`Hash256` (neo-go v0.105.1
+        // `LedgerContract`). There is no `getBlockByHash`/`getBlockByIndex`.
+        ("getBlock", &["ByteArray"]),
         ("getTransaction", &["Hash256"]),
-        ("getTransactionFromBlock", &["Hash256", "Integer"]),
+        ("getTransactionFromBlock", &["ByteArray", "Integer"]),
         ("getTransactionHeight", &["Hash256"]),
         ("currentHash", &[]),
         ("currentIndex", &[]),
@@ -248,7 +248,6 @@ pub const POLICY_DESCRIPTOR: NativeContractDescriptor = NativeContractDescriptor
         ("getExecFeeFactor", &[]),
         ("getStoragePrice", &[]),
         ("isBlocked", &["Hash160"]),
-        ("getMaxNotValidBeforeBlockDelta", &[]),
         ("setFeePerByte", &["Integer"]),
         ("setExecFeeFactor", &["Integer"]),
         ("setStoragePrice", &["Integer"]),
@@ -264,7 +263,8 @@ pub const ROLE_MANAGEMENT_DESCRIPTOR: NativeContractDescriptor = NativeContractD
     name: "Neo.RoleManagement",
     methods: &[
         ("getDesignatedByRole", &["Integer", "Integer"]),
-        ("assignRole", &["Integer", "Array"]),
+        // The setter is `designateAsRole`, not `assignRole` (neo-go v0.105.1).
+        ("designateAsRole", &["Integer", "Array"]),
     ],
 };
 
@@ -274,7 +274,9 @@ pub const ORACLE_DESCRIPTOR: NativeContractDescriptor = NativeContractDescriptor
     hash: ORACLE_HASH,
     name: "Neo.Oracle",
     methods: &[
-        ("request", &["String", "String", "String", "Integer"]),
+        // request(url, filter, callback, userData, gasForResponse) — the
+        // `userData: Any` argument is required (neo-go v0.105.1 OracleContract).
+        ("request", &["String", "String", "String", "Any", "Integer"]),
         ("finish", &[]),
     ],
 };
@@ -285,16 +287,26 @@ pub const NOTARY_DESCRIPTOR: NativeContractDescriptor = NativeContractDescriptor
     hash: NOTARY_HASH,
     name: "Neo.Notary",
     methods: &[
-        ("deposit", &["Hash160", "Integer"]),
-        ("withdraw", &["Hash160", "ByteArray"]),
+        // GAS deposits arrive via a NEP-17 transfer (onNEP17Payment callback),
+        // not a callable `deposit` method. `withdraw(from, to)` takes two
+        // Hash160s. Per neo-go v0.105.1 Notary.
+        ("withdraw", &["Hash160", "Hash160"]),
+        ("lockDepositUntil", &["Hash160", "Integer"]),
         ("balanceOf", &["Hash160"]),
         ("expirationOf", &["Hash160"]),
+        ("verify", &["Signature"]),
         ("getMaxNotValidBeforeDelta", &[]),
+        ("setMaxNotValidBeforeDelta", &["Integer"]),
     ],
 };
 
-/// Descriptor for Treasury. Source:
-/// `neo-project/neo/src/Neo/SmartContract/Native/Treasury.cs`.
+/// Descriptor for Treasury — **EXPERIMENTAL / UNVERIFIED**.
+///
+/// The Treasury native does not exist in the neo-go v0.105.1 reference
+/// (no `pkg/core/native/treasury.go`), so its method ABI below is **not**
+/// verified against a released chain and should be treated as speculative.
+/// Do not rely on it for production contracts until regenerated from the
+/// target hardfork's `getnativecontracts` manifest.
 pub const TREASURY_DESCRIPTOR: NativeContractDescriptor = NativeContractDescriptor {
     hash: TREASURY_HASH,
     name: "Neo.Treasury",
@@ -318,15 +330,15 @@ pub const CRYPTOLIB_DESCRIPTOR: NativeContractDescriptor = NativeContractDescrip
     ],
 };
 
-/// Descriptor for TokenManagement (post-HF_Echidna). Source:
-/// `neo-project/neo/src/Neo/SmartContract/Native/TokenManagement.cs`
-/// (and `.Fungible.cs`, `.NonFungible.cs`).
+/// Descriptor for TokenManagement (post-HF_Echidna) — **EXPERIMENTAL /
+/// UNVERIFIED**.
 ///
-/// The canonical hash is `[0u8; 20]` (placeholder) — see
-/// `TOKEN_MANAGEMENT_HASH_PLACEHOLDER` above. The descriptor is
-/// registered so that calls like `Neo.TokenManagement.transfer`
-/// resolve at translate time; deploy-time chain lookup is
-/// required to fill in the real hash.
+/// This native does not exist in the neo-go v0.105.1 reference, so both its
+/// placeholder hash (`TOKEN_MANAGEMENT_HASH_PLACEHOLDER`, all-zero) and the
+/// method ABI below are speculative and unverified against a released chain.
+/// The descriptor is registered so `Neo.TokenManagement.*` calls resolve at
+/// translate time, but a deploy-time chain lookup is required for the real
+/// hash and the ABI must be regenerated from the target hardfork's manifest.
 pub const TOKEN_MANAGEMENT_DESCRIPTOR: NativeContractDescriptor = NativeContractDescriptor {
     hash: TOKEN_MANAGEMENT_HASH_PLACEHOLDER,
     name: "Neo.TokenManagement",
@@ -342,11 +354,13 @@ pub const TOKEN_MANAGEMENT_DESCRIPTOR: NativeContractDescriptor = NativeContract
     ],
 };
 
-/// Descriptor for Governance (post-HF_Echidna). Source:
-/// `neo-project/neo/src/Neo/SmartContract/Native/Governance.cs`.
+/// Descriptor for Governance (post-HF_Echidna) — **EXPERIMENTAL /
+/// UNVERIFIED**.
 ///
-/// The canonical hash is `[0u8; 20]` (placeholder) — see
-/// `GOVERNANCE_HASH_PLACEHOLDER` above.
+/// This native does not exist in the neo-go v0.105.1 reference; both its
+/// placeholder hash (`GOVERNANCE_HASH_PLACEHOLDER`, all-zero) and the method
+/// ABI below are speculative. Regenerate from the target hardfork's
+/// `getnativecontracts` manifest before relying on it.
 pub const GOVERNANCE_DESCRIPTOR: NativeContractDescriptor = NativeContractDescriptor {
     hash: GOVERNANCE_HASH_PLACEHOLDER,
     name: "Neo.Governance",
@@ -504,8 +518,9 @@ pub async fn lookup_chain_native_hashes(
         // first level to get the name.
         let m: ManifestStub = serde_json::from_value(c.manifest)
             .map_err(|e| ChainLookupError::Parse(e.to_string()))?;
+        let hash_hex = c.hash.strip_prefix("0x").unwrap_or(&c.hash);
         let hash_bytes =
-            hex_decode(&c.hash).map_err(|e| ChainLookupError::Parse(format!("hash: {e}")))?;
+            hex::decode(hash_hex).map_err(|e| ChainLookupError::Parse(format!("hash: {e}")))?;
         if hash_bytes.len() != 20 {
             return Err(ChainLookupError::Parse("hash wrong length".into()));
         }
@@ -610,17 +625,6 @@ mod reqwest_compat {
             )
         }
     }
-}
-
-fn hex_decode(s: &str) -> Result<Vec<u8>, String> {
-    let s = s.strip_prefix("0x").unwrap_or(s);
-    if s.len() % 2 != 0 {
-        return Err("odd length".to_string());
-    }
-    (0..s.len())
-        .step_by(2)
-        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).map_err(|e| format!("at {i}: {e}")))
-        .collect()
 }
 
 fn lookup_name_in_static(name: &str) -> Option<&'static str> {
@@ -779,6 +783,40 @@ mod tests {
         assert_eq!(d.name, "Neo.Oracle");
         assert!(d.methods.iter().any(|(n, _)| *n == "request"));
         assert!(d.methods.iter().any(|(n, _)| *n == "finish"));
+    }
+
+    /// Regression guard against fabricated / mis-named native methods that do
+    /// not exist on the neo-go v0.105.1 reference natives. A descriptor entry
+    /// resolves at translate time, so a phantom method name compiles but
+    /// FAULTs on-chain ("method not found").
+    #[test]
+    fn descriptors_have_no_phantom_methods() {
+        fn has(c: &str, m: &str) -> bool {
+            native_contract_by_name(c)
+                .unwrap()
+                .methods
+                .iter()
+                .any(|(n, _)| *n == m)
+        }
+        // Fabricated names that must NOT be present.
+        assert!(!has("Neo.Ledger", "getBlockByHash"));
+        assert!(!has("Neo.Ledger", "getBlockByIndex"));
+        assert!(!has("Neo.Policy", "getMaxNotValidBeforeBlockDelta"));
+        assert!(!has("Neo.RoleManagement", "assignRole"));
+        assert!(!has("Neo.ContractManagement", "isContract"));
+        assert!(!has("Neo.Notary", "deposit"));
+        // Correct canonical names that must be present.
+        assert!(has("Neo.RoleManagement", "designateAsRole"));
+        assert!(has("Neo.Notary", "withdraw"));
+        assert!(has("Neo.Notary", "lockDepositUntil"));
+        // `getBlock`/`getTransactionFromBlock` take an index-or-hash ByteArray.
+        let ledger = native_contract_by_name("Neo.Ledger").unwrap();
+        let get_block = ledger
+            .methods
+            .iter()
+            .find(|(n, _)| *n == "getBlock")
+            .unwrap();
+        assert_eq!(get_block.1, &["ByteArray"]);
     }
 
     #[test]
