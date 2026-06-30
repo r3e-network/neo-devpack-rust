@@ -1,0 +1,396 @@
+// Copyright (c) 2025-2026 R3E Network
+// SPDX-License-Identifier: MIT
+
+//! Differential-fuzz target: a wide, single-op-per-method surface used to hunt
+//! translator bugs by comparing the real NeoVM (via the conformance oracle)
+//! against native Rust execution of the *same* `ops::*` functions.
+//!
+//! The op logic lives in [`ops`] as plain `pub fn`s. The `#[neo_method]`
+//! wrappers (→ wasm → NeoVM) and the `refgen` binary (→ native ground truth)
+//! both call the identical functions, so any oracle/native mismatch is a
+//! translator lowering bug, not a reference-derivation artifact.
+//!
+//! Every op is trap-free and well-defined: divisions guard the zero divisor
+//! (returning [`ops::GUARD`]), shifts/rotates mask the count, and arithmetic
+//! wraps — matching WASM semantics on release builds.
+
+use neo_devpack::prelude::*;
+
+neo_manifest_overlay!(r#"{ "name": "FuzzOps" }"#);
+
+/// Trap-free op implementations shared by the exports and the native refgen.
+pub mod ops {
+    use neo_devpack::prelude::*;
+
+    /// Sentinel returned by div/rem when the divisor is zero (keeps the op
+    /// total and identical on both execution paths).
+    pub const GUARD: i64 = i64::MIN;
+
+    // ---- i64 arithmetic ----
+    pub fn add(a: i64, b: i64) -> i64 {
+        a.wrapping_add(b)
+    }
+    pub fn sub(a: i64, b: i64) -> i64 {
+        a.wrapping_sub(b)
+    }
+    pub fn mul(a: i64, b: i64) -> i64 {
+        a.wrapping_mul(b)
+    }
+    pub fn div_s(a: i64, b: i64) -> i64 {
+        if b == 0 {
+            GUARD
+        } else {
+            a.wrapping_div(b)
+        }
+    }
+    pub fn rem_s(a: i64, b: i64) -> i64 {
+        if b == 0 {
+            GUARD
+        } else {
+            a.wrapping_rem(b)
+        }
+    }
+    pub fn div_u(a: i64, b: i64) -> i64 {
+        if b == 0 {
+            GUARD
+        } else {
+            ((a as u64) / (b as u64)) as i64
+        }
+    }
+    pub fn rem_u(a: i64, b: i64) -> i64 {
+        if b == 0 {
+            GUARD
+        } else {
+            ((a as u64) % (b as u64)) as i64
+        }
+    }
+    pub fn neg(a: i64, _b: i64) -> i64 {
+        a.wrapping_neg()
+    }
+    pub fn abs(a: i64, _b: i64) -> i64 {
+        a.wrapping_abs()
+    }
+
+    // ---- i64 bitwise / shift / rotate ----
+    pub fn and(a: i64, b: i64) -> i64 {
+        a & b
+    }
+    pub fn or(a: i64, b: i64) -> i64 {
+        a | b
+    }
+    pub fn xor(a: i64, b: i64) -> i64 {
+        a ^ b
+    }
+    pub fn not(a: i64, _b: i64) -> i64 {
+        !a
+    }
+    pub fn shl(a: i64, b: i64) -> i64 {
+        a.wrapping_shl(b as u32)
+    }
+    pub fn shr_s(a: i64, b: i64) -> i64 {
+        a.wrapping_shr(b as u32)
+    }
+    pub fn shr_u(a: i64, b: i64) -> i64 {
+        (a as u64).wrapping_shr(b as u32) as i64
+    }
+    pub fn rotl(a: i64, b: i64) -> i64 {
+        a.rotate_left((b & 63) as u32)
+    }
+    pub fn rotr(a: i64, b: i64) -> i64 {
+        a.rotate_right((b & 63) as u32)
+    }
+
+    // ---- i64 bit-count / test ----
+    pub fn clz(a: i64, _b: i64) -> i64 {
+        a.leading_zeros() as i64
+    }
+    pub fn ctz(a: i64, _b: i64) -> i64 {
+        a.trailing_zeros() as i64
+    }
+    pub fn popcnt(a: i64, _b: i64) -> i64 {
+        a.count_ones() as i64
+    }
+    pub fn eqz(a: i64, _b: i64) -> i64 {
+        (a == 0) as i64
+    }
+
+    // ---- i64 comparisons (return 0/1) ----
+    pub fn eq(a: i64, b: i64) -> i64 {
+        (a == b) as i64
+    }
+    pub fn ne(a: i64, b: i64) -> i64 {
+        (a != b) as i64
+    }
+    pub fn lt_s(a: i64, b: i64) -> i64 {
+        (a < b) as i64
+    }
+    pub fn le_s(a: i64, b: i64) -> i64 {
+        (a <= b) as i64
+    }
+    pub fn gt_s(a: i64, b: i64) -> i64 {
+        (a > b) as i64
+    }
+    pub fn ge_s(a: i64, b: i64) -> i64 {
+        (a >= b) as i64
+    }
+    pub fn lt_u(a: i64, b: i64) -> i64 {
+        ((a as u64) < (b as u64)) as i64
+    }
+    pub fn le_u(a: i64, b: i64) -> i64 {
+        ((a as u64) <= (b as u64)) as i64
+    }
+    pub fn gt_u(a: i64, b: i64) -> i64 {
+        ((a as u64) > (b as u64)) as i64
+    }
+    pub fn ge_u(a: i64, b: i64) -> i64 {
+        ((a as u64) >= (b as u64)) as i64
+    }
+    pub fn min_s(a: i64, b: i64) -> i64 {
+        a.min(b)
+    }
+    pub fn max_s(a: i64, b: i64) -> i64 {
+        a.max(b)
+    }
+
+    // ---- i32 ops (operate on the low 32 bits, return sign-extended i64) ----
+    pub fn i32_add(a: i64, b: i64) -> i64 {
+        (a as i32).wrapping_add(b as i32) as i64
+    }
+    pub fn i32_sub(a: i64, b: i64) -> i64 {
+        (a as i32).wrapping_sub(b as i32) as i64
+    }
+    pub fn i32_mul(a: i64, b: i64) -> i64 {
+        (a as i32).wrapping_mul(b as i32) as i64
+    }
+    pub fn i32_div_s(a: i64, b: i64) -> i64 {
+        let b = b as i32;
+        if b == 0 {
+            GUARD
+        } else {
+            (a as i32).wrapping_div(b) as i64
+        }
+    }
+    pub fn i32_rem_s(a: i64, b: i64) -> i64 {
+        let b = b as i32;
+        if b == 0 {
+            GUARD
+        } else {
+            (a as i32).wrapping_rem(b) as i64
+        }
+    }
+    pub fn i32_div_u(a: i64, b: i64) -> i64 {
+        let b = b as u32;
+        if b == 0 {
+            GUARD
+        } else {
+            ((a as u32) / b) as i32 as i64
+        }
+    }
+    pub fn i32_rem_u(a: i64, b: i64) -> i64 {
+        let b = b as u32;
+        if b == 0 {
+            GUARD
+        } else {
+            ((a as u32) % b) as i32 as i64
+        }
+    }
+    pub fn i32_shl(a: i64, b: i64) -> i64 {
+        (a as i32).wrapping_shl(b as u32) as i64
+    }
+    pub fn i32_shr_s(a: i64, b: i64) -> i64 {
+        (a as i32).wrapping_shr(b as u32) as i64
+    }
+    pub fn i32_shr_u(a: i64, b: i64) -> i64 {
+        (a as u32).wrapping_shr(b as u32) as i32 as i64
+    }
+    pub fn i32_rotl(a: i64, b: i64) -> i64 {
+        (a as i32).rotate_left((b & 31) as u32) as i64
+    }
+    pub fn i32_rotr(a: i64, b: i64) -> i64 {
+        (a as i32).rotate_right((b & 31) as u32) as i64
+    }
+    pub fn i32_clz(a: i64, _b: i64) -> i64 {
+        (a as i32).leading_zeros() as i64
+    }
+    pub fn i32_ctz(a: i64, _b: i64) -> i64 {
+        (a as i32).trailing_zeros() as i64
+    }
+    pub fn i32_popcnt(a: i64, _b: i64) -> i64 {
+        (a as i32).count_ones() as i64
+    }
+
+    // ---- conversions ----
+    pub fn wrap_i32(a: i64, _b: i64) -> i64 {
+        (a as i32) as i64
+    }
+    pub fn extend_i32_u(a: i64, _b: i64) -> i64 {
+        ((a as i32) as u32) as u64 as i64
+    }
+    pub fn extend8_s(a: i64, _b: i64) -> i64 {
+        (a as i8) as i64
+    }
+    pub fn extend16_s(a: i64, _b: i64) -> i64 {
+        (a as i16) as i64
+    }
+    pub fn extend32_s(a: i64, _b: i64) -> i64 {
+        (a as i32) as i64
+    }
+
+    // ---- NeoInteger (256-bit BigInteger) ops, reduced via saturating i64 ----
+    fn red(n: NeoInteger) -> i64 {
+        n.as_i64_saturating()
+    }
+    pub fn big_add(a: i64, b: i64) -> i64 {
+        red(NeoInteger::new(a) + NeoInteger::new(b))
+    }
+    pub fn big_sub(a: i64, b: i64) -> i64 {
+        red(NeoInteger::new(a) - NeoInteger::new(b))
+    }
+    pub fn big_mul(a: i64, b: i64) -> i64 {
+        red(NeoInteger::new(a) * NeoInteger::new(b))
+    }
+    pub fn big_div(a: i64, b: i64) -> i64 {
+        match NeoInteger::new(a).try_div(&NeoInteger::new(b)) {
+            Ok(q) => red(q),
+            Err(_) => GUARD,
+        }
+    }
+    pub fn big_rem(a: i64, b: i64) -> i64 {
+        match NeoInteger::new(a).try_rem(&NeoInteger::new(b)) {
+            Ok(r) => red(r),
+            Err(_) => GUARD,
+        }
+    }
+    pub fn big_and(a: i64, b: i64) -> i64 {
+        red(NeoInteger::new(a) & NeoInteger::new(b))
+    }
+    pub fn big_or(a: i64, b: i64) -> i64 {
+        red(NeoInteger::new(a) | NeoInteger::new(b))
+    }
+    pub fn big_xor(a: i64, b: i64) -> i64 {
+        red(NeoInteger::new(a) ^ NeoInteger::new(b))
+    }
+    pub fn big_shl(a: i64, b: i64) -> i64 {
+        red(NeoInteger::new(a) << ((b & 63) as u32))
+    }
+    pub fn big_shr(a: i64, b: i64) -> i64 {
+        red(NeoInteger::new(a) >> ((b & 63) as u32))
+    }
+    pub fn big_neg(a: i64, _b: i64) -> i64 {
+        red(NeoInteger::zero() - NeoInteger::new(a))
+    }
+}
+
+/// Dispatch an op by name (shared by the contract test and the refgen binary).
+pub fn eval(op: &str, a: i64, b: i64) -> Option<i64> {
+    use ops::*;
+    let f: fn(i64, i64) -> i64 = match op {
+        "add" => add,
+        "sub" => sub,
+        "mul" => mul,
+        "div_s" => div_s,
+        "rem_s" => rem_s,
+        "div_u" => div_u,
+        "rem_u" => rem_u,
+        "neg" => neg,
+        "abs" => abs,
+        "and" => and,
+        "or" => or,
+        "xor" => xor,
+        "not" => not,
+        "shl" => shl,
+        "shr_s" => shr_s,
+        "shr_u" => shr_u,
+        "rotl" => rotl,
+        "rotr" => rotr,
+        "clz" => clz,
+        "ctz" => ctz,
+        "popcnt" => popcnt,
+        "eqz" => eqz,
+        "eq" => eq,
+        "ne" => ne,
+        "lt_s" => lt_s,
+        "le_s" => le_s,
+        "gt_s" => gt_s,
+        "ge_s" => ge_s,
+        "lt_u" => lt_u,
+        "le_u" => le_u,
+        "gt_u" => gt_u,
+        "ge_u" => ge_u,
+        "min_s" => min_s,
+        "max_s" => max_s,
+        "i32_add" => i32_add,
+        "i32_sub" => i32_sub,
+        "i32_mul" => i32_mul,
+        "i32_div_s" => i32_div_s,
+        "i32_rem_s" => i32_rem_s,
+        "i32_div_u" => i32_div_u,
+        "i32_rem_u" => i32_rem_u,
+        "i32_shl" => i32_shl,
+        "i32_shr_s" => i32_shr_s,
+        "i32_shr_u" => i32_shr_u,
+        "i32_rotl" => i32_rotl,
+        "i32_rotr" => i32_rotr,
+        "i32_clz" => i32_clz,
+        "i32_ctz" => i32_ctz,
+        "i32_popcnt" => i32_popcnt,
+        "wrap_i32" => wrap_i32,
+        "extend_i32_u" => extend_i32_u,
+        "extend8_s" => extend8_s,
+        "extend16_s" => extend16_s,
+        "extend32_s" => extend32_s,
+        "big_add" => big_add,
+        "big_sub" => big_sub,
+        "big_mul" => big_mul,
+        "big_div" => big_div,
+        "big_rem" => big_rem,
+        "big_and" => big_and,
+        "big_or" => big_or,
+        "big_xor" => big_xor,
+        "big_shl" => big_shl,
+        "big_shr" => big_shr,
+        "big_neg" => big_neg,
+        _ => return None,
+    };
+    Some(f(a, b))
+}
+
+/// The full op name list (snake_case == inherent method name; the export name
+/// is the camelCase form).
+pub const OP_NAMES: &[&str] = &[
+    "add", "sub", "mul", "div_s", "rem_s", "div_u", "rem_u", "neg", "abs", "and", "or", "xor",
+    "not", "shl", "shr_s", "shr_u", "rotl", "rotr", "clz", "ctz", "popcnt", "eqz", "eq", "ne",
+    "lt_s", "le_s", "gt_s", "ge_s", "lt_u", "le_u", "gt_u", "ge_u", "min_s", "max_s", "i32_add",
+    "i32_sub", "i32_mul", "i32_div_s", "i32_rem_s", "i32_div_u", "i32_rem_u", "i32_shl",
+    "i32_shr_s", "i32_shr_u", "i32_rotl", "i32_rotr", "i32_clz", "i32_ctz", "i32_popcnt",
+    "wrap_i32", "extend_i32_u", "extend8_s", "extend16_s", "extend32_s", "big_add", "big_sub",
+    "big_mul", "big_div", "big_rem", "big_and", "big_or", "big_xor", "big_shl", "big_shr",
+    "big_neg",
+];
+
+#[neo_contract]
+pub struct FuzzOps;
+
+// The exported surface: one #[neo_method] per op, each forwarding to `ops::*`.
+// Method name == op name so the camelCase export maps cleanly back.
+macro_rules! export_ops {
+    ($($name:ident),* $(,)?) => {
+        #[neo_contract]
+        impl FuzzOps {
+            pub fn new() -> Self { Self }
+            $(
+                #[neo_method(safe)]
+                pub fn $name(a: i64, b: i64) -> i64 { ops::$name(a, b) }
+            )*
+        }
+    };
+}
+
+export_ops!(
+    add, sub, mul, div_s, rem_s, div_u, rem_u, neg, abs, and, or, xor, not, shl, shr_s, shr_u,
+    rotl, rotr, clz, ctz, popcnt, eqz, eq, ne, lt_s, le_s, gt_s, ge_s, lt_u, le_u, gt_u, ge_u,
+    min_s, max_s, i32_add, i32_sub, i32_mul, i32_div_s, i32_rem_s, i32_div_u, i32_rem_u, i32_shl,
+    i32_shr_s, i32_shr_u, i32_rotl, i32_rotr, i32_clz, i32_ctz, i32_popcnt, wrap_i32, extend_i32_u,
+    extend8_s, extend16_s, extend32_s, big_add, big_sub, big_mul, big_div, big_rem, big_and,
+    big_or, big_xor, big_shl, big_shr, big_neg,
+);

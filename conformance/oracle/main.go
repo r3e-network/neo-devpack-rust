@@ -23,6 +23,8 @@ import (
 	"fmt"
 	"math/big"
 	"os"
+	"strconv"
+	"strings"
 
 	"github.com/nspcc-dev/neo-go/pkg/smartcontract"
 	"github.com/nspcc-dev/neo-go/pkg/smartcontract/manifest"
@@ -30,6 +32,7 @@ import (
 	"github.com/nspcc-dev/neo-go/pkg/util"
 	"github.com/nspcc-dev/neo-go/pkg/vm"
 	"github.com/nspcc-dev/neo-go/pkg/vm/stackitem"
+	"github.com/nspcc-dev/neo-go/pkg/vm/vmstate"
 )
 
 // InvocationRequest is the JSON contract the Rust side sends.
@@ -78,11 +81,32 @@ type Event struct {
 func main() {
 	inPath := flag.String("in", "", "Path to the JSON InvocationRequest")
 	outPath := flag.String("out", "", "Path to write the JSON InvocationResult")
+	batch := flag.Bool("batch", false, "Batch mode: -in is JSONL of InvocationRequests; contracts are parsed once and cached by path; -out is JSONL of {st,top}")
+	disasm := flag.String("disasm", "", "Disassemble: path to a NEF file")
+	from := flag.Int("from", 0, "disasm/trace start IP filter")
+	count := flag.Int("count", 80, "disasm instruction count")
+	trace := flag.Bool("trace", false, "Trace mode: step -in request, print each instr + estack (filter IP >= -from, <= -to)")
+	to := flag.Int("to", 1<<30, "trace IP filter upper bound")
 	flag.Parse()
 
+	if *disasm != "" {
+		runDisasm(*disasm, *from, *count)
+		return
+	}
+
+	if *trace {
+		runTrace(*inPath, *from, *to)
+		return
+	}
+
 	if *inPath == "" {
-		fmt.Fprintln(os.Stderr, "usage: neo-n3-oracle -in <request.json> [-out <result.json>]")
+		fmt.Fprintln(os.Stderr, "usage: neo-n3-oracle -in <request.json> [-out <result.json>] [-batch] | -disasm <nef> [-from N] [-count N]")
 		os.Exit(2)
+	}
+
+	if *batch {
+		runBatch(*inPath, *outPath)
+		return
 	}
 
 	reqBytes, err := os.ReadFile(*inPath)
@@ -110,6 +134,147 @@ func main() {
 	}
 }
 
+// runBatch parses each contract once (cached by nef|manifest path) and runs
+// every InvocationRequest line, emitting a compact {st,top} JSONL result in
+// input order. This avoids the per-call process-startup cost when fuzzing tens
+// of thousands of invocations against the same contract.
+func runBatch(inPath, outPath string) {
+	data, err := os.ReadFile(inPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "batch read:", err)
+		os.Exit(2)
+	}
+	type loaded struct {
+		nef *nef.File
+		man *manifest.Manifest
+	}
+	cache := map[string]*loaded{}
+	var buf []byte
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var req InvocationRequest
+		if err := json.Unmarshal([]byte(line), &req); err != nil {
+			buf = append(buf, []byte("{\"st\":\"FAULT\",\"top\":null}\n")...)
+			continue
+		}
+		key := req.NEFPath + "|" + req.ManifestPath
+		lc := cache[key]
+		if lc == nil {
+			nf, mf, ferr := loadContract(req.NEFPath, req.ManifestPath)
+			if ferr != nil {
+				buf = append(buf, []byte("{\"st\":\"FAULT\",\"top\":null}\n")...)
+				continue
+			}
+			lc = &loaded{nf, mf}
+			cache[key] = lc
+		}
+		r := runLoaded(lc.nef, lc.man, req.Method, req.Arguments, req.GasLimit)
+		top := "null"
+		if len(r.ReturnStack) > 0 {
+			top = strconv.Quote(r.ReturnStack[0])
+		}
+		buf = append(buf, []byte(fmt.Sprintf("{\"st\":%q,\"top\":%s}\n", r.State, top))...)
+	}
+	if outPath != "" {
+		_ = os.WriteFile(outPath, buf, 0o644)
+	} else {
+		fmt.Print(string(buf))
+	}
+}
+
+// runTrace single-steps the VM for one request, printing each instruction in
+// the IP window [from,to] with the post-step estack (top few items).
+func runTrace(inPath string, from, to int) {
+	reqBytes, err := os.ReadFile(inPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "read request:", err)
+		os.Exit(2)
+	}
+	var req InvocationRequest
+	if err := json.Unmarshal(reqBytes, &req); err != nil {
+		fmt.Fprintln(os.Stderr, "parse request:", err)
+		os.Exit(2)
+	}
+	nefFile, mfest, ferr := loadContract(req.NEFPath, req.ManifestPath)
+	if ferr != nil {
+		fmt.Fprintln(os.Stderr, ferr)
+		os.Exit(2)
+	}
+	var methodOff int
+	hasReturn := true
+	for _, m := range mfest.ABI.Methods {
+		if m.Name == req.Method {
+			methodOff = int(m.Offset)
+			hasReturn = m.ReturnType != smartcontract.VoidType
+			break
+		}
+	}
+	v := vm.New()
+	v.GasLimit = 2_000_000_000
+	v.LoadNEFMethod(nefFile, util.Uint160{}, util.Uint160{}, callflagAll, hasReturn, methodOff, -1, nil)
+	for i := len(req.Arguments) - 1; i >= 0; i-- {
+		item, _ := parseArgument(req.Arguments[i])
+		v.Estack().PushItem(item)
+	}
+	steps := 0
+	for !v.HasStopped() && steps < 200000 {
+		ip, op := v.Context().CurrInstr()
+		show := ip >= from && ip <= to
+		if err := v.Step(); err != nil {
+			fmt.Printf("%5d: %-12s STEP-ERR %v\n", ip, op.String(), err)
+			break
+		}
+		if show {
+			var tops []string
+			n := v.Estack().Len()
+			for i := 0; i < n && i < 4; i++ {
+				tops = append(tops, formatItem(v.Estack().Peek(i).Item()))
+			}
+			fmt.Printf("%5d: %-12s estack=[%s]\n", ip, op.String(), joinComma(tops))
+		}
+		steps++
+	}
+	fmt.Printf("--- final state=%v steps=%d ---\n", v.State() == vmstate.Halt, steps)
+}
+
+// runDisasm prints `IP: OPCODE param` for a NEF's script, starting at -from.
+func runDisasm(nefPath string, from, count int) {
+	nefBytes, err := os.ReadFile(nefPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "read NEF:", err)
+		os.Exit(2)
+	}
+	nefFile, err := nef.FileFromBytes(nefBytes)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "parse NEF:", err)
+		os.Exit(2)
+	}
+	script := nefFile.Script
+	ctx := vm.NewContext(script)
+	if from > 0 && from < len(script) {
+		ctx.Jump(from)
+	}
+	for i := 0; i < count; i++ {
+		if ctx.NextIP() >= len(script) {
+			break
+		}
+		op, param, err := ctx.Next()
+		ip := ctx.IP()
+		if err != nil {
+			fmt.Printf("%5d: %-12s ERR %v\n", ip, op.String(), err)
+			break
+		}
+		if len(param) > 0 {
+			fmt.Printf("%5d: %-12s %x\n", ip, op.String(), param)
+		} else {
+			fmt.Printf("%5d: %s\n", ip, op.String())
+		}
+	}
+}
+
 func fail(outPath, msg string) {
 	result := InvocationResult{State: "FAULT", ErrorMessage: msg}
 	outBytes, _ := json.MarshalIndent(result, "", "  ")
@@ -122,32 +287,36 @@ func fail(outPath, msg string) {
 }
 
 func invoke(req *InvocationRequest) *InvocationResult {
-	// Load NEF.
-	nefBytes, err := os.ReadFile(req.NEFPath)
+	nefFile, mfest, ferr := loadContract(req.NEFPath, req.ManifestPath)
+	if ferr != nil {
+		return &InvocationResult{State: "FAULT", ErrorMessage: ferr.Error()}
+	}
+	return runLoaded(nefFile, mfest, req.Method, req.Arguments, req.GasLimit)
+}
+
+// loadContract parses a NEF + manifest from disk once (cacheable for batch mode).
+func loadContract(nefPath, manifestPath string) (*nef.File, *manifest.Manifest, error) {
+	nefBytes, err := os.ReadFile(nefPath)
 	if err != nil {
-		return &InvocationResult{State: "FAULT", ErrorMessage: fmt.Sprintf("read NEF: %v", err)}
+		return nil, nil, fmt.Errorf("read NEF: %v", err)
 	}
 	nefFile, err := nef.FileFromBytes(nefBytes)
 	if err != nil {
-		return &InvocationResult{State: "FAULT", ErrorMessage: fmt.Sprintf("parse NEF: %v", err)}
+		return nil, nil, fmt.Errorf("parse NEF: %v", err)
 	}
-	// NEF File has no Hash field. The contract hash would be
-	// computed by the engine when it deploys the contract; for
-	// the L7 stepping-stone oracle we don't need it (we use
-	// LoadScriptWithHash with the zero hash, which is fine for
-	// verifying the script shape).
-	_ = nefFile
-
-	// Load manifest.
-	manifestBytes, err := os.ReadFile(req.ManifestPath)
+	manifestBytes, err := os.ReadFile(manifestPath)
 	if err != nil {
-		return &InvocationResult{State: "FAULT", ErrorMessage: fmt.Sprintf("read manifest: %v", err)}
+		return nil, nil, fmt.Errorf("read manifest: %v", err)
 	}
 	var mfest manifest.Manifest
 	if err := json.Unmarshal(manifestBytes, &mfest); err != nil {
-		return &InvocationResult{State: "FAULT", ErrorMessage: fmt.Sprintf("parse manifest: %v", err)}
+		return nil, nil, fmt.Errorf("parse manifest: %v", err)
 	}
+	return &nefFile, &mfest, nil
+}
 
+// runLoaded executes one method on a pre-parsed contract with a fresh VM.
+func runLoaded(nefFile *nef.File, mfest *manifest.Manifest, method string, arguments []Argument, gasLimit int64) *InvocationResult {
 	res := &InvocationResult{
 		State:       "HALT",
 		Events:      []Event{},
@@ -159,7 +328,7 @@ func invoke(req *InvocationRequest) *InvocationResult {
 	// the InteropContext); for the L7 stepping-stone oracle we
 	// verify the bytecode shape and return stack only.
 	v := vm.New()
-	v.GasLimit = req.GasLimit
+	v.GasLimit = gasLimit
 	if v.GasLimit <= 0 {
 		v.GasLimit = 1_000_000_000
 	}
@@ -170,14 +339,14 @@ func invoke(req *InvocationRequest) *InvocationResult {
 	var methodOff int
 	var hasReturn bool = true
 	for _, m := range mfest.ABI.Methods {
-		if m.Name == req.Method {
+		if m.Name == method {
 			methodOff = int(m.Offset)
 			// ParamType.VoidType = no return.
 			hasReturn = m.ReturnType != smartcontract.VoidType
 			break
 		}
 	}
-	if methodOff == 0 && req.Method != "" {
+	if methodOff == 0 && method != "" {
 		// Fall back to entry point if the named method wasn't found.
 		for _, m := range mfest.ABI.Methods {
 			if m.Name == "_initialize" {
@@ -197,7 +366,7 @@ func invoke(req *InvocationRequest) *InvocationResult {
 	// args (in reverse). This matches the neo-go core engine
 	// callExFromNative flow (see pkg/core/interop/contract/call.go).
 	v.LoadNEFMethod(
-		&nefFile,
+		nefFile,
 		util.Uint160{},
 		util.Uint160{},
 		callflagAll,
@@ -209,10 +378,10 @@ func invoke(req *InvocationRequest) *InvocationResult {
 
 	// Push args in REVERSE order (the engine's estack is
 	// push-only and the contract reads them in script order).
-	for i := len(req.Arguments) - 1; i >= 0; i-- {
-		item, err := parseArgument(req.Arguments[i])
+	for i := len(arguments) - 1; i >= 0; i-- {
+		item, err := parseArgument(arguments[i])
 		if err != nil {
-			return &InvocationResult{State: "FAULT", ErrorMessage: fmt.Sprintf("parse arg %q: %v", req.Arguments[i].Value, err)}
+			return &InvocationResult{State: "FAULT", ErrorMessage: fmt.Sprintf("parse arg %q: %v", arguments[i].Value, err)}
 		}
 		v.Estack().PushItem(item)
 	}
