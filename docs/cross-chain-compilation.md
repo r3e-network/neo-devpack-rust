@@ -27,6 +27,34 @@ cargo run --manifest-path wasm-neovm/Cargo.toml -- \
   --source-chain solana
 ```
 
+#### Porting a real (upstream) Solana program
+
+A native (non-Anchor) `solana_program` contract ports to NeoVM with a small,
+mechanical set of changes — validated end-to-end against
+`solana-developers/program-examples` `basics/hello-solana`, which builds,
+translates to a valid NEF + manifest, and **executes to `HALT` on neo-go**:
+
+1. Swap the dependency: `solana_program` → `neo-solana-compat`, and the imports
+   (`solana_program::{account_info, entrypoint, pubkey, ...}` →
+   `neo_solana_compat::{...}`).
+2. Replace `msg!(...)` with `neo_solana_compat::syscalls::sol_log(...)`.
+   `neo-solana-compat` has no `msg!` macro and (in a `no_std` contract) no
+   `format!`, so log static strings rather than formatted ones.
+3. Add the standard `no_std` / `no_main` WASM contract boilerplate
+   (`#[panic_handler]` and a `#[global_allocator]`).
+4. **Heap matters.** The bundled `solana-hello` uses a *null* allocator because
+   it never allocates. Any program that uses `String`/`Vec`/`borsh` needs a
+   **real allocator** — a leaky bump allocator over a static arena is enough.
+   The toolchain fully supports an on-chain heap (a `Vec`-allocating contract
+   was confirmed to execute on neo-go); a null allocator would instead trap at
+   the first allocation.
+5. `borsh` deserialisation works once it builds, but `neo-solana-compat`'s
+   `ProgramError` does not implement `From` for borsh/`io` errors, so convert
+   them explicitly (`.try_from_slice(data).map_err(|_| ProgramError::...)?`).
+
+Programs that rely on Solana's account-data model, CPI, or PDAs are only
+partially covered — `neo-solana-compat` maps a deliberate, documented subset.
+
 ### Move Contract Compilation
 
 ```rust
