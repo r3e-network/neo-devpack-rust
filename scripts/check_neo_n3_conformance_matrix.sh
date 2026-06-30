@@ -43,9 +43,12 @@ trap 'rm -f "$expected_tmp" "$matrix_tmp" "$missing_tmp"' EXIT
 grep -o 'name: "[^"]*"' "$ROOT_DIR/wasm-neovm/src/generated/syscalls.rs" \
   | sed -E 's/name: "([^"]*)"/\1/' \
   > "$expected_tmp"
-grep -o 'name: "[^"]*"' "$ROOT_DIR/wasm-neovm/src/syscalls.rs" \
+# Neo.Crypto.* descriptors are invoked as CryptoLib *native-contract* calls (not
+# named syscalls), so the registry may legitimately expose none. Tolerate an
+# empty match instead of aborting under `set -o pipefail`.
+{ grep -o 'name: "[^"]*"' "$ROOT_DIR/wasm-neovm/src/syscalls.rs" \
   | sed -E 's/name: "([^"]*)"/\1/' \
-  | grep '^Neo\.Crypto\.' \
+  | grep '^Neo\.Crypto\.' || true; } \
   >> "$expected_tmp"
 sort -u "$expected_tmp" -o "$expected_tmp"
 
