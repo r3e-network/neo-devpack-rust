@@ -9,11 +9,17 @@ pub(super) fn try_handle(
     _runtime: &mut RuntimeHelpers,
     value_stack: &mut Vec<StackValue>,
 ) -> Result<bool> {
+    // NOTE: i32/i64 eq/ne use NUMEQUAL/NUMNOTEQUAL (numeric BigInteger
+    // comparison), not the type-strict EQUAL/NOTEQUAL. Wasm comparisons push a
+    // NeoVM Boolean, and a chained compare can feed that Boolean into eq/ne; the
+    // type-strict EQUAL returns false for `Boolean == Integer` of equal value.
+    // Operands of a wasm numeric eq/ne are always Integer-or-Boolean, so the
+    // numeric form is correct and avoids that class of bug (see emit_eqz).
     match op {
         Operator::I32Eq => {
             let rhs = super::pop_value(value_stack, "i32.eq rhs")?;
             let lhs = super::pop_value(value_stack, "i32.eq lhs")?;
-            let result = emit_binary_op(script, "EQUAL", lhs, rhs, |a, b| {
+            let result = emit_binary_op(script, "NUMEQUAL", lhs, rhs, |a, b| {
                 Some(if a == b { 1 } else { 0 })
             })?;
             value_stack.push(result);
@@ -22,7 +28,7 @@ pub(super) fn try_handle(
         Operator::I32Ne => {
             let rhs = super::pop_value(value_stack, "i32.ne rhs")?;
             let lhs = super::pop_value(value_stack, "i32.ne lhs")?;
-            let result = emit_binary_op(script, "NOTEQUAL", lhs, rhs, |a, b| {
+            let result = emit_binary_op(script, "NUMNOTEQUAL", lhs, rhs, |a, b| {
                 Some(if a != b { 1 } else { 0 })
             })?;
             value_stack.push(result);
@@ -87,7 +93,7 @@ pub(super) fn try_handle(
         Operator::I64Eq => {
             let rhs = super::pop_value(value_stack, "i64.eq rhs")?;
             let lhs = super::pop_value(value_stack, "i64.eq lhs")?;
-            let result = emit_binary_op(script, "EQUAL", lhs, rhs, |a, b| {
+            let result = emit_binary_op(script, "NUMEQUAL", lhs, rhs, |a, b| {
                 Some(if a == b { 1 } else { 0 })
             })?;
             value_stack.push(result);
@@ -96,7 +102,7 @@ pub(super) fn try_handle(
         Operator::I64Ne => {
             let rhs = super::pop_value(value_stack, "i64.ne rhs")?;
             let lhs = super::pop_value(value_stack, "i64.ne lhs")?;
-            let result = emit_binary_op(script, "NOTEQUAL", lhs, rhs, |a, b| {
+            let result = emit_binary_op(script, "NUMNOTEQUAL", lhs, rhs, |a, b| {
                 Some(if a != b { 1 } else { 0 })
             })?;
             value_stack.push(result);

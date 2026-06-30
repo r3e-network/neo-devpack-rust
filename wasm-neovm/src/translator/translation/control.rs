@@ -244,7 +244,12 @@ fn emit_br_table_dynamic(
     is_unreachable: &mut bool,
 ) -> Result<()> {
     let dup = lookup_opcode("DUP")?.byte;
-    let equal = lookup_opcode("EQUAL")?.byte;
+    // NUMEQUAL, not type-strict EQUAL: the br_table selector is a wasm i32 that
+    // may be a NeoVM Boolean (e.g. `match (a < b) as u32 { .. }`). EQUAL would
+    // compare Boolean(0/1) against the Integer case labels by type and never
+    // match; NUMEQUAL coerces both to BigInteger. Selector is always numeric,
+    // so this is safe. (Same class as the eqz/eq/ne type-strict-EQUAL fix.)
+    let equal = lookup_opcode("NUMEQUAL")?.byte;
     let drop = lookup_opcode("DROP")?.byte;
 
     let mut case_fixups: Vec<(usize, usize)> = Vec::with_capacity(targets.len());
