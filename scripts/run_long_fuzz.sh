@@ -126,7 +126,17 @@ count_matching_files() {
     return
   fi
   if [[ -n "$since" ]]; then
-    find "$dir" -type f -name "$pattern" -newermt "$since" | wc -l | tr -d ' '
+    # Anchor the cutoff on a reference file (POSIX `find -newer`) rather than
+    # GNU `find -newermt`, which BSD/macOS find rejects for ISO-8601 dates.
+    # `touch -d <ISO8601Z>` is accepted by both GNU and BSD touch.
+    local ref
+    ref="$(mktemp 2>/dev/null || echo "${TMPDIR:-/tmp}/lf_ref.$$")"
+    if touch -d "$since" "$ref" 2>/dev/null; then
+      find "$dir" -type f -name "$pattern" -newer "$ref" | wc -l | tr -d ' '
+    else
+      find "$dir" -type f -name "$pattern" | wc -l | tr -d ' '
+    fi
+    rm -f "$ref"
   else
     find "$dir" -type f -name "$pattern" | wc -l | tr -d ' '
   fi
@@ -444,7 +454,15 @@ start_command() {
     esac
   done
 
-  require_command setsid "Install util-linux (setsid) and retry."
+  # Detach the supervisor into its own session. setsid is ideal but Linux-only
+  # (util-linux); on macOS / BSD fall back to nohup, which is sufficient to
+  # survive the parent shell exiting.
+  local detach_cmd=()
+  if command -v setsid >/dev/null 2>&1; then
+    detach_cmd=(setsid)
+  else
+    detach_cmd=(nohup)
+  fi
 
   mkdir -p "$STATE_ROOT"
   if [[ ! -x "$RUN_LOCAL_FUZZ" ]]; then
@@ -509,7 +527,7 @@ EOF
     cmd+=(--no-build)
   fi
 
-  setsid "${cmd[@]}" > "$supervisor_log" 2>&1 < /dev/null &
+  "${detach_cmd[@]}" "${cmd[@]}" > "$supervisor_log" 2>&1 < /dev/null &
   local supervisor_pid=$!
   echo "$supervisor_pid" > "$session_dir/supervisor.pid"
   sleep 3

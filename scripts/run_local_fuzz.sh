@@ -25,8 +25,10 @@ KNOWN_TARGETS=(
 )
 
 TARGETS=("${KNOWN_TARGETS[@]}")
+# Indexed (bash 3.2-safe) — PIDS and PID_TARGETS are kept parallel so the macOS
+# system bash (3.2, no associative arrays) can run this supervisor.
 declare -a PIDS=()
-declare -A PID_TO_TARGET=()
+declare -a PID_TARGETS=()
 SESSION_DIR=""
 
 usage() {
@@ -261,7 +263,7 @@ run_parallel_target() {
 
   local pid=$!
   PIDS+=("$pid")
-  PID_TO_TARGET["$pid"]="$target"
+  PID_TARGETS+=("$target")
   echo "$pid" > "$SESSION_DIR/${target}.pid"
   echo "[run] $target pid=$pid log=$log_path"
 }
@@ -283,31 +285,42 @@ run_sequential_target() {
   ) >> "$log_path" 2>&1
 }
 
-wait_for_parallel_targets() {
-  declare -A RUNNING=()
-  local pid
-  local other_pid
-  for pid in "${PIDS[@]}"; do
-    RUNNING["$pid"]=1
+# Map a pid back to its target name via the parallel PIDS/PID_TARGETS arrays
+# (bash 3.2 has no associative arrays).
+target_for_pid() {
+  local want="$1" i=0
+  while [[ $i -lt ${#PIDS[@]} ]]; do
+    if [[ "${PIDS[$i]}" == "$want" ]]; then
+      printf '%s' "${PID_TARGETS[$i]}"
+      return 0
+    fi
+    i=$((i + 1))
   done
+  printf 'pid:%s' "$want"
+}
 
-  while [[ ${#RUNNING[@]} -gt 0 ]]; do
-    for pid in "${!RUNNING[@]}"; do
+wait_for_parallel_targets() {
+  # Track the live set as a space-delimited string (no associative arrays).
+  local running=" ${PIDS[*]} "
+  local pid other_pid t
+  while [[ -n "${running// /}" ]]; do
+    for pid in ${running}; do
       if kill -0 "$pid" 2>/dev/null; then
         continue
       fi
 
       if wait "$pid"; then
-        unset "RUNNING[$pid]"
+        running="${running// $pid / }"
         continue
       fi
 
-      echo "ERROR: ${PID_TO_TARGET[$pid]} exited non-zero. See $SESSION_DIR/${PID_TO_TARGET[$pid]}.log" >&2
-      unset "RUNNING[$pid]"
-      for other_pid in "${!RUNNING[@]}"; do
+      t="$(target_for_pid "$pid")"
+      echo "ERROR: $t exited non-zero. See $SESSION_DIR/${t}.log" >&2
+      running="${running// $pid / }"
+      for other_pid in ${running}; do
         kill "$other_pid" 2>/dev/null || true
       done
-      for other_pid in "${!RUNNING[@]}"; do
+      for other_pid in ${running}; do
         wait "$other_pid" 2>/dev/null || true
       done
       return 1
