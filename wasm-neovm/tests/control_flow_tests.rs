@@ -717,3 +717,61 @@ fn early_return_inside_block_preserves_translation() {
         "early return must emit RET"
     );
 }
+
+/// Regression: branching to a label of result-arity N>=1 must PRESERVE the top
+/// N branch operands and DISCARD the values buried beneath them (WASM `br`
+/// semantics). Previously the translator emitted plain `DROP`s, which removed
+/// the operands that must be kept and left the buried values — silently
+/// returning the wrong result. The fix removes the buried items at depth N via
+/// `PUSH<N>; XDROP`, so the script must contain the XDROP opcode and not just
+/// trailing DROPs over the operands.
+#[test]
+fn unconditional_br_keeps_top_operand_discards_buried() {
+    // Top-level: i32.const 100 200 300 ; br 0  -> must return 300, not 100.
+    let wasm = wat::parse_str(
+        r#"(module
+              (func (export "f") (result i32)
+                i32.const 100
+                i32.const 200
+                i32.const 300
+                br 0))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "BrKeepTop").expect("translation succeeds");
+    let xdrop = opcodes::lookup("XDROP").unwrap().byte;
+    assert!(
+        translation.script.contains(&xdrop),
+        "branch with arity 1 over buried values must emit XDROP to discard the \
+         buried operands while preserving the top result"
+    );
+}
+
+/// Regression: `br_if` to a result-arity block must only discard the buried
+/// values on the TAKEN path; the fall-through must retain the full operand
+/// stack (minus the popped condition). Previously the discard ran inline before
+/// the conditional jump and truncated the abstract stack, so this legal module
+/// failed to translate with "stack underflow while processing i32.add lhs".
+#[test]
+fn br_if_fallthrough_retains_operands() {
+    let wasm = wat::parse_str(
+        r#"(module
+              (func (export "f") (param i32) (result i32)
+                (block (result i32)
+                  i32.const 10
+                  i32.const 20
+                  local.get 0
+                  br_if 0
+                  i32.add)))"#,
+    )
+    .expect("valid wat");
+
+    // The key assertion is simply that this legal module translates at all:
+    // the fall-through path computes 10 + 20 and must still see both operands.
+    let translation = translate_module(&wasm, "BrIfFallthrough").expect("translation succeeds");
+    let add = opcodes::lookup("ADD").unwrap().byte;
+    assert!(
+        translation.script.contains(&add),
+        "br_if fall-through must retain both operands so i32.add can run"
+    );
+}
