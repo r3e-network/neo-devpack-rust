@@ -1,6 +1,6 @@
 [package]
 name = "crypto-neo"
-version = "0.13.1"
+version = "0.14.0"
 edition = "2021"
 description = "Feature-coverage sample: crypto syscalls + NeoCrypto"
 license = "MIT"
@@ -9,7 +9,7 @@ license = "MIT"
 crate-type = ["cdylib"]
 
 [dependencies]
-neo-devpack = { path = "../../rust-devpack", version = "0.13.1", default-features = false }
+neo-devpack = { path = "../../rust-devpack", version = "0.14.0", default-features = false }
 
 [features]
 default = ["neo-devpack/std"]

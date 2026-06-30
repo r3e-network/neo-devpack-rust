@@ -33,14 +33,23 @@ Rust contract (neo-devpack) ──cargo build --target wasm32-unknown-unknown─
 
 ## 🚀 Current Status
 
-**v0.13.1** — 8 milestones shipped since v0.6.0: L1+L2 (v0.7.0),
-L3+L4+L5+L6 (v0.8.0), L7+L8+L9 (v0.9.0), L7.v3 golden JSON
-(v0.10.0), L6 minimal cross-call executor (v0.11.0), L6 real
-cross-call executor (v0.12.0), B5–B9 host-mode state (v0.13.0),
-L7.v3 cross-call-wrapper golden (v0.13.1). 67 workspace test
-suites green; 0 clippy warnings; 4 L7 conformance tests pass
-against `neo-go` v0.105.1. The v0.7.0 audit's TIER 1+2
-(B1–B9) is fully closed.
+**v0.14.0** — completes the Rust-on-Neo developer toolkit (testing +
+debugging at Solana/Move parity), refactors the fuzz system to cover the
+whole stack, and fixes a cluster of translator-correctness bugs the new
+tooling surfaced. Highlights: `neo-vm-test` runs a *compiled* contract on a
+real NeoVM from Rust tests (pure **and** stateful, with disassemble/trace
+debugging); a continuous native-vs-real-VM semantic differential plus a new
+`fuzz_devpack_types` target; and fixes for type-strict `EQUAL`
+(`eqz`/`eq`/`ne`/`br_table`), popcount/clz/ctz wraparound, `handle_branch`
+operand handling, and chunked-memory syscall-arg marshalling.
+
+Prior milestones since v0.6.0: L1+L2 (v0.7.0), L3+L4+L5+L6 (v0.8.0),
+L7+L8+L9 (v0.9.0), L7.v3 golden JSON (v0.10.0), L6 minimal cross-call
+executor (v0.11.0), L6 real cross-call executor (v0.12.0), B5–B9 host-mode
+state (v0.13.0), L7.v3 cross-call-wrapper golden (v0.13.1). 907 workspace
+tests pass; 32/32 contracts translate to VALID NEFs; 0 clippy warnings; the
+conformance gate and the real-VM semantic differential are green. The v0.7.0
+audit's TIER 1+2 (B1–B9) is fully closed.
 
 The core Rust/C Wasm → NeoVM pipeline targets **Neo N3 version 3.9.1**. Cross-chain support is experimental: the Solana and Move paths compile a useful subset but are not yet production-grade (see `docs/wasm-neovm-status.md` for the coverage matrix). Both paths now fail loudly on unsupported features rather than producing silently-wrong output.
 
@@ -365,7 +374,7 @@ Unsupported instructions (floating-point, reference types beyond funcref, and mu
 
 ## Neo N3 Platform Support — Production Readiness Matrix
 
-**v0.13.1** (2026-06-27). L1–L6 of the original 6-layer design
+**v0.14.0** (2026-07-01). L1–L6 of the original 6-layer design
 are shipped, plus L7 (C#-NeoVM conformance oracle), L7.v3
 (per-contract golden JSON), L8 (chain-state native-hash
 lookup), and L9 (typed cross-contract calls). L6 was shipped

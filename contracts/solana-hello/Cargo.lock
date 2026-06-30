@@ -70,7 +70,7 @@ checksum = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
 
 [[package]]
 name = "neo-solana-compat"
-version = "0.13.1"
+version = "0.14.0"
 dependencies = [
  "sha2",
  "tiny-keccak",
@@ -89,7 +89,7 @@ dependencies = [
 
 [[package]]
 name = "solana-hello-neo"
-version = "0.13.1"
+version = "0.14.0"
 dependencies = [
  "neo-solana-compat",
 ]

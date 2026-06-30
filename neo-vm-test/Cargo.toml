@@ -1,6 +1,6 @@
 [package]
 name = "neo-vm-test"
-version = "0.13.1"
+version = "0.14.0"
 edition = "2021"
 license = "MIT"
 description = "Run compiled Neo N3 contracts on a real NeoVM from Rust tests (e2e harness)"

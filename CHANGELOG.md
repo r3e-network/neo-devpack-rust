@@ -8,7 +8,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Note: Beginning with `0.5.8`, all public workspace crates and contract templates
 follow the same repository version.
 
-## [Unreleased] — architecture unification pass
+## [Unreleased]
+
+## [0.14.0] - 2026-07-01 — developer toolkit, fuzzing, and translator-correctness pass
+
+Completes the Rust-on-Neo developer environment (testing + debugging at
+Solana/Move parity), refactors the fuzz system to cover the whole stack, and
+fixes a cluster of translator-correctness bugs the new tooling surfaced.
+Validation: 907 workspace tests pass; 32/32 contracts translate to VALID NEFs;
+cross-chain 23/23; conformance matrix gate passes; 9 cargo-fuzz targets +
+`fuzz_devpack_types` (6.9M execs) clean; the semantic differential matches
+native Rust on a real NeoVM across multiple seeds (≈78k cases/run).
+
+### Added — developer toolkit (testing + debugging)
+
+- **`neo-vm-test`** — run a *compiled* contract on a real NeoVM from Rust tests
+  (the `solana-program-test` analogue): `Contract::compile(dir).invoke(m, &args)
+  .assert_returns_i64(..)`, plus a stateful builder (`.storage/.signer/.time/
+  .network`) reading back `storage_diff`/`events`, and `disassemble()`/`trace()`
+  for debugging. `make vm-test`.
+- **Conformance oracle** gained `-batch`, `-disasm`, `-trace` modes and a
+  storage + runtime **`SyscallHandler`** (neo-go-ABI-faithful) so stateful
+  contracts execute end-to-end.
+- **11 feature-coverage sample contracts** (`contracts/feature-*`) exercising the
+  full type/storage/runtime/crypto/events/calls/standards surface, and
+  `docs/testing-and-debugging-guide.md` + `docs/dev-stack-validation.md`.
+
+### Added — fuzz system (covers the whole stack)
+
+- **Semantic differential** (`contracts/fuzz-ops` + `conformance/fuzz/diff_fuzz.py`,
+  ~126 op forms) runs every translated op on a real NeoVM vs native Rust;
+  **continuous** via `FUZZ_SEED`/`FUZZ_RANDOM` (`make fuzz-differential`).
+- **`fuzz_devpack_types`** cargo-fuzz target: NeoInteger/NeoByteString/NeoArray
+  semantics vs i128/std/Vec references.
+- `make fuzz-everything` (coverage-guided + semantic) and a documented coverage
+  map in `wasm-neovm/fuzz/README.md`.
+
+### Fixed — translator correctness (found by the fuzzer / audit / e2e harness)
+
+- **Type-strict `EQUAL`**: `i32/i64.eqz`/`eq`/`ne` and the `br_table` selector
+  used NeoVM's type-strict `EQUAL`, so a chained comparison feeding a `Boolean`
+  into the next compare silently misfired — corrupting `div_u`/`rem_u` (always
+  the zero sentinel) and `BigInteger >>` (off-by-one). Now `NOT` / `NUMEQUAL` /
+  `NUMNOTEQUAL`. Affected any contract with `if x == 0` / `match` / boolean logic.
+- **popcount/clz/ctz**: the SWAR `(x * 0x0101…) >> shift` assumed 64-bit
+  wraparound; on NeoVM's arbitrary-precision integers it polluted the result.
+  Width-mask the product. This also unblocked all `NeoInteger`/BigInt math.
+- **`handle_branch`**: `br`/`br_if`/`br_table` to a result label dropped the
+  branch *operands* (top of stack) instead of the values buried beneath them;
+  now `XDROP`-based, with a taken-path-only discard for `br_if`.
+- **Chunked-memory syscall args**: heap-built string/byte args to
+  `log`/`notify`/`check_witness` were marshalled with a flat `SUBSTR` over the
+  paged-memory model and FAULTed; now gathered from chunked memory.
+- **`neo-devpack`** re-exports `BigInt`, `serialise_*`, and the `MAX_*` size
+  constants so contracts can name them; 5 scalar runtime/protocol syscalls
+  (`get_network`/`get_address_version`/`get_trigger`/`gas_left`/`get_call_flags`)
+  are now reachable.
+- The Neo N3 conformance-gate script no longer aborts when the registry exposes
+  no `Neo.Crypto.*` syscalls (they are CryptoLib native calls).
+
+---
+
+### Architecture unification pass (folded into 0.14.0)
 
 A systematic review of structs, traits, modules, and error handling across
 the workspace for a unified architecture with no duplication. 905 workspace

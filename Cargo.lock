@@ -513,7 +513,7 @@ dependencies = [
 
 [[package]]
 name = "integration-tests"
-version = "0.13.1"
+version = "0.14.0"
 dependencies = [
  "log",
  "neo-syscalls",
@@ -599,7 +599,7 @@ checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
 
 [[package]]
 name = "move-neovm"
-version = "0.13.1"
+version = "0.14.0"
 dependencies = [
  "anyhow",
  "criterion",
@@ -609,7 +609,7 @@ dependencies = [
 
 [[package]]
 name = "neo-devpack"
-version = "0.13.1"
+version = "0.14.0"
 dependencies = [
  "criterion",
  "neo-macros",
@@ -623,7 +623,7 @@ dependencies = [
 
 [[package]]
 name = "neo-macros"
-version = "0.13.1"
+version = "0.14.0"
 dependencies = [
  "neo-runtime",
  "neo-syscalls",
@@ -637,7 +637,7 @@ dependencies = [
 
 [[package]]
 name = "neo-runtime"
-version = "0.13.1"
+version = "0.14.0"
 dependencies = [
  "neo-syscalls",
  "neo-types",
@@ -650,7 +650,7 @@ dependencies = [
 
 [[package]]
 name = "neo-solana-compat"
-version = "0.13.1"
+version = "0.14.0"
 dependencies = [
  "sha2",
  "tiny-keccak",
@@ -658,7 +658,7 @@ dependencies = [
 
 [[package]]
 name = "neo-syscalls"
-version = "0.13.1"
+version = "0.14.0"
 dependencies = [
  "neo-types",
  "once_cell",
@@ -666,7 +666,7 @@ dependencies = [
 
 [[package]]
 name = "neo-test"
-version = "0.13.1"
+version = "0.14.0"
 dependencies = [
  "neo-syscalls",
  "neo-types",
@@ -676,7 +676,7 @@ dependencies = [
 
 [[package]]
 name = "neo-types"
-version = "0.13.1"
+version = "0.14.0"
 dependencies = [
  "num-bigint",
  "num-traits",
@@ -1331,7 +1331,7 @@ dependencies = [
 
 [[package]]
 name = "wasm-neovm"
-version = "0.13.1"
+version = "0.14.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
