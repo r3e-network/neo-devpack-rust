@@ -28,6 +28,11 @@ cargo install cargo-fuzz
   - Exercises public integer/varint/string/byte encoding helpers.
 - `fuzz_devpack_codec`
   - Exercises `neo-devpack` codec roundtrips and malformed decode inputs.
+- `fuzz_devpack_types`
+  - Property-checks the devpack value types: `NeoInteger` arithmetic / bitwise /
+    shift / conversion semantics against i128 + std references, and
+    `NeoByteString` / `NeoArray` operations against `Vec`. Catches semantic bugs
+    in the types the SDK exposes to contract authors.
 - `fuzz_syscall_surface`
   - Checks translator/devpack syscall alias + hash parity under arbitrary names and hashes.
 - `fuzz_rust_contract`
@@ -36,6 +41,22 @@ cargo install cargo-fuzz
 - `fuzz_rust_contract_differential`
   - Compiles the same generated Rust contract twice and checks deterministic Wasm, script,
     manifest, method token, and NEF output.
+
+## Semantic differential (real NeoVM)
+
+The coverage-guided targets above check that the compiler/devpack do not panic
+and that structural invariants hold. They are complemented by a **semantic
+differential** that executes the *translated* op surface on a real NeoVM and
+compares to native Rust — see [`conformance/fuzz`](../../conformance/fuzz/README.md)
+(`conformance/fuzz/diff_fuzz.py`, driven by `contracts/fuzz-ops`). Run it
+continuously with fresh inputs each round:
+
+```bash
+make fuzz-differential SEED=$RANDOM RANDOM_PAIRS=400
+```
+
+`make fuzz-everything` runs the coverage-guided targets **and** the semantic
+differential.
 
 ## Running
 

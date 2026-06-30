@@ -70,10 +70,11 @@ impl Rng {
     }
 }
 
-fn pairs() -> Vec<(i64, i64)> {
+fn pairs(seed: u64, extra_random: usize) -> Vec<(i64, i64)> {
     let e = edges();
     let mut out: Vec<(i64, i64)> = Vec::new();
-    // structured: every edge paired with a few rotated edges
+    // structured: every edge paired with a few rotated edges (always present —
+    // edge x edge combinations are the highest-yield regression cases).
     for (i, &a) in e.iter().enumerate() {
         for &k in &[1usize, 7, 13, 19] {
             let b = e[(i + k) % e.len()];
@@ -81,24 +82,35 @@ fn pairs() -> Vec<(i64, i64)> {
         }
     }
     // edge-vs-small (good for shifts / divisors / rotates)
-    let mut rng = Rng(0x9E37_79B9_7F4A_7C15);
+    let mut rng = Rng(if seed == 0 { 0x9E37_79B9_7F4A_7C15 } else { seed });
     for &a in &e {
         out.push((a, rng.small()));
         out.push((rng.small(), a));
     }
-    // seeded random full-width pairs
-    for _ in 0..120 {
+    // seeded random full-width pairs (+ extra for continuous fuzzing)
+    for _ in 0..(120 + extra_random * 2 / 3) {
         out.push((rng.i64(), rng.i64()));
     }
     // random with small second operand (shift/div/rem stress)
-    for _ in 0..60 {
+    for _ in 0..(60 + extra_random / 3) {
         out.push((rng.i64(), rng.small()));
     }
     out
 }
 
 fn main() {
-    let pairs = pairs();
+    // Continuous-fuzz knobs: FUZZ_SEED varies the random batch each run,
+    // FUZZ_RANDOM adds that many extra random pairs per op. Defaults reproduce
+    // the deterministic regression set.
+    let seed = std::env::var("FUZZ_SEED")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0x9E37_79B9_7F4A_7C15u64);
+    let extra = std::env::var("FUZZ_RANDOM")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0usize);
+    let pairs = pairs(seed, extra);
     for &op in OP_NAMES {
         for &(a, b) in &pairs {
             if let Some(expected) = eval(op, a, b) {

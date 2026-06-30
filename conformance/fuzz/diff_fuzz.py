@@ -24,8 +24,8 @@ def camel(op):
     return p[0] + "".join(x.capitalize() for x in p[1:])
 
 
-def run(cmd, cwd=None):
-    r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
+def run(cmd, cwd=None, env=None):
+    r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, env=env)
     if r.returncode != 0:
         sys.stderr.write(f"command failed: {' '.join(cmd)}\n{r.stdout}\n{r.stderr}\n")
         sys.exit(2)
@@ -38,6 +38,8 @@ def main():
     ap.add_argument("--oracle", default="/tmp/neo-validate/oracle", help="oracle binary")
     ap.add_argument("--ops", default="", help="comma-separated op filter (default: all)")
     ap.add_argument("--workdir", default="", help="scratch dir (default: temp)")
+    ap.add_argument("--seed", type=int, default=None, help="random seed for continuous fuzzing (varies inputs each run)")
+    ap.add_argument("--random", type=int, default=0, help="extra random input pairs per op")
     ap.add_argument("--quiet", action="store_true")
     a = ap.parse_args()
 
@@ -59,7 +61,12 @@ def main():
          "--input", wasm, "--name", "FuzzOps", "--nef", nef, "--manifest", man])
 
     log("[3/5] refgen ground truth")
-    out = run(["cargo", "run", "--release", "--bin", "refgen"], cwd=fuzzdir)
+    refgen_env = dict(os.environ)
+    if a.seed is not None:
+        refgen_env["FUZZ_SEED"] = str(a.seed)
+    if a.random:
+        refgen_env["FUZZ_RANDOM"] = str(a.random)
+    out = run(["cargo", "run", "--release", "--bin", "refgen"], cwd=fuzzdir, env=refgen_env)
     open(truth, "w").write(out)
     cases = [json.loads(l) for l in out.splitlines() if l.strip()]
     op_filter = set(x for x in a.ops.split(",") if x)

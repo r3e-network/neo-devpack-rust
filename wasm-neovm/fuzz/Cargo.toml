@@ -63,3 +63,8 @@ doc = false
 name = "fuzz_rust_contract_differential"
 path = "fuzz_targets/fuzz_rust_contract_differential.rs"
 doc = false
+
+[[bin]]
+name = "fuzz_devpack_types"
+path = "fuzz_targets/fuzz_devpack_types.rs"
+doc = false
