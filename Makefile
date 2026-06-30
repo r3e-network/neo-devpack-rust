@@ -113,7 +113,7 @@ PACKAGE_PATCH_CONFIG_ARGS := \
 	--config 'patch.crates-io.move-neovm.path="move-neovm"' \
 	--config 'patch.crates-io.neo-solana-compat.path="solana-compat"'
 
-.PHONY: help examples cross-chain hello-world nep17-token constant-product nep11-nft uniswap-v2 staking-rewards timelock-vault flashloan-pool multisig-wallet escrow crowdfunding governance-dao oracle-consumer nft-marketplace solana-hello move-coin storage-smoke c-hello fmt lint test verify-contract-tests test-contracts test-cross-chain integration-tests vm-test smoke-neoxp security-check package-check spec clean fuzz fuzz-compiler fuzz-translate fuzz-translate-config fuzz-pipeline fuzz-nef fuzz-numeric fuzz-devpack-codec fuzz-syscall-surface fuzz-rust-contract fuzz-rust-differential fuzz-rust-long fuzz-long-status fuzz-long-stop fuzz-all
+.PHONY: help examples cross-chain hello-world nep17-token constant-product nep11-nft uniswap-v2 staking-rewards timelock-vault flashloan-pool multisig-wallet escrow crowdfunding governance-dao oracle-consumer nft-marketplace solana-hello move-coin storage-smoke c-hello fmt lint test verify-contract-tests test-contracts test-cross-chain integration-tests vm-test smoke-neoxp security-check package-check spec clean fuzz fuzz-compiler fuzz-translate fuzz-translate-config fuzz-pipeline fuzz-nef fuzz-numeric fuzz-devpack-codec fuzz-devpack-types fuzz-syscall-surface fuzz-rust-contract fuzz-rust-differential fuzz-rust-long fuzz-long-status fuzz-long-stop fuzz-all fuzz-differential fuzz-everything
 
 help:
 	@echo "Usage: make <target>"
@@ -580,6 +580,8 @@ fuzz-numeric:
 	cd wasm-neovm && cargo +nightly fuzz run fuzz_numeric -- -max_total_time=300
 fuzz-devpack-codec:
 	cd wasm-neovm && cargo +nightly fuzz run fuzz_devpack_codec -- -max_total_time=300
+fuzz-devpack-types:
+	cd wasm-neovm && cargo +nightly fuzz run fuzz_devpack_types -- -max_total_time=300
 fuzz-syscall-surface:
 	cd wasm-neovm && cargo +nightly fuzz run fuzz_syscall_surface -- -max_total_time=300
 fuzz-rust-contract:
@@ -592,7 +594,16 @@ fuzz-long-status:
 	./scripts/run_long_fuzz.sh status
 fuzz-long-stop:
 	./scripts/run_long_fuzz.sh stop
-fuzz-all: fuzz-compiler fuzz-devpack-codec fuzz-syscall-surface  ## Run all fuzz targets sequentially
+fuzz-all: fuzz-compiler fuzz-devpack-codec fuzz-devpack-types fuzz-syscall-surface  ## Run all coverage-guided fuzz targets sequentially
+
+fuzz-differential:  ## Semantic differential: run every translated op on a real NeoVM vs native Rust (continuous with SEED=)
+	@echo "Building wasm-neovm + oracle, then differential-fuzzing the translated op surface on a real NeoVM..."
+	cargo build -p wasm-neovm --release
+	cd conformance && go build -o ../target/neo-oracle ./oracle
+	python3 conformance/fuzz/diff_fuzz.py --root "$(CURDIR)" --oracle "$(CURDIR)/target/neo-oracle" $(if $(SEED),--seed $(SEED)) $(if $(RANDOM_PAIRS),--random $(RANDOM_PAIRS))
+
+fuzz-everything: fuzz-all fuzz-rust-contract fuzz-rust-differential fuzz-differential  ## Coverage-guided targets + the real-VM semantic differential
+	@echo "All fuzzing complete (compiler robustness + devpack codec/types/syscalls + Rust-contract gen/determinism + semantic VM differential)."
 
 clean:
 	rm -rf $(OUTDIR)
