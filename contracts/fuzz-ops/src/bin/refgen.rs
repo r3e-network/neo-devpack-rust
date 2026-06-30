@@ -119,4 +119,13 @@ fn main() {
             }
         }
     }
+    // Randomly-generated expression ops (the `gen(idx,a,b)` export). Same
+    // `eval_idx` runs natively here and on the NeoVM via the contract.
+    let gen_count = fuzz_ops::generated_ops::GEN_COUNT;
+    for idx in 0..gen_count {
+        for &(a, b) in &pairs {
+            let e = fuzz_ops::generated_ops::eval_idx(idx, a, b);
+            println!("{{\"op\":\"gen\",\"idx\":{idx},\"a\":{a},\"b\":{b},\"e\":{e}}}");
+        }
+    }
 }

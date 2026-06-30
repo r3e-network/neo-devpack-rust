@@ -79,10 +79,15 @@ def main():
     batch_out = os.path.join(wk, "batch_out.jsonl")
     with open(batch_in, "w") as f:
         for c in cases:
+            if c["op"] == "gen":
+                method = "gen"
+                argvals = [c["idx"], c["a"], c["b"]]
+            else:
+                method = camel(c["op"])
+                argvals = [c["a"], c["b"]]
             f.write(json.dumps({
-                "nef_path": nef, "manifest_path": man, "method": camel(c["op"]),
-                "arguments": [{"type": "integer", "value": str(c["a"])},
-                              {"type": "integer", "value": str(c["b"])}],
+                "nef_path": nef, "manifest_path": man, "method": method,
+                "arguments": [{"type": "integer", "value": str(x)} for x in argvals],
                 "signers": [], "initial_storage": [], "gas_limit": 2000000000,
             }) + "\n")
     run([a.oracle, "-batch", "-in", batch_in, "-out", batch_out])
@@ -93,20 +98,21 @@ def main():
     mism = defaultdict(list)
     ok = 0
     for c, o in zip(cases, res):
+        label = f"idx={c['idx']} a={c['a']} b={c['b']}" if c["op"] == "gen" else f"a={c['a']} b={c['b']}"
         if o["st"] != "HALT" or o["top"] is None:
-            mism[c["op"]].append((c["a"], c["b"], c["e"], o["st"] if o["st"] != "HALT" else "NO_RET"))
+            mism[c["op"]].append((label, c["e"], o["st"] if o["st"] != "HALT" else "NO_RET"))
             continue
         got = int(o["top"])
         if got == c["e"]:
             ok += 1
         else:
-            mism[c["op"]].append((c["a"], c["b"], c["e"], got))
+            mism[c["op"]].append((label, c["e"], got))
     total_m = sum(len(v) for v in mism.values())
     print(f"RESULT: {ok}/{len(cases)} OK, {total_m} mismatches across {len(mism)} ops")
     for op in sorted(mism, key=lambda k: -len(mism[k])):
         print(f"  [{op}] {len(mism[op])} mismatches; samples:")
-        for (x, y, e, g) in mism[op][:5]:
-            print(f"      a={x} b={y}  expected={e}  got={g}")
+        for (label, e, g) in mism[op][:5]:
+            print(f"      {label}  expected={e}  got={g}")
     sys.exit(1 if total_m else 0)
 
 

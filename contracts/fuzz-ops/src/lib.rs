@@ -18,6 +18,11 @@ use neo_devpack::prelude::*;
 
 neo_manifest_overlay!(r#"{ "name": "FuzzOps" }"#);
 
+/// Randomly-generated expression ops (regenerated each fuzz round by the
+/// `gen_exprs` bin). Exposed via the `gen(idx, a, b)` export below and
+/// evaluated natively by `refgen` — same code both ways.
+pub mod generated_ops;
+
 /// Trap-free op implementations shared by the exports and the native refgen.
 pub mod ops {
     use neo_devpack::prelude::*;
@@ -649,3 +654,13 @@ export_ops!(
     or_cmps, xor_cmps, cmp_chain, min_u, max_u, i32_eqz, i32_eq, i32_ne,
     nested_loop, loop_continue, multi_break, br_wide, recurse_sum, cond_nest, sx_chain, wrap_roundtrip, narrow_widen, big_not, big_div_op, big_rem_op, big_lt, big_eq, big_as_i32_sat, big_as_u32_sat, big_try_i32, big_fits, big_large_mul, big_chain,
 );
+
+#[neo_contract]
+impl FuzzOps {
+    /// Evaluate the randomly-generated expression `idx` (0..GEN_COUNT) on a real
+    /// NeoVM; `refgen` evaluates the same `generated_ops::eval_idx` natively.
+    #[neo_method(safe)]
+    pub fn gen(idx: i64, a: i64, b: i64) -> i64 {
+        generated_ops::eval_idx(idx, a, b)
+    }
+}
