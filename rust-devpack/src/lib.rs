@@ -26,11 +26,12 @@ pub use neo_runtime::{
 pub use neo_runtime::{NeoCrypto, NeoJSON};
 pub use neo_syscalls::*;
 pub use neo_types::{
-    ContractCaller, FromNeoValue, Hash160, Hash256, NeoArray, NeoBoolean, NeoByteString,
-    NeoContract, NeoContractABI, NeoContractEntry, NeoContractEvent, NeoContractManifest,
-    NeoContractMethod, NeoContractMethodTrait, NeoContractParameter, NeoContractPermission,
-    NeoError, NeoInteger, NeoIterator, NeoMap, NeoResult, NeoStorageContext, NeoString, NeoStruct,
-    NeoValue,
+    serialise_array, serialise_notification, serialise_value, BigInt, ContractCaller,
+    FromNeoValue, Hash160, Hash256, NeoArray, NeoBoolean, NeoByteString, NeoContract,
+    NeoContractABI, NeoContractEntry, NeoContractEvent, NeoContractManifest, NeoContractMethod,
+    NeoContractMethodTrait, NeoContractParameter, NeoContractPermission, NeoError, NeoInteger,
+    NeoIterator, NeoMap, NeoResult, NeoStorageContext, NeoString, NeoStruct, NeoValue,
+    MAX_NOTIFICATION_SIZE, MAX_STACK_SIZE,
 };
 
 #[cfg(feature = "serde")]
@@ -44,13 +45,14 @@ pub mod prelude {
     pub use crate::{
         call_typed, native_contracts::*, neo_contract, neo_entry, neo_event, neo_manifest_overlay,
         neo_method, neo_permission, neo_safe, neo_safe_methods, neo_supported_standards,
-        neo_trusts, standards::*, ContractCallError, ContractCaller, DefaultContractCaller,
-        FromNeoValue, Hash160, Hash256, NeoArray, NeoBoolean, NeoByteString, NeoContract,
-        NeoContractABI, NeoContractEntry, NeoContractEvent, NeoContractManifest, NeoContractMethod,
-        NeoContractMethodTrait, NeoContractParameter, NeoContractPermission, NeoContractRuntime,
-        NeoError, NeoInteger, NeoIterator, NeoMap, NeoResult, NeoRuntime, NeoRuntimeContext,
-        NeoStorage, NeoStorageContext, NeoString, NeoStruct, NeoValue, RawKeyBuilder, RawStorage,
-        RawStorageGet,
+        neo_trusts, serialise_array, serialise_notification, serialise_value, standards::*, BigInt,
+        ContractCallError, ContractCaller, DefaultContractCaller, FromNeoValue, Hash160, Hash256,
+        NeoArray, NeoBoolean, NeoByteString, NeoContract, NeoContractABI, NeoContractEntry,
+        NeoContractEvent, NeoContractManifest, NeoContractMethod, NeoContractMethodTrait,
+        NeoContractParameter, NeoContractPermission, NeoContractRuntime, NeoError, NeoInteger,
+        NeoIterator, NeoMap, NeoResult, NeoRuntime, NeoRuntimeContext, NeoStorage,
+        NeoStorageContext, NeoString, NeoStruct, NeoValue, RawKeyBuilder, RawStorage, RawStorageGet,
+        MAX_NOTIFICATION_SIZE, MAX_STACK_SIZE,
     };
     #[cfg(feature = "std")]
     pub use crate::{NeoCrypto, NeoJSON};
