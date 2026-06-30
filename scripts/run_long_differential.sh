@@ -28,6 +28,16 @@ echo "long differential started $(date) — seed from $START, +$RANDOM_PAIRS ran
 cargo build -p wasm-neovm --release >/dev/null 2>&1 || { echo "wasm-neovm build failed" | tee -a "$LOG"; exit 2; }
 if [ ! -x "$ORACLE" ]; then ( cd "$ROOT/conformance" && go build -o "$ORACLE" ./oracle ) || { echo "oracle build failed" | tee -a "$LOG"; exit 2; }; fi
 
+# One-time trap-conformance gate (the trap_* methods are static, so checking
+# once per session is enough). A failure is a serious abort-lowering bug.
+if python3 "$ROOT/conformance/fuzz/trap_check.py" --root "$ROOT" --oracle "$ORACLE" \
+        > "$REPRO_DIR/trapgate.log" 2>&1; then
+    echo "trap-conformance gate: PASS — $(grep RESULT "$REPRO_DIR/trapgate.log" | tail -1)" | tee -a "$LOG"
+else
+    echo "!!! trap-conformance gate: FAIL — see $REPRO_DIR/trapgate.log" | tee -a "$LOG"
+    tail -20 "$REPRO_DIR/trapgate.log" | tee -a "$LOG"
+fi
+
 i=0; seed=$START
 trap 'echo "stopped $(date) after $i rounds" | tee -a "$LOG"; exit 0' INT TERM
 while :; do

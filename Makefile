@@ -113,7 +113,7 @@ PACKAGE_PATCH_CONFIG_ARGS := \
 	--config 'patch.crates-io.move-neovm.path="move-neovm"' \
 	--config 'patch.crates-io.neo-solana-compat.path="solana-compat"'
 
-.PHONY: help examples cross-chain hello-world nep17-token constant-product nep11-nft uniswap-v2 staking-rewards timelock-vault flashloan-pool multisig-wallet escrow crowdfunding governance-dao oracle-consumer nft-marketplace solana-hello move-coin storage-smoke c-hello fmt lint test verify-contract-tests test-contracts test-cross-chain integration-tests vm-test smoke-neoxp security-check package-check spec clean fuzz fuzz-compiler fuzz-translate fuzz-translate-config fuzz-pipeline fuzz-nef fuzz-numeric fuzz-devpack-codec fuzz-devpack-types fuzz-syscall-surface fuzz-rust-contract fuzz-rust-differential fuzz-rust-long fuzz-long-status fuzz-long-stop fuzz-all fuzz-differential fuzz-differential-long fuzz-everything
+.PHONY: help examples cross-chain hello-world nep17-token constant-product nep11-nft uniswap-v2 staking-rewards timelock-vault flashloan-pool multisig-wallet escrow crowdfunding governance-dao oracle-consumer nft-marketplace solana-hello move-coin storage-smoke c-hello fmt lint test verify-contract-tests test-contracts test-cross-chain integration-tests vm-test smoke-neoxp security-check package-check spec clean fuzz fuzz-compiler fuzz-translate fuzz-translate-config fuzz-pipeline fuzz-nef fuzz-numeric fuzz-devpack-codec fuzz-devpack-types fuzz-syscall-surface fuzz-rust-contract fuzz-rust-differential fuzz-rust-long fuzz-long-status fuzz-long-stop fuzz-all fuzz-differential fuzz-differential-long fuzz-traps fuzz-everything
 
 help:
 	@echo "Usage: make <target>"
@@ -605,7 +605,10 @@ fuzz-differential:  ## Semantic differential: run every translated op on a real 
 fuzz-differential-long:  ## Continuous generative semantic differential: regenerates random op compositions + inputs each round, real-VM vs native, forever (saves a repro on first mismatch). START=/ROUNDS=/RANDOM_PAIRS= to tune.
 	scripts/run_long_differential.sh
 
-fuzz-everything: fuzz-all fuzz-rust-contract fuzz-rust-differential fuzz-differential  ## Coverage-guided targets + the real-VM semantic differential
+fuzz-traps:  ## Trap-conformance: assert the real NeoVM FAULTs on div-by-zero / MIN-over-minus-1 / unreachable!() (the abort lowering the value-differential cannot check)
+	python3 conformance/fuzz/trap_check.py --root "$(CURDIR)" --oracle $${NEO_VM_ORACLE:-/tmp/neo-validate/oracle}
+
+fuzz-everything: fuzz-all fuzz-rust-contract fuzz-rust-differential fuzz-differential fuzz-traps  ## Coverage-guided targets + the real-VM semantic differential + trap-conformance
 	@echo "All fuzzing complete (compiler robustness + devpack codec/types/syscalls + Rust-contract gen/determinism + semantic VM differential)."
 
 clean:

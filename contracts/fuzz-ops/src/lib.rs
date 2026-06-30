@@ -730,3 +730,39 @@ impl FuzzOps {
         generated_ops::eval_idx(idx, a, b)
     }
 }
+
+/// Intentionally-trapping methods for the trap-conformance harness
+/// (`conformance/fuzz/trap_check.py`). These are deliberately UNGUARDED: a
+/// divide-by-zero, a MIN/-1 division overflow, or an `unreachable!()` must make
+/// the real NeoVM FAULT — i.e. the Rust panic=abort path must lower to a VM
+/// abort, never a silent wrong value. They are deliberately NOT in OP_NAMES /
+/// eval(), so refgen and the value-differential never invoke them (which would
+/// panic natively); only trap_check.py calls them, asserting the VM faults on
+/// the trapping inputs and halts with the right value on the safe ones.
+#[neo_contract]
+impl FuzzOps {
+    #[neo_method(safe)]
+    pub fn trap_div_s(a: i64, b: i64) -> i64 {
+        a / b
+    }
+    #[neo_method(safe)]
+    pub fn trap_rem_s(a: i64, b: i64) -> i64 {
+        a % b
+    }
+    #[neo_method(safe)]
+    pub fn trap_div_u(a: i64, b: i64) -> i64 {
+        ((a as u64) / (b as u64)) as i64
+    }
+    #[neo_method(safe)]
+    pub fn trap_div_i32(a: i64, b: i64) -> i64 {
+        ((a as i32) / (b as i32)) as i64
+    }
+    #[neo_method(safe)]
+    pub fn trap_unreachable(a: i64, _b: i64) -> i64 {
+        if a == 0 {
+            unreachable!()
+        } else {
+            a
+        }
+    }
+}
