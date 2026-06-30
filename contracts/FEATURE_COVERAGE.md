@@ -35,6 +35,17 @@ The `nep17!`/`nep11!` declarative macros are covered by the existing
 ## Findings surfaced + fixed while building these samples
 
 **Fixed (real correctness bugs):**
+- **Type-strict `EQUAL` broke every chained comparison** (found by the
+  differential fuzzer — see [`conformance/fuzz`](../conformance/fuzz/README.md)).
+  `i32/i64.eqz` lowered to `PUSH0; EQUAL` and `eq`/`ne` to `EQUAL`/`NOTEQUAL`, but
+  NeoVM's `EQUAL` is type-strict so `Boolean(false) == Integer(0)` is false. LLVM
+  chains comparisons (`if x==0` → `(x==0)==0`), feeding a comparison's Boolean
+  result into the next `eqz`/`eq`, which always misfired — so guarded branches
+  silently fell through. This corrupted `div_u`/`rem_u` and `BigInteger`
+  negative `>>`, and affected any contract with a chained comparison / `if x==0`
+  / `match` / boolean logic (valid NEF, wrong on chain). Fixed: `eqz`→`NOT`,
+  `eq`→`NUMEQUAL`, `ne`→`NUMNOTEQUAL`, and the `br_table` selector compare→
+  `NUMEQUAL`. Verified by 30,888/30,888 op cases + 90/90 memory cases on the real VM.
 - **clz/ctz/popcnt produced wrong results on chain.** The SWAR popcount trick
   `(x * 0x0101…01) >> shift` relied on 64-bit multiply wraparound; NeoVM
   `BigInteger` is arbitrary-precision, so the product polluted the result. Fixed
