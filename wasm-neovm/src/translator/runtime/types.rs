@@ -60,6 +60,12 @@ pub(crate) enum StorageHelperKind {
     HasI64,
     /// `System.Storage.Delete` with an `i64` key converted on the NeoVM stack.
     DeleteI64,
+    /// Gather `memory[ptr..ptr+len]` out of wasm linear memory and return it as
+    /// a `ByteString`. Shared by `System.Runtime.Log` / `System.Runtime.Notify`
+    /// / `System.Runtime.CheckWitness` to marshal a runtime-built (ptr, len)
+    /// byte-slice argument. Handles both the compact (single Buffer) and chunked
+    /// (Array of page Buffers) memory layouts.
+    ExtractMemoryBytes,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]

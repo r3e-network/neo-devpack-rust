@@ -140,9 +140,9 @@ use memory::{
     emit_memory_store_helper,
 };
 use storage::{
-    emit_storage_delete_helper, emit_storage_delete_i64_helper, emit_storage_get_helper,
-    emit_storage_get_i64_helper, emit_storage_has_i64_helper, emit_storage_put_helper,
-    emit_storage_put_i64_helper,
+    emit_extract_memory_bytes_helper, emit_storage_delete_helper, emit_storage_delete_i64_helper,
+    emit_storage_get_helper, emit_storage_get_i64_helper, emit_storage_has_i64_helper,
+    emit_storage_put_helper, emit_storage_put_i64_helper,
 };
 use table::{
     emit_elem_drop_helper, emit_table_copy_helper, emit_table_fill_helper, emit_table_get_helper,

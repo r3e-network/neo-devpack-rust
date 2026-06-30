@@ -300,6 +300,45 @@ pub(in crate::translator::runtime) fn emit_storage_put_helper(
     Ok(())
 }
 
+/// Emit the shared `(ptr, len) -> ByteString` byte-range gather helper.
+///
+/// `System.Runtime.Log` / `System.Runtime.Notify` / `System.Runtime.CheckWitness`
+/// take a runtime-built byte slice whose `(ptr, len)` are not compile-time
+/// constants (e.g. a heap-allocated `NeoString`). The old inline lowering did
+/// `LDSFLD0; REVERSE3; SWAP; SUBSTR`, which assumes the static memory slot is a
+/// flat `ByteString`. Under the chunked memory layout `LDSFLD0` yields an
+/// `Array` of per-page `Buffer`s, so `SUBSTR` faults with
+/// `invalid conversion: Array/ByteString`.
+///
+/// This helper reuses [`emit_extract_memory_bytes`] — the exact same gather used
+/// by the `System.Storage.*` helpers — so it is correct for both memory
+/// layouts: compact mode collapses to a single `LDSFLD0 + SUBSTR`, chunked mode
+/// walks pages byte-by-byte into a fresh `Buffer` and converts it to a
+/// `ByteString`.
+///
+/// INITSLOT slot mapping (top-first pop): ARG0 = len, ARG1 = ptr. The caller
+/// pushes `ptr` then `len`, so after the `CALL_L` the helper consumes both and
+/// leaves the resulting `ByteString` on the stack where the following `SYSCALL`
+/// expects it. `len == 0` yields an empty `ByteString` (an empty `NEWBUFFER`
+/// converted to `ByteString` in chunked mode, or a zero-length `SUBSTR` in
+/// compact mode).
+pub(in crate::translator::runtime) fn emit_extract_memory_bytes_helper(
+    script: &mut Vec<u8>,
+    chunked: bool,
+) -> Result<()> {
+    // Chunked mode needs 3 scratch locals (acc buffer / running index / scratch
+    // for byte address+value), matching the convention used by the storage
+    // helpers. Compact mode needs none.
+    let local_count = if chunked { 3 } else { 0 };
+    script.push(lookup_opcode("INITSLOT")?.byte);
+    script.push(local_count);
+    script.push(2); // 2 args: ptr, len
+
+    emit_extract_memory_bytes(script, 1, 0, chunked, 0, 1, 2)?; // ARG1=ptr, ARG0=len
+    script.push(lookup_opcode("RET")?.byte);
+    Ok(())
+}
+
 /// Emit `neo_storage_delete_bytes(key_ptr, key_len)`.
 ///
 /// INITSLOT slot mapping (top-first pop): ARG0 = key_len, ARG1 = key_ptr.

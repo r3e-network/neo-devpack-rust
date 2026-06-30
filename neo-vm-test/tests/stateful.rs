@@ -34,3 +34,12 @@ fn runtime_time_is_honored() {
     let c = Contract::compile("contracts/feature-runtime").expect("compile");
     c.call("nowMs").time(1_700_000_000_000).run().assert_returns_i64(1_700_000_000_000);
 }
+
+#[test]
+fn heap_built_syscall_args_dont_fault() {
+    // Regression: a heap-built NeoString/NeoByteString passed to log/check_witness
+    // must marshal correctly out of CHUNKED memory (previously FAULTed at SUBSTR).
+    let c = Contract::compile("contracts/feature-runtime").expect("compile");
+    c.invoke("logMsg", &[]).assert_halt(); // NeoRuntime::log(&NeoString::from_str(..))
+    c.invoke("witnessBytes", &[]).assert_returns_bool(false); // check_witness(&NeoByteString)/bytes, no signer
+}

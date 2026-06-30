@@ -111,19 +111,11 @@ pub(in super::super) fn try_handle_neo_import(
 
     if let Some(bytes) = embedded_static_bytes {
         emit_push_data(script, bytes)?;
-        script.push(syscall_op.byte);
-        script.extend_from_slice(&syscall.hash.to_le_bytes());
     } else {
-        ensure_memory_access(runtime, 0)?;
-        runtime.emit_memory_init_call(script)?;
-
-        script.push(lookup_opcode("LDSFLD0")?.byte);
-        script.push(lookup_opcode("REVERSE3")?.byte);
-        script.push(lookup_opcode("SWAP")?.byte);
-        script.push(lookup_opcode("SUBSTR")?.byte);
-        script.push(syscall_op.byte);
-        script.extend_from_slice(&syscall.hash.to_le_bytes());
+        emit_chunked_bytes_argument(runtime, script)?;
     }
+    script.push(syscall_op.byte);
+    script.extend_from_slice(&syscall.hash.to_le_bytes());
 
     Ok(Some(syscall.name))
 }
@@ -255,15 +247,34 @@ fn emit_memory_bytes_argument(
     if let Some(bytes) = embedded_static_bytes {
         emit_push_data(script, bytes)?;
     } else {
-        ensure_memory_access(runtime, 0)?;
-        runtime.emit_memory_init_call(script)?;
-
-        script.push(lookup_opcode("LDSFLD0")?.byte);
-        script.push(lookup_opcode("REVERSE3")?.byte);
-        script.push(lookup_opcode("SWAP")?.byte);
-        script.push(lookup_opcode("SUBSTR")?.byte);
+        emit_chunked_bytes_argument(runtime, script)?;
     }
 
+    Ok(())
+}
+
+/// Marshal a runtime-built `(ptr, len)` byte-slice argument (already on the
+/// NeoVM stack, `ptr` then `len`) into a single `ByteString` left on the stack.
+///
+/// This replaces the old `LDSFLD0; REVERSE3; SWAP; SUBSTR` flat-bytestring
+/// sequence, which faulted (`invalid conversion: Array/ByteString`) under the
+/// chunked memory layout because `LDSFLD0` yields an `Array` of page `Buffer`s,
+/// not a flat `ByteString`. The work is delegated to a shared
+/// `ExtractMemoryBytes` runtime helper (see
+/// `runtime::storage::emit_extract_memory_bytes_helper`) that is correct for
+/// both the compact and chunked layouts and is `CALL_L`'d here — so it needs no
+/// scratch local slots in the *caller's* frame (the helper allocates its own
+/// via `INITSLOT`, avoiding any collision with the contract function's locals).
+fn emit_chunked_bytes_argument(
+    runtime: &mut RuntimeHelpers,
+    script: &mut Vec<u8>,
+) -> Result<()> {
+    ensure_memory_access(runtime, 0)?;
+    runtime.emit_memory_init_call(script)?;
+    runtime.emit_storage_helper(
+        script,
+        crate::translator::runtime::StorageHelperKind::ExtractMemoryBytes,
+    )?;
     Ok(())
 }
 

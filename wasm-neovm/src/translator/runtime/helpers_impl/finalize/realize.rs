@@ -324,6 +324,9 @@ impl RuntimeHelpers {
             StorageHelperKind::GetI64 => emit_storage_get_i64_helper(script)?,
             StorageHelperKind::HasI64 => emit_storage_has_i64_helper(script)?,
             StorageHelperKind::DeleteI64 => emit_storage_delete_i64_helper(script)?,
+            StorageHelperKind::ExtractMemoryBytes => {
+                emit_extract_memory_bytes_helper(script, chunked)?
+            }
         }
         self.storage_helpers.entry(kind).or_default().offset = Some(helper_offset);
         Ok(helper_offset)
