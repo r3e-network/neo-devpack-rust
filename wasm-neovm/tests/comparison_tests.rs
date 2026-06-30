@@ -23,10 +23,10 @@ fn translate_i32_eq_comparison() {
 
     let translation = translate_module(&wasm, "I32Eq").expect("translation succeeds");
 
-    let equal = wasm_neovm::opcodes::lookup("EQUAL").unwrap().byte;
+    let equal = wasm_neovm::opcodes::lookup("NUMEQUAL").unwrap().byte;
     assert!(
         translation.script.contains(&equal),
-        "should emit EQUAL for i32.eq"
+        "should emit NUMEQUAL for i32.eq"
     );
 }
 
@@ -43,10 +43,10 @@ fn translate_i32_ne_comparison() {
 
     let translation = translate_module(&wasm, "I32Ne").expect("translation succeeds");
 
-    let notequal = wasm_neovm::opcodes::lookup("NOTEQUAL").unwrap().byte;
+    let notequal = wasm_neovm::opcodes::lookup("NUMNOTEQUAL").unwrap().byte;
     assert!(
         translation.script.contains(&notequal),
-        "should emit NOTEQUAL for i32.ne"
+        "should emit NUMNOTEQUAL for i32.ne"
     );
 }
 
@@ -168,10 +168,10 @@ fn translate_i64_eq_comparison() {
 
     let translation = translate_module(&wasm, "I64Eq").expect("translation succeeds");
 
-    let equal = wasm_neovm::opcodes::lookup("EQUAL").unwrap().byte;
+    let equal = wasm_neovm::opcodes::lookup("NUMEQUAL").unwrap().byte;
     assert!(
         translation.script.contains(&equal),
-        "should emit EQUAL for i64.eq"
+        "should emit NUMEQUAL for i64.eq"
     );
 }
 
@@ -188,10 +188,10 @@ fn translate_i64_ne_comparison() {
 
     let translation = translate_module(&wasm, "I64Ne").expect("translation succeeds");
 
-    let notequal = wasm_neovm::opcodes::lookup("NOTEQUAL").unwrap().byte;
+    let notequal = wasm_neovm::opcodes::lookup("NUMNOTEQUAL").unwrap().byte;
     assert!(
         translation.script.contains(&notequal),
-        "should emit NOTEQUAL for i64.ne"
+        "should emit NUMNOTEQUAL for i64.ne"
     );
 }
 
@@ -251,13 +251,12 @@ fn translate_i32_eqz() {
 
     let translation = translate_module(&wasm, "I32Eqz").expect("translation succeeds");
 
-    // eqz should push 0 and compare equal
-    let push0 = wasm_neovm::opcodes::lookup("PUSH0").unwrap().byte;
-    let equal = wasm_neovm::opcodes::lookup("EQUAL").unwrap().byte;
-    assert!(translation.script.contains(&push0), "should push 0 for eqz");
+    // eqz lowers to a single NOT (numeric is-zero), not PUSH0; EQUAL — the
+    // type-strict EQUAL breaks chained eqz on a Boolean operand.
+    let not = wasm_neovm::opcodes::lookup("NOT").unwrap().byte;
     assert!(
-        translation.script.contains(&equal),
-        "should emit EQUAL for eqz"
+        translation.script.contains(&not),
+        "should emit NOT for eqz"
     );
 }
 
@@ -273,10 +272,10 @@ fn translate_i64_eqz() {
 
     let translation = translate_module(&wasm, "I64Eqz").expect("translation succeeds");
 
-    let push0 = wasm_neovm::opcodes::lookup("PUSH0").unwrap().byte;
+    let not = wasm_neovm::opcodes::lookup("NOT").unwrap().byte;
     assert!(
-        translation.script.contains(&push0),
-        "should push 0 for i64.eqz"
+        translation.script.contains(&not),
+        "should emit NOT for i64.eqz"
     );
 }
 
@@ -298,8 +297,8 @@ fn translate_boundary_comparison_int_min() {
     let translation = translate_module(&wasm, "BoundaryMin").expect("translation succeeds");
 
     // Should compare with INT_MIN boundary value
-    let equal = wasm_neovm::opcodes::lookup("EQUAL").unwrap().byte;
-    assert!(translation.script.contains(&equal), "should emit EQUAL");
+    let equal = wasm_neovm::opcodes::lookup("NUMEQUAL").unwrap().byte;
+    assert!(translation.script.contains(&equal), "should emit NUMEQUAL");
 }
 
 #[test]
@@ -316,8 +315,8 @@ fn translate_boundary_comparison_int_max() {
     let translation = translate_module(&wasm, "BoundaryMax").expect("translation succeeds");
 
     // Should compare with INT_MAX boundary value
-    let equal = wasm_neovm::opcodes::lookup("EQUAL").unwrap().byte;
-    assert!(translation.script.contains(&equal), "should emit EQUAL");
+    let equal = wasm_neovm::opcodes::lookup("NUMEQUAL").unwrap().byte;
+    assert!(translation.script.contains(&equal), "should emit NUMEQUAL");
 }
 
 #[test]
@@ -333,10 +332,10 @@ fn translate_boundary_comparison_zero() {
 
     let translation = translate_module(&wasm, "BoundaryZero").expect("translation succeeds");
 
-    let notequal = wasm_neovm::opcodes::lookup("NOTEQUAL").unwrap().byte;
+    let notequal = wasm_neovm::opcodes::lookup("NUMNOTEQUAL").unwrap().byte;
     assert!(
         translation.script.contains(&notequal),
-        "should emit NOTEQUAL"
+        "should emit NUMNOTEQUAL"
     );
 }
 
@@ -429,8 +428,8 @@ fn translate_comparison_in_select() {
     let translation = translate_module(&wasm, "ComparisonSelect").expect("translation succeeds");
 
     // Should emit EQUAL for comparison, then selection logic
-    let equal = wasm_neovm::opcodes::lookup("EQUAL").unwrap().byte;
-    assert!(translation.script.contains(&equal), "should emit EQUAL");
+    let equal = wasm_neovm::opcodes::lookup("NUMEQUAL").unwrap().byte;
+    assert!(translation.script.contains(&equal), "should emit NUMEQUAL");
 }
 
 // ============================================================================

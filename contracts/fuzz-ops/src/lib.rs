@@ -279,6 +279,61 @@ pub mod ops {
     pub fn big_neg(a: i64, _b: i64) -> i64 {
         red(NeoInteger::zero() - NeoInteger::new(a))
     }
+
+    // ---- chained / boolean-operand comparisons ----
+    // These feed a comparison RESULT (a NeoVM Boolean) into another
+    // eqz/eq/ne/and/or/xor, exercising the type-strict-EQUAL bug class that
+    // raw-integer comparisons cannot reach.
+    pub fn not_lt(a: i64, b: i64) -> i64 {
+        (!(a < b)) as i64 // eqz applied to the LT Boolean
+    }
+    pub fn double_neg_lt(a: i64, b: i64) -> i64 {
+        (!!(a < b)) as i64 // eqz(eqz(Boolean))
+    }
+    pub fn eq_cmps(a: i64, b: i64) -> i64 {
+        ((a < b) == (b < a)) as i64 // eq of two Booleans
+    }
+    pub fn ne_cmps(a: i64, b: i64) -> i64 {
+        ((a < b) != (a == b)) as i64 // ne of two Booleans
+    }
+    pub fn and_cmps(a: i64, b: i64) -> i64 {
+        ((a < b) & (a != 0)) as i64 // bitand of two Booleans
+    }
+    pub fn or_cmps(a: i64, b: i64) -> i64 {
+        ((a > b) | (b == 0)) as i64 // bitor of two Booleans
+    }
+    pub fn xor_cmps(a: i64, b: i64) -> i64 {
+        ((a < b) ^ (a > b)) as i64 // bitxor of two Booleans
+    }
+    pub fn cmp_chain(a: i64, b: i64) -> i64 {
+        // a longer chain mixing eqz/eq through if/else (the original bug shape)
+        if (a < b) == (b > a) {
+            if a == 0 {
+                1
+            } else {
+                2
+            }
+        } else {
+            3
+        }
+    }
+
+    // ---- unsigned min/max (unsigned compare + select) and i32 eqz ----
+    pub fn min_u(a: i64, b: i64) -> i64 {
+        (a as u64).min(b as u64) as i64
+    }
+    pub fn max_u(a: i64, b: i64) -> i64 {
+        (a as u64).max(b as u64) as i64
+    }
+    pub fn i32_eqz(a: i64, _b: i64) -> i64 {
+        ((a as i32) == 0) as i64
+    }
+    pub fn i32_eq(a: i64, b: i64) -> i64 {
+        ((a as i32) == (b as i32)) as i64
+    }
+    pub fn i32_ne(a: i64, b: i64) -> i64 {
+        ((a as i32) != (b as i32)) as i64
+    }
 }
 
 /// Dispatch an op by name (shared by the contract test and the refgen binary).
@@ -350,6 +405,19 @@ pub fn eval(op: &str, a: i64, b: i64) -> Option<i64> {
         "big_shl" => big_shl,
         "big_shr" => big_shr,
         "big_neg" => big_neg,
+        "not_lt" => not_lt,
+        "double_neg_lt" => double_neg_lt,
+        "eq_cmps" => eq_cmps,
+        "ne_cmps" => ne_cmps,
+        "and_cmps" => and_cmps,
+        "or_cmps" => or_cmps,
+        "xor_cmps" => xor_cmps,
+        "cmp_chain" => cmp_chain,
+        "min_u" => min_u,
+        "max_u" => max_u,
+        "i32_eqz" => i32_eqz,
+        "i32_eq" => i32_eq,
+        "i32_ne" => i32_ne,
         _ => return None,
     };
     Some(f(a, b))
@@ -365,7 +433,8 @@ pub const OP_NAMES: &[&str] = &[
     "i32_shr_s", "i32_shr_u", "i32_rotl", "i32_rotr", "i32_clz", "i32_ctz", "i32_popcnt",
     "wrap_i32", "extend_i32_u", "extend8_s", "extend16_s", "extend32_s", "big_add", "big_sub",
     "big_mul", "big_div", "big_rem", "big_and", "big_or", "big_xor", "big_shl", "big_shr",
-    "big_neg",
+    "big_neg", "not_lt", "double_neg_lt", "eq_cmps", "ne_cmps", "and_cmps", "or_cmps", "xor_cmps",
+    "cmp_chain", "min_u", "max_u", "i32_eqz", "i32_eq", "i32_ne",
 ];
 
 #[neo_contract]
@@ -392,5 +461,6 @@ export_ops!(
     min_s, max_s, i32_add, i32_sub, i32_mul, i32_div_s, i32_rem_s, i32_div_u, i32_rem_u, i32_shl,
     i32_shr_s, i32_shr_u, i32_rotl, i32_rotr, i32_clz, i32_ctz, i32_popcnt, wrap_i32, extend_i32_u,
     extend8_s, extend16_s, extend32_s, big_add, big_sub, big_mul, big_div, big_rem, big_and,
-    big_or, big_xor, big_shl, big_shr, big_neg,
+    big_or, big_xor, big_shl, big_shr, big_neg, not_lt, double_neg_lt, eq_cmps, ne_cmps, and_cmps,
+    or_cmps, xor_cmps, cmp_chain, min_u, max_u, i32_eqz, i32_eq, i32_ne,
 );
