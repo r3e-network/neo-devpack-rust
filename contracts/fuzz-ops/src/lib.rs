@@ -334,6 +334,169 @@ pub mod ops {
     pub fn i32_ne(a: i64, b: i64) -> i64 {
         ((a as i32) != (b as i32)) as i64
     }
+
+    // ---- control-flow patterns (loops / br_table / recursion / select) ----
+    pub fn nested_loop(a: i64, b: i64) -> i64 {
+        let n = a.rem_euclid(40);
+        let m = b.rem_euclid(40);
+        let mut s: i64 = 0;
+        for i in 0..n {
+            for j in 0..m {
+                s = s.wrapping_add(i.wrapping_mul(j));
+            }
+        }
+        s
+    }
+    pub fn loop_continue(a: i64, b: i64) -> i64 {
+        let n = a.rem_euclid(200);
+        let mut s: i64 = 0;
+        let mut i = 0i64;
+        while i < n {
+            i += 1;
+            if i % (b.rem_euclid(5) + 1) == 0 {
+                continue;
+            }
+            s = s.wrapping_add(i);
+        }
+        s
+    }
+    pub fn multi_break(a: i64, b: i64) -> i64 {
+        let mut s: i64 = 0;
+        let mut i = 0i64;
+        loop {
+            if i >= a.rem_euclid(1000) {
+                break;
+            }
+            s = s.wrapping_add(i);
+            if s > b.rem_euclid(10000) {
+                break;
+            }
+            i += 1;
+        }
+        s
+    }
+    pub fn br_wide(a: i64, _b: i64) -> i64 {
+        match a.rem_euclid(20) {
+            0 => 1000,
+            1 => 1001,
+            2 => 1002,
+            3 => 1003,
+            4 => 1004,
+            5 => 1005,
+            6 => 1006,
+            7 => 1007,
+            8 => 1008,
+            9 => 1009,
+            10 => 1010,
+            11 => 1011,
+            12 => 1012,
+            13 => 1013,
+            14 => 1014,
+            15 => 1015,
+            16 => 1016,
+            17 => 1017,
+            18 => 1018,
+            _ => 1019,
+        }
+    }
+    pub fn recurse_sum(a: i64, _b: i64) -> i64 {
+        fn go(n: i64) -> i64 {
+            if n <= 0 {
+                0
+            } else {
+                n.wrapping_add(go(n - 1))
+            }
+        }
+        go(a.rem_euclid(500))
+    }
+    pub fn cond_nest(a: i64, b: i64) -> i64 {
+        let r = if a > b {
+            if a > 0 {
+                a.wrapping_sub(b)
+            } else {
+                b.wrapping_sub(a)
+            }
+        } else if a == b {
+            0
+        } else {
+            -(b.wrapping_sub(a))
+        };
+        r.wrapping_add(if (a ^ b) < 0 { 1 } else { 2 })
+    }
+
+    // ---- conversion chains ----
+    pub fn sx_chain(a: i64, _b: i64) -> i64 {
+        // chained sign-extends of narrowing widths
+        let x = (a as i8) as i64;
+        let y = (a as i16) as i64;
+        let z = (a as i32) as i64;
+        x.wrapping_add(y).wrapping_add(z)
+    }
+    pub fn wrap_roundtrip(a: i64, _b: i64) -> i64 {
+        let lo = (a as i32) as i64; // sign-extended low 32
+        let u = ((a as u32) as u64) as i64; // zero-extended low 32
+        lo ^ u
+    }
+    pub fn narrow_widen(a: i64, b: i64) -> i64 {
+        // mix wrap + extend + arithmetic
+        let x = (a as i32).wrapping_add(b as i32);
+        ((x as i64) << 1).wrapping_sub((x as u32) as u64 as i64)
+    }
+
+    // ---- NeoInteger: operators + conversions + large-value paths ----
+    pub fn big_not(a: i64, _b: i64) -> i64 {
+        red(!NeoInteger::new(a))
+    }
+    pub fn big_div_op(a: i64, b: i64) -> i64 {
+        if b == 0 {
+            GUARD
+        } else {
+            red(NeoInteger::new(a) / NeoInteger::new(b))
+        }
+    }
+    pub fn big_rem_op(a: i64, b: i64) -> i64 {
+        if b == 0 {
+            GUARD
+        } else {
+            red(NeoInteger::new(a) % NeoInteger::new(b))
+        }
+    }
+    pub fn big_lt(a: i64, b: i64) -> i64 {
+        (NeoInteger::new(a) < NeoInteger::new(b)) as i64
+    }
+    pub fn big_eq(a: i64, b: i64) -> i64 {
+        (NeoInteger::new(a) == NeoInteger::new(b)) as i64
+    }
+    pub fn big_as_i32_sat(a: i64, _b: i64) -> i64 {
+        NeoInteger::new(a).as_i32_saturating() as i64
+    }
+    pub fn big_as_u32_sat(a: i64, _b: i64) -> i64 {
+        NeoInteger::new(a).as_u32_saturating() as i64
+    }
+    pub fn big_try_i32(a: i64, _b: i64) -> i64 {
+        match NeoInteger::new(a).try_as_i32() {
+            Some(x) => x as i64,
+            None => -999_999,
+        }
+    }
+    pub fn big_fits(a: i64, _b: i64) -> i64 {
+        NeoInteger::new(a).fits_in_neovm() as i64
+    }
+    pub fn big_large_mul(a: i64, b: i64) -> i64 {
+        // push operands into 128-bit+ territory before reducing (tests the
+        // wide-BigInteger multiply + saturating narrowing)
+        let x = NeoInteger::new(a) << 40u32;
+        let y = NeoInteger::new(b) << 40u32;
+        red(x * y)
+    }
+    pub fn big_chain(a: i64, b: i64) -> i64 {
+        // mixed operator chain exercising sign + bit ops on BigInteger
+        let x = NeoInteger::new(a);
+        let y = NeoInteger::new(b);
+        let t = (x.clone() + y.clone()) - NeoInteger::new(1);
+        let t = (t & y.clone()) | (x ^ y);
+        red(!t)
+    }
 }
 
 /// Dispatch an op by name (shared by the contract test and the refgen binary).
@@ -418,6 +581,26 @@ pub fn eval(op: &str, a: i64, b: i64) -> Option<i64> {
         "i32_eqz" => i32_eqz,
         "i32_eq" => i32_eq,
         "i32_ne" => i32_ne,
+        "nested_loop" => nested_loop,
+        "loop_continue" => loop_continue,
+        "multi_break" => multi_break,
+        "br_wide" => br_wide,
+        "recurse_sum" => recurse_sum,
+        "cond_nest" => cond_nest,
+        "sx_chain" => sx_chain,
+        "wrap_roundtrip" => wrap_roundtrip,
+        "narrow_widen" => narrow_widen,
+        "big_not" => big_not,
+        "big_div_op" => big_div_op,
+        "big_rem_op" => big_rem_op,
+        "big_lt" => big_lt,
+        "big_eq" => big_eq,
+        "big_as_i32_sat" => big_as_i32_sat,
+        "big_as_u32_sat" => big_as_u32_sat,
+        "big_try_i32" => big_try_i32,
+        "big_fits" => big_fits,
+        "big_large_mul" => big_large_mul,
+        "big_chain" => big_chain,
         _ => return None,
     };
     Some(f(a, b))
@@ -435,6 +618,7 @@ pub const OP_NAMES: &[&str] = &[
     "big_mul", "big_div", "big_rem", "big_and", "big_or", "big_xor", "big_shl", "big_shr",
     "big_neg", "not_lt", "double_neg_lt", "eq_cmps", "ne_cmps", "and_cmps", "or_cmps", "xor_cmps",
     "cmp_chain", "min_u", "max_u", "i32_eqz", "i32_eq", "i32_ne",
+    "nested_loop", "loop_continue", "multi_break", "br_wide", "recurse_sum", "cond_nest", "sx_chain", "wrap_roundtrip", "narrow_widen", "big_not", "big_div_op", "big_rem_op", "big_lt", "big_eq", "big_as_i32_sat", "big_as_u32_sat", "big_try_i32", "big_fits", "big_large_mul", "big_chain",
 ];
 
 #[neo_contract]
@@ -463,4 +647,5 @@ export_ops!(
     extend8_s, extend16_s, extend32_s, big_add, big_sub, big_mul, big_div, big_rem, big_and,
     big_or, big_xor, big_shl, big_shr, big_neg, not_lt, double_neg_lt, eq_cmps, ne_cmps, and_cmps,
     or_cmps, xor_cmps, cmp_chain, min_u, max_u, i32_eqz, i32_eq, i32_ne,
+    nested_loop, loop_continue, multi_break, br_wide, recurse_sum, cond_nest, sx_chain, wrap_roundtrip, narrow_widen, big_not, big_div_op, big_rem_op, big_lt, big_eq, big_as_i32_sat, big_as_u32_sat, big_try_i32, big_fits, big_large_mul, big_chain,
 );
