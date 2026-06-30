@@ -15,6 +15,7 @@ This repository focuses on the Wasm → NeoVM translator, the Rust DevPack, and 
 - **[c-smart-contract-quickstart.md](c-smart-contract-quickstart.md)** – Step-by-step guide for compiling C contracts to NEF.
 - **[manifest-overlay-guide.md](manifest-overlay-guide.md)** – Shared reference for authoring manifest overlays (Rust macros, external JSON, `translate_with_config`).
 - **[rust-smart-contract-quickstart.md](rust-smart-contract-quickstart.md)** – Step-by-step guide for writing your first Rust contract.
+- **[testing-and-debugging-guide.md](testing-and-debugging-guide.md)** – The three testing layers (mock unit / real-VM bytecode via `neo-vm-test` / Neo Express full-chain) plus disassembly and single-step tracing.
 - **[neoexpress-integration.md](neoexpress-integration.md)** – Neo Express deployment and integration testing guide.
 - **[neo-n3-conformance-matrix.md](neo-n3-conformance-matrix.md)** – Neo N3 conformance verification matrix.
 - **[refactor-plan.md](refactor-plan.md)** – Refactoring roadmap and design notes.
