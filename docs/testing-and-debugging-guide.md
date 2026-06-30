@@ -13,8 +13,8 @@ NeoVM, not on the source language.
 | Layer | Crate / tool | Runs | Use for | Needs |
 |---|---|---|---|---|
 | 1. Unit / logic | [`neo-test`](../rust-devpack/neo-test) | your method **natively** against a mock runtime/storage | fast logic checks, storage/runtime mocking, assertions | nothing |
-| 2. Bytecode e2e | [`neo-vm-test`](../neo-vm-test) | the **translated NEF** on a real NeoVM (neo-go) | proving the compiled bytecode behaves (catches translator/lowering bugs) | Go (builds the oracle once) |
-| 3. Full-chain e2e | [`integration-tests`](../integration-tests) + Neo Express | a deployed contract on a **live chain** | storage/runtime/deploy/multi-contract end-to-end | Neo Express (`neoxp`) |
+| 2. Bytecode e2e | [`neo-vm-test`](../neo-vm-test) | the **translated NEF** on a real NeoVM (neo-go), with storage + runtime syscalls serviced | proving the compiled bytecode behaves — pure compute **and** stateful storage/witness/notify (catches translator/lowering bugs) | Go (builds the oracle once) |
+| 3. Full-chain e2e | [`integration-tests`](../integration-tests) + Neo Express | a deployed contract on a **live chain** | deploy/upgrade, multi-contract calls, native-contract interop | Neo Express (`neoxp`) |
 
 ### Layer 1 — unit tests with mocks (`neo-test`)
 
@@ -61,11 +61,28 @@ Run with `make vm-test` (or `cargo test --manifest-path neo-vm-test/Cargo.toml`)
 On first use it builds `wasm-neovm` and the conformance oracle (`go build`).
 Point `$NEO_VM_ORACLE` / `$NEO_WASM_NEOVM` at prebuilt binaries to skip that.
 
-The default oracle is a **bare** VM: pure compute, arithmetic, control flow and
-bit/BigInteger logic run faithfully; syscalls that need chain context (Storage,
-Runtime, contract calls) FAULT — use Layer 3 for those. `invoke` returns a
-`VmOutcome` (state, return stack, gas) with `assert_returns_i64`,
-`assert_returns_bool`, `assert_halt`, `assert_fault`.
+**Stateful** tests seed storage / signers / runtime env with the builder and
+read back the storage diff and emitted events:
+
+```rust
+let c = Contract::compile("contracts/feature-storage-raw").unwrap();
+c.call("getKeyed")
+    .arg(7)
+    .storage(&[7], &999i64.to_le_bytes())  // seed storage the contract reads
+    .signer([0u8; 20])                     // check_witness(this) == true
+    .time(1_700_000_000_000)               // System.Runtime.GetTime
+    .run()
+    .assert_returns_i64(999);
+```
+
+The oracle services `System.Storage.*` (Get/Put/Delete/contexts),
+`System.Runtime.*` (Log/Notify/CheckWitness/GetTime/GetTrigger/GetNetwork/…) and
+`System.Contract.GetCallFlags`, mirroring neo-go's interop ABI, so storage
+round-trips, witness checks and notifications all work. `VmOutcome` carries the
+return stack, `storage_diff`, and `events`, with assertions: `assert_returns_i64`,
+`assert_returns_bool`, `assert_halt`, `assert_fault`, `assert_storage(key, val)`,
+`assert_event(name)`. Deploy/upgrade, multi-contract calls and native-contract
+interop are out of scope for the in-process VM — use Layer 3 for those.
 
 ### Layer 3 — full-chain tests (Neo Express)
 

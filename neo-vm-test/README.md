@@ -27,8 +27,10 @@ expose the oracle's debugger.
 - Run: `make vm-test` (from the repo root), or `cargo test` here.
 - Binaries are resolved from `$NEO_VM_ORACLE` / `$NEO_WASM_NEOVM`, else built on
   first use (`go build` for the oracle, `cargo build` for the translator).
-- The default oracle is a bare VM (pure compute / arithmetic / control-flow /
-  bit & BigInteger). For storage/runtime/deploy use Neo Express
-  (`integration-tests`). See [the testing & debugging guide](../docs/testing-and-debugging-guide.md).
+- The oracle services storage + runtime syscalls, so stateful contracts run too
+  — seed state with the `call(..)` builder (`.storage`, `.signer`, `.time`,
+  `.network`) and read back `storage_diff` / `events`. Deploy/multi-contract
+  flows use Neo Express (`integration-tests`). See
+  [the testing & debugging guide](../docs/testing-and-debugging-guide.md).
 
 This is a dev-only crate (`publish = false`).

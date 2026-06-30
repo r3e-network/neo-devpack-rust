@@ -27,11 +27,13 @@
 //! demand with `go build`. Translation uses the `wasm-neovm` binary
 //! (`$NEO_WASM_NEOVM`, else built with cargo). Both are repo-local dev tools.
 //!
-//! The default oracle is a *bare* VM (no chain context): it executes pure
-//! compute, arithmetic, control-flow and bit/BigInteger logic faithfully, but
-//! syscalls needing a chain (Storage/Runtime/contract calls) are not serviced —
-//! use the full-chain path for those. [`Contract::invoke`] surfaces a FAULT in
-//! that case rather than a wrong answer.
+//! The oracle services `System.Storage.*`, `System.Runtime.*` and
+//! `System.Contract.GetCallFlags` against in-memory state (seeded via the
+//! [`Contract::call`] builder: storage, signers, time, network), mirroring
+//! neo-go's interop ABI — so pure compute *and* stateful storage/witness/notify
+//! contracts run end-to-end. Deploy/upgrade, multi-contract calls and
+//! native-contract interop need a live chain (Neo Express); unsupported
+//! syscalls surface as a FAULT rather than a wrong answer.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -100,6 +102,14 @@ fn hex(b: &[u8]) -> String {
     s
 }
 
+/// A `System.Runtime.Notify` captured during execution.
+#[derive(Clone, Debug)]
+pub struct Event {
+    pub name: String,
+    /// State items, formatted by the oracle (decimal ints, hex bytes, …).
+    pub state: Vec<String>,
+}
+
 /// The outcome of executing one contract method on the NeoVM.
 #[derive(Clone, Debug)]
 pub struct VmOutcome {
@@ -109,6 +119,10 @@ pub struct VmOutcome {
     /// (integers as decimal, byte arrays as hex, etc.).
     pub return_stack: Vec<String>,
     pub gas_consumed: i64,
+    /// Final contract storage after the call (key, value) as raw bytes.
+    pub storage_diff: Vec<(Vec<u8>, Vec<u8>)>,
+    /// Notifications emitted via `System.Runtime.Notify`, in order.
+    pub events: Vec<Event>,
     pub error_message: Option<String>,
 }
 
@@ -163,6 +177,50 @@ impl VmOutcome {
         assert_eq!(self.top_bool(), Some(expected), "stack={:?}", self.return_stack);
         self
     }
+
+    // ---- storage + events ----
+    /// Final stored value for `key`, if present.
+    pub fn storage(&self, key: &[u8]) -> Option<&[u8]> {
+        self.storage_diff
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v.as_slice())
+    }
+    pub fn assert_storage(&self, key: &[u8], expected: &[u8]) -> &Self {
+        assert_eq!(
+            self.storage(key),
+            Some(expected),
+            "storage[{}] mismatch (diff: {:?})",
+            hex(key),
+            self.storage_diff
+                .iter()
+                .map(|(k, v)| (hex(k), hex(v)))
+                .collect::<Vec<_>>()
+        );
+        self
+    }
+    pub fn events(&self) -> &[Event] {
+        &self.events
+    }
+    /// The first event named `name`, if any.
+    pub fn event(&self, name: &str) -> Option<&Event> {
+        self.events.iter().find(|e| e.name == name)
+    }
+    pub fn assert_event(&self, name: &str) -> &Self {
+        assert!(
+            self.event(name).is_some(),
+            "expected event {name:?}, got {:?}",
+            self.events.iter().map(|e| &e.name).collect::<Vec<_>>()
+        );
+        self
+    }
+}
+
+fn unhex(s: &str) -> Vec<u8> {
+    (0..s.len())
+        .step_by(2)
+        .filter_map(|i| u8::from_str_radix(s.get(i..i + 2)?, 16).ok())
+        .collect()
 }
 
 /// A compiled contract (NEF + manifest) ready to invoke on the VM.
@@ -240,24 +298,42 @@ impl Contract {
         })
     }
 
-    /// Invoke `method` with `args` on a real NeoVM; panics only on harness
-    /// failure (the VM's own FAULT is reported in [`VmOutcome`]).
+    /// Invoke `method` with `args` on a real NeoVM (no seeded state); panics
+    /// only on harness failure (the VM's own FAULT is reported in [`VmOutcome`]).
     pub fn invoke(&self, method: &str, args: &[VmArg]) -> VmOutcome {
-        self.try_invoke(method, args)
-            .unwrap_or_else(|e| panic!("invoke {method}: {e}"))
+        self.call(method).args(args).run()
     }
 
     pub fn try_invoke(&self, method: &str, args: &[VmArg]) -> Result<VmOutcome, String> {
-        use serde_json::json;
-        let req = json!({
-            "nef_path": self.nef,
-            "manifest_path": self.manifest,
-            "method": method,
-            "arguments": args.iter().map(|a| a.to_json()).collect::<Vec<_>>(),
-            "signers": [],
-            "initial_storage": [],
-            "gas_limit": 2_000_000_000i64,
-        });
+        self.call(method).args(args).try_run()
+    }
+
+    /// Start a stateful invocation builder: seed storage, add signers, set the
+    /// runtime environment, then `.run()`.
+    ///
+    /// ```no_run
+    /// # use neo_vm_test::Contract;
+    /// # let c = Contract::compile("contracts/feature-storage-raw").unwrap();
+    /// c.call("getKeyed")
+    ///     .arg(7)
+    ///     .storage(&[7], &999i64.to_le_bytes())
+    ///     .signer([0u8; 20])
+    ///     .run()
+    ///     .assert_returns_i64(999);
+    /// ```
+    pub fn call<'a>(&'a self, method: &'a str) -> Invocation<'a> {
+        Invocation {
+            contract: self,
+            method,
+            args: Vec::new(),
+            storage: Vec::new(),
+            signers: Vec::new(),
+            time: None,
+            network: None,
+        }
+    }
+
+    fn run_request(&self, req: serde_json::Value) -> Result<VmOutcome, String> {
         let tmp = tempdir::TempDir::new().map_err(|e| format!("tempdir: {e}"))?;
         let req_path = tmp.path().join("req.json");
         let res_path = tmp.path().join("res.json");
@@ -292,6 +368,37 @@ impl Contract {
                 })
                 .unwrap_or_default(),
             gas_consumed: v["gas_consumed"].as_i64().unwrap_or(0),
+            storage_diff: v["storage_diff"]
+                .as_array()
+                .map(|a| {
+                    a.iter()
+                        .map(|s| {
+                            (
+                                unhex(s["key"].as_str().unwrap_or("")),
+                                unhex(s["value"].as_str().unwrap_or("")),
+                            )
+                        })
+                        .collect()
+                })
+                .unwrap_or_default(),
+            events: v["events"]
+                .as_array()
+                .map(|a| {
+                    a.iter()
+                        .map(|e| Event {
+                            name: e["name"].as_str().unwrap_or("").to_string(),
+                            state: e["state"]
+                                .as_array()
+                                .map(|st| {
+                                    st.iter()
+                                        .map(|x| x.as_str().unwrap_or("").to_string())
+                                        .collect()
+                                })
+                                .unwrap_or_default(),
+                        })
+                        .collect()
+                })
+                .unwrap_or_default(),
             error_message: v["error_message"].as_str().map(|s| s.to_string()),
         })
     }
@@ -348,6 +455,82 @@ impl Contract {
             .output()
             .map_err(|e| format!("oracle trace: {e}"))?;
         Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+    }
+}
+
+/// Builder for a stateful invocation. Create via [`Contract::call`].
+pub struct Invocation<'a> {
+    contract: &'a Contract,
+    method: &'a str,
+    args: Vec<VmArg>,
+    storage: Vec<(Vec<u8>, Vec<u8>)>,
+    signers: Vec<[u8; 20]>,
+    time: Option<u64>,
+    network: Option<u32>,
+}
+
+impl<'a> Invocation<'a> {
+    /// Append one argument.
+    pub fn arg(mut self, a: impl Into<VmArg>) -> Self {
+        self.args.push(a.into());
+        self
+    }
+    /// Set all arguments at once.
+    pub fn args(mut self, a: &[VmArg]) -> Self {
+        self.args.extend_from_slice(a);
+        self
+    }
+    /// Seed a storage entry the contract will see (raw key/value bytes).
+    pub fn storage(mut self, key: &[u8], value: &[u8]) -> Self {
+        self.storage.push((key.to_vec(), value.to_vec()));
+        self
+    }
+    /// Add a witnessing signer (a 20-byte account); `check_witness` returns
+    /// true for it.
+    pub fn signer(mut self, account: [u8; 20]) -> Self {
+        self.signers.push(account);
+        self
+    }
+    /// Set `System.Runtime.GetTime` (ms since epoch).
+    pub fn time(mut self, ms: u64) -> Self {
+        self.time = Some(ms);
+        self
+    }
+    /// Set `System.Runtime.GetNetwork` magic.
+    pub fn network(mut self, magic: u32) -> Self {
+        self.network = Some(magic);
+        self
+    }
+
+    /// Run on the VM; panics only on harness failure (VM FAULT is in the result).
+    pub fn run(self) -> VmOutcome {
+        let method = self.method.to_string();
+        self.try_run()
+            .unwrap_or_else(|e| panic!("invoke {method}: {e}"))
+    }
+
+    pub fn try_run(self) -> Result<VmOutcome, String> {
+        use serde_json::json;
+        let mut req = json!({
+            "nef_path": self.contract.nef,
+            "manifest_path": self.contract.manifest,
+            "method": self.method,
+            "arguments": self.args.iter().map(|a| a.to_json()).collect::<Vec<_>>(),
+            "signers": self.signers.iter()
+                .map(|s| json!({"account": hex(s), "scopes": "CalledByEntry"}))
+                .collect::<Vec<_>>(),
+            "initial_storage": self.storage.iter()
+                .map(|(k, v)| json!({"contract": "", "key": hex(k), "value": hex(v)}))
+                .collect::<Vec<_>>(),
+            "gas_limit": 2_000_000_000i64,
+        });
+        if let Some(t) = self.time {
+            req["time"] = json!(t);
+        }
+        if let Some(n) = self.network {
+            req["network"] = json!(n);
+        }
+        self.contract.run_request(req)
     }
 }
 
