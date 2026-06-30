@@ -275,7 +275,9 @@ func formatItem(item stackitem.Item) string {
 	}
 	switch it := item.(type) {
 	case *stackitem.BigInteger:
-		return it.String()
+		// NB: stackitem.BigInteger.String() returns the type name, not the
+		// value; the numeric value lives in Value() (*big.Int).
+		return fmt.Sprintf("%v", it.Value())
 	case stackitem.Bool:
 		if bool(it) {
 			return "true"

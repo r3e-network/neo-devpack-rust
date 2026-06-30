@@ -164,6 +164,20 @@ pub static NEO_SYSCALL_MAP: Lazy<HashMap<String, &'static str>> = Lazy::new(|| {
     alias("gas_left", "System.Runtime.GasLeft");
     alias("load_script", "System.Runtime.LoadScript");
 
+    // Scalar runtime/protocol syscalls whose neo-syscalls extern link-names use
+    // a `protocol_`/`runtime_get_` prefix that does NOT match the canonical
+    // `<category>_<method>` alias the loop below derives from the descriptor
+    // (e.g. `System.Runtime.GasLeft` -> canonical `runtime_gas_left`, but the
+    // extern is `runtime_get_gas_left`; the protocol getters categorise as
+    // `runtime_*`, but the extern is `protocol_*`). Each returns a plain
+    // integer, so the default `SYSCALL <hash>` lowering is correct. Without
+    // these, the getters were unreachable from contracts.
+    alias("protocol_get_network", "System.Runtime.GetNetwork");
+    alias("protocol_get_address_version", "System.Runtime.GetAddressVersion");
+    alias("protocol_get_trigger", "System.Runtime.GetTrigger");
+    alias("runtime_get_gas_left", "System.Runtime.GasLeft");
+    alias("runtime_get_call_flags", "System.Contract.GetCallFlags");
+
     // Crypto syscalls
     alias("verify_signature", "System.Crypto.CheckSig");
     alias("check_sig", "System.Crypto.CheckSig");

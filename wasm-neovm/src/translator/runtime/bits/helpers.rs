@@ -128,6 +128,13 @@ fn emit_popcnt_core(script: &mut Vec<u8>, bits: u32) -> Result<()> {
 
     let _ = emit_push_int(script, h01);
     script.push(lookup_opcode("MUL")?.byte);
+    // The SWAR popcount trick `(x * h01) >> shift` extracts the byte-sum from
+    // the TOP byte of a `bits`-wide product, relying on the multiply wrapping
+    // modulo 2^bits. NeoVM `BigInteger` is arbitrary-precision and does NOT
+    // wrap, so the full product carries higher-order byte sums that pollute the
+    // shifted result. Mask the product back to `bits` width to emulate the
+    // fixed-width wraparound before extracting the top byte.
+    mask_top_bits(script, bits)?;
     let _ = emit_push_int(script, shift as i128);
     script.push(lookup_opcode("SHR")?.byte);
     Ok(())
