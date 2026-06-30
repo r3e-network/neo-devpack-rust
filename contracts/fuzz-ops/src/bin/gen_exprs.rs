@@ -84,7 +84,7 @@ fn expr(r: &mut Rng, depth: u32, budget: &mut i32, vars: &[String]) -> String {
             expr(r, d, budget, vars)
         };
     }
-    match r.n(33) {
+    match r.n(37) {
         0 => format!("({}).wrapping_add({})", e!(), e!()),
         1 => format!("({}).wrapping_sub({})", e!(), e!()),
         2 => format!("({}).wrapping_mul({})", e!(), e!()),
@@ -153,7 +153,7 @@ fn expr(r: &mut Rng, depth: u32, budget: &mut i32, vars: &[String]) -> String {
             format!("{{ let {name} = ({val}); {body} }}")
         }
         // bounded while-loop — exercises loop + branch lowering + local mutation.
-        _ => {
+        32 => {
             let init = e!();
             let bound = e!();
             let acc = format!("acc{}", r.uid());
@@ -167,6 +167,16 @@ fn expr(r: &mut Rng, depth: u32, budget: &mut i32, vars: &[String]) -> String {
                  while {i} < {n} {{ {acc} = ({acc}).wrapping_add(({step})); {i} = {i} + 1; }} {acc} }}"
             )
         }
+        // i32 rotate with a DYNAMIC (variable) count — emit_rotate_dynamic, 32-bit.
+        33 => format!("(((({}) as i32).rotate_right((({}) & 31) as u32)) as i64)", e!(), e!()),
+        // u32 logical shift-right then sign-extend i32->i64 (logical zero-mask +
+        // sign_extend_via_helper(32,32) canonicalization).
+        34 => format!("(((({}) as u32).wrapping_shr(({}) as u32) as i32) as i64)", e!(), e!()),
+        // NeoInteger unary NOT composed in-tree (two's-complement NOT on a value
+        // that may exceed i64 before saturation).
+        35 => format!("((!NeoInteger::new({})).as_i64_saturating())", e!()),
+        // comparison-driven select over full-width i64 operands.
+        _ => format!("(if (({}) < ({})) {{ ({}) }} else {{ ({}) }})", e!(), e!(), e!(), e!()),
     }
 }
 

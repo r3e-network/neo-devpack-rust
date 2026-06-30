@@ -502,6 +502,63 @@ pub mod ops {
         let t = (t & y.clone()) | (x ^ y);
         red(!t)
     }
+    // --- control flow: conditional return + br_if that discards buried stack
+    // values (exercises handle_branch's br_if -> Function-frame return-arity
+    // path; same family as the handle_branch operand-drop bug). ---
+    pub fn cond_ret(a: i64, b: i64) -> i64 {
+        if a > b {
+            return 42;
+        }
+        if a == 0 {
+            return b.wrapping_neg();
+        }
+        99
+    }
+    pub fn early_ret_loop(a: i64, b: i64) -> i64 {
+        // early return out of a bounded loop (br_if to the function frame across
+        // a still-live loop body)
+        let mut s = 0i64;
+        let mut i = 0i64;
+        let n = a.rem_euclid(50);
+        let cap = b.rem_euclid(1000);
+        while i < n {
+            s = s.wrapping_add(i);
+            if s > cap {
+                return s;
+            }
+            i += 1;
+        }
+        s
+    }
+    pub fn switch_ret(a: i64, b: i64) -> i64 {
+        // br_table whose arms mix early-return and fallthrough at differing
+        // arities (stresses handle_br_table per-case XDROP)
+        match a.rem_euclid(8) {
+            0 => return b,
+            1 | 2 => b.wrapping_add(1),
+            3 => {
+                if b < 0 {
+                    return -1;
+                }
+                7
+            }
+            4..=6 => b.wrapping_mul(2),
+            _ => return 0,
+        }
+    }
+    // --- NeoInteger comparisons beyond < and == (LT+NOT lowering of >/<=/>=) ---
+    pub fn big_le(a: i64, b: i64) -> i64 {
+        (NeoInteger::new(a) <= NeoInteger::new(b)) as i64
+    }
+    pub fn big_gt(a: i64, b: i64) -> i64 {
+        (NeoInteger::new(a) > NeoInteger::new(b)) as i64
+    }
+    pub fn big_ge(a: i64, b: i64) -> i64 {
+        (NeoInteger::new(a) >= NeoInteger::new(b)) as i64
+    }
+    pub fn big_ne(a: i64, b: i64) -> i64 {
+        (NeoInteger::new(a) != NeoInteger::new(b)) as i64
+    }
 }
 
 /// Dispatch an op by name (shared by the contract test and the refgen binary).
@@ -606,6 +663,13 @@ pub fn eval(op: &str, a: i64, b: i64) -> Option<i64> {
         "big_fits" => big_fits,
         "big_large_mul" => big_large_mul,
         "big_chain" => big_chain,
+        "cond_ret" => cond_ret,
+        "early_ret_loop" => early_ret_loop,
+        "switch_ret" => switch_ret,
+        "big_le" => big_le,
+        "big_gt" => big_gt,
+        "big_ge" => big_ge,
+        "big_ne" => big_ne,
         _ => return None,
     };
     Some(f(a, b))
@@ -624,6 +688,7 @@ pub const OP_NAMES: &[&str] = &[
     "big_neg", "not_lt", "double_neg_lt", "eq_cmps", "ne_cmps", "and_cmps", "or_cmps", "xor_cmps",
     "cmp_chain", "min_u", "max_u", "i32_eqz", "i32_eq", "i32_ne",
     "nested_loop", "loop_continue", "multi_break", "br_wide", "recurse_sum", "cond_nest", "sx_chain", "wrap_roundtrip", "narrow_widen", "big_not", "big_div_op", "big_rem_op", "big_lt", "big_eq", "big_as_i32_sat", "big_as_u32_sat", "big_try_i32", "big_fits", "big_large_mul", "big_chain",
+    "cond_ret", "early_ret_loop", "switch_ret", "big_le", "big_gt", "big_ge", "big_ne",
 ];
 
 #[neo_contract]
@@ -653,6 +718,7 @@ export_ops!(
     big_or, big_xor, big_shl, big_shr, big_neg, not_lt, double_neg_lt, eq_cmps, ne_cmps, and_cmps,
     or_cmps, xor_cmps, cmp_chain, min_u, max_u, i32_eqz, i32_eq, i32_ne,
     nested_loop, loop_continue, multi_break, br_wide, recurse_sum, cond_nest, sx_chain, wrap_roundtrip, narrow_widen, big_not, big_div_op, big_rem_op, big_lt, big_eq, big_as_i32_sat, big_as_u32_sat, big_try_i32, big_fits, big_large_mul, big_chain,
+    cond_ret, early_ret_loop, switch_ret, big_le, big_gt, big_ge, big_ne,
 );
 
 #[neo_contract]
