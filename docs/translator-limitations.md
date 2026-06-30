@@ -2,10 +2,12 @@
 
 > **Status**: catalogue produced 2026-06-27 from the
 > `wasm-neovm/src/` tree. Re-runnable: `rg "bail!\(|unimplemented!\(|todo!\(" wasm-neovm/src/ | wc -l`.
-> **Last count**: 186 `bail!` / `unimplemented!` / `todo!` sites across
-> 45 files. Of these, **6 are real bugs** (L3.BUG-1..6) that need
-> fixing; the rest are **intentional design limits** with a clear
-> reason documented per category.
+> **Last count**: ~190 `bail!` / `unimplemented!` / `todo!` sites across
+> ~47 files (the exact count drifts as guards are added/removed; re-run the
+> command above for the current value). The overwhelming majority are
+> **intentional design limits** with a clear reason documented per category;
+> a contract using any of them is rejected loudly at translate time rather
+> than silently miscompiled.
 
 The translator's `bail!` / `unimplemented!` / `todo!` calls fall into
 five categories:

@@ -18,20 +18,26 @@ extern "C" {
     #[link_name = "runtime_log"]
     fn neo_log(message: i32, len: i32);
 
-    // Storage - maps to System.Storage.Get/Put/Delete
+    // Storage - maps to System.Storage.Get/Put/Delete.
+    //
+    // NOTE: these link names must match the canonical neo-syscalls ABI that the
+    // wasm-neovm translator's import dispatch recognizes (`neo_storage_*`).
+    // Using the bare `storage_*` names produced WASM imports the translator
+    // rejected ("unknown Neo syscall import"), so any solana-compat contract
+    // touching storage failed to translate. The signatures already match.
     #[link_name = "storage_get"]
     fn neo_storage_get(key: i32, key_len: i32) -> i64;
 
     // Storage read into a caller-supplied buffer (X9): writes the stored value
     // into `out` (capacity `out_cap`) and returns the number of bytes written,
     // or -1 if the key is absent / the value exceeds `out_cap`.
-    #[link_name = "storage_get_into"]
+    #[link_name = "neo_storage_get_into"]
     fn neo_storage_get_into(key: i32, key_len: i32, out: i32, out_cap: i32) -> i32;
 
-    #[link_name = "storage_put"]
+    #[link_name = "neo_storage_put_bytes"]
     fn neo_storage_put(key: i32, key_len: i32, value: i32, value_len: i32);
 
-    #[link_name = "storage_delete"]
+    #[link_name = "neo_storage_delete_bytes"]
     fn neo_storage_delete(key: i32, key_len: i32);
 
     // Runtime - maps to System.Runtime.*
