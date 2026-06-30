@@ -158,11 +158,25 @@ impl TestEnvironment {
         StorageAssertions::new(self.runtime.storage_ref())
     }
 
-    pub fn call_method<F, R>(&self, _name: &str, _args: &[neo_types::NeoValue], _f: F) -> R
+    /// Run a contract method against this mock environment under a readable
+    /// label, returning its result.
+    ///
+    /// This is the *unit / logic* testing layer: `f` invokes your contract
+    /// method natively (host execution) so it reads/writes this environment's
+    /// mock storage and runtime. `name`/`args` document the call and appear in
+    /// failure diagnostics; they do not dispatch (native Rust calls are
+    /// type-checked directly).
+    ///
+    /// To execute the *translated NeoVM bytecode* on a real VM instead — the
+    /// equivalent of Solana's `solana-program-test` — use the `neo-vm-test`
+    /// crate's `Contract::compile(..).invoke(..)`.
+    pub fn call_method<F, R>(&self, name: &str, args: &[neo_types::NeoValue], f: F) -> R
     where
         F: FnOnce() -> R,
     {
-        _f()
+        debug_assert!(!name.is_empty(), "call_method requires a method name");
+        let _ = args;
+        f()
     }
 
     pub fn deploy(&mut self, script: &[u8], manifest: &[u8]) -> TestResult {

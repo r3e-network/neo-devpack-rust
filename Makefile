@@ -113,7 +113,7 @@ PACKAGE_PATCH_CONFIG_ARGS := \
 	--config 'patch.crates-io.move-neovm.path="move-neovm"' \
 	--config 'patch.crates-io.neo-solana-compat.path="solana-compat"'
 
-.PHONY: help examples cross-chain hello-world nep17-token constant-product nep11-nft uniswap-v2 staking-rewards timelock-vault flashloan-pool multisig-wallet escrow crowdfunding governance-dao oracle-consumer nft-marketplace solana-hello move-coin storage-smoke c-hello fmt lint test verify-contract-tests test-contracts test-cross-chain integration-tests smoke-neoxp security-check package-check spec clean fuzz fuzz-compiler fuzz-translate fuzz-translate-config fuzz-pipeline fuzz-nef fuzz-numeric fuzz-devpack-codec fuzz-syscall-surface fuzz-rust-contract fuzz-rust-differential fuzz-rust-long fuzz-long-status fuzz-long-stop fuzz-all
+.PHONY: help examples cross-chain hello-world nep17-token constant-product nep11-nft uniswap-v2 staking-rewards timelock-vault flashloan-pool multisig-wallet escrow crowdfunding governance-dao oracle-consumer nft-marketplace solana-hello move-coin storage-smoke c-hello fmt lint test verify-contract-tests test-contracts test-cross-chain integration-tests vm-test smoke-neoxp security-check package-check spec clean fuzz fuzz-compiler fuzz-translate fuzz-translate-config fuzz-pipeline fuzz-nef fuzz-numeric fuzz-devpack-codec fuzz-syscall-surface fuzz-rust-contract fuzz-rust-differential fuzz-rust-long fuzz-long-status fuzz-long-stop fuzz-all
 
 help:
 	@echo "Usage: make <target>"
@@ -513,6 +513,10 @@ test-cross-chain:
 integration-tests:
 	@echo "Running Neo Express integration tests (requires NEO_EXPRESS_RPC)..."
 	cargo test --manifest-path integration-tests/Cargo.toml -- --ignored
+
+vm-test:  ## Real-NeoVM e2e tests: compile sample contracts and run them on the neo-go VM (needs Go)
+	@echo "Running real-NeoVM end-to-end tests (neo-vm-test; builds wasm-neovm + the oracle on first run)..."
+	cargo test --manifest-path neo-vm-test/Cargo.toml -- --test-threads=1
 
 smoke-neoxp:
 	@echo "Running Neo Express deploy/invoke runtime validation..."
