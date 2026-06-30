@@ -120,7 +120,7 @@ set -x
 "$CLANG_BIN" \
   --target="$TARGET" \
   "${DEFAULT_CFLAGS[@]}" \
-  "${CLANG_FLAGS[@]}" \
+  ${CLANG_FLAGS[@]+"${CLANG_FLAGS[@]}"} \
   "$SOURCE_FILE" \
   -o "$WASM_OUT" \
   "${DEFAULT_LDFLAGS[@]}"
@@ -136,7 +136,7 @@ TRANSLATOR_ARGS=(
 if [[ -f "$OVERLAY_PATH" ]]; then
   TRANSLATOR_ARGS+=(--manifest-overlay "$OVERLAY_PATH")
 fi
-TRANSLATOR_ARGS+=("${TRANSLATOR_FLAGS[@]}")
+TRANSLATOR_ARGS+=(${TRANSLATOR_FLAGS[@]+"${TRANSLATOR_FLAGS[@]}"})
 
 echo "==> Translating Wasm to NeoVM"
 cargo run --manifest-path "$REPO_ROOT/wasm-neovm/Cargo.toml" -- \
