@@ -108,88 +108,175 @@ pub(super) fn handle_branch(
         frame.end_reachable_from_branch = true;
     }
 
-    // Only validate stack height if we're not already in unreachable code.
-    // For Function frames: branching means providing return values, validate against result_count.
+    // WASM semantics: branching to a label of arity N pops the top N values as
+    // the branch operands, DISCARDS every value between the target frame's entry
+    // height and those N operands, then transfers control with the N operands
+    // becoming the target's results.
+    //
+    // For Function frames: branching means providing return values, keep the top
+    //   `result_count` values, discard everything beneath them.
     // For Loop frames: branching (continue) must match the loop entry stack exactly.
-    // For Block/If frames: branching (break) targets the end label; wasm-opt may leave
-    // extra values on the stack that should be dropped before the branch.
-    if !*is_unreachable {
-        let expected = match frame.kind {
-            ControlKind::Function => frame.result_count,
-            ControlKind::Loop => frame.stack_height,
-            _ => frame.stack_height + frame.result_count,
-        };
-        // wasm-opt can rearrange code so that a branch is reached with fewer
-        // values on the abstract stack than the branch target expects (the
-        // values are produced by code that the optimizer moved or folded).
-        // When this happens in Block/If branches (the common wasm-opt target),
-        // synthesize PUSH0 placeholders for the missing values rather than
-        // failing — the optimizer proved they are not observably needed.
-        // Loop continues and Function returns remain strict: a loop continue
-        // with wrong stack height or a function return missing its result are
-        // genuine correctness bugs that must be caught.
-        match frame.kind {
-            ControlKind::Loop => {
-                if value_stack.len() != expected {
-                    bail!(
-                        "branch requires {} values but current stack has {} (loop continue)",
-                        expected,
-                        value_stack.len()
-                    );
-                }
-            }
-            ControlKind::Function => {
-                if value_stack.len() < expected {
+    // For Block/If frames: branching (break) targets the end label; the top
+    //   `result_count` values are the operands that must be PRESERVED and become
+    //   the block result, while any values buried beneath them (e.g. left there
+    //   by wasm-opt code motion, or simply earlier operands on the stack) must be
+    //   removed. The number of values to keep on top is N = result_count; the
+    //   number of buried values to remove is K = stack_height - frame.stack_height
+    //   (i.e. current_len - N - frame.stack_height).
+    let keep_top = match frame.kind {
+        ControlKind::Function => frame.result_count,
+        ControlKind::Loop => 0, // loop continues keep nothing special; strict match below
+        _ => frame.result_count,
+    };
+
+    if matches!(frame.kind, ControlKind::Loop) {
+        // Loop continue: strict-arity match against the loop entry height.
+        if !*is_unreachable && value_stack.len() != frame.stack_height {
+            bail!(
+                "branch requires {} values but current stack has {} (loop continue)",
+                frame.stack_height,
+                value_stack.len()
+            );
+        }
+        let opcode = if conditional { "JMPIF_L" } else { "JMP_L" };
+        emit_jump_to(script, opcode, frame.start_offset)?;
+        if !conditional {
+            // Unconditional branch makes subsequent code unreachable.
+            *is_unreachable = true;
+        }
+        return Ok(());
+    }
+
+    // Floor of the region that survives the branch (base values that belong to
+    // the target frame and outlive the branch). For Function returns nothing is
+    // kept beneath the results; for Block/If breaks the target frame's entry
+    // height is preserved.
+    let base = match frame.kind {
+        ControlKind::Function => 0,
+        _ => frame.stack_height,
+    };
+
+    if !conditional {
+        // Unconditional `br` / `br_table` target.
+        if !*is_unreachable {
+            // Ensure the top `keep_top` operands exist. wasm-opt can rearrange
+            // code so a branch is reached with fewer values than the target
+            // expects; synthesize PUSH0 placeholders for the missing operands
+            // (the optimizer proved they are not observably needed). For Function
+            // returns a missing result is a genuine bug and must be caught.
+            let needed = base + keep_top;
+            if value_stack.len() < needed {
+                if matches!(frame.kind, ControlKind::Function) {
                     bail!(
                         "branch requires {} values but current stack has {} (function return)",
-                        expected,
+                        keep_top,
                         value_stack.len()
                     );
                 }
-                while value_stack.len() > expected {
-                    value_stack.pop();
-                    script.push(lookup_opcode("DROP")?.byte);
-                }
-            }
-            _ => {
-                // Block / If: pad missing values, drop excess.
-                while value_stack.len() < expected {
+                while value_stack.len() < needed {
                     script.push(lookup_opcode("PUSH0")?.byte);
                     value_stack.push(StackValue::unknown());
                 }
-                while value_stack.len() > expected {
-                    value_stack.pop();
-                    script.push(lookup_opcode("DROP")?.byte);
-                }
+            }
+            // Remove the K buried values located just beneath the top
+            // `keep_top` operands, keeping the operands in place. On NeoVM,
+            // removing the item at depth N (0-based from the top) is
+            // `emit_push_int(N); XDROP`. Each removal shifts the next buried
+            // value down to depth N, so repeat K times.
+            let discard = value_stack.len() - needed;
+            for _ in 0..discard {
+                let _ = emit_push_int(script, keep_top as i128);
+                script.push(lookup_opcode("XDROP")?.byte);
+                // Remove the topmost buried entry from the abstract stack
+                // (the item just beneath the preserved top `keep_top`).
+                value_stack.remove(value_stack.len() - 1 - keep_top);
             }
         }
-    }
 
-    match frame.kind {
-        ControlKind::Loop => {
-            let opcode = if conditional { "JMPIF_L" } else { "JMP_L" };
-            emit_jump_to(script, opcode, frame.start_offset)?;
-        }
-        _ => {
-            let opcode = if conditional { "JMPIF_L" } else { "JMP_L" };
-            let pos = emit_jump_placeholder(script, opcode)?;
-            frame.end_fixups.push(pos);
-        }
-    }
+        let opcode = "JMP_L";
+        let pos = emit_jump_placeholder(script, opcode)?;
+        frame.end_fixups.push(pos);
 
-    if !conditional {
-        // For Function frames, keep result_count values on stack for return.
-        // For other frames, truncate to stack_height + result_count so block results are preserved.
-        let target_size = match frame.kind {
-            ControlKind::Function => frame.result_count,
-            ControlKind::Loop => frame.stack_height,
-            _ => frame.stack_height + frame.result_count,
-        };
-        value_stack.truncate(target_size);
+        // Truncate the abstract stack to base + keep_top so block/function
+        // results are preserved. (value_stack is already at this height when the
+        // discard loop ran; this also covers the unreachable path.)
+        value_stack.truncate(base + keep_top);
         // Unconditional branch makes subsequent code unreachable.
         *is_unreachable = true;
+        return Ok(());
     }
 
+    // Conditional `br_if`. The condition has already been popped from the
+    // abstract `value_stack` by the caller, but is still on top of the concrete
+    // NeoVM stack and is consumed by the conditional jump.
+    //
+    // WASM only discards the buried values on the path that ACTUALLY branches;
+    // the fall-through must retain the full operand stack (minus the condition).
+    // Structure the emission so the operand-preserving discard runs only when
+    // the branch is taken:
+    //
+    //     JMPIFNOT_L skip      ; consume condition; not-taken -> fall through
+    //     <discard buried, keep top N>
+    //     JMP_L target         ; taken -> jump to the frame's end label
+    //   skip:                  ; fall-through continues here, full stack intact
+    if *is_unreachable {
+        // In unreachable code we still must consume the condition with a jump to
+        // keep the concrete stack model consistent; emit a plain conditional jump
+        // to the end label and leave the abstract stack untouched.
+        let pos = emit_jump_placeholder(script, "JMPIF_L")?;
+        frame.end_fixups.push(pos);
+        return Ok(());
+    }
+
+    let needed = base + keep_top;
+
+    // Function returns remain strict: a conditional return missing its result
+    // value is a genuine correctness bug and must be caught (matching the
+    // unconditional path and the function epilogue). Block/If breaks may be
+    // padded for wasm-opt code motion, but Function frames may not.
+    if matches!(frame.kind, ControlKind::Function) && value_stack.len() < needed {
+        bail!(
+            "branch requires {} values but current stack has {} (function return)",
+            keep_top,
+            value_stack.len()
+        );
+    }
+
+    // Number of buried values to discard on the taken path.
+    let discard = value_stack.len().saturating_sub(needed);
+    let pad = needed.saturating_sub(value_stack.len());
+
+    if discard == 0 && pad == 0 {
+        // No buried values to remove and no padding required: a plain conditional
+        // jump to the end label suffices, and the fall-through keeps the operands.
+        let pos = emit_jump_placeholder(script, "JMPIF_L")?;
+        frame.end_fixups.push(pos);
+        // Do NOT mutate value_stack: the fall-through retains all operands.
+        return Ok(());
+    }
+
+    // Taken path needs extra work (discard buried values and/or pad operands).
+    // Skip it on the not-taken (fall-through) path.
+    let skip_fixup = emit_jump_placeholder(script, "JMPIFNOT_L")?;
+
+    // --- taken path ---
+    // Pad missing top operands (wasm-opt edge case), then discard buried values.
+    for _ in 0..pad {
+        script.push(lookup_opcode("PUSH0")?.byte);
+    }
+    for _ in 0..discard {
+        let _ = emit_push_int(script, keep_top as i128);
+        script.push(lookup_opcode("XDROP")?.byte);
+    }
+    let target_fixup = emit_jump_placeholder(script, "JMP_L")?;
+    frame.end_fixups.push(target_fixup);
+
+    // --- skip label (fall-through) ---
+    let skip_label = script.len();
+    patch_jump(script, skip_fixup, skip_label)?;
+
+    // The fall-through retains the full operand stack (minus the popped
+    // condition, which the caller already removed). Do NOT truncate value_stack.
     Ok(())
 }
 
