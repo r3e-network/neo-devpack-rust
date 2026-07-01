@@ -12,6 +12,7 @@
 //! riskiest parts of the translator:
 //!   * `let` bindings — local-slot allocation and reuse,
 //!   * bounded `while` loops — loop + branch lowering and local mutation,
+//!   * fixed arrays with a dynamic index — linear-memory store/load lowering,
 //!   * `NeoInteger` +-*/%&|^ >> — arbitrary-precision (DIV/MOD/etc.) lowering.
 //! Divisors are forced non-zero (`| 1`) and loops are bounded (`& 7`) so every
 //! generated program is trap-free and terminates.
@@ -84,7 +85,7 @@ fn expr(r: &mut Rng, depth: u32, budget: &mut i32, vars: &[String]) -> String {
             expr(r, d, budget, vars)
         };
     }
-    match r.n(37) {
+    match r.n(39) {
         0 => format!("({}).wrapping_add({})", e!(), e!()),
         1 => format!("({}).wrapping_sub({})", e!(), e!()),
         2 => format!("({}).wrapping_mul({})", e!(), e!()),
@@ -176,7 +177,21 @@ fn expr(r: &mut Rng, depth: u32, budget: &mut i32, vars: &[String]) -> String {
         // that may exceed i64 before saturation).
         35 => format!("((!NeoInteger::new({})).as_i64_saturating())", e!()),
         // comparison-driven select over full-width i64 operands.
-        _ => format!("(if (({}) < ({})) {{ ({}) }} else {{ ({}) }})", e!(), e!(), e!(), e!()),
+        36 => format!("(if (({}) < ({})) {{ ({}) }} else {{ ({}) }})", e!(), e!(), e!(), e!()),
+        // array build + DYNAMIC index — forces linear-memory stores + a runtime
+        // load (the dynamic index defeats SSA promotion, so the array is
+        // materialised in memory). Exercises i64 store/load lowering.
+        37 => format!(
+            "{{ let arr: [i64; 4] = [{}, {}, {}, {}]; arr[((({}) & 3) as usize)] }}",
+            e!(), e!(), e!(), e!(), e!()
+        ),
+        // array build + loop-sum — 4 stores + 4 runtime-indexed loads through a
+        // bounded loop (more memory traffic + branch interaction).
+        _ => format!(
+            "{{ let ma: [i64; 4] = [{}, {}, {}, {}]; let mut ms = 0i64; let mut mi = 0usize; \
+             while mi < 4 {{ ms = ms.wrapping_add(ma[mi]); mi += 1; }} ms }}",
+            e!(), e!(), e!(), e!()
+        ),
     }
 }
 
