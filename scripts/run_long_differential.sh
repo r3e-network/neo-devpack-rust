@@ -59,7 +59,14 @@ while :; do
     out=$(python3 "$ROOT/conformance/fuzz/diff_fuzz.py" --root "$ROOT" --oracle "$ORACLE" \
             --seed "$seed" --random "$RANDOM_PAIRS" 2>&1)
     rc=$?
-    res=$(printf '%s\n' "$out" | grep -E "RESULT|command failed" | head -1)
+    res=$(printf '%s\n' "$out" | grep -E "RESULT|command failed|^SKIP" | head -1)
+    if [ "$rc" -eq 3 ]; then
+        # Oversized generated NEF (> neo-go's 131070 cap) — a generation-size
+        # artifact, not a translator bug. Skip this seed and keep hunting.
+        echo "[round $i seed $seed] SKIP — $res" | tee -a "$LOG"
+        seed=$((seed + 1))
+        continue
+    fi
     echo "[round $i seed $seed] $res" | tee -a "$LOG"
     if [ "$rc" -ne 0 ]; then
         echo "!!! MISMATCH/FAILURE at seed $seed — saving repro to $REPRO_DIR/repro_seed_$seed.rs" | tee -a "$LOG"

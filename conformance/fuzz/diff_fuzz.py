@@ -60,6 +60,18 @@ def main():
     run([os.path.join(root, "target", "release", "wasm-neovm"),
          "--input", wasm, "--name", "FuzzOps", "--nef", nef, "--manifest", man])
 
+    # A generated batch can push the contract past the neo-go NEF cap (131070
+    # bytes); such a NEF fails to PARSE, so every method faults. That is a
+    # generation-size artifact, NOT a translator semantic bug — report a SKIP
+    # (exit 3) so the continuous runner regenerates a smaller batch instead of
+    # stopping as if a real mismatch were found.
+    NEF_MAX = 131070
+    nef_size = os.path.getsize(nef)
+    if nef_size > NEF_MAX:
+        print(f"SKIP: generated NEF {nef_size} > {NEF_MAX} (neo-go NEF cap) — "
+              f"regenerate a smaller batch; not a translator mismatch")
+        sys.exit(3)
+
     log("[3/5] refgen ground truth")
     refgen_env = dict(os.environ)
     if a.seed is not None:

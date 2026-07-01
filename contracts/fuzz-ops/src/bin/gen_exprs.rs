@@ -20,11 +20,11 @@
 //! Regenerate with a fresh seed each round (`FUZZ_SEED`) to explore new op
 //! compositions — this is what makes the continuous differential cover the
 //! composition space, not just the input space. Knobs: `FUZZ_GEN_COUNT`
-//! (functions, default 80), `FUZZ_GEN_DEPTH` (max tree depth, default 8),
+//! (functions, default 48), `FUZZ_GEN_DEPTH` (max tree depth, default 8),
 //! `FUZZ_GEN_NODES` (per-function node budget bounding contract size, default
-//! 26). The node budget keeps the translated NEF under NeoVM's script-size
-//! limit regardless of depth — without it a deep tree expands to ~2^depth
-//! leaves and faults the whole contract on load.
+//! 20). The node budget keeps the translated NEF under the neo-go NEF cap
+//! (131070 bytes) — without it a deep tree expands to ~2^depth leaves and the
+//! whole contract exceeds the cap and fails to parse (every method faults).
 
 struct Rng {
     s: u64,
@@ -197,12 +197,15 @@ fn expr(r: &mut Rng, depth: u32, budget: &mut i32, vars: &[String]) -> String {
 
 fn main() {
     let seed = std::env::var("FUZZ_SEED").ok().and_then(|s| s.parse().ok()).unwrap_or(1u64);
-    let count: u64 = std::env::var("FUZZ_GEN_COUNT").ok().and_then(|s| s.parse().ok()).unwrap_or(80);
+    let count: u64 = std::env::var("FUZZ_GEN_COUNT").ok().and_then(|s| s.parse().ok()).unwrap_or(48);
     let depth: u32 = std::env::var("FUZZ_GEN_DEPTH").ok().and_then(|s| s.parse().ok()).unwrap_or(8);
-    // Per-function node budget bounds contract size; keep count*nodes modest so
-    // the translated NEF stays under NeoVM's script-size limit (depth 8 / 80
-    // fns / 26 nodes ~= proven-safe; verified 0 faults on the real VM).
-    let nodes: i32 = std::env::var("FUZZ_GEN_NODES").ok().and_then(|s| s.parse().ok()).unwrap_or(26);
+    // Per-function node budget bounds contract size. The whole translated NEF
+    // must stay under the neo-go NEF cap of 131070 bytes (0x1FFFE) or it fails
+    // to PARSE and every method faults. The fixed-op base contract is already
+    // ~110KB, so the generated portion has only ~21KB of headroom: 48 fns / 20
+    // nodes keeps even a memory/bignum-heavy seed around ~120KB. diff_fuzz also
+    // guards the size and SKIPs (not "mismatch") if a seed still overflows.
+    let nodes: i32 = std::env::var("FUZZ_GEN_NODES").ok().and_then(|s| s.parse().ok()).unwrap_or(20);
     let mut r = Rng {
         s: if seed == 0 { 0x9E37_79B9_7F4A_7C15 } else { seed },
         uid: 0,
