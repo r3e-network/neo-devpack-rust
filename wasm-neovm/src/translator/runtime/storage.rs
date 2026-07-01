@@ -459,6 +459,15 @@ pub(in crate::translator::runtime) fn emit_storage_get_i64_helper(
     script.push(lookup_opcode("DUP")?.byte);
     script.push(lookup_opcode("ISNULL")?.byte);
     let jump_missing = emit_jump_placeholder(script, "JMPIF_L")?;
+    // A present-but-empty ByteString is NeoVM's encoding of integer 0
+    // (Storage.Put serialises 0 to zero-length bytes). Treat empty as 0 — the
+    // same empty==absent convention emit_storage_has_i64_helper uses (SIZE/GT) —
+    // rather than CONVERTing empty bytes to Integer. The reference C# VM maps
+    // CONVERT(empty->Integer) to 0, but neo-go rejects it ("nil slice provided
+    // to FromBytes"), so a round-tripped stored 0 would fault on neo-go nodes.
+    script.push(lookup_opcode("DUP")?.byte);
+    script.push(lookup_opcode("SIZE")?.byte);
+    let jump_empty = emit_jump_placeholder(script, "JMPIFNOT_L")?;
     emit_convert(script, STACKITEM_TYPE_INTEGER)?;
     script.push(lookup_opcode("RET")?.byte);
 
@@ -468,6 +477,7 @@ pub(in crate::translator::runtime) fn emit_storage_get_i64_helper(
     script.push(lookup_opcode("RET")?.byte);
 
     patch_jump(script, jump_missing, missing_label)?;
+    patch_jump(script, jump_empty, missing_label)?;
     Ok(())
 }
 

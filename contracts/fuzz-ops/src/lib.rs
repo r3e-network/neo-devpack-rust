@@ -766,3 +766,53 @@ impl FuzzOps {
         }
     }
 }
+
+/// Storage-marshalling ops for the storage differential
+/// (`conformance/fuzz/storage_fuzz.py`). Each is SELF-CONTAINED: it writes and
+/// reads storage within a single invocation on a fresh VM, so the result is a
+/// pure function of `(k, v)` that the driver knows a priori — no refgen, and no
+/// cross-call state leakage. They exercise the i64 storage syscall marshalling
+/// (Put/Get/Delete/Has — the buffer-ABI path where the chunked-memory
+/// syscall-arg bug lived). Kept out of OP_NAMES.
+#[neo_contract]
+impl FuzzOps {
+    /// put(k,v) then get(k) => v.
+    #[neo_method]
+    pub fn st_put_get(k: i64, v: i64) -> i64 {
+        RawStorage::put_i64_key(k, v);
+        RawStorage::get_i64_key_or_zero(k)
+    }
+    /// put(k,v); put(k,!v); get(k) => !v (last write wins).
+    #[neo_method]
+    pub fn st_overwrite(k: i64, v: i64) -> i64 {
+        RawStorage::put_i64_key(k, v);
+        RawStorage::put_i64_key(k, v ^ -1);
+        RawStorage::get_i64_key_or_zero(k)
+    }
+    /// put(k,v); put(k + 2^40, v+1); get(k) => v — a second key differing only
+    /// in high bits must not alias k (i64 storage-key truncation detector).
+    #[neo_method]
+    pub fn st_two_keys(k: i64, v: i64) -> i64 {
+        let k2 = k.wrapping_add(1i64 << 40);
+        RawStorage::put_i64_key(k, v);
+        RawStorage::put_i64_key(k2, v.wrapping_add(1));
+        RawStorage::get_i64_key_or_zero(k)
+    }
+    /// put(k,v); delete(k); get(k) => 0 (deleted key reads as absent).
+    #[neo_method]
+    pub fn st_del_absent(k: i64, v: i64) -> i64 {
+        RawStorage::put_i64_key(k, v);
+        RawStorage::delete_i64_key(k);
+        RawStorage::get_i64_key_or_zero(k)
+    }
+    /// has() after put (of a guaranteed-nonzero value) then after delete =>
+    /// 1*2 + 0 = 2.
+    #[neo_method]
+    pub fn st_has_flags(k: i64, v: i64) -> i64 {
+        RawStorage::put_i64_key(k, v | 1);
+        let h1 = RawStorage::has_i64_key(k) as i64;
+        RawStorage::delete_i64_key(k);
+        let h2 = RawStorage::has_i64_key(k) as i64;
+        h1 * 2 + h2
+    }
+}

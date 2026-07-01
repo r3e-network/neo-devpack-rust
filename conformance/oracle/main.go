@@ -642,7 +642,15 @@ func (e *syscallEnv) handler(v *vm.VM, id uint32) error {
 		}
 		key := v.Estack().Pop().Bytes()
 		if rec, ok := e.store[hex.EncodeToString(key)]; ok {
-			v.Estack().PushItem(stackitem.NewByteArray(rec.val))
+			// A stored empty value (e.g. integer 0 -> zero-length bytes) must be
+			// a non-nil ByteString: the real C# VM converts empty->Integer as 0,
+			// and neo-go's FromBytes rejects a *nil* slice. Keeping it non-nil
+			// mirrors a faithful storage layer and avoids a spurious FAULT.
+			bs := rec.val
+			if bs == nil {
+				bs = []byte{}
+			}
+			v.Estack().PushItem(stackitem.NewByteArray(bs))
 		} else {
 			v.Estack().PushItem(stackitem.Null{})
 		}

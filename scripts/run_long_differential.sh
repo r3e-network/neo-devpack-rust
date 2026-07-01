@@ -38,6 +38,16 @@ else
     tail -20 "$REPRO_DIR/trapgate.log" | tee -a "$LOG"
 fi
 
+# One-time storage-marshalling gate (the st_* round-trips are static). A failure
+# is a storage syscall marshalling bug.
+if python3 "$ROOT/conformance/fuzz/storage_fuzz.py" --root "$ROOT" --oracle "$ORACLE" \
+        --seed "$START" --random 150 --quiet > "$REPRO_DIR/stgate.log" 2>&1; then
+    echo "storage-conformance gate: PASS — $(grep RESULT "$REPRO_DIR/stgate.log" | tail -1)" | tee -a "$LOG"
+else
+    echo "!!! storage-conformance gate: FAIL — see $REPRO_DIR/stgate.log" | tee -a "$LOG"
+    tail -20 "$REPRO_DIR/stgate.log" | tee -a "$LOG"
+fi
+
 i=0; seed=$START
 trap 'echo "stopped $(date) after $i rounds" | tee -a "$LOG"; exit 0' INT TERM
 while :; do
