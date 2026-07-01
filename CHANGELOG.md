@@ -10,6 +10,50 @@ follow the same repository version.
 
 ## [Unreleased]
 
+## [0.14.1] - 2026-07-01 — storage round-trip fix + generative fuzzer
+
+Patch release. Fixes a translator storage-read bug surfaced by a new
+storage-marshalling differential, and lands a substantial generative-fuzzer
+upgrade (test tooling only — no public API changes). Validation: the generative
+differential matches native Rust on a real NeoVM across many seeds; trap and
+storage conformance gates pass (17/17, 1570/1570); libfuzzer clean.
+
+### Fixed
+
+- **Translator: reading back a stored `0` no longer faults.** A NeoVM integer
+  `0` serialises to an empty ByteString, so `Storage.Get` of a stored `0`
+  returns a *present-but-empty* value. `get_i64_key_or_zero`'s lowering only
+  guarded `ISNULL` and then `CONVERT`ed the bytes to Integer;
+  `CONVERT(empty -> Integer)` yields `0` on the C# reference VM but faults on
+  neo-go (`nil slice provided to FromBytes`). It now treats empty as `0` too —
+  matching the `has_i64` and byte-key `get` paths — so a round-tripped stored
+  `0` is robust across VM implementations. (`emit_storage_get_i64_helper`.)
+
+### Added — fuzzing (test tooling)
+
+- **Generative semantic differential**: `gen_exprs` builds random trap-free
+  op-composition trees (arithmetic, bitwise, shifts/rotates, multi-width casts,
+  compare/select, bounded loops, `let` locals, linear-memory array store/load,
+  and `NeoInteger` div/mod/etc.), regenerated per seed and run on a real NeoVM
+  vs native Rust. A per-function node budget keeps the contract under the NEF
+  size cap.
+- **Trap-conformance harness** (`conformance/fuzz/trap_check.py`, `make
+  fuzz-traps`): asserts the VM FAULTs on div-by-zero, `MIN / -1`, and
+  `unreachable!()` — the abort lowering the value-differential cannot check.
+- **Storage-marshalling differential** (`conformance/fuzz/storage_fuzz.py`,
+  `make fuzz-storage`): i64 storage put/get/delete/has round-trips on the real
+  VM (surfaced the fix above).
+- **Continuous runner** (`scripts/run_long_differential.sh`, `make
+  fuzz-differential-long`) with trap + storage startup gates.
+
+### Fixed — tooling
+
+- Long-fuzz supervisor now runs on macOS (bash 3.2 / no `setsid` / BSD `find`).
+- The differential SKIPs (does not halt) when a generated batch exceeds the
+  neo-go NEF size cap (131070 bytes), so the continuous campaign self-heals.
+- Conformance oracle: `Storage.Get` returns a non-nil empty ByteString for
+  stored-empty values, mirroring the C# reference VM.
+
 ## [0.14.0] - 2026-07-01 — developer toolkit, fuzzing, and translator-correctness pass
 
 Completes the Rust-on-Neo developer environment (testing + debugging at

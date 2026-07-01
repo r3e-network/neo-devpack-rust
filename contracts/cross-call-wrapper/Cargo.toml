@@ -1,6 +1,6 @@
 [package]
 name = "cross-call-wrapper-neo"
-version = "0.14.0"
+version = "0.14.1"
 edition = "2021"
 description = "L6: sample contract that performs a cross-contract call to a NEP-17 token"
 keywords = ["neo", "n3", "smart-contract", "cross-call"]
@@ -13,7 +13,7 @@ categories = ["cryptography::cryptocurrencies", "wasm"]
 crate-type = ["cdylib"]
 
 [dependencies]
-neo-devpack = { path = "../../rust-devpack", version = "0.14.0", default-features = false }
+neo-devpack = { path = "../../rust-devpack", version = "0.14.1", default-features = false }
 
 [features]
 default = ["neo-devpack/std"]
