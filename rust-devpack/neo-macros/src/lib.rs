@@ -250,13 +250,18 @@ pub fn neo_safe_methods(input: TokenStream) -> TokenStream {
     expand::neo_safe_methods(methods).into()
 }
 
-/// Mark a single exported function as safe in the manifest.
+/// Deprecated: this attribute is non-functional and now emits a compile error.
+///
+/// It used to expand to a manifest-overlay `const`, which is illegal inside
+/// `impl` blocks — the only place contract methods live — so it can never
+/// work where users put it. Mark methods safe with `#[neo_method(safe)]` or
+/// the `neo_safe_methods!` overlay instead.
 ///
 /// # Example
 ///
 /// ```ignore
-/// #[neo_safe]
-/// pub fn balance_of(owner: NeoByteString) -> NeoInteger {
+/// #[neo_method(safe)]
+/// pub fn balance_of(&self, owner: NeoInteger) -> NeoResult<NeoInteger> {
 ///     // Implementation
 /// }
 /// ```

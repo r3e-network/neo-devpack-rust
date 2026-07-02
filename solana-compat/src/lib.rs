@@ -31,6 +31,7 @@
 #![allow(dead_code)]
 
 pub mod account_info;
+pub mod allocator;
 pub mod entrypoint;
 pub mod program;
 pub mod program_error;
@@ -38,6 +39,7 @@ pub mod pubkey;
 pub mod syscalls;
 
 pub use account_info::AccountInfo;
+pub use allocator::BumpAllocator;
 pub use entrypoint::ProgramResult;
 pub use program_error::ProgramError;
 pub use pubkey::Pubkey;
@@ -45,6 +47,7 @@ pub use pubkey::Pubkey;
 /// Re-export commonly used items
 pub mod prelude {
     pub use crate::account_info::AccountInfo;
+    pub use crate::allocator::BumpAllocator;
     pub use crate::entrypoint;
     pub use crate::entrypoint::ProgramResult;
     pub use crate::program::invoke;

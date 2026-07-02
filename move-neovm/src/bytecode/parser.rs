@@ -7,6 +7,15 @@ use super::reader::BytecodeReader;
 use super::types::{AbilitySet, BytecodeVersion, FunctionDef, MoveModule, MoveOpcode, StructDef};
 use super::MOVE_MAGIC;
 
+/// Move binary-format versions this parser has actually been exercised
+/// against. The table layout the minimal parser assumes matches what the test
+/// fixtures use (version 6); other versions change table encodings in ways the
+/// parser does not handle, so they are rejected loudly instead of being
+/// silently mis-parsed.
+pub const SUPPORTED_VERSION_MIN: u32 = 6;
+/// Upper bound (inclusive) of the supported Move binary-format version range.
+pub const SUPPORTED_VERSION_MAX: u32 = 6;
+
 /// Parse Move bytecode into a module
 pub fn parse_move_bytecode(bytes: &[u8]) -> Result<MoveModule> {
     if bytes.len() < 8 {
@@ -27,8 +36,17 @@ pub fn parse_move_bytecode(bytes: &[u8]) -> Result<MoveModule> {
     // Skip magic
     reader.read_bytes(4)?;
 
-    // Read version
+    // Read version and reject anything outside the tested range rather than
+    // silently mis-parsing tables laid out for a different format version.
     let version = reader.read_u32()?;
+    if !(SUPPORTED_VERSION_MIN..=SUPPORTED_VERSION_MAX).contains(&version) {
+        bail!(
+            "Move bytecode version {} is unsupported; supported: {}..={}",
+            version,
+            SUPPORTED_VERSION_MIN,
+            SUPPORTED_VERSION_MAX
+        );
+    }
 
     // Parse a minimal module header (table count only). This is not a full parser
     // but avoids rejecting valid Move artefacts while the lowering remains experimental.

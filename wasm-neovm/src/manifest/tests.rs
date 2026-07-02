@@ -607,3 +607,102 @@ fn manifest_builder_clears_enabled_features_when_rendered() {
         "rendered Neo N3 manifests must keep features empty"
     );
 }
+
+#[test]
+fn safe_overlay_typo_fails_with_near_miss_suggestion() {
+    let methods = vec![
+        manifest_method("balanceOf", 1),
+        void_manifest_method("transfer", 3),
+    ];
+
+    let mut builder = ManifestBuilder::new("Contract", &methods);
+    let overlay = json!({
+        "abi": {
+            "methods": [{"name": "balanceOff", "safe": true}]
+        }
+    });
+    builder.merge_overlay(&overlay, Some("overlay.json".to_string()));
+    builder.propagate_safe_flags();
+
+    let err = builder.ensure_method_parity().unwrap_err().to_string();
+    assert!(
+        err.contains("marked methods safe that are not exported"),
+        "unexpected error: {err}"
+    );
+    assert!(
+        err.contains("balanceOff (did you mean 'balanceOf'?)"),
+        "expected near-miss suggestion, got: {err}"
+    );
+    assert!(
+        err.contains("overlay.json"),
+        "expected overlay label: {err}"
+    );
+}
+
+#[test]
+fn safe_overlay_unknown_name_fails_without_suggestion() {
+    let methods = vec![manifest_method("balanceOf", 1)];
+
+    let mut builder = ManifestBuilder::new("Contract", &methods);
+    let overlay = json!({
+        "abi": {
+            "methods": [{"name": "totallyUnrelated", "safe": true}]
+        }
+    });
+    builder.merge_overlay(&overlay, None);
+    builder.propagate_safe_flags();
+
+    let err = builder.ensure_method_parity().unwrap_err().to_string();
+    assert!(
+        err.contains("marked methods safe that are not exported: totallyUnrelated"),
+        "unexpected error: {err}"
+    );
+    assert!(
+        !err.contains("did you mean"),
+        "no near-miss expected for a distant name: {err}"
+    );
+}
+
+#[test]
+fn safe_overlay_on_exported_method_passes_parity() {
+    let methods = vec![
+        manifest_method("balanceOf", 1),
+        void_manifest_method("transfer", 3),
+    ];
+
+    let mut builder = ManifestBuilder::new("Contract", &methods);
+    let overlay = json!({
+        "abi": {
+            "methods": [{"name": "balanceOf", "safe": true}]
+        }
+    });
+    builder.merge_overlay(&overlay, None);
+    builder.propagate_safe_flags();
+    builder.ensure_method_parity().expect("parity should pass");
+
+    let safe_flag = builder.manifest_value()["abi"]["methods"]
+        .as_array()
+        .expect("methods array")
+        .iter()
+        .find(|m| m["name"] == "balanceOf")
+        .and_then(|m| m["safe"].as_bool());
+    assert_eq!(safe_flag, Some(true));
+}
+
+#[test]
+fn safe_overlay_collects_names_from_nested_fragments() {
+    let methods = vec![manifest_method("query", 0)];
+
+    let mut builder = ManifestBuilder::new("Contract", &methods);
+    // Safe annotations may arrive nested inside wrapper objects/arrays.
+    let overlay = json!({
+        "fragments": [{"abi": {"methods": [{"name": "quary", "safe": true}]}}]
+    });
+    builder.merge_overlay(&overlay, None);
+
+    let err = builder.ensure_method_parity().unwrap_err().to_string();
+    assert!(
+        err.contains("quary (did you mean 'query'?)"),
+        "unexpected error: {err}"
+    );
+}

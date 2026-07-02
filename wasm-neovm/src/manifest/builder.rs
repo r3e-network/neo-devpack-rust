@@ -15,7 +15,9 @@ use log::warn;
 use serde_json::{Map, Value};
 use std::collections::{HashMap, HashSet};
 
-use super::parity::{collect_method_shapes, MethodShape};
+use super::parity::{
+    collect_method_shapes, collect_safe_method_names, ensure_safe_methods_exist, MethodShape,
+};
 use super::{
     build_manifest, collect_method_names, ensure_manifest_methods_match, merge_manifest,
     propagate_safe_flags, ManifestMethod,
@@ -30,6 +32,7 @@ pub struct ManifestBuilder {
     manifest: Value,
     baseline_methods: HashSet<String>,
     baseline_signatures: HashMap<String, MethodShape>,
+    overlay_safe_methods: HashSet<String>,
     overlay_label: Option<String>,
 }
 
@@ -52,12 +55,14 @@ impl ManifestBuilder {
             baseline_methods: collect_method_names(&manifest),
             baseline_signatures,
             manifest,
+            overlay_safe_methods: HashSet::new(),
             overlay_label: None,
         }
     }
 
     /// Merge an overlay JSON value into the manifest.
     pub fn merge_overlay(&mut self, overlay: &Value, label: Option<String>) {
+        collect_safe_method_names(overlay, &mut self.overlay_safe_methods);
         merge_manifest(&mut self.manifest, overlay);
         if let Some(label) = label {
             self.overlay_label = Some(label);
@@ -71,6 +76,14 @@ impl ManifestBuilder {
 
     /// Verify that the final manifest has the same methods as the baseline.
     pub fn ensure_method_parity(&self) -> Result<()> {
+        // Check safe-list names first so a typo'd safe annotation surfaces
+        // with near-miss suggestions rather than the generic parity error.
+        ensure_safe_methods_exist(
+            &self.overlay_safe_methods,
+            &self.baseline_methods,
+            self.overlay_label.as_deref(),
+        )?;
+
         ensure_manifest_methods_match(
             &self.manifest,
             &self.baseline_methods,

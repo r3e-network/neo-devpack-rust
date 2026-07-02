@@ -39,20 +39,37 @@ pub use serde;
 pub use standards::*;
 
 /// Neo N3 Prelude - commonly used items
+///
+/// The one-stop import for contract code: `use neo_devpack::prelude::*;`
+/// brings in everything a typical contract needs — the contract/method proc
+/// macros, the NeoVM value types, storage access, and runtime services — so
+/// contract crates don't have to import from the individual devpack crates.
+/// Only items that nearly every contract touches belong here; specialised
+/// helpers (codec, utils, etc.) should be imported from their own modules.
 pub mod prelude {
     #[cfg(feature = "serde")]
     pub use crate::serde;
+    /// Proc macros: contract/method/event attributes and manifest overlays.
     pub use crate::{
-        call_typed, native_contracts::*, neo_contract, neo_entry, neo_event, neo_manifest_overlay,
-        neo_method, neo_permission, neo_safe, neo_safe_methods, neo_supported_standards,
-        neo_trusts, serialise_array, serialise_notification, serialise_value, standards::*, BigInt,
-        ContractCallError, ContractCaller, DefaultContractCaller, FromNeoValue, Hash160, Hash256,
-        NeoArray, NeoBoolean, NeoByteString, NeoContract, NeoContractABI, NeoContractEntry,
-        NeoContractEvent, NeoContractManifest, NeoContractMethod, NeoContractMethodTrait,
-        NeoContractParameter, NeoContractPermission, NeoContractRuntime, NeoError, NeoInteger,
-        NeoIterator, NeoMap, NeoResult, NeoRuntime, NeoRuntimeContext, NeoStorage,
-        NeoStorageContext, NeoString, NeoStruct, NeoValue, RawKeyBuilder, RawStorage, RawStorageGet,
-        MAX_NOTIFICATION_SIZE, MAX_STACK_SIZE,
+        neo_contract, neo_entry, neo_event, neo_manifest_overlay, neo_method, neo_permission,
+        neo_safe, neo_safe_methods, neo_supported_standards, neo_trusts,
+    };
+    /// NeoVM value and manifest types, serialisation helpers, and VM limits.
+    pub use crate::{
+        serialise_array, serialise_notification, serialise_value, BigInt, FromNeoValue, Hash160,
+        Hash256, NeoArray, NeoBoolean, NeoByteString, NeoContract, NeoContractABI,
+        NeoContractEntry, NeoContractEvent, NeoContractManifest, NeoContractMethod,
+        NeoContractMethodTrait, NeoContractParameter, NeoContractPermission, NeoError, NeoInteger,
+        NeoIterator, NeoMap, NeoResult, NeoString, NeoStruct, NeoValue, MAX_NOTIFICATION_SIZE,
+        MAX_STACK_SIZE,
+    };
+    /// Storage: typed and raw storage access plus key building.
+    pub use crate::{NeoStorage, NeoStorageContext, RawKeyBuilder, RawStorage, RawStorageGet};
+    /// Runtime services: syscall wrappers, contract calls, native contracts,
+    /// and NEP standard traits.
+    pub use crate::{
+        call_typed, native_contracts::*, standards::*, ContractCallError, ContractCaller,
+        DefaultContractCaller, NeoContractRuntime, NeoRuntime, NeoRuntimeContext,
     };
     #[cfg(feature = "std")]
     pub use crate::{NeoCrypto, NeoJSON};

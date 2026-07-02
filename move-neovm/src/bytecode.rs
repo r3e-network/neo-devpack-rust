@@ -18,7 +18,7 @@ mod reader;
 mod types;
 mod validate;
 
-pub use parser::parse_move_bytecode;
+pub use parser::{parse_move_bytecode, SUPPORTED_VERSION_MAX, SUPPORTED_VERSION_MIN};
 pub use types::{
     AbilitySet, BytecodeVersion, FieldDef, FunctionDef, MoveModule, MoveOpcode, StructDef, TypeTag,
 };

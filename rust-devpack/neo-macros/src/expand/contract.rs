@@ -3,10 +3,13 @@
 
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{format_ident, quote};
+use serde_json::json;
 use syn::{
     DeriveInput, FnArg, GenericArgument, ImplItem, ImplItemFn, Item, ItemImpl, LitStr, Pat,
     PatIdent, PathArguments, ReturnType, Type,
 };
+
+use crate::codegen;
 
 pub(crate) fn neo_contract(input: DeriveInput) -> TokenStream2 {
     let name = &input.ident;
@@ -100,8 +103,14 @@ impl ExportedMethod {
             safe,
         } = self;
 
-        let safe_attr = if safe {
-            quote! { #[::neo_devpack::neo_safe] }
+        // `#[neo_method(safe)]` marks the export safe by emitting the manifest
+        // overlay directly next to the wrapper (the deprecated `#[neo_safe]`
+        // attribute is no longer routed through).
+        let safe_overlay = if safe {
+            let overlay = json!({
+                "abi": { "methods": [ { "name": export_ident.to_string(), "safe": true } ] }
+            });
+            codegen::manifest_overlay_tokens(&overlay.to_string())
         } else {
             quote! {}
         };
@@ -253,7 +262,7 @@ impl ExportedMethod {
 
         Ok(quote! {
             #status_support
-            #safe_attr
+            #safe_overlay
             #[no_mangle]
             pub extern "C" fn #export_ident(#(#wrapper_inputs),*) -> #wrapper_output {
                 #body
@@ -394,7 +403,10 @@ fn argument_conversion(ty: &Type, ident: &syn::Ident) -> syn::Result<TokenStream
     let Some(type_ident) = type_ident(ty) else {
         return Err(syn::Error::new_spanned(
             ty,
-            "Unsupported #[neo_method] argument type",
+            "Unsupported #[neo_method] argument type. The auto-export ABI marshals scalar \
+             integer/boolean types only (i8/i16/i32/i64, u8/u16/u32, bool, NeoInteger, \
+             NeoBoolean); see contracts/nep17-token for the manual ByteString marshalling \
+             pattern.",
         ));
     };
 
@@ -416,7 +428,7 @@ fn argument_conversion(ty: &Type, ident: &syn::Ident) -> syn::Result<TokenStream
                  marshals scalar integer/boolean types only (i8/i16/i32/i64, u8/u16/u32, bool, \
                  NeoInteger, NeoBoolean). String, ByteString, and array parameters are not yet \
                  supported; pass account ids as integers and marshal richer types manually \
-                 (see contracts/nep17-token)."
+                 (see contracts/nep17-token for the manual ByteString marshalling pattern)."
             ),
         )),
     }
@@ -433,7 +445,10 @@ fn parse_output_kind(output: &ReturnType) -> syn::Result<ExportOutputKind> {
     let Some(top_ident) = type_ident(return_type) else {
         return Err(syn::Error::new_spanned(
             return_type,
-            "Unsupported #[neo_method] return type",
+            "Unsupported #[neo_method] return type. The auto-export ABI marshals scalar \
+             integer/boolean types only (i8/i16/i32/i64, u8/u16/u32, bool, NeoInteger, \
+             NeoBoolean) plus `()` and NeoResult of those; see contracts/nep17-token for \
+             the manual ByteString marshalling pattern.",
         ));
     };
 
@@ -495,7 +510,9 @@ fn parse_inner_output_kind(ty: &Type) -> syn::Result<ExportOutputKind> {
     let Some(inner_ident) = type_ident(ty) else {
         return Err(syn::Error::new_spanned(
             ty,
-            "Unsupported #[neo_method] return type for auto-export wrappers",
+            "Unsupported #[neo_method] return type for auto-export wrappers. Supported: \
+             i8/i16/i32/i64, u8/u16/u32, bool, NeoInteger, NeoBoolean, and `()`; see \
+             contracts/nep17-token for the manual ByteString marshalling pattern.",
         ));
     };
 
@@ -511,7 +528,8 @@ fn parse_inner_output_kind(ty: &Type) -> syn::Result<ExportOutputKind> {
                 "Unsupported #[neo_method] return type `{unsupported}`. The auto-export ABI \
                  marshals scalar integer/boolean types only (i8/i16/i32/i64, u8/u16/u32, bool, \
                  NeoInteger, NeoBoolean) plus `()`. String, ByteString, and array returns are \
-                 not yet supported; marshal richer types manually (see contracts/nep17-token)."
+                 not yet supported; marshal richer types manually (see contracts/nep17-token \
+                 for the manual ByteString marshalling pattern)."
             ),
         )),
     }

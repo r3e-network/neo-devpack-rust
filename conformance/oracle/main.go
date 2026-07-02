@@ -46,8 +46,17 @@ import (
 	"github.com/nspcc-dev/neo-go/pkg/vm/vmstate"
 )
 
+// supportedSchemaVersion is the request-schema version this oracle speaks.
+// The Rust side (neo-vm-test) stamps its requests with schema_version; bump
+// both sides together on any breaking change to InvocationRequest.
+const supportedSchemaVersion = 1
+
 // InvocationRequest is the JSON contract the Rust side sends.
 type InvocationRequest struct {
+	// Pointer so "field absent" (legacy callers, e.g. conformance/fuzz/*.py)
+	// is tolerated; a present-but-unsupported version is a loud error.
+	SchemaVersion *int `json:"schema_version,omitempty"`
+
 	NEFPath        string       `json:"nef_path"`
 	ManifestPath   string       `json:"manifest_path"`
 	Method         string       `json:"method"`
@@ -64,6 +73,17 @@ type InvocationRequest struct {
 	Network        *uint32 `json:"network,omitempty"`         // System.Runtime.GetNetwork (default mainnet magic)
 	AddressVersion *int    `json:"address_version,omitempty"` // System.Runtime.GetAddressVersion (default NEO3 0x35)
 	Random         *string `json:"random,omitempty"`          // System.Runtime.GetRandom (decimal; default 0)
+}
+
+// checkSchemaVersion rejects a request stamped with a schema version this
+// oracle doesn't speak (loudly, so ABI drift can't pass as a VM result).
+// An absent schema_version means a legacy caller and is tolerated.
+func checkSchemaVersion(req *InvocationRequest) error {
+	if req.SchemaVersion != nil && *req.SchemaVersion != supportedSchemaVersion {
+		return fmt.Errorf("unsupported schema_version %d (this oracle speaks %d) — rebuild the oracle or the caller",
+			*req.SchemaVersion, supportedSchemaVersion)
+	}
+	return nil
 }
 
 type Argument struct {
@@ -139,6 +159,10 @@ func main() {
 		fail(*outPath, fmt.Sprintf("failed to parse request: %v", err))
 		return
 	}
+	if err := checkSchemaVersion(&req); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
 
 	result := invoke(&req)
 
@@ -180,6 +204,10 @@ func runBatch(inPath, outPath string) {
 			buf = append(buf, []byte("{\"st\":\"FAULT\",\"top\":null}\n")...)
 			continue
 		}
+		if err := checkSchemaVersion(&req); err != nil {
+			fmt.Fprintln(os.Stderr, "batch:", err)
+			os.Exit(2)
+		}
 		key := req.NEFPath + "|" + req.ManifestPath
 		lc := cache[key]
 		if lc == nil {
@@ -216,6 +244,10 @@ func runTrace(inPath string, from, to int) {
 	var req InvocationRequest
 	if err := json.Unmarshal(reqBytes, &req); err != nil {
 		fmt.Fprintln(os.Stderr, "parse request:", err)
+		os.Exit(2)
+	}
+	if err := checkSchemaVersion(&req); err != nil {
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
 	}
 	nefFile, mfest, ferr := loadContract(req.NEFPath, req.ManifestPath)

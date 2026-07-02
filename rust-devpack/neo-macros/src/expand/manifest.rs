@@ -140,17 +140,23 @@ pub(crate) fn neo_safe_methods(methods: Vec<String>) -> TokenStream2 {
 }
 
 pub(crate) fn neo_safe(input: ItemFn) -> TokenStream2 {
-    let name = input.sig.ident.to_string();
+    // Deprecated: the manifest-overlay `const` this used to emit is illegal
+    // inside `impl` blocks — the only place contract methods live — so the
+    // attribute can never work where users put it. Fail loudly instead of
+    // silently producing broken output.
+    let error = syn::Error::new_spanned(
+        &input.sig.ident,
+        "#[neo_safe] is deprecated and non-functional: it expands to a manifest overlay \
+         `const` that is illegal inside `impl` blocks. Use #[neo_method(safe)] on the \
+         method or the neo_safe_methods!([...]) overlay instead.",
+    )
+    .to_compile_error();
 
-    let overlay = json!({
-        "abi": { "methods": [ { "name": name, "safe": true } ] }
-    });
-
-    let overlay_tokens = codegen::manifest_overlay_tokens(&overlay.to_string());
-
+    // Re-emit the annotated function so the deprecation error does not
+    // cascade into unrelated "cannot find function" errors.
     quote! {
         #input
-        #overlay_tokens
+        #error
     }
 }
 

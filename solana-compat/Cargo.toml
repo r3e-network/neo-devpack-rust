@@ -15,10 +15,14 @@ include = ["src/**/*", "tests/**/*", "Cargo.toml", "README.md", "../LICENSE"]
 [features]
 default = []
 no-entrypoint = []
+# Borsh (de)serialization interop: `From<borsh::io::Error> for ProgramError`
+# so `?` works on `try_from_slice` and friends.
+borsh = ["dep:borsh"]
 
 [dependencies]
 tiny-keccak = { version = "2", default-features = false, features = ["keccak"] }
 sha2 = { version = "0.10", default-features = false }
+borsh = { version = "1.5", optional = true, default-features = false }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 # No external deps for wasm - we provide everything

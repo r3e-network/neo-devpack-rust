@@ -61,6 +61,21 @@ fn parse_wrong_magic() {
 }
 
 #[test]
+fn parse_unsupported_version() {
+    // Magic + version 1 (outside the tested range) + 0 tables
+    let bytes = [
+        0xa1, 0x1c, 0xeb, 0x0b, // magic
+        0x01, 0x00, 0x00, 0x00, // version 1
+        0x00, // table count: 0
+    ];
+    let result = parse_move_bytecode(&bytes);
+    assert!(result.is_err());
+    let err_msg = result.unwrap_err().to_string();
+    assert!(err_msg.contains("version 1 is unsupported"));
+    assert!(err_msg.contains("supported: 6..=6"));
+}
+
+#[test]
 fn parse_minimal_valid_bytecode() {
     // Magic + version + 0 tables (ULEB128 0)
     let bytes = [

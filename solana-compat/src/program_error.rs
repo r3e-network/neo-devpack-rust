@@ -87,6 +87,15 @@ impl fmt::Display for ProgramError {
     }
 }
 
+/// Allows `?` on `borsh::BorshDeserialize::try_from_slice` and friends,
+/// mirroring `solana_program`'s conversion.
+#[cfg(feature = "borsh")]
+impl From<borsh::io::Error> for ProgramError {
+    fn from(_error: borsh::io::Error) -> Self {
+        ProgramError::BorshIoError
+    }
+}
+
 impl From<u64> for ProgramError {
     fn from(error: u64) -> Self {
         match error {

@@ -48,8 +48,18 @@ else
     tail -20 "$REPRO_DIR/stgate.log" | tee -a "$LOG"
 fi
 
+# Leave the tree clean: each round overwrites the tracked generated_ops.rs, so
+# put the committed version back when the runner stops (only if it is actually
+# tracked and modified — repro copies live in $REPRO_DIR).
+restore_genfile() {
+    if git -C "$ROOT" ls-files --error-unmatch contracts/fuzz-ops/src/generated_ops.rs >/dev/null 2>&1 \
+            && ! git -C "$ROOT" diff --quiet -- contracts/fuzz-ops/src/generated_ops.rs; then
+        git -C "$ROOT" checkout -- contracts/fuzz-ops/src/generated_ops.rs
+    fi
+}
+
 i=0; seed=$START
-trap 'echo "stopped $(date) after $i rounds" | tee -a "$LOG"; exit 0' INT TERM
+trap 'restore_genfile; echo "stopped $(date) after $i rounds" | tee -a "$LOG"; exit 0' INT TERM
 while :; do
     i=$((i + 1))
     # Fresh expression batch for this seed (temp -> move so the lib never sees a
@@ -77,4 +87,5 @@ while :; do
     [ "$ROUNDS" -ne 0 ] && [ "$i" -ge "$ROUNDS" ] && break
     seed=$((seed + 1))
 done
+restore_genfile
 echo "long differential ended $(date) after $i rounds" | tee -a "$LOG"

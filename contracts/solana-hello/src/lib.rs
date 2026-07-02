@@ -12,39 +12,11 @@
 extern crate alloc;
 
 #[cfg(not(test))]
-use core::alloc::{GlobalAlloc, Layout};
-#[cfg(not(test))]
 use core::panic::PanicInfo;
 
-/// A minimal bump allocator stub for no_std WASM environments.
-///
-/// # Safety
-///
-/// This is a stub implementation that returns null for allocations.
-/// It is only suitable for contracts that don't need heap allocation.
-/// For production use, a proper bump allocator with memory tracking should be used.
-#[cfg(not(test))]
-struct BumpAllocator;
-
-// SAFETY: This is a stub allocator that always returns null.
-// It is only safe because this contract doesn't use heap allocation.
-// The alloc and dealloc methods are no-ops as this contract uses
-// only stack-allocated data.
-#[cfg(not(test))]
-unsafe impl GlobalAlloc for BumpAllocator {
-    unsafe fn alloc(&self, _layout: Layout) -> *mut u8 {
-        // This stub allocator returns null, indicating allocation failure.
-        // The contract is designed to work without heap allocation.
-        core::ptr::null_mut()
-    }
-    unsafe fn dealloc(&self, _ptr: *mut u8, _layout: Layout) {
-        // No-op: since we never allocate, we never need to deallocate.
-    }
-}
-
-#[cfg(not(test))]
-#[global_allocator]
-static ALLOCATOR: BumpAllocator = BumpAllocator;
+// Install the shared wasm32 bump allocator from the compat layer so heap
+// allocations (Vec, String, ...) work instead of failing at runtime.
+neo_solana_compat::neo_bump_allocator!();
 
 #[cfg(not(test))]
 #[panic_handler]

@@ -39,6 +39,12 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
 
+/// Version of the JSON request schema shared with the conformance oracle
+/// (`InvocationRequest` in `conformance/oracle/main.go`). The oracle rejects a
+/// request carrying a version it doesn't support, turning silent ABI drift
+/// between the two sides into a loud error. Bump both sides together.
+const SCHEMA_VERSION: i64 = 1;
+
 /// Repo root = parent of this crate's manifest dir (dev-only, always in-tree).
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -434,6 +440,7 @@ impl Contract {
     pub fn trace(&self, method: &str, args: &[VmArg]) -> Result<String, String> {
         use serde_json::json;
         let req = json!({
+            "schema_version": SCHEMA_VERSION,
             "nef_path": self.nef, "manifest_path": self.manifest, "method": method,
             "arguments": args.iter().map(|a| a.to_json()).collect::<Vec<_>>(),
             "signers": [], "initial_storage": [], "gas_limit": 2_000_000_000i64,
@@ -512,6 +519,7 @@ impl<'a> Invocation<'a> {
     pub fn try_run(self) -> Result<VmOutcome, String> {
         use serde_json::json;
         let mut req = json!({
+            "schema_version": SCHEMA_VERSION,
             "nef_path": self.contract.nef,
             "manifest_path": self.contract.manifest,
             "method": self.method,
