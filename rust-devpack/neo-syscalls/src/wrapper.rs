@@ -843,14 +843,12 @@ impl NeoVMSyscall {
     pub fn iterator_next(items: &NeoArray<NeoValue>) -> NeoResult<NeoBoolean> {
         #[cfg(target_arch = "wasm32")]
         {
-            // Iterators on-chain are an InteropInterface stack item;
-            // the translator emits a direct `SYSCALL System.Iterator.Next`
-            // that the VM resolves with a session id. The devpack
-            // wrapper is for host-mode tests. On wasm32, reaching this
-            // helper means the translator failed to lower the call to a
-            // direct SYSCALL (a translator bug, Q4). Fault gracefully
-            // with a structured error rather than aborting the VM with an
-            // `unreachable` trap.
+            // Host-mode helper over a materialised entry array. On wasm32
+            // prefix iteration goes through `storage_find`, which drains the
+            // VM iterator via the `runtime_iterator_next/value` externs and
+            // returns a `NeoIterator` — use its `Iterator` impl instead of
+            // this array-shaped protocol. Fault gracefully with a structured
+            // error rather than aborting the VM with an `unreachable` trap.
             let _ = items;
             Err(NeoError::Wasm32CrossCallUnavailable {
                 syscall: "System.Iterator.Next",
@@ -1077,33 +1075,97 @@ impl NeoVMSyscall {
         let handle = STORAGE_STATE.get_handle(context)?;
         let prefix_bytes = prefix.as_slice();
         let store = handle.store.read().map_err(|_| NeoError::InvalidState)?;
-        let matches: Vec<NeoValue> = store
+        // Ascending key order: neo-go's storage seek iterates the store in
+        // byte order of the keys, so the host must sort (the backing map is
+        // a HashMap with nondeterministic iteration order) or host and
+        // real-VM prefix scans disagree on element order.
+        let mut pairs: Vec<(Vec<u8>, Vec<u8>)> = store
             .iter()
-            .filter_map(|(key_bytes, value)| {
-                if key_bytes.starts_with(prefix_bytes) {
-                    let mut entry = NeoStruct::new();
-                    entry.set_field("key", NeoValue::from(NeoByteString::from_slice(key_bytes)));
-                    entry.set_field("value", NeoValue::from(NeoByteString::from_slice(value)));
-                    Some(NeoValue::from(entry))
-                } else {
-                    None
-                }
+            .filter(|(key_bytes, _)| key_bytes.starts_with(prefix_bytes))
+            .map(|(key_bytes, value)| (key_bytes.clone(), value.clone()))
+            .collect();
+        pairs.sort_by(|a, b| a.0.cmp(&b.0));
+        let matches: Vec<NeoValue> = pairs
+            .into_iter()
+            .map(|(key_bytes, value)| {
+                let mut entry = NeoStruct::new();
+                entry.set_field("key", NeoValue::from(NeoByteString::new(key_bytes)));
+                entry.set_field("value", NeoValue::from(NeoByteString::new(value)));
+                NeoValue::from(entry)
             })
             .collect();
+        crate::dispatch::seed_host_iterator_session(&matches);
         Ok(NeoIterator::new(matches))
     }
 
-    /// On wasm32 `storage_find` returns an empty iterator. Bridging a real
-    /// `System.Storage.Find` iterator handle through wasm would require
-    /// special-cased translator support for `System.Iterator.Next/Value`
-    /// on top of the byte-marshalled `Get/Put/Delete` primitives that this
-    /// module already lowers; contracts that need prefix iteration must use
-    /// indexed enumeration backed by `storage_get` until that lands.
+    /// wasm32 prefix scan through the translator-lowered
+    /// `System.Storage.Find` + `System.Iterator.Next/Value` bridge.
+    ///
+    /// The VM-side iterator lives in a translator-managed static slot
+    /// (SINGLE live iterator per execution — see the extern docs in
+    /// `syscalls_abi.rs`). This wrapper eagerly DRAINS the scan into a
+    /// materialised `NeoIterator` before returning: the slot is free again
+    /// afterwards, so nested/sequential `storage_find` calls are safe at
+    /// the Rust API level, and the returned entries match the host-mode
+    /// shape exactly (`Struct{ key (incl. prefix), value }`, ascending key
+    /// order — `FindOptions.None`). Prefer bounded prefixes: the whole
+    /// result set is copied into wasm memory.
+    ///
+    /// The translator emits a fresh `System.Storage.GetContext` inside the
+    /// Find helper, so the `context` marker's id is irrelevant here (the
+    /// same convention as `storage_get`).
     #[cfg(target_arch = "wasm32")]
     pub fn storage_find(
         _context: &NeoStorageContext,
-        _prefix: &NeoByteString,
+        prefix: &NeoByteString,
     ) -> NeoResult<NeoIterator<NeoValue>> {
-        Ok(NeoIterator::new(Vec::new()))
+        const INITIAL_CAPACITY: usize = 128;
+        const MAX_CAPACITY: usize = 64 * 1024;
+
+        let prefix_slice = prefix.as_slice();
+        unsafe {
+            neo_runtime_storage_find(prefix_slice.as_ptr() as i32, prefix_slice.len() as i32);
+        }
+
+        let mut matches: Vec<NeoValue> = Vec::new();
+        let mut buffer: Vec<u8> = vec![0u8; INITIAL_CAPACITY];
+        while unsafe { neo_runtime_iterator_next() } != 0 {
+            let payload_len = loop {
+                let actual = unsafe {
+                    neo_runtime_iterator_value(buffer.as_mut_ptr() as i32, buffer.len() as i32)
+                };
+                if actual >= 0 {
+                    break actual as usize;
+                }
+                // -needed_len: grow and retry (the iterator has not advanced).
+                let needed = (-actual) as usize;
+                if needed > MAX_CAPACITY {
+                    return Err(NeoError::InvalidState);
+                }
+                buffer.resize(needed, 0);
+            };
+
+            // Flattened element: key_len(4B LE) || key || value.
+            if payload_len < 4 {
+                return Err(NeoError::InvalidState);
+            }
+            let key_len =
+                u32::from_le_bytes([buffer[0], buffer[1], buffer[2], buffer[3]]) as usize;
+            let key_end = 4usize.checked_add(key_len).ok_or(NeoError::InvalidState)?;
+            if key_end > payload_len {
+                return Err(NeoError::InvalidState);
+            }
+            let mut entry = NeoStruct::new();
+            entry.set_field(
+                "key",
+                NeoValue::from(NeoByteString::from_slice(&buffer[4..key_end])),
+            );
+            entry.set_field(
+                "value",
+                NeoValue::from(NeoByteString::from_slice(&buffer[key_end..payload_len])),
+            );
+            matches.push(NeoValue::from(entry));
+        }
+        Ok(NeoIterator::new(matches))
     }
 }

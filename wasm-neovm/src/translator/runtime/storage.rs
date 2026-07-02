@@ -432,6 +432,129 @@ pub(in crate::translator::runtime) fn emit_storage_get_helper(
     Ok(())
 }
 
+/// Emit `runtime_storage_find(prefix_ptr, prefix_len)`.
+///
+/// Starts a `System.Storage.Find` prefix scan and parks the returned
+/// iterator InteropInterface in the dedicated static slot (`iterator_slot`,
+/// assigned by `prepare_init_helper`) — the SINGLE-LIVE-ITERATOR model: wasm
+/// code cannot hold VM stack items, so one static slot carries the current
+/// scan and a new `find` replaces it. `System.Storage.Find` pops
+/// (context, prefix, options) top-first (neo-go storage/find.go `Find`), so
+/// the push order is options (FindOptions.None = 0 → key+value `Struct`
+/// elements), prefix, context.
+///
+/// INITSLOT slot mapping (top-first pop): ARG0 = prefix_len, ARG1 = prefix_ptr.
+pub(in crate::translator::runtime) fn emit_storage_find_helper(
+    script: &mut Vec<u8>,
+    chunked: bool,
+    iterator_slot: usize,
+) -> Result<()> {
+    let local_count = if chunked { 3 } else { 0 };
+    script.push(lookup_opcode("INITSLOT")?.byte);
+    script.push(local_count);
+    script.push(2); // 2 args: prefix_ptr, prefix_len
+
+    script.push(lookup_opcode("PUSH0")?.byte); // FindOptions.None
+    emit_extract_memory_bytes(script, 1, 0, chunked, 0, 1, 2)?; // prefix (ARG1=ptr, ARG0=len)
+    emit_storage_syscall(script, "System.Storage.GetContext")?; // ctx (top)
+    emit_storage_syscall(script, "System.Storage.Find")?;
+    emit_store_static(script, iterator_slot)?;
+    script.push(lookup_opcode("RET")?.byte);
+    Ok(())
+}
+
+/// Emit `runtime_iterator_next() -> i32`: `System.Iterator.Next` on the
+/// parked iterator. A null slot (next without a prior find) FAULTs the VM,
+/// which is the loud-failure contract documented on the SDK extern.
+pub(in crate::translator::runtime) fn emit_iterator_next_helper(
+    script: &mut Vec<u8>,
+    iterator_slot: usize,
+) -> Result<()> {
+    emit_load_static(script, iterator_slot)?;
+    emit_storage_syscall(script, "System.Iterator.Next")?;
+    script.push(lookup_opcode("RET")?.byte);
+    Ok(())
+}
+
+/// Emit `runtime_iterator_value(out_ptr, out_cap) -> i32`.
+///
+/// `System.Iterator.Value` on the parked iterator yields the current
+/// `Struct{key,value}` element (`FindOptions.None`, guaranteed by
+/// [`emit_storage_find_helper`]). The struct is flattened on-VM to
+/// `key_len(4B little-endian) || key || value` — plain opcodes only, no
+/// StdLib `serialize` hop (and therefore no extra manifest permission) —
+/// and copied into the caller's buffer with the `neo_storage_get_into`
+/// convention: payload length on success, `-needed_len` when `out_cap` is
+/// too small (no write; the iterator does not advance, so the caller can
+/// grow and retry).
+///
+/// The 4-byte length header is built as `SUBSTR(CAT(len_bytes, 0x00000000),
+/// 0, 4)`: NeoVM's Integer→ByteString conversion is minimal little-endian
+/// two's-complement, so right-padding a non-negative length with zero bytes
+/// and truncating to 4 gives the fixed-width LE encoding.
+///
+/// INITSLOT slot mapping (top-first pop): ARG0 = out_cap, ARG1 = out_ptr.
+/// Local layout mirrors `emit_storage_get_helper`: slot 0 caches the payload
+/// length; chunked mode adds slots 1..=4 for the write-back loop.
+pub(in crate::translator::runtime) fn emit_iterator_value_helper(
+    script: &mut Vec<u8>,
+    chunked: bool,
+    iterator_slot: usize,
+) -> Result<()> {
+    let local_count = if chunked { 5 } else { 1 };
+    script.push(lookup_opcode("INITSLOT")?.byte);
+    script.push(local_count);
+    script.push(2); // 2 args: out_ptr, out_cap
+
+    emit_load_static(script, iterator_slot)?;
+    emit_storage_syscall(script, "System.Iterator.Value")?;
+    // Stack: [Struct{key,value}] — UNPACK pushes value then key then count,
+    // leaving (count, key, value) top-first.
+    script.push(lookup_opcode("UNPACK")?.byte);
+    script.push(lookup_opcode("DROP")?.byte); // [key, value]
+
+    // 4-byte LE key length header.
+    script.push(lookup_opcode("DUP")?.byte);
+    script.push(lookup_opcode("SIZE")?.byte); // [key_len, key, value]
+    emit_convert(script, STACKITEM_TYPE_BYTESTRING)?; // [len_bs, key, value]
+    emit_push_data(script, &[0u8; 4])?; // [zeros, len_bs, key, value]
+    script.push(lookup_opcode("CAT")?.byte); // [len_bs||zeros, key, value]
+    script.push(lookup_opcode("PUSH0")?.byte);
+    script.push(lookup_opcode("PUSH4")?.byte);
+    script.push(lookup_opcode("SUBSTR")?.byte); // [len4, key, value]
+
+    // payload = len4 || key || value (CAT pops the TOP as the second part).
+    script.push(lookup_opcode("SWAP")?.byte); // [key, len4, value]
+    script.push(lookup_opcode("CAT")?.byte); // [len4||key, value]
+    script.push(lookup_opcode("SWAP")?.byte); // [value, len4||key]
+    script.push(lookup_opcode("CAT")?.byte); // [payload]
+
+    // GetInto-style epilogue: cache length, bounds-check, write back.
+    script.push(lookup_opcode("DUP")?.byte);
+    script.push(lookup_opcode("SIZE")?.byte);
+    script.push(lookup_opcode("DUP")?.byte);
+    script.push(lookup_opcode("STLOC0")?.byte);
+    emit_load_arg(script, 0)?; // out_cap (ARG0)
+    script.push(lookup_opcode("GT")?.byte);
+    let jump_too_small = emit_jump_placeholder(script, "JMPIF_L")?;
+    // Fallthrough stack: [payload]
+
+    emit_write_value_to_memory(script, 1, 0, chunked, 1, 2, 3)?; // out_ptr=ARG1, length in LOC0
+
+    script.push(lookup_opcode("LDLOC0")?.byte);
+    script.push(lookup_opcode("RET")?.byte);
+
+    let too_small_label = script.len();
+    // Stack at entry: [payload]
+    script.push(lookup_opcode("DROP")?.byte);
+    script.push(lookup_opcode("LDLOC0")?.byte);
+    script.push(lookup_opcode("NEGATE")?.byte);
+    script.push(lookup_opcode("RET")?.byte);
+
+    patch_jump(script, jump_too_small, too_small_label)?;
+    Ok(())
+}
+
 pub(in crate::translator::runtime) fn emit_storage_put_i64_helper(
     script: &mut Vec<u8>,
 ) -> Result<()> {

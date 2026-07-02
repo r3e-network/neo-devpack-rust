@@ -66,6 +66,18 @@ pub(crate) enum StorageHelperKind {
     /// byte-slice argument. Handles both the compact (single Buffer) and chunked
     /// (Array of page Buffers) memory layouts.
     ExtractMemoryBytes,
+    /// `System.Storage.Find(GetContext(), prefix, FindOptions.None)` with the
+    /// prefix marshaled from wasm memory; the returned iterator
+    /// InteropInterface is parked in the dedicated static slot (single live
+    /// iterator per execution — see `RuntimeHelpers::storage_iterator_slot`).
+    Find,
+    /// `System.Iterator.Next` on the parked iterator, returning its Boolean.
+    IteratorNext,
+    /// `System.Iterator.Value` on the parked iterator: flattens the
+    /// `Struct{key,value}` element to `key_len(4B LE) || key || value` and
+    /// copies it into the caller's wasm buffer (`neo_storage_get_into`
+    /// return convention: bytes written, or `-needed_len` when too small).
+    IteratorValue,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]

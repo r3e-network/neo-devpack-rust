@@ -89,6 +89,16 @@ fn neovm_syscall_returns_placeholder_for_known_entries() {
     let registry = registry();
     for info in registry.iter() {
         let args: Vec<NeoValue> = info.parameters.iter().map(|p| placeholder_arg(p)).collect();
+        if info.name == "System.Iterator.Value" {
+            // The iterator protocol is stateful and mirrors the real VM:
+            // Value is only valid after a Storage.Find seeded the session
+            // AND Next returned true, otherwise it faults (here: a
+            // structured error). The happy path is covered by
+            // `storage_find_host.rs` and the Find/Next/Value round trip in
+            // `syscall_wrapper_supports_extended_system_surface`.
+            assert!(neovm_syscall(info.hash, &args).is_err());
+            continue;
+        }
         let result = neovm_syscall(info.hash, &args).expect("syscall invocation failed");
         assert_value_matches_type(&result, info.return_type);
     }
@@ -217,11 +227,17 @@ fn syscall_wrapper_supports_extended_system_surface() {
     .expect("verify with ecdsa");
     assert!(verify_with_ecdsa.as_bool());
 
+    // Iterator protocol (session-based, mirroring the real VM's
+    // single-live-iterator bridge): with no Storage.Find session, Next is
+    // exhausted immediately and Value faults. A real Find -> Next -> Value
+    // round trip is covered by `storage_find_host.rs`.
     let iterator_values = NeoArray::<NeoValue>::new();
     let has_next = NeoVMSyscall::iterator_next(&iterator_values).expect("iterator next");
     assert!(!has_next.as_bool());
-    let iterator_value = NeoVMSyscall::iterator_value(&iterator_values).expect("iterator value");
-    assert!(iterator_value.as_array().is_some());
+    assert!(
+        NeoVMSyscall::iterator_value(&iterator_values).is_err(),
+        "Iterator.Value past the end must fault like the real VM"
+    );
 
     NeoVMSyscall::burn_gas(&NeoInteger::new(1)).expect("burn gas");
     let signers = NeoVMSyscall::current_signers().expect("current signers");

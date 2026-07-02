@@ -73,21 +73,21 @@ pub(crate) fn neo_event(input: DeriveInput) -> syn::Result<TokenStream2> {
         #input
 
         impl #name {
+            /// Emit this event with its field values as the notification
+            /// state. One code path for host and wasm32: `NeoRuntime::notify`
+            /// records into the host recorder on the host, and on wasm32 it
+            /// serialises the state and crosses the `runtime_notify_with_state`
+            /// import, which the wasm-neovm translator lowers to a real
+            /// `System.Runtime.Notify` with the decoded state array — so
+            /// on-chain notifications carry the same payload host tests see.
+            /// (Previously the wasm32 path fell back to the name-only
+            /// `notify_event`, silently dropping every field.)
             pub fn emit(&self) -> ::neo_devpack::NeoResult<()> {
-                #[cfg(target_arch = "wasm32")]
-                {
-                    let _ = self;
-                    return ::neo_devpack::NeoRuntime::notify_event(stringify!(#name));
-                }
-
-                #[cfg(not(target_arch = "wasm32"))]
-                {
                 let event_name = stringify!(#name);
                 let mut state = ::neo_devpack::NeoArray::new();
                 #(#push_fields)*
                 let label = ::neo_devpack::NeoString::from_str(event_name);
                 ::neo_devpack::NeoRuntime::notify(&label, &state)
-                }
             }
         }
 

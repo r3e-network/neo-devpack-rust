@@ -6,9 +6,11 @@
 //! `NeoVMSyscall::storage_*` surface. All ByteString work is inside method
 //! bodies; exports are scalar.
 //!
-//! NOTE: `NeoStorage::find` compiles and emits the SYSCALL but yields an
-//! empty iterator on wasm32 (prefix iteration is not bridged) — `find_count`
-//! documents that. Real enumeration uses indexed keys (see feature-storage-raw).
+//! `NeoStorage::find` works on wasm32 through the prefix-scan bridge
+//! (`System.Storage.Find` + `System.Iterator.Next/Value`, single live
+//! VM iterator drained eagerly — see `neo-syscalls/src/syscalls_abi.rs`);
+//! `scan_prefix` exercises it end-to-end and `find_count` covers the
+//! empty-prefix full scan.
 
 extern crate alloc;
 use neo_devpack::prelude::*;
@@ -73,7 +75,7 @@ impl StorageTypedContract {
         ro.is_read_only() && derived.is_read_only()
     }
 
-    /// NeoStorage::find (host-functional; empty on wasm32 — returns 0 on-chain).
+    /// NeoStorage::find with an empty prefix (full-store scan): entry count.
     #[neo_method(safe)]
     pub fn find_count() -> i64 {
         let ctx = match NeoStorage::get_context() {
@@ -84,6 +86,126 @@ impl StorageTypedContract {
             Ok(it) => it.len() as i64,
             Err(_) => -1,
         }
+    }
+
+    /// End-to-end prefix scan: puts 3 keys under `fp:` plus one outside,
+    /// `NeoStorage::find(b"fp:")`s, and folds the entries positionally.
+    ///
+    /// Returns `count * 10_000 + Σ (position+1) * value` — 3 entries in
+    /// ascending key order (`fp:a`=10, `fp:b`=20, `fp:c`=30) give
+    /// `3 * 10_000 + (1*10 + 2*20 + 3*30) = 30_140`; the weighting proves
+    /// the element ORDER, not just membership. Any entry whose key does not
+    /// start with the prefix (or whose struct shape is wrong) returns a
+    /// negative sentinel instead. Host mode and the real VM must agree on
+    /// the exact value.
+    #[neo_method]
+    pub fn scan_prefix() -> i64 {
+        let ctx = match NeoStorage::get_context() {
+            Ok(c) => c,
+            Err(_) => return -1,
+        };
+        let put = |k: &[u8], v: i64| {
+            NeoStorage::put(
+                &ctx,
+                &NeoByteString::from_slice(k),
+                &NeoByteString::from_slice(&v.to_le_bytes()),
+            )
+        };
+        if put(b"fp:a", 10).is_err()
+            || put(b"fp:b", 20).is_err()
+            || put(b"fp:c", 30).is_err()
+            || put(b"zz", 99).is_err()
+        {
+            return -2;
+        }
+
+        let iter = match NeoStorage::find(&ctx, &NeoByteString::from_slice(b"fp:")) {
+            Ok(it) => it,
+            Err(_) => return -3,
+        };
+        let mut count: i64 = 0;
+        let mut weighted: i64 = 0;
+        for entry in iter {
+            let Some(st) = entry.as_struct().cloned() else {
+                return -4;
+            };
+            let Some(key) = st.get_field("key").and_then(NeoValue::as_byte_string).cloned()
+            else {
+                return -5;
+            };
+            if !key.as_slice().starts_with(b"fp:") {
+                return -6;
+            }
+            let Some(value) = st
+                .get_field("value")
+                .and_then(NeoValue::as_byte_string)
+                .cloned()
+            else {
+                return -7;
+            };
+            if value.len() != 8 {
+                return -8;
+            }
+            let mut b = [0u8; 8];
+            b.copy_from_slice(value.as_slice());
+            count += 1;
+            weighted += count * i64::from_le_bytes(b);
+        }
+        count * 10_000 + weighted
+    }
+
+    /// Buffer-growth path of the iterator-value bridge: a single 200-byte
+    /// value makes the flattened element (`4 + key_len + 200` bytes)
+    /// overflow the SDK drain loop's initial 128-byte buffer, so the first
+    /// `runtime_iterator_value` call must return `-needed_len` (without
+    /// advancing the iterator) and the retry must deliver the full payload.
+    ///
+    /// Returns `value_len * 100_000 + Σ value_bytes` — bytes are `i % 251`
+    /// for i in 0..200, so `200 * 100_000 + 19_900 = 20_019_900`. Host mode
+    /// and the real VM must agree on the exact value.
+    #[neo_method]
+    pub fn scan_big_value() -> i64 {
+        let ctx = match NeoStorage::get_context() {
+            Ok(c) => c,
+            Err(_) => return -1,
+        };
+        let mut big = [0u8; 200];
+        for (i, b) in big.iter_mut().enumerate() {
+            *b = (i % 251) as u8;
+        }
+        if NeoStorage::put(
+            &ctx,
+            &NeoByteString::from_slice(b"bp:k"),
+            &NeoByteString::from_slice(&big),
+        )
+        .is_err()
+        {
+            return -2;
+        }
+
+        let mut iter = match NeoStorage::find(&ctx, &NeoByteString::from_slice(b"bp:")) {
+            Ok(it) => it,
+            Err(_) => return -3,
+        };
+        let Some(entry) = iter.next() else {
+            return -4;
+        };
+        if iter.next().is_some() {
+            return -5; // exactly one entry under the prefix
+        }
+        let Some(value) = entry
+            .as_struct()
+            .and_then(|st| st.get_field("value"))
+            .and_then(NeoValue::as_byte_string)
+            .cloned()
+        else {
+            return -6;
+        };
+        let mut sum: i64 = 0;
+        for b in value.as_slice() {
+            sum += i64::from(*b);
+        }
+        (value.len() as i64) * 100_000 + sum
     }
 
     /// Low-level NeoVMSyscall::storage_get_context + storage_put.

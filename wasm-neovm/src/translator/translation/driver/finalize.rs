@@ -294,6 +294,30 @@ impl DriverState {
             manifest_builder.merge_overlay(&extra.value, extra.label);
         }
         self.feature_tracker.apply(&mut manifest_builder)?;
+
+        // State-carrying notifications decode their payload on-VM via a
+        // `System.Contract.Call` to the StdLib native's `deserialize`; Neo N3
+        // denies contract calls not covered by a manifest permission, so
+        // auto-insert the (scoped, least-privilege) entry. The overlay merge
+        // dedups against any user-declared permission for the same contract.
+        if self.runtime.stdlib_deserialize_used() {
+            let stdlib_be: String = crate::native_contracts::STDLIB_DESCRIPTOR
+                .hash
+                .iter()
+                .rev()
+                .map(|b| format!("{b:02x}"))
+                .collect();
+            let overlay = serde_json::json!({
+                "permissions": [{
+                    "contract": format!("0x{stdlib_be}"),
+                    "methods": ["deserialize"],
+                }],
+            });
+            // `None` label: keep any user overlay's label as the parity-error
+            // hint (this auto-overlay only touches `permissions`).
+            manifest_builder.merge_overlay(&overlay, None);
+        }
+
         manifest_builder.propagate_safe_flags();
         manifest_builder.ensure_method_parity()?;
 

@@ -69,9 +69,11 @@ as broken-but-valid NEFs):**
   doesn't marshal — only scalar/i64 forms are bridged.
 - Crypto **signature** syscalls (`check_sig`/`check_multisig`/`verify_with_ecdsa`)
   are not marshalled (the pure-Rust `NeoCrypto` hashers are used instead).
-- `#[neo_event]::emit()` emits **name-only** on wasm32 (state-carrying
-  `runtime_notify_with_state` is not bridged) — events carry no field data
-  on-chain today.
+- ~~`#[neo_event]::emit()` emits **name-only** on wasm32~~ **FIXED**: the
+  state-carrying `runtime_notify_with_state` import is now bridged (the
+  translator decodes the serialised state on-VM via StdLib `deserialize` and
+  emits `System.Runtime.Notify` with the real payload; the scoped manifest
+  permission is auto-inserted). Events carry their field data on-chain.
 - `contract_call`/`call_typed`/native calls emit the SYSCALL but return `Null`
   on wasm32 (args/flags not marshalled) — call path only.
 - `#[neo_safe]` is currently unusable (anonymous-const overlay illegal in `impl`,

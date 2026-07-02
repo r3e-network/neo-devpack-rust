@@ -14,8 +14,8 @@ mod storage;
 
 use crypto::emit_cryptolib_call;
 use runtime::{
-    emit_chunked_bytes_argument, try_handle_runtime_event_import,
-    try_handle_runtime_hash_i64_import,
+    emit_chunked_bytes_argument, try_handle_notify_with_state_import,
+    try_handle_runtime_event_import, try_handle_runtime_hash_i64_import,
 };
 use storage::try_handle_storage_import;
 
@@ -36,6 +36,12 @@ pub(in super::super) fn try_handle_neo_import(
 
     if let Some(descriptor) =
         try_handle_runtime_event_import(import, func_type, params, runtime, script)?
+    {
+        return Ok(Some(descriptor));
+    }
+
+    if let Some(descriptor) =
+        try_handle_notify_with_state_import(import, func_type, runtime, script)?
     {
         return Ok(Some(descriptor));
     }
@@ -294,11 +300,6 @@ mod abi_parity_tests {
     /// `known_gap_allowlist_is_not_stale` test fails as soon as one of these
     /// becomes recognized, forcing its removal from this list.
     const KNOWN_UNRECOGNIZED_IMPORTS: &[&str] = &[
-        // B2 follow-up: the SDK's `notify` marshals the state array through
-        // `runtime_notify_with_state`, but the translator only lowers the
-        // name-only `runtime_notify` (state lowering is the remaining
-        // events-with-state work).
-        "runtime_notify_with_state",
         // Buffer-ABI account constructors: the SDK wrappers call these, but
         // no alias/canonical name reaches them (`create_standard_account` is
         // the reachable alias; the `runtime_`-prefixed extern names are not).
@@ -306,16 +307,13 @@ mod abi_parity_tests {
         "runtime_create_multisig_account",
         // Superseded by `neo_call_native`; the SDK wrapper never calls it.
         "runtime_contract_call_native",
-        // Reserved storage-context/iterator ABI: the SDK wrappers are stubs
-        // (sentinel contexts, empty `storage_find` iterator,
-        // `Wasm32CrossCallUnavailable` iterator calls), and the translator
-        // has no lowering for them yet.
+        // Reserved storage-context ABI: the SDK wrappers are stubs (sentinel
+        // contexts; the translator emits a fresh `System.Storage.GetContext`
+        // inside every storage helper), and the translator has no lowering
+        // for them yet.
         "runtime_get_storage_context",
         "runtime_get_read_only_context",
         "runtime_storage_as_read_only",
-        "runtime_storage_find",
-        "runtime_iterator_next",
-        "runtime_iterator_value",
     ];
 
     /// Every wasm32 extern the SDK declares must be recognized by the

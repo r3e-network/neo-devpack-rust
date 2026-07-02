@@ -36,8 +36,11 @@ import (
 	"strings"
 
 	"github.com/nspcc-dev/neo-go/pkg/core/interop/interopnames"
+	"github.com/nspcc-dev/neo-go/pkg/core/native/nativenames"
+	"github.com/nspcc-dev/neo-go/pkg/core/state"
 	"github.com/nspcc-dev/neo-go/pkg/encoding/address"
 	"github.com/nspcc-dev/neo-go/pkg/smartcontract"
+	"github.com/nspcc-dev/neo-go/pkg/smartcontract/callflag"
 	"github.com/nspcc-dev/neo-go/pkg/smartcontract/manifest"
 	"github.com/nspcc-dev/neo-go/pkg/smartcontract/nef"
 	"github.com/nspcc-dev/neo-go/pkg/util"
@@ -612,6 +615,10 @@ var (
 	idStorageGet                = sysID("System.Storage.Get")
 	idStoragePut                = sysID("System.Storage.Put")
 	idStorageDelete             = sysID("System.Storage.Delete")
+	idStorageFind               = sysID("System.Storage.Find")
+
+	idIteratorNext  = sysID("System.Iterator.Next")
+	idIteratorValue = sysID("System.Iterator.Value")
 
 	idRuntimeLog                 = sysID("System.Runtime.Log")
 	idRuntimeNotify              = sysID("System.Runtime.Notify")
@@ -630,6 +637,7 @@ var (
 	idRuntimeGetEntryHash        = sysID("System.Runtime.GetEntryScriptHash")
 
 	idContractGetCallFlags = sysID("System.Contract.GetCallFlags")
+	idContractCall         = sysID("System.Contract.Call")
 )
 
 func sysID(name string) uint32 {
@@ -716,6 +724,73 @@ func (e *syscallEnv) handler(v *vm.VM, id uint32) error {
 		}
 		key := v.Estack().Pop().Bytes()
 		delete(e.store, hex.EncodeToString(key))
+		return nil
+
+	// storage.Find: pops (context, prefix, options) top-first and pushes an
+	// iterator InteropInterface over the matching entries.
+	// Ref: storage/find.go Find — the DAO seek iterates the backing store in
+	// ascending byte order of the keys, so the snapshot here is sorted the
+	// same way; option validation/shaping mirrors checkFindOptions +
+	// istorage.NewIterator/Iterator.Value.
+	case idStorageFind:
+		if _, err := popStorageContext(v); err != nil {
+			return err
+		}
+		prefix := v.Estack().Pop().Bytes()
+		opts := v.Estack().Pop().BigInt().Int64()
+		if err := checkFindOptions(opts); err != nil {
+			return err
+		}
+		var entries []kv
+		for _, rec := range e.store {
+			if len(rec.key) >= len(prefix) && string(rec.key[:len(prefix)]) == string(prefix) {
+				entries = append(entries, rec)
+			}
+		}
+		sort.Slice(entries, func(i, j int) bool {
+			return string(entries[i].key) < string(entries[j].key)
+		})
+		if opts&findBackwards != 0 {
+			for i, j := 0, len(entries)-1; i < j; i, j = i+1, j-1 {
+				entries[i], entries[j] = entries[j], entries[i]
+			}
+		}
+		v.Estack().PushItem(stackitem.NewInterop(&storageIterator{
+			entries: entries,
+			prefix:  append([]byte(nil), prefix...),
+			opts:    opts,
+			index:   -1,
+		}))
+		return nil
+
+	// ---- Iterator ------------------------------------------------------
+	// iterator.Next: pops the iterator interop, advances it, pushes Bool.
+	// Ref: pkg/core/interop/iterator/interop.go Next.
+	case idIteratorNext:
+		it, err := popStorageIterator(v)
+		if err != nil {
+			return err
+		}
+		it.index++
+		v.Estack().PushItem(stackitem.NewBool(it.index < len(it.entries)))
+		return nil
+
+	// iterator.Value: pops the iterator interop, pushes the current element
+	// shaped per the Find options. Ref: iterator/interop.go Value +
+	// istorage.Iterator.Value.
+	case idIteratorValue:
+		it, err := popStorageIterator(v)
+		if err != nil {
+			return err
+		}
+		if it.index < 0 || it.index >= len(it.entries) {
+			return errors.New("iterator index out of range (call Next first)")
+		}
+		item, err := it.valueItem()
+		if err != nil {
+			return err
+		}
+		v.Estack().PushItem(item)
 		return nil
 
 	// ---- Runtime -----------------------------------------------------
@@ -829,11 +904,46 @@ func (e *syscallEnv) handler(v *vm.VM, id uint32) error {
 	case idContractGetCallFlags:
 		v.Estack().PushItem(stackitem.NewBigInteger(big.NewInt(int64(v.Context().GetCallFlags()))))
 		return nil
+
+	// contract.Call: pops (hash, method, callFlags, args) top-first.
+	// Ref: contract/call.go Call. This single-contract oracle has no
+	// chain state, so only the StdLib native's pure `deserialize`
+	// method is serviced (used by the translator's state-carrying
+	// notification lowering); it mirrors native/std.go `deserialize`,
+	// which is stackitem.Deserialize over the argument bytes. Any other
+	// target keeps the previous behaviour: a loud FAULT.
+	case idContractCall:
+		h := v.Estack().Pop().Bytes()
+		method := v.Estack().Pop().String()
+		fs := callflag.CallFlag(int32(v.Estack().Pop().BigInt().Int64()))
+		if fs&^callflag.All != 0 {
+			return errors.New("call flags out of range")
+		}
+		args := v.Estack().Pop().Array()
+		u, err := util.Uint160DecodeBytesBE(h)
+		if err != nil {
+			return errors.New("invalid contract hash")
+		}
+		stdlib := state.CreateNativeContractHash(nativenames.StdLib)
+		if u.Equals(stdlib) && method == "deserialize" && len(args) == 1 {
+			data, err := args[0].TryBytes()
+			if err != nil {
+				return err
+			}
+			item, err := stackitem.Deserialize(data)
+			if err != nil {
+				return err
+			}
+			v.Estack().PushItem(item)
+			return nil
+		}
+		return fmt.Errorf(
+			"unsupported System.Contract.Call to %s::%s (only StdLib.deserialize is serviced)",
+			u.StringLE(), method)
 	}
 
 	// Unsupported syscall: surface as FAULT with a clear message rather
 	// than silently pushing a wrong value. Deliberately unsupported:
-	//   - System.Storage.Find (iterator protocol; see top-of-file note)
 	//   - cross-contract System.Contract.Call, crypto, etc.
 	if name, err := interopnames.FromID(id); err == nil {
 		return fmt.Errorf("unsupported syscall %s (id=%d)", name, id)
@@ -851,6 +961,96 @@ func popStorageContext(v *vm.VM) (*storageContext, error) {
 		return nil, fmt.Errorf("%T is not a storage.Context", val)
 	}
 	return stc, nil
+}
+
+// FindOptions bit flags, mirroring C# Neo.SmartContract.FindOptions /
+// neo-go pkg/core/storage (FindDefault..FindBackwards).
+const (
+	findKeysOnly     = 1 << 0
+	findRemovePrefix = 1 << 1
+	findValuesOnly   = 1 << 2
+	findDeserialize  = 1 << 3
+	findPick0        = 1 << 4
+	findPick1        = 1 << 5
+	findBackwards    = 1 << 7
+	findAll          = findKeysOnly | findRemovePrefix | findValuesOnly |
+		findDeserialize | findPick0 | findPick1 | findBackwards
+)
+
+// checkFindOptions mirrors neo-go storage/find.go Find's option validation.
+func checkFindOptions(opts int64) error {
+	if opts&^int64(findAll) != 0 {
+		return fmt.Errorf("%d is an invalid combination of FindOptions", opts)
+	}
+	if opts&findKeysOnly != 0 && opts&(findValuesOnly|findDeserialize|findPick0|findPick1) != 0 {
+		return errors.New("KeysOnly conflicts with other FindOptions")
+	}
+	if opts&findValuesOnly != 0 && opts&(findKeysOnly|findRemovePrefix) != 0 {
+		return errors.New("ValuesOnly conflicts with other FindOptions")
+	}
+	if opts&findPick0 != 0 && opts&findPick1 != 0 {
+		return errors.New("Pick0 conflicts with Pick1")
+	}
+	if opts&(findPick0|findPick1) != 0 && opts&findDeserialize == 0 {
+		return errors.New("PickN is specified without Deserialize")
+	}
+	return nil
+}
+
+// storageIterator is the InteropInterface pushed by System.Storage.Find: a
+// deterministic (key-ordered) snapshot of the matching entries plus the
+// FindOptions shaping applied lazily by Value. Mirrors neo-go's
+// istorage.Iterator over a DAO seek channel; `index == -1` is the
+// before-first-Next state.
+type storageIterator struct {
+	entries []kv
+	prefix  []byte
+	opts    int64
+	index   int
+}
+
+// valueItem shapes the current entry exactly like istorage.Iterator.Value:
+// key includes the prefix unless RemovePrefix; KeysOnly/ValuesOnly collapse
+// the pair; Deserialize(+PickN) decodes the value bytes; the default is a
+// Struct{key, value}.
+func (s *storageIterator) valueItem() (stackitem.Item, error) {
+	rec := s.entries[s.index]
+	key := rec.key
+	if s.opts&findRemovePrefix != 0 {
+		key = key[len(s.prefix):]
+	}
+	if s.opts&findKeysOnly != 0 {
+		return stackitem.NewByteArray(key), nil
+	}
+	value := stackitem.Item(stackitem.NewByteArray(rec.val))
+	if s.opts&findDeserialize != 0 {
+		item, err := stackitem.Deserialize(rec.val)
+		if err != nil {
+			return nil, err
+		}
+		value = item
+		if s.opts&findPick0 != 0 {
+			value = value.Value().([]stackitem.Item)[0]
+		} else if s.opts&findPick1 != 0 {
+			value = value.Value().([]stackitem.Item)[1]
+		}
+	}
+	if s.opts&findValuesOnly != 0 {
+		return value, nil
+	}
+	return stackitem.NewStruct([]stackitem.Item{stackitem.NewByteArray(key), value}), nil
+}
+
+// popStorageIterator pops the top estack item and asserts it is the
+// *storageIterator interop produced by System.Storage.Find. Mirrors the
+// `iop.Value().(iterator.Iterator)` cast in iterator/interop.go.
+func popStorageIterator(v *vm.VM) (*storageIterator, error) {
+	val := v.Estack().Pop().Value()
+	it, ok := val.(*storageIterator)
+	if !ok {
+		return nil, fmt.Errorf("%T is not a storage iterator", val)
+	}
+	return it, nil
 }
 
 func parseArgument(a Argument) (stackitem.Item, error) {

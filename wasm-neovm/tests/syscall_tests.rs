@@ -211,6 +211,148 @@ fn translate_neo_runtime_notify() {
 }
 
 #[test]
+fn translate_neo_runtime_notify_with_state() {
+    // The SDK's state-carrying notify: (event_ptr, event_len, state_ptr,
+    // state_len), with the state serialised in the NeoVM BinarySerializer
+    // wire format. The lowering gathers both buffers from linear memory and
+    // decodes the state via a `System.Contract.Call` to StdLib.deserialize.
+    let wasm = wat::parse_str(
+        r#"(module
+              (import "neo" "runtime_notify_with_state"
+                (func $notify_ws (param i32 i32 i32 i32)))
+              (memory 1)
+              (func (export "test") (param i32 i32 i32 i32)
+                local.get 0
+                local.get 1
+                local.get 2
+                local.get 3
+                call $notify_ws))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "RuntimeNotifyWithState")
+        .expect("state-carrying notify import should translate (was a documented bridge gap)");
+
+    let syscall = wasm_neovm::opcodes::lookup("SYSCALL").unwrap().byte;
+    let pack = wasm_neovm::opcodes::lookup("PACK").unwrap().byte;
+    let rot = wasm_neovm::opcodes::lookup("ROT").unwrap().byte;
+    assert!(translation.script.contains(&syscall));
+    assert!(
+        translation.script.contains(&pack),
+        "state buffer should be packed as the StdLib.deserialize argument array"
+    );
+    assert!(
+        translation.script.contains(&rot),
+        "event (ptr, len) should be rotated back on top after the state is decoded"
+    );
+
+    // The finalizer must auto-insert the scoped StdLib.deserialize permission
+    // so the on-chain System.Contract.Call hop is not denied.
+    let manifest = translation
+        .manifest
+        .to_json_string()
+        .expect("manifest serialises");
+    assert!(
+        manifest.contains("0xacce6fd80d44e1796aa0c2c625e9e4e0ce39efc0"),
+        "manifest should carry the StdLib permission entry: {manifest}"
+    );
+    assert!(
+        manifest.contains("deserialize"),
+        "StdLib permission should be scoped to the deserialize method: {manifest}"
+    );
+}
+
+#[test]
+fn translate_neo_storage_find_and_iterators() {
+    // The prefix-scan bridge (was a documented gap): `runtime_storage_find`
+    // parks the System.Storage.Find iterator in a static slot,
+    // `runtime_iterator_next` / `runtime_iterator_value` operate on it, and
+    // the Value lowering flattens the Struct{key,value} element for the
+    // caller's buffer.
+    let wasm = wat::parse_str(
+        r#"(module
+              (import "neo" "runtime_storage_find"
+                (func $find (param i32 i32)))
+              (import "neo" "runtime_iterator_next"
+                (func $next (result i32)))
+              (import "neo" "runtime_iterator_value"
+                (func $value (param i32 i32) (result i32)))
+              (memory 1)
+              (func (export "scan") (result i32)
+                i32.const 0
+                i32.const 3
+                call $find
+                (block $done
+                  (loop $more
+                    call $next
+                    i32.eqz
+                    br_if $done
+                    i32.const 64
+                    i32.const 128
+                    call $value
+                    drop
+                    br $more))
+                i32.const 1))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "StorageFindIterators")
+        .expect("storage find/iterator imports should translate (was a documented bridge gap)");
+
+    let syscall = wasm_neovm::opcodes::lookup("SYSCALL").unwrap().byte;
+    for name in [
+        "System.Storage.Find",
+        "System.Iterator.Next",
+        "System.Iterator.Value",
+    ] {
+        let hash = wasm_neovm::syscalls::lookup(name).expect(name).hash;
+        let expected = hash.to_le_bytes();
+        assert!(
+            translation
+                .script
+                .windows(5)
+                .any(|w| w[0] == syscall && w[1..5] == expected),
+            "script must contain SYSCALL {name}"
+        );
+    }
+
+    // The parked iterator lives in a static slot: the Find helper stores it
+    // and Next/Value load it back.
+    let stsfld5 = wasm_neovm::opcodes::lookup("STSFLD5").unwrap().byte;
+    let ldsfld5 = wasm_neovm::opcodes::lookup("LDSFLD5").unwrap().byte;
+    assert!(
+        translation.script.contains(&stsfld5),
+        "Find must park the iterator in the dedicated static slot"
+    );
+    assert!(
+        translation.script.contains(&ldsfld5),
+        "Next/Value must read the parked iterator back"
+    );
+
+    // Value flattens the Struct{key,value} element (UNPACK + CAT).
+    let unpack = wasm_neovm::opcodes::lookup("UNPACK").unwrap().byte;
+    let cat = wasm_neovm::opcodes::lookup("CAT").unwrap().byte;
+    assert!(
+        translation.script.contains(&unpack),
+        "Value must unpack the key/value struct"
+    );
+    assert!(
+        translation.script.contains(&cat),
+        "Value must concatenate the flattened element"
+    );
+
+    // No StdLib hop is involved: the manifest must NOT grow a permission.
+    let manifest = translation
+        .manifest
+        .to_json_string()
+        .expect("manifest serialises");
+    assert!(
+        !manifest.contains("0xacce6fd80d44e1796aa0c2c625e9e4e0ce39efc0"),
+        "prefix-scan lowering must not require the StdLib permission: {manifest}"
+    );
+}
+
+#[test]
 fn translate_neo_runtime_get_time() {
     let wasm = wat::parse_str(
         r#"(module

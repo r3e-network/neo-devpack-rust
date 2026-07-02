@@ -14,9 +14,8 @@
 //! instead of shipping.
 
 // Some declarations here are the reserved host ABI for syscalls whose
-// wasm32 wrapper is still a stub (e.g. `runtime_storage_find`,
-// `runtime_iterator_*`, the storage-context accessors) or are superseded by
-// a differently-named extern (`runtime_load_script` /
+// wasm32 wrapper is still a stub (e.g. the storage-context accessors) or are
+// superseded by a differently-named extern (`runtime_load_script` /
 // `runtime_contract_call_native`). They are intentionally declared so the
 // ABI surface is documented in one place; `allow(dead_code)` keeps the
 // wasm32 contract build warning-free until each wrapper is wired up.
@@ -57,10 +56,14 @@ extern "C" {
     pub(crate) fn neo_runtime_log(ptr: i32, len: i32);
 
     /// B2: state-carrying notify. The args array is serialised as a
-    /// NeoVM `Array` StackItem (1-byte tag, varint count, items…) and
-    /// handed to the VM. Previously `runtime_notify` only carried the
-    /// event name and dropped the state, so NEP-17/NEP-11 Transfer
-    /// events emitted `Transfer(<empty>)` on mainnet. B2 fix.
+    /// NeoVM `Array` StackItem (1-byte tag, varint count, items…) — the
+    /// canonical `BinarySerializer` wire format — and handed to the VM.
+    /// Previously `runtime_notify` only carried the event name and
+    /// dropped the state, so NEP-17/NEP-11 Transfer events emitted
+    /// `Transfer(<empty>)` on mainnet. B2 fix. The wasm-neovm translator
+    /// lowers `runtime_notify_with_state` by marshalling both buffers out
+    /// of linear memory and decoding the state on-VM via the StdLib
+    /// native's `deserialize`, then emitting `System.Runtime.Notify`.
     #[link_name = "runtime_notify"]
     pub(crate) fn neo_runtime_notify(event_ptr: i32, event_len: i32);
     #[link_name = "runtime_notify_with_state"]
@@ -195,19 +198,38 @@ extern "C" {
     pub(crate) fn neo_runtime_get_read_only_context() -> i32;
     #[link_name = "runtime_storage_as_read_only"]
     pub(crate) fn neo_runtime_storage_as_read_only(context_id: i32) -> i32;
+
+    /// Prefix-scan ABI (SINGLE-LIVE-ITERATOR model).
+    ///
+    /// `runtime_storage_find(prefix)` lowers to
+    /// `SYSCALL System.Storage.Find(GetContext(), prefix, FindOptions.None)`
+    /// and parks the returned iterator InteropInterface in a
+    /// translator-managed static slot — wasm code cannot hold VM stack
+    /// items, so there is exactly ONE live iterator per contract execution
+    /// and a new `find` replaces the previous iterator. `FindOptions.None`
+    /// means each element is a `Struct{ key (incl. prefix), value }`.
+    ///
+    /// `runtime_iterator_next()` lowers to `SYSCALL System.Iterator.Next` on
+    /// the parked iterator and returns 0/1. Calling it with no live iterator
+    /// FAULTs the VM (slot is null).
+    ///
+    /// `runtime_iterator_value(out_ptr, out_cap)` lowers to
+    /// `SYSCALL System.Iterator.Value`, flattens the current
+    /// `Struct{key,value}` element to `key_len(4B LE) || key || value`, and
+    /// writes it into the caller's buffer using the `neo_storage_get_into`
+    /// return convention: bytes written on success (`>= 0`),
+    /// `-needed_len` when the buffer is too small (retry with a larger one;
+    /// the iterator does not advance). Only valid after `next` returned 1.
+    ///
+    /// The SDK wrapper (`NeoVMSyscall::storage_find`) drains the scan
+    /// eagerly, so the static slot is free again by the time it returns and
+    /// nested `storage_find` calls remain safe at the Rust API level.
     #[link_name = "runtime_storage_find"]
-    pub(crate) fn neo_runtime_storage_find(
-        context_id: i32,
-        prefix_ptr: i32,
-        prefix_len: i32,
-        options: i32,
-        out_ptr: i32,
-        out_cap: i32,
-    ) -> i32;
+    pub(crate) fn neo_runtime_storage_find(prefix_ptr: i32, prefix_len: i32);
     #[link_name = "runtime_iterator_next"]
-    pub(crate) fn neo_runtime_iterator_next(iterator_id: i32) -> i32;
+    pub(crate) fn neo_runtime_iterator_next() -> i32;
     #[link_name = "runtime_iterator_value"]
-    pub(crate) fn neo_runtime_iterator_value(iterator_id: i32, out_ptr: i32, out_cap: i32) -> i32;
+    pub(crate) fn neo_runtime_iterator_value(out_ptr: i32, out_cap: i32) -> i32;
 
     /// Protocol-config syscalls (constant per chain). The host
     /// returns the value at link time.
@@ -463,22 +485,23 @@ pub const WASM32_IMPORT_ABI: &[Wasm32ImportAbi] = &[
         descriptor: "System.Storage.AsReadOnly",
         status: Stub,
     },
-    // Reserved: `storage_find` returns an empty iterator on wasm32 and the
-    // iterator wrappers fail with `Wasm32CrossCallUnavailable`.
+    // Single-live-iterator prefix scan: `NeoVMSyscall::storage_find` starts
+    // the scan and eagerly drains it through the iterator externs (see the
+    // extern-block doc comment for the flattened value ABI).
     Wasm32ImportAbi {
         link_name: "runtime_storage_find",
         descriptor: "System.Storage.Find",
-        status: Stub,
+        status: Wired,
     },
     Wasm32ImportAbi {
         link_name: "runtime_iterator_next",
         descriptor: "System.Iterator.Next",
-        status: Stub,
+        status: Wired,
     },
     Wasm32ImportAbi {
         link_name: "runtime_iterator_value",
         descriptor: "System.Iterator.Value",
-        status: Stub,
+        status: Wired,
     },
     Wasm32ImportAbi {
         link_name: "protocol_get_network",

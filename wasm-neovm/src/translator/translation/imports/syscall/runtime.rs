@@ -16,6 +16,7 @@ pub(super) const HANDLED_IMPORTS: &[(&str, &str)] = &[
     ("runtime_log", "System.Runtime.Log"),
     ("notify", "System.Runtime.Notify"),
     ("runtime_notify", "System.Runtime.Notify"),
+    ("runtime_notify_with_state", "System.Runtime.Notify"),
     (
         "runtime_get_calling_script_hash_i64",
         "System.Runtime.GetCallingScriptHash",
@@ -124,7 +125,14 @@ pub(super) fn try_handle_runtime_event_import(
 
     emit_memory_bytes_argument(params, runtime, script)?;
     if descriptor == "System.Runtime.Notify" {
+        // `System.Runtime.Notify` pops the event NAME first, then the state
+        // array (neo-go runtime/engine.go `Notify`), so the name must end up
+        // on TOP. `NEWARRAY0` lands the empty state above the just-marshalled
+        // name; SWAP restores (name, state) pop order. Without the SWAP the
+        // VM pops the Array as the name and faults with
+        // "invalid conversion: Array/ByteString".
         script.push(lookup_opcode("NEWARRAY0")?.byte);
+        script.push(lookup_opcode("SWAP")?.byte);
     }
 
     let syscall = syscalls::lookup_extended(descriptor)
@@ -185,5 +193,131 @@ pub(super) fn emit_chunked_bytes_argument(
         script,
         crate::translator::runtime::StorageHelperKind::ExtractMemoryBytes,
     )?;
+    Ok(())
+}
+
+/// Lower the SDK's state-carrying notify import,
+/// `runtime_notify_with_state(event_ptr, event_len, state_ptr, state_len)`.
+///
+/// The SDK (`NeoRuntime::notify` in `neo-syscalls/src/wrapper.rs`) serialises
+/// the state array with `neo_types::serialise_array`, which is byte-for-byte
+/// the canonical NeoVM `BinarySerializer` wire format (C#
+/// `Neo/SmartContract/BinarySerializer.cs`; neo-go
+/// `pkg/vm/stackitem/serialization.go`). That means the buffer sitting in
+/// wasm linear memory can be decoded on-VM by the StdLib native contract's
+/// `deserialize` method — no bespoke TLV decoder in emitted NeoVM code and
+/// no SDK wire-format change (host-mode behaviour is untouched).
+///
+/// Emitted sequence (entry stack, top→bottom: `state_len, state_ptr,
+/// event_len, event_ptr` — wasm push order):
+///  1. `ExtractMemoryBytes` gathers the state buffer out of linear memory
+///     (correct for both the compact and chunked memory layouts, the same
+///     helper the storage facade and `check_witness` marshalling use).
+///  2. `PUSH1; PACK` wraps it as the single `System.Contract.Call` argument,
+///     then `deserialize` is invoked on the StdLib native. Stack argument
+///     order mirrors neo-go `pkg/core/interop/contract/call.go::Call`, which
+///     pops (hash, method, callFlags, args) top-first.
+///  3. Two `ROT`s bring the event-name `(ptr, len)` pair back on top (len
+///     above ptr, the `ExtractMemoryBytes` convention) and the name is
+///     gathered the same way.
+///  4. `SYSCALL System.Runtime.Notify` pops (name, state) top-first — the
+///     name is on top, the decoded state `Array` beneath it.
+///
+/// Runtime requirements on-chain: the calling context needs
+/// `CallFlags.ReadStates|AllowCall` for the `System.Contract.Call` hop (the
+/// manifest permission for `StdLib.deserialize` is auto-inserted by the
+/// finalizer — see `RuntimeHelpers::stdlib_deserialize_used`).
+pub(super) fn try_handle_notify_with_state_import(
+    import: &FunctionImport,
+    func_type: &FuncType,
+    runtime: &mut RuntimeHelpers,
+    script: &mut Vec<u8>,
+) -> Result<Option<&'static str>> {
+    if !import
+        .name
+        .eq_ignore_ascii_case("runtime_notify_with_state")
+    {
+        return Ok(None);
+    }
+
+    if func_type.params() != [ValType::I32, ValType::I32, ValType::I32, ValType::I32] {
+        bail!(
+            "neo import '{}::{}' expects (event_ptr, event_len, state_ptr, state_len) i32 parameters",
+            import.module,
+            import.name
+        );
+    }
+    if !func_type.results().is_empty() {
+        bail!(
+            "neo import '{}::{}' must not return a value",
+            import.module,
+            import.name
+        );
+    }
+
+    ensure_memory_access(runtime, 0)?;
+    runtime.emit_memory_init_call(script)?;
+
+    // 1. (state_ptr, state_len) -> ByteString of the serialised state.
+    runtime.emit_storage_helper(
+        script,
+        crate::translator::runtime::StorageHelperKind::ExtractMemoryBytes,
+    )?;
+
+    // 2. Decode it into the state Array via StdLib.deserialize.
+    emit_stdlib_deserialize_call(script)?;
+    runtime.mark_stdlib_deserialize_used();
+
+    // 3. (event_ptr, event_len) -> ByteString of the event name. The pair
+    //    sits beneath the decoded array; two ROTs restore (len, ptr) on top.
+    script.push(lookup_opcode("ROT")?.byte);
+    script.push(lookup_opcode("ROT")?.byte);
+    runtime.emit_storage_helper(
+        script,
+        crate::translator::runtime::StorageHelperKind::ExtractMemoryBytes,
+    )?;
+
+    // 4. Notify pops (name, state) top-first; name is on top now.
+    let syscall = syscalls::lookup_extended("System.Runtime.Notify")
+        .ok_or_else(|| anyhow!("syscall 'System.Runtime.Notify' not found"))?;
+    let syscall_op =
+        opcodes::lookup("SYSCALL").ok_or_else(|| anyhow!("SYSCALL opcode metadata missing"))?;
+    if syscall_op.operand_size != 4 || syscall_op.operand_size_prefix != 0 {
+        bail!("unexpected SYSCALL operand metadata");
+    }
+    script.push(syscall_op.byte);
+    script.extend_from_slice(&syscall.hash.to_le_bytes());
+    Ok(Some(syscall.name))
+}
+
+/// Emit `System.Contract.Call(StdLib, "deserialize", ReadOnly, [top-of-stack])`.
+///
+/// Expects the serialised `ByteString` on top of the stack; leaves the
+/// deserialized stack item in its place. Stack order mirrors neo-go
+/// `contract/call.go::Call`'s pop order — (hash, method, callFlags, args)
+/// top-first — so the args array is pushed first (deepest) and the contract
+/// hash last (top). `CallFlags.ReadOnly = ReadStates | AllowCall = 0b0101`
+/// is least privilege for the pure `deserialize` native method (required
+/// flags: none).
+fn emit_stdlib_deserialize_call(script: &mut Vec<u8>) -> Result<()> {
+    const CALLFLAGS_READ_ONLY: i128 = 0b0101;
+
+    // args = [serialised_state]
+    let _ = emit_push_int(script, 1);
+    script.push(lookup_opcode("PACK")?.byte);
+    // callFlags, method, contractHash (LE bytes, as Contract.Call consumes).
+    let _ = emit_push_int(script, CALLFLAGS_READ_ONLY);
+    emit_push_data(script, b"deserialize")?;
+    emit_push_data(script, &crate::native_contracts::STDLIB_DESCRIPTOR.hash)?;
+
+    let call_syscall = syscalls::lookup_extended("System.Contract.Call")
+        .ok_or_else(|| anyhow!("System.Contract.Call syscall not found"))?;
+    let syscall_op =
+        opcodes::lookup("SYSCALL").ok_or_else(|| anyhow!("SYSCALL opcode metadata missing"))?;
+    if syscall_op.operand_size != 4 || syscall_op.operand_size_prefix != 0 {
+        bail!("unexpected SYSCALL operand metadata");
+    }
+    script.push(syscall_op.byte);
+    script.extend_from_slice(&call_syscall.hash.to_le_bytes());
     Ok(())
 }

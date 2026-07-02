@@ -25,22 +25,35 @@
 //! fails translation either way. Use `#[neo_method(safe)]` or
 //! `neo_safe_methods!` instead.
 //!
-//! ## Important limitation: notifications are name-only on wasm32
+//! ## Notifications carry their payload on wasm32 too
 //!
-//! `#[neo_event]::emit()` on `wasm32` calls `NeoRuntime::notify_event(name)` —
-//! it emits the event **name with an empty state array**, dropping all field
-//! values. The state-carrying path, `NeoRuntime::notify(name, state)`, lowers
-//! to the `runtime_notify_with_state` import, which the translator does **not**
-//! bridge (it would require deserialising the serialised state buffer back into
-//! a NeoVM array before `SYSCALL Notify`). So this sample exercises the event
-//! *declaration* + emission *path* (and the manifest `events` ABI is correct),
-//! but on-chain the emitted notifications carry no parameters. A
-//! state-carrying `raw_notify` method is therefore intentionally omitted (it
-//! does not translate today).
+//! `#[neo_event]::emit()` uses the same state-carrying path on every target:
+//! `NeoRuntime::notify(name, state)`. On `wasm32` that crosses the
+//! `runtime_notify_with_state` import with the state serialised in the
+//! canonical NeoVM `BinarySerializer` wire format; the wasm-neovm translator
+//! marshals both buffers out of linear memory, decodes the state on-VM via
+//! the StdLib native's `deserialize` (the scoped manifest permission is
+//! auto-inserted), and emits `SYSCALL System.Runtime.Notify` — so on-chain
+//! notifications carry exactly the payload host tests observe. `raw_notify`
+//! below exercises `NeoRuntime::notify` directly with mixed value types.
 
 use neo_devpack::prelude::*;
 
 neo_manifest_overlay!(r#"{ "name": "FeatureEventsManifest", "features": { "storage": true } }"#);
+// Events emitted through `NeoRuntime::notify`/`notify_event` directly (not via
+// `#[neo_event]`, which generates its own ABI overlay) must be declared by
+// hand: Neo N3 (HF_Basilisk) faults notifications whose name/arity is not in
+// the manifest `events` ABI.
+neo_manifest_overlay!(
+    r#"{ "abi": { "events": [
+        { "name": "Started", "parameters": [] },
+        { "name": "Mixed", "parameters": [
+            { "name": "flag", "type": "Boolean" },
+            { "name": "tag", "type": "ByteArray" },
+            { "name": "value", "type": "Integer" }
+        ] }
+    ] } }"#
+);
 neo_supported_standards!(["NEP-17"]);
 neo_permission!("*", ["balanceOf", "transfer"]);
 neo_trusts!(["0xef4073a0f2b305a38ec4050e4d3d28bc40ea63f5"]);
@@ -94,6 +107,19 @@ impl EventsContract {
     #[neo_method]
     pub fn raw_notify_event() -> NeoResult<()> {
         NeoRuntime::notify_event("Started")
+    }
+
+    /// State-carrying `NeoRuntime::notify` with mixed value types
+    /// (Boolean + ByteString + Integer), exercising the serialised-state
+    /// bridge beyond the `#[neo_event]` field kinds.
+    #[neo_method]
+    pub fn raw_notify(flag: bool, value: i64) -> NeoResult<()> {
+        let name = NeoString::from_str("Mixed");
+        let mut state = NeoArray::new();
+        state.push(NeoValue::from(NeoBoolean::new(flag)));
+        state.push(NeoValue::from(NeoByteString::from_slice(b"payload")));
+        state.push(NeoValue::from(NeoInteger::new(value)));
+        NeoRuntime::notify(&name, &state)
     }
 
     /// Read-only method marked safe via the `neo_safe_methods!` macro (note:

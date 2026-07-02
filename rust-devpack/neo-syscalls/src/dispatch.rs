@@ -92,6 +92,48 @@ pub(crate) fn hash160_prefix_i64(hash: &[u8; 20]) -> i64 {
     i64::from_le_bytes(buf)
 }
 
+/// Host-mode iterator session backing the `System.Storage.Find` /
+/// `System.Iterator.Next` / `System.Iterator.Value` dispatch arms.
+///
+/// Mirrors the wasm32 bridge's SINGLE-LIVE-ITERATOR model (see
+/// `syscalls_abi.rs`): one global scan session; a new `Find` replaces the
+/// previous one. `cursor == None` means "before the first element" (the
+/// `System.Iterator.Next`-before-`Value` protocol). The `Iterator` argument
+/// the Next/Value arms receive is the materialised entry array (host
+/// iterators have no InteropInterface); it is validated by the registry's
+/// parameter typing and otherwise ignored in favour of the session.
+#[cfg(not(target_arch = "wasm32"))]
+struct HostIteratorSession {
+    entries: Vec<NeoValue>,
+    cursor: Option<usize>,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+static ACTIVE_ITERATOR: once_cell::sync::Lazy<std::sync::RwLock<HostIteratorSession>> =
+    once_cell::sync::Lazy::new(|| {
+        std::sync::RwLock::new(HostIteratorSession {
+            entries: Vec::new(),
+            cursor: None,
+        })
+    });
+
+/// Replace the host iterator session with a fresh (un-advanced) scan result.
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn seed_host_iterator_session(entries: &[NeoValue]) {
+    let mut session = match ACTIVE_ITERATOR.write() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    session.entries = entries.to_vec();
+    session.cursor = None;
+}
+
+/// Clear the host iterator session (part of `reset_host_state`).
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn reset_host_iterator_session() {
+    seed_host_iterator_session(&[]);
+}
+
 /// Neo N3 System Call Function
 pub fn neovm_syscall(hash: u32, args: &[NeoValue]) -> NeoResult<NeoValue> {
     let registry = crate::NeoVMSyscallRegistry::get_instance();
@@ -218,6 +260,78 @@ pub fn neovm_syscall(hash: u32, args: &[NeoValue]) -> NeoResult<NeoValue> {
                 })
                 .collect();
             return Ok(NeoValue::from(arr));
+        }
+
+        // Prefix scan + iterator protocol, mirroring the wasm32 bridge's
+        // single-live-iterator model (one global session; a new Find
+        // replaces it). Entries are `Struct{key (incl. prefix), value}` in
+        // ascending key order — `FindOptions.None`, the only option the
+        // bridge emits.
+        if info.name == "System.Storage.Find" {
+            let options = args
+                .get(2)
+                .and_then(NeoValue::as_integer)
+                .map(|i| i.as_i32_saturating())
+                .unwrap_or(0);
+            if options != 0 {
+                return Err(NeoError::new(&format!(
+                    "System.Storage.Find host dispatch only services FindOptions.None (0), got {options}"
+                )));
+            }
+            let prefix = args
+                .get(1)
+                .and_then(NeoValue::as_byte_string)
+                .ok_or(NeoError::InvalidType)?;
+            // The StorageContext arg carries no usable handle here (host
+            // wrappers keep handles out-of-band); scan the currently
+            // executing contract's store, like the raw-storage host path.
+            let store =
+                STORAGE_STATE.create_context(current_executing_script_hash(), true)?;
+            let handle = STORAGE_STATE.get_handle(&store)?;
+            let map = handle.store.read().map_err(|_| NeoError::InvalidState)?;
+            let mut pairs: Vec<(Vec<u8>, Vec<u8>)> = map
+                .iter()
+                .filter(|(key, _)| key.starts_with(prefix.as_slice()))
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect();
+            pairs.sort_by(|a, b| a.0.cmp(&b.0));
+            let entries: Vec<NeoValue> = pairs
+                .into_iter()
+                .map(|(key, value)| {
+                    let mut entry = NeoStruct::new();
+                    entry.set_field("key", NeoValue::from(NeoByteString::new(key)));
+                    entry.set_field("value", NeoValue::from(NeoByteString::new(value)));
+                    NeoValue::from(entry)
+                })
+                .collect();
+            seed_host_iterator_session(&entries);
+            let array: NeoArray<NeoValue> = entries.into_iter().collect();
+            return Ok(NeoValue::from(array));
+        }
+
+        if info.name == "System.Iterator.Next" {
+            let mut session = match ACTIVE_ITERATOR.write() {
+                Ok(guard) => guard,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            let next = session.cursor.map_or(0, |c| c.saturating_add(1));
+            session.cursor = Some(next);
+            return Ok(NeoBoolean::new(next < session.entries.len()).into());
+        }
+
+        if info.name == "System.Iterator.Value" {
+            let session = match ACTIVE_ITERATOR.read() {
+                Ok(guard) => guard,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            let cursor = session
+                .cursor
+                .ok_or_else(|| NeoError::new("System.Iterator.Value before Next"))?;
+            return session
+                .entries
+                .get(cursor)
+                .cloned()
+                .ok_or_else(|| NeoError::new("System.Iterator.Value past the end"));
         }
 
         // B9: get_notifications(hash?). Hash arg: NeoValue::Null

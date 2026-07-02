@@ -196,6 +196,8 @@ impl NeoVMSyscall {
         // Also drain any recorded notifications so the B9
         // dispatch doesn't see state leaked from prior tests.
         crate::host_notifications::reset();
+        // And the single-live-iterator scan session (Storage.Find bridge).
+        crate::dispatch::reset_host_iterator_session();
         Ok(())
     }
 

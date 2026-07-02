@@ -19,6 +19,9 @@ pub(super) const HANDLED_IMPORTS: &[(&str, &str)] = &[
     ("raw_storage_get_i64", "System.Storage.Get"),
     ("raw_storage_has_i64", "System.Storage.Get"),
     ("raw_storage_delete_i64", "System.Storage.Delete"),
+    ("runtime_storage_find", "System.Storage.Find"),
+    ("runtime_iterator_next", "System.Iterator.Next"),
+    ("runtime_iterator_value", "System.Iterator.Value"),
 ];
 
 /// Recognize the devpack's pointer/length-encoded storage primitives and emit
@@ -32,6 +35,12 @@ pub(super) fn try_handle_storage_import(
 ) -> Result<Option<&'static str>> {
     if let Some(descriptor) =
         try_handle_direct_i64_storage_import(import, func_type, runtime, script)?
+    {
+        return Ok(Some(descriptor));
+    }
+
+    if let Some(descriptor) =
+        try_handle_storage_iterator_import(import, func_type, runtime, script)?
     {
         return Ok(Some(descriptor));
     }
@@ -79,6 +88,91 @@ pub(super) fn try_handle_storage_import(
     runtime.emit_memory_init_call(script)?;
     runtime.emit_storage_helper(script, helper_kind)?;
     Ok(Some(descriptor))
+}
+
+/// Recognize the prefix-scan/iterator bridge imports (see the SDK extern
+/// docs in `neo-syscalls/src/syscalls_abi.rs` for the single-live-iterator
+/// model and the flattened `key_len(4B LE) || key || value` element ABI).
+/// Each lowers to a `CALL_L` into the matching shared helper; the helpers
+/// share one dedicated static slot that parks the live iterator
+/// InteropInterface (assigned during finalize, see
+/// `RuntimeHelpers::storage_iterator_slot`).
+fn try_handle_storage_iterator_import(
+    import: &FunctionImport,
+    func_type: &FuncType,
+    runtime: &mut RuntimeHelpers,
+    script: &mut Vec<u8>,
+) -> Result<Option<&'static str>> {
+    match import.name.as_str() {
+        "runtime_storage_find" => {
+            if func_type.params() != [ValType::I32, ValType::I32] {
+                bail!(
+                    "neo import '{}::{}' expects (prefix_ptr, prefix_len) i32 parameters",
+                    import.module,
+                    import.name
+                );
+            }
+            if !func_type.results().is_empty() {
+                bail!(
+                    "neo import '{}::{}' must not return a value",
+                    import.module,
+                    import.name
+                );
+            }
+            ensure_memory_access(runtime, 0)?;
+            runtime.emit_memory_init_call(script)?;
+            runtime.emit_storage_helper(script, crate::translator::runtime::StorageHelperKind::Find)?;
+            Ok(Some("System.Storage.Find"))
+        }
+        "runtime_iterator_next" => {
+            if !func_type.params().is_empty() {
+                bail!(
+                    "neo import '{}::{}' must not take parameters",
+                    import.module,
+                    import.name
+                );
+            }
+            if func_type.results() != [ValType::I32] {
+                bail!(
+                    "neo import '{}::{}' must return a single i32",
+                    import.module,
+                    import.name
+                );
+            }
+            // No memory marshalling, but the init guard ensures INITSSLOT
+            // has allocated the iterator static slot before it is read.
+            runtime.emit_memory_init_call(script)?;
+            runtime.emit_storage_helper(
+                script,
+                crate::translator::runtime::StorageHelperKind::IteratorNext,
+            )?;
+            Ok(Some("System.Iterator.Next"))
+        }
+        "runtime_iterator_value" => {
+            if func_type.params() != [ValType::I32, ValType::I32] {
+                bail!(
+                    "neo import '{}::{}' expects (out_ptr, out_cap) i32 parameters",
+                    import.module,
+                    import.name
+                );
+            }
+            if func_type.results() != [ValType::I32] {
+                bail!(
+                    "neo import '{}::{}' must return a single i32",
+                    import.module,
+                    import.name
+                );
+            }
+            ensure_memory_access(runtime, 0)?;
+            runtime.emit_memory_init_call(script)?;
+            runtime.emit_storage_helper(
+                script,
+                crate::translator::runtime::StorageHelperKind::IteratorValue,
+            )?;
+            Ok(Some("System.Iterator.Value"))
+        }
+        _ => Ok(None),
+    }
 }
 
 fn try_handle_direct_i64_storage_import(

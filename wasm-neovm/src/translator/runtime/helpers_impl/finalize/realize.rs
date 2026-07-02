@@ -327,6 +327,23 @@ impl RuntimeHelpers {
             StorageHelperKind::ExtractMemoryBytes => {
                 emit_extract_memory_bytes_helper(script, chunked)?
             }
+            StorageHelperKind::Find
+            | StorageHelperKind::IteratorNext
+            | StorageHelperKind::IteratorValue => {
+                // Slot assigned by prepare_init_helper (runs before this
+                // pass) whenever any of these kinds has call sites.
+                let slot = self.storage_iterator_slot.ok_or_else(|| {
+                    anyhow!("storage iterator helpers realized without an assigned static slot")
+                })?;
+                match kind {
+                    StorageHelperKind::Find => emit_storage_find_helper(script, chunked, slot)?,
+                    StorageHelperKind::IteratorNext => emit_iterator_next_helper(script, slot)?,
+                    StorageHelperKind::IteratorValue => {
+                        emit_iterator_value_helper(script, chunked, slot)?
+                    }
+                    _ => unreachable!(),
+                }
+            }
         }
         self.storage_helpers.entry(kind).or_default().offset = Some(helper_offset);
         Ok(helper_offset)

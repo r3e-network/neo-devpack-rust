@@ -173,15 +173,24 @@ impl RuntimeHelpers {
         });
         self.start_slot = start_helper.as_ref().map(|helper| helper.slot);
 
-        let static_slot_count = BASE_STATIC_SLOTS
+        // The prefix-scan bridge parks the live `System.Storage.Find`
+        // iterator in a dedicated static slot, appended after the start slot.
+        // `INITSSLOT` leaves it null; the Find helper (realized after this
+        // pass, reading `storage_iterator_slot`) stores into it.
+        let storage_iterator_used = self.storage_iterator_used();
+        let storage_iterator_slot = BASE_STATIC_SLOTS
             + global_layouts.len()
             + table_layouts.len()
             + passive_layout_vec.len() * 2
             + passive_element_layouts.len() * 2
-            + if start_helper.is_some() { 1 } else { 0 };
+            + usize::from(start_helper.is_some());
+        self.storage_iterator_slot = storage_iterator_used.then_some(storage_iterator_slot);
+
+        let static_slot_count = storage_iterator_slot + usize::from(storage_iterator_used);
 
         let needs_init_helper = !self.memory_init_calls.is_empty()
             || start_helper.is_some()
+            || storage_iterator_used
             || self.runtime_state_requires_entry_init();
         if needs_init_helper {
             let offset = match self.memory_init_offset {

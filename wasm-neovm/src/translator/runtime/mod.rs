@@ -140,7 +140,8 @@ use memory::{
     emit_memory_store_helper,
 };
 use storage::{
-    emit_extract_memory_bytes_helper, emit_storage_delete_helper, emit_storage_delete_i64_helper,
+    emit_extract_memory_bytes_helper, emit_iterator_next_helper, emit_iterator_value_helper,
+    emit_storage_delete_helper, emit_storage_delete_i64_helper, emit_storage_find_helper,
     emit_storage_get_helper, emit_storage_get_i64_helper, emit_storage_has_i64_helper,
     emit_storage_put_helper, emit_storage_put_i64_helper,
 };
@@ -199,6 +200,19 @@ pub(crate) struct RuntimeHelpers {
     ref_func_constants: BTreeSet<u32>,
     start_slot: Option<usize>,
     start_call_positions: Vec<usize>,
+    /// True when a lowering emitted a `System.Contract.Call` to the StdLib
+    /// native's `deserialize` (the state-carrying `runtime_notify_with_state`
+    /// import). The finalizer then auto-inserts the scoped manifest
+    /// permission so the call is not denied by Neo N3's runtime permission
+    /// check.
+    stdlib_deserialize_used: bool,
+    /// Static slot parking the current `System.Storage.Find` iterator
+    /// InteropInterface (the wasm32 prefix-scan bridge's SINGLE-LIVE-ITERATOR
+    /// model). Assigned by `prepare_init_helper` — after globals, tables,
+    /// passive segments and the start slot — iff any of the
+    /// `Find`/`IteratorNext`/`IteratorValue` storage helpers were requested;
+    /// the helper bodies (realized afterwards) read it.
+    storage_iterator_slot: Option<usize>,
 
     // Round 89: Memory pool for reusable allocations
     buffer_pool: Option<Arc<std::sync::Mutex<TranslationMemoryPool>>>,
@@ -237,8 +251,38 @@ impl RuntimeHelpers {
             ref_func_constants: BTreeSet::new(),
             start_slot: None,
             start_call_positions: Vec::with_capacity(2),
+            stdlib_deserialize_used: false,
+            storage_iterator_slot: None,
             buffer_pool: None,
         }
+    }
+
+    /// Whether any translated call site requested the prefix-scan/iterator
+    /// storage helpers, i.e. the dedicated iterator static slot must be
+    /// allocated (and the runtime init helper emitted so `INITSSLOT` covers
+    /// it).
+    fn storage_iterator_used(&self) -> bool {
+        self.storage_helpers.iter().any(|(kind, record)| {
+            matches!(
+                kind,
+                StorageHelperKind::Find
+                    | StorageHelperKind::IteratorNext
+                    | StorageHelperKind::IteratorValue
+            ) && !record.calls.is_empty()
+        })
+    }
+
+    /// Record that an emitted lowering calls the StdLib native's
+    /// `deserialize` via `System.Contract.Call` (see
+    /// [`Self::stdlib_deserialize_used`]).
+    pub(crate) fn mark_stdlib_deserialize_used(&mut self) {
+        self.stdlib_deserialize_used = true;
+    }
+
+    /// Whether the finalizer must add the StdLib `deserialize` manifest
+    /// permission.
+    pub(crate) fn stdlib_deserialize_used(&self) -> bool {
+        self.stdlib_deserialize_used
     }
 
     /// Enable memory pooling for this runtime (Round 89)
