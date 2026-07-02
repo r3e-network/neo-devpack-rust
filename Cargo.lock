@@ -1358,6 +1358,7 @@ dependencies = [
  "hex",
  "log",
  "move-neovm",
+ "neo-syscalls",
  "num-bigint",
  "num-traits",
  "once_cell",

@@ -8,17 +8,22 @@
 use neo_types::*;
 use std::slice::Iter;
 
+mod dispatch;
+mod host_harness;
 mod host_notifications;
 mod storage;
 mod syscalls;
+mod syscalls_abi;
 mod wrapper;
 
+pub use dispatch::neovm_syscall;
 pub use host_notifications::{
     record as record_notification, reset as reset_recorded_notifications,
     take as take_recorded_notifications, RecordedNotification,
 };
 pub use syscalls::SYSCALLS;
-pub use wrapper::{neovm_syscall, NeoVMSyscall};
+pub use syscalls_abi::{Wasm32ImportAbi, Wasm32WrapperStatus, WASM32_IMPORT_ABI};
+pub use wrapper::NeoVMSyscall;
 
 /// Neo N3 System Call Registry
 pub struct NeoVMSyscallRegistry {

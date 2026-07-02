@@ -42,6 +42,11 @@ wasm-encoder = { workspace = true }
 criterion = { workspace = true }
 num-bigint = "0.4"
 num-traits = "0.2"
+# Test-only edge for the SDK <-> translator ABI parity gate: the parity test
+# reads `neo_syscalls::WASM32_IMPORT_ABI` (the declarative mirror of the
+# wasm32 extern block in rust-devpack/neo-syscalls/src/syscalls_abi.rs) and
+# asserts the translator recognizes every import name it declares.
+neo-syscalls = { workspace = true }
 
 [build-dependencies]
 anyhow = { workspace = true }
