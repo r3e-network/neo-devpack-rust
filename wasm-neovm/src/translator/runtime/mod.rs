@@ -206,6 +206,12 @@ pub(crate) struct RuntimeHelpers {
     /// permission so the call is not denied by Neo N3's runtime permission
     /// check.
     stdlib_deserialize_used: bool,
+    /// CryptoLib native-contract methods invoked via `System.Contract.Call`
+    /// by the `Neo.Crypto.*` import lowering (`sha256`, `ripemd160`, ...).
+    /// Neo N3 denies contract calls not covered by a manifest permission, so
+    /// the finalizer auto-inserts a scoped `CryptoLib` permission listing
+    /// exactly these methods (mirroring the StdLib `deserialize` flag above).
+    cryptolib_methods_used: BTreeSet<&'static str>,
     /// Static slot parking the current `System.Storage.Find` iterator
     /// InteropInterface (the wasm32 prefix-scan bridge's SINGLE-LIVE-ITERATOR
     /// model). Assigned by `prepare_init_helper` — after globals, tables,
@@ -252,6 +258,7 @@ impl RuntimeHelpers {
             start_slot: None,
             start_call_positions: Vec::with_capacity(2),
             stdlib_deserialize_used: false,
+            cryptolib_methods_used: BTreeSet::new(),
             storage_iterator_slot: None,
             buffer_pool: None,
         }
@@ -283,6 +290,19 @@ impl RuntimeHelpers {
     /// permission.
     pub(crate) fn stdlib_deserialize_used(&self) -> bool {
         self.stdlib_deserialize_used
+    }
+
+    /// Record that an emitted lowering calls the given CryptoLib native
+    /// method via `System.Contract.Call` (see
+    /// [`Self::cryptolib_methods_used`]).
+    pub(crate) fn mark_cryptolib_used(&mut self, method: &'static str) {
+        self.cryptolib_methods_used.insert(method);
+    }
+
+    /// The CryptoLib methods the finalizer must cover with an auto-inserted
+    /// scoped manifest permission (empty when no crypto lowering was emitted).
+    pub(crate) fn cryptolib_methods_used(&self) -> &BTreeSet<&'static str> {
+        &self.cryptolib_methods_used
     }
 
     /// Enable memory pooling for this runtime (Round 89)

@@ -107,6 +107,49 @@ fn name_only_notify_carries_empty_state_on_real_vm() {
 }
 
 #[test]
+fn cryptolib_hashes_on_real_vm() {
+    // Neo.Crypto bridge fix: `neo::crypto_sha256` / `neo::crypto_ripemd160`
+    // lower to `System.Contract.Call(CryptoLib, method, ReadOnly=0b0101,
+    // [data])` with the (ptr, len) buffer marshalled out of linear memory,
+    // the args PACKed, and the contract hash pushed ON TOP (neo-go pops
+    // hash first — the old lowering pushed it deepest and faulted). The
+    // oracle services the call by mirroring neo-go native/crypto.go, so the
+    // EXACT digests pin end-to-end correctness on the real VM.
+    let c = Contract::compile("contracts/feature-crypto").expect("compile");
+
+    // sha256(b"abc") — canonical FIPS 180-2 vector.
+    let out = c.invoke("shaOnchain", &[]);
+    out.assert_halt();
+    assert_eq!(
+        out.top(),
+        Some("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"),
+        "sha256(\"abc\") digest mismatch: stack={:?}",
+        out.return_stack
+    );
+
+    // ripemd160(b"abc") — canonical vector.
+    let out = c.invoke("ripeOnchain", &[]);
+    out.assert_halt();
+    assert_eq!(
+        out.top(),
+        Some("8eb208f7e05d987a9b044a8e98c6b087f15a0bfc"),
+        "ripemd160(\"abc\") digest mismatch: stack={:?}",
+        out.return_stack
+    );
+
+    // Heap-built input (NeoByteString of 8 x LE(seed=1) = 64 bytes):
+    // marshalling a runtime-computed buffer, not a static data segment.
+    let out = c.invoke("shaOnchainSeeded", &[1.into()]);
+    out.assert_halt();
+    assert_eq!(
+        out.top(),
+        Some("4bceb969a21579c6bc5a0fcbb54aa78d88778821db0846e1b49a71df6ed1f0f0"),
+        "sha256(seeded) digest mismatch: stack={:?}",
+        out.return_stack
+    );
+}
+
+#[test]
 fn storage_find_prefix_scan_on_real_vm() {
     // Prefix-scan bridge gap, now wired: `NeoStorage::find` on wasm32 lowers
     // to `System.Storage.Find` + `System.Iterator.Next/Value` (single live

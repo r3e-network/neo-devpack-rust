@@ -9,21 +9,46 @@
 //! deterministic digests on every target. `murmur32` is a deterministic
 //! (non-standard, documented) 32-bit mixer. All of these are exercised here.
 //!
-//! ## Not covered: signature-verification syscalls
+//! ## On-chain CryptoLib hashing (the `Neo.Crypto.*` bridge)
 //!
-//! `NeoVMSyscall::{check_sig, check_multisig}` and `verify_with_ecdsa` are
-//! `neo::*` imports with a multi-buffer ABI (`pubkey_ptr,len, sig_ptr,len …`).
-//! The translator marshals linear-memory buffers into NeoVM stack items only
-//! for `check_witness` and the script-hash i64 forms; these crypto imports fall
-//! through to a bare `SYSCALL` with their pointer/length arguments left on the
-//! stack, which is **not** the `CheckSig(pubkey, signature)` calling
-//! convention. They are therefore intentionally NOT exercised here (they would
-//! translate but fault on chain). The hashing surface above is the part that is
-//! correctly bridged on wasm32.
+//! `sha_onchain` / `ripe_onchain` / `sha_onchain_seeded` exercise the OTHER
+//! crypto surface: the `neo::crypto_sha256` / `neo::crypto_ripemd160` imports,
+//! which the translator lowers to a real
+//! `System.Contract.Call(CryptoLib, method, CallFlags.ReadOnly, [data])` —
+//! the `(ptr, len)` buffer is marshalled out of wasm linear memory, the args
+//! are PACKed into the required Array, and the scoped CryptoLib manifest
+//! permission is auto-inserted. The i64 the externs "return" is the digest
+//! `ByteString` left on the NeoVM stack; returning it from a method hands the
+//! digest to the caller. (On non-wasm32 hosts these methods fall back to the
+//! pure-Rust hashers and return the digest length instead.)
+//!
+//! ## Not covered: check_sig / check_multisig
+//!
+//! `NeoVMSyscall::{check_sig, check_multisig}` are `neo::*` imports with a
+//! multi-buffer ABI that still falls through to a bare `SYSCALL` with their
+//! pointer/length arguments left on the stack — **not** the
+//! `CheckSig(pubkey, signature)` calling convention. They are intentionally
+//! NOT exercised here (they would translate but fault on chain).
+//! `verify_with_ecdsa` IS correctly bridged (three marshalled buffers + curve
+//! via CryptoLib `verifyWithECDsa`), but needs a real key/signature fixture,
+//! so it is exercised by the translator's unit tests instead.
 
 use neo_devpack::prelude::*;
 
 neo_manifest_overlay!(r#"{ "name": "FeatureCrypto" }"#);
+
+// On-chain CryptoLib hash imports (wasm32 only). The translator lowers each
+// to `System.Contract.Call(CryptoLib, <method>, CallFlags.ReadOnly, [data])`
+// with the `(ptr, len)` buffer marshalled out of linear memory; the i64
+// result is the digest `ByteString` left on the NeoVM stack.
+#[cfg(target_arch = "wasm32")]
+#[link(wasm_import_module = "neo")]
+extern "C" {
+    #[link_name = "crypto_sha256"]
+    fn neo_crypto_sha256(ptr: i32, len: i32) -> i64;
+    #[link_name = "crypto_ripemd160"]
+    fn neo_crypto_ripemd160(ptr: i32, len: i32) -> i64;
+}
 
 #[neo_contract]
 pub struct CryptoContract;
@@ -97,6 +122,62 @@ impl CryptoContract {
         NeoCrypto::murmur32(&input(seed), NeoInteger::new(0))
             .map(|n| n.as_i64_saturating())
             .unwrap_or(-1)
+    }
+
+    /// On-chain CryptoLib `sha256` of the static input `b"abc"` — the method
+    /// returns the 32-byte digest ByteString itself (known vector:
+    /// `ba7816bf…0015ad`). On non-wasm32 hosts: the digest length (32).
+    #[neo_method(safe)]
+    pub fn sha_onchain() -> i64 {
+        let data = *b"abc";
+        #[cfg(target_arch = "wasm32")]
+        {
+            // SAFETY: pointer/length cover a live local byte array.
+            unsafe { neo_crypto_sha256(data.as_ptr() as i32, data.len() as i32) }
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            NeoCrypto::sha256(&NeoByteString::from_slice(&data))
+                .map(|d| d.len() as i64)
+                .unwrap_or(-1)
+        }
+    }
+
+    /// On-chain CryptoLib `ripemd160` of `b"abc"` — returns the 20-byte
+    /// digest ByteString (known vector: `8eb208f7…5a0bfc`). On non-wasm32
+    /// hosts: the digest length (20).
+    #[neo_method(safe)]
+    pub fn ripe_onchain() -> i64 {
+        let data = *b"abc";
+        #[cfg(target_arch = "wasm32")]
+        {
+            // SAFETY: pointer/length cover a live local byte array.
+            unsafe { neo_crypto_ripemd160(data.as_ptr() as i32, data.len() as i32) }
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            NeoCrypto::ripemd160(&NeoByteString::from_slice(&data))
+                .map(|d| d.len() as i64)
+                .unwrap_or(-1)
+        }
+    }
+
+    /// On-chain CryptoLib `sha256` of the heap-built 64-byte seeded input —
+    /// exercises marshalling a runtime-computed (non-static) buffer out of
+    /// linear memory. Returns the digest ByteString. On non-wasm32 hosts: the
+    /// digest length (32).
+    #[neo_method(safe)]
+    pub fn sha_onchain_seeded(seed: i64) -> i64 {
+        let data = input(seed);
+        #[cfg(target_arch = "wasm32")]
+        {
+            // SAFETY: pointer/length cover the NeoByteString's live buffer.
+            unsafe { neo_crypto_sha256(data.as_slice().as_ptr() as i32, data.len() as i32) }
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            NeoCrypto::sha256(&data).map(|d| d.len() as i64).unwrap_or(-1)
+        }
     }
 }
 

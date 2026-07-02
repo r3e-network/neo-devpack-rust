@@ -433,23 +433,35 @@ fn translate_neo_crypto_verify_signature() {
 
 #[test]
 fn translate_neo_crypto_verify_with_ecdsa() {
+    // The SDK extern is verify_with_ecdsa(msg_ptr, msg_len, pk_ptr, pk_len,
+    // sig_ptr, sig_len, curve) -> i32 — three (ptr, len) buffer pairs plus
+    // the curve id, marshalled into a CryptoLib System.Contract.Call.
     let wasm = wat::parse_str(
         r#"(module
-              (import "neo" "verify_with_ecdsa" (func $verify (param i32 i32 i32 i32) (result i32)))
+              (import "neo" "verify_with_ecdsa"
+                (func $verify (param i32 i32 i32 i32 i32 i32 i32) (result i32)))
+              (memory (export "memory") 1)
+              (data (i32.const 0) "message-pubkey-signature")
               (func (export "test") (result i32)
-                i32.const 0
-                i32.const 0
-                i32.const 0
-                i32.const 1
+                i32.const 0  i32.const 7   ;; msg
+                i32.const 8  i32.const 6   ;; pubkey
+                i32.const 15 i32.const 9   ;; signature
+                i32.const 23                ;; curve id
                 call $verify))"#,
     )
     .expect("valid wat");
 
     let translation = translate_module(&wasm, "VerifyWithECDsa").expect("translation succeeds");
 
-    // Neo.Crypto.VerifyWithECDsa syscall
-    let syscall = wasm_neovm::opcodes::lookup("SYSCALL").unwrap().byte;
-    assert!(translation.script.contains(&syscall));
+    // Lowered to System.Contract.Call against CryptoLib (no dead syscall).
+    let contract_call = wasm_neovm::syscalls::lookup("System.Contract.Call")
+        .unwrap()
+        .hash
+        .to_le_bytes();
+    assert!(
+        translation.script.windows(4).any(|w| w == contract_call),
+        "verify_with_ecdsa must lower to System.Contract.Call"
+    );
 }
 
 #[test]
@@ -631,9 +643,12 @@ fn crypto_sha256_lowers_to_contract_call_not_dead_syscall() {
     // hash (0x627d5b52) and does NOT contain the dead SHA256 syscall hash.
     let wasm = wat::parse_str(
         r#"(module
-              (import "neo" "crypto_sha256" (func $sha (param i32) (result i32)))
-              (func (export "hash") (param i32) (result i32)
-                local.get 0
+              (import "neo" "crypto_sha256" (func $sha (param i32 i32) (result i64)))
+              (memory (export "memory") 1)
+              (data (i32.const 0) "abc")
+              (func (export "hash") (result i64)
+                i32.const 0
+                i32.const 3
                 call $sha))"#,
     )
     .expect("valid wat");
@@ -658,6 +673,77 @@ fn crypto_sha256_lowers_to_contract_call_not_dead_syscall() {
     assert!(
         !translation.script.windows(4).any(|w| w == dead_sha256),
         "crypto_sha256 must not emit the dead Neo.Crypto.SHA256 syscall hash"
+    );
+}
+
+#[test]
+fn crypto_contract_call_pushes_hash_on_top_and_packs_args() {
+    // Regression: `System.Contract.Call` pops (hash, method, callFlags, args)
+    // TOP-FIRST (neo-go v0.105.1 contract/call.go), so the 20-byte CryptoLib
+    // hash must be the LAST push before the SYSCALL — the old lowering pushed
+    // it FIRST (deepest), so the VM popped the callFlags integer as the
+    // contract hash and faulted. Pin the exact frame tail:
+    //   PUSHDATA1 20 <cryptolib LE hash>; SYSCALL <System.Contract.Call>
+    // and that the marshalled args are PACKed into an Array beforehand.
+    let wasm = wat::parse_str(
+        r#"(module
+              (import "neo" "crypto_sha256" (func $sha (param i32 i32) (result i64)))
+              (memory (export "memory") 1)
+              (data (i32.const 0) "abc")
+              (func (export "hash") (result i64)
+                i32.const 0
+                i32.const 3
+                call $sha))"#,
+    )
+    .expect("valid wat");
+
+    let translation = translate_module(&wasm, "CryptoFrameOrder").expect("translation succeeds");
+
+    let pushdata1 = wasm_neovm::opcodes::lookup("PUSHDATA1").unwrap().byte;
+    let syscall = wasm_neovm::opcodes::lookup("SYSCALL").unwrap().byte;
+    let call_hash = wasm_neovm::syscalls::lookup("System.Contract.Call")
+        .unwrap()
+        .hash
+        .to_le_bytes();
+    let cryptolib = wasm_neovm::native_contracts::CRYPTOLIB_HASH;
+
+    // PUSHDATA1 0x14 <20-byte hash> SYSCALL <4-byte id> = 27 bytes.
+    let mut tail = vec![pushdata1, 20];
+    tail.extend_from_slice(&cryptolib);
+    tail.push(syscall);
+    tail.extend_from_slice(&call_hash);
+    assert!(
+        translation
+            .script
+            .windows(tail.len())
+            .any(|w| w == &tail[..]),
+        "the CryptoLib contract hash must be pushed LAST (on top), immediately \
+         before SYSCALL System.Contract.Call"
+    );
+
+    let pack = wasm_neovm::opcodes::lookup("PACK").unwrap().byte;
+    assert!(
+        translation.script.contains(&pack),
+        "the marshalled argument must be PACKed into the args Array"
+    );
+
+    // The finalizer must auto-insert the scoped CryptoLib manifest permission
+    // (Neo N3 denies non-permitted contract calls at runtime).
+    let permissions = translation.manifest.value["permissions"]
+        .as_array()
+        .expect("permissions array");
+    let cryptolib_be = "0x726cb6e0cd8628a1350a611384688911ab75f51b";
+    let entry = permissions
+        .iter()
+        .find(|p| p["contract"] == cryptolib_be)
+        .expect("CryptoLib permission auto-inserted");
+    assert!(
+        entry["methods"]
+            .as_array()
+            .expect("methods array")
+            .iter()
+            .any(|m| m == "sha256"),
+        "CryptoLib permission must be scoped to the methods used, got {entry}"
     );
 }
 

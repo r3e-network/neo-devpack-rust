@@ -67,15 +67,14 @@ fn create_crypto_wasm() -> Vec<u8> {
     wat::parse_str(
         r#"
         (module
-            (import "neo" "crypto_sha256" (func $sha256 (param i32 i32 i32)))
+            (import "neo" "crypto_sha256" (func $sha256 (param i32 i32) (result i64)))
             (import "neo" "runtime_check_witness" (func $check_witness (param i32) (result i32)))
             (memory (export "memory") 1)
             (data (i32.const 0) "test data")
 
-            (func (export "hash")
+            (func (export "hash") (result i64)
                 i32.const 0      ;; data ptr
                 i32.const 9      ;; data len
-                i32.const 64     ;; output ptr
                 call $sha256
             )
 

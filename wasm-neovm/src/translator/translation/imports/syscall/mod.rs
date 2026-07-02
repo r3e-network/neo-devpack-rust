@@ -12,7 +12,7 @@ mod crypto;
 mod runtime;
 mod storage;
 
-use crypto::emit_cryptolib_call;
+use crypto::{emit_cryptolib_call, try_handle_crypto_import};
 use runtime::{
     emit_chunked_bytes_argument, try_handle_notify_with_state_import,
     try_handle_runtime_event_import, try_handle_runtime_hash_i64_import,
@@ -47,6 +47,13 @@ pub(in super::super) fn try_handle_neo_import(
     }
 
     if let Some(descriptor) = try_handle_runtime_hash_i64_import(import, func_type, script)? {
+        return Ok(Some(descriptor));
+    }
+
+    // CryptoLib methods: full buffer-ABI marshalling + System.Contract.Call
+    // (this path has RuntimeHelpers access; the fall-through
+    // `emit_neo_syscall` legacy path does not and cannot marshal).
+    if let Some(descriptor) = try_handle_crypto_import(import, func_type, runtime, script)? {
         return Ok(Some(descriptor));
     }
 
@@ -278,6 +285,7 @@ fn recognized_neo_import_descriptor(name: &str) -> Option<&'static str> {
         .iter()
         .chain(runtime::HANDLED_IMPORTS)
         .chain(storage::HANDLED_IMPORTS)
+        .chain(crypto::HANDLED_IMPORTS)
         .find(|(handled, _)| handled.eq_ignore_ascii_case(name))
         .map(|(_, descriptor)| *descriptor)
         .or_else(|| crate::neo_syscalls::lookup_neo_syscall(name))

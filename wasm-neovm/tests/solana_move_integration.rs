@@ -204,14 +204,13 @@ fn test_solana_syscall_mapping() {
     let wasm = wat::parse_str(
         r#"
         (module
-            (import "neo" "crypto_sha256" (func $sha256 (param i32 i32 i32)))
+            (import "neo" "crypto_sha256" (func $sha256 (param i32 i32) (result i64)))
             (import "neo" "runtime_get_time" (func $get_time (result i64)))
             (memory (export "memory") 1)
 
-            (func (export "hash_data") (param $data i32) (param $len i32)
+            (func (export "hash_data") (param $data i32) (param $len i32) (result i64)
                 local.get $data
                 local.get $len
-                i32.const 64
                 call $sha256
             )
 

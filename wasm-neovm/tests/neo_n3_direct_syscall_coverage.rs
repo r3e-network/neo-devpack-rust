@@ -55,12 +55,34 @@ fn direct_translation_covers_all_extended_crypto_descriptors() {
     // them, so a SYSCALL <hash> would fault at runtime). The single-method
     // ones must emit a System.Contract.Call; the composite Hash160/Hash256
     // have no single method and must be rejected with a clear error.
-    let single_method = [
-        "Neo.Crypto.SHA256",
-        "Neo.Crypto.RIPEMD160",
-        "Neo.Crypto.Murmur32",
-        "Neo.Crypto.Keccak256",
-        "Neo.Crypto.VerifyWithECDsa",
+    // The `neo`-module lowering enforces each method's buffer ABI: (ptr, len)
+    // i32 pairs (+ trailing i32 scalars) marshalled out of linear memory.
+    let single_method: &[(&str, &str, &str)] = &[
+        (
+            "Neo.Crypto.SHA256",
+            "(param i32 i32) (result i64)",
+            "i32.const 0 i32.const 4",
+        ),
+        (
+            "Neo.Crypto.RIPEMD160",
+            "(param i32 i32) (result i64)",
+            "i32.const 0 i32.const 4",
+        ),
+        (
+            "Neo.Crypto.Murmur32",
+            "(param i32 i32 i32) (result i64)",
+            "i32.const 0 i32.const 4 i32.const 42",
+        ),
+        (
+            "Neo.Crypto.Keccak256",
+            "(param i32 i32) (result i64)",
+            "i32.const 0 i32.const 4",
+        ),
+        (
+            "Neo.Crypto.VerifyWithECDsa",
+            "(param i32 i32 i32 i32 i32 i32 i32) (result i32)",
+            "i32.const 0 i32.const 4 i32.const 4 i32.const 4 i32.const 8 i32.const 4 i32.const 23",
+        ),
     ];
 
     let contract_call_hash: [u8; 4] = syscalls::lookup("System.Contract.Call")
@@ -68,9 +90,22 @@ fn direct_translation_covers_all_extended_crypto_descriptors() {
         .hash
         .to_le_bytes();
 
-    for (idx, descriptor) in single_method.iter().enumerate() {
+    for (idx, (descriptor, params, push_args)) in single_method.iter().enumerate() {
         let contract_name = format!("DirectExtendedDescriptor{idx}");
-        let translation = translate_descriptor("neo", descriptor, &contract_name);
+        let wat = format!(
+            r#"(module
+                  (import "neo" "{descriptor}" (func $syscall {params}))
+                  (memory (export "memory") 1)
+                  (data (i32.const 0) "0123456789ab")
+                  (func (export "main")
+                    {push_args}
+                    call $syscall
+                    drop)
+                )"#
+        );
+        let wasm = wat::parse_str(&wat).expect("valid wat");
+        let translation =
+            translate_module(&wasm, &contract_name).expect("translation succeeds");
         assert!(
             translation
                 .script

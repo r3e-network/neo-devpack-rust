@@ -104,16 +104,44 @@ fn critical_neo_aliases_lower_to_reference_vectors() {
         assert_emits_syscall_hash(&translation, *expected_hash);
     }
 
-    // C1: crypto verify aliases lower to System.Contract.Call, not dead hashes.
+    // C1: crypto aliases lower to System.Contract.Call, not dead hashes.
+    // The `neo`-module lowering enforces the buffer ABI — (ptr, len) i32
+    // pairs (+ trailing scalars) marshalled out of linear memory — so the
+    // fixtures use the real import shapes.
     let contract_call_hash = wasm_neovm::syscalls::lookup("System.Contract.Call")
         .expect("System.Contract.Call exists")
         .hash;
-    for alias in [
-        "verify_with_ecdsa",
-        "crypto_verify_with_ecdsa",
-        "crypto_sha256",
+    for (alias, params, push_args) in [
+        (
+            "verify_with_ecdsa",
+            "(param i32 i32 i32 i32 i32 i32 i32) (result i32)",
+            "i32.const 0 i32.const 4 i32.const 4 i32.const 4 i32.const 8 i32.const 4 i32.const 23",
+        ),
+        (
+            "crypto_verify_with_ecdsa",
+            "(param i32 i32 i32 i32 i32 i32 i32) (result i32)",
+            "i32.const 0 i32.const 4 i32.const 4 i32.const 4 i32.const 8 i32.const 4 i32.const 23",
+        ),
+        (
+            "crypto_sha256",
+            "(param i32 i32) (result i64)",
+            "i32.const 0 i32.const 4",
+        ),
     ] {
-        let translation = translate_import("neo", alias, "CryptoAliasVector");
+        let wat = format!(
+            r#"(module
+                  (import "neo" "{alias}" (func $syscall {params}))
+                  (memory (export "memory") 1)
+                  (data (i32.const 0) "0123456789ab")
+                  (func (export "main")
+                    {push_args}
+                    call $syscall
+                    drop)
+                )"#
+        );
+        let wasm = wat::parse_str(&wat).expect("valid wat");
+        let translation =
+            wasm_neovm::translate_module(&wasm, "CryptoAliasVector").expect("translation succeeds");
         assert_emits_syscall_hash(&translation, contract_call_hash);
     }
 }

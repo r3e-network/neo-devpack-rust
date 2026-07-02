@@ -61,9 +61,9 @@ pub struct NativeContractDescriptor {
 pub fn crypto_lib_method(alias: &str) -> Option<NativeMethod> {
     let method = match alias {
         "Neo.Crypto.SHA256" | "sha256" | "crypto_sha256" => "sha256",
-        "Neo.Crypto.RIPEMD160" | "ripemd160" => "ripemd160",
-        "Neo.Crypto.Keccak256" | "keccak256" => "keccak256",
-        "Neo.Crypto.Murmur32" | "murmur32" => "murmur32",
+        "Neo.Crypto.RIPEMD160" | "ripemd160" | "crypto_ripemd160" => "ripemd160",
+        "Neo.Crypto.Keccak256" | "keccak256" | "crypto_keccak256" => "keccak256",
+        "Neo.Crypto.Murmur32" | "murmur32" | "crypto_murmur32" => "murmur32",
         "Neo.Crypto.VerifyWithECDsa" | "verify_with_ecdsa" | "crypto_verify_with_ecdsa" => {
             "verifyWithECDsa"
         }

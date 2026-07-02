@@ -38,6 +38,7 @@ import (
 	"github.com/nspcc-dev/neo-go/pkg/core/interop/interopnames"
 	"github.com/nspcc-dev/neo-go/pkg/core/native/nativenames"
 	"github.com/nspcc-dev/neo-go/pkg/core/state"
+	"github.com/nspcc-dev/neo-go/pkg/crypto/hash"
 	"github.com/nspcc-dev/neo-go/pkg/encoding/address"
 	"github.com/nspcc-dev/neo-go/pkg/smartcontract"
 	"github.com/nspcc-dev/neo-go/pkg/smartcontract/callflag"
@@ -107,12 +108,12 @@ type Storage struct {
 
 // InvocationResult is the JSON we return to the Rust side.
 type InvocationResult struct {
-	State        string     `json:"state"`
-	GasConsumed  int64      `json:"gas_consumed"`
-	ReturnStack  []string   `json:"return_stack"`
-	Events       []Event    `json:"events"`
-	StorageDiff  []Storage  `json:"storage_diff"`
-	ErrorMessage string     `json:"error_message,omitempty"`
+	State        string    `json:"state"`
+	GasConsumed  int64     `json:"gas_consumed"`
+	ReturnStack  []string  `json:"return_stack"`
+	Events       []Event   `json:"events"`
+	StorageDiff  []Storage `json:"storage_diff"`
+	ErrorMessage string    `json:"error_message,omitempty"`
 }
 
 type Event struct {
@@ -528,8 +529,8 @@ func newSyscallEnv(req *InvocationRequest, mfest *manifest.Manifest) *syscallEnv
 		manifest: mfest,
 		// Defaults chosen to match a typical Application-trigger mainnet run.
 		time:           0,
-		trigger:        0x40, // trigger.Application (see trigger_type_string.go)
-		network:        860833102, // N3 mainnet magic
+		trigger:        0x40,                    // trigger.Application (see trigger_type_string.go)
+		network:        860833102,               // N3 mainnet magic
 		addressVersion: int(address.NEO3Prefix), // 0x35
 		random:         big.NewInt(0),
 	}
@@ -620,21 +621,21 @@ var (
 	idIteratorNext  = sysID("System.Iterator.Next")
 	idIteratorValue = sysID("System.Iterator.Value")
 
-	idRuntimeLog                 = sysID("System.Runtime.Log")
-	idRuntimeNotify              = sysID("System.Runtime.Notify")
-	idRuntimeCheckWitness        = sysID("System.Runtime.CheckWitness")
-	idRuntimeGetTime             = sysID("System.Runtime.GetTime")
-	idRuntimeGetTrigger          = sysID("System.Runtime.GetTrigger")
-	idRuntimePlatform            = sysID("System.Runtime.Platform")
-	idRuntimeGetNetwork          = sysID("System.Runtime.GetNetwork")
-	idRuntimeGetAddressVersion   = sysID("System.Runtime.GetAddressVersion")
-	idRuntimeGetInvocationCount  = sysID("System.Runtime.GetInvocationCounter")
-	idRuntimeGetRandom           = sysID("System.Runtime.GetRandom")
-	idRuntimeGetScriptContainer  = sysID("System.Runtime.GetScriptContainer")
-	idRuntimeGasLeft             = sysID("System.Runtime.GasLeft")
-	idRuntimeGetExecutingHash    = sysID("System.Runtime.GetExecutingScriptHash")
-	idRuntimeGetCallingHash      = sysID("System.Runtime.GetCallingScriptHash")
-	idRuntimeGetEntryHash        = sysID("System.Runtime.GetEntryScriptHash")
+	idRuntimeLog                = sysID("System.Runtime.Log")
+	idRuntimeNotify             = sysID("System.Runtime.Notify")
+	idRuntimeCheckWitness       = sysID("System.Runtime.CheckWitness")
+	idRuntimeGetTime            = sysID("System.Runtime.GetTime")
+	idRuntimeGetTrigger         = sysID("System.Runtime.GetTrigger")
+	idRuntimePlatform           = sysID("System.Runtime.Platform")
+	idRuntimeGetNetwork         = sysID("System.Runtime.GetNetwork")
+	idRuntimeGetAddressVersion  = sysID("System.Runtime.GetAddressVersion")
+	idRuntimeGetInvocationCount = sysID("System.Runtime.GetInvocationCounter")
+	idRuntimeGetRandom          = sysID("System.Runtime.GetRandom")
+	idRuntimeGetScriptContainer = sysID("System.Runtime.GetScriptContainer")
+	idRuntimeGasLeft            = sysID("System.Runtime.GasLeft")
+	idRuntimeGetExecutingHash   = sysID("System.Runtime.GetExecutingScriptHash")
+	idRuntimeGetCallingHash     = sysID("System.Runtime.GetCallingScriptHash")
+	idRuntimeGetEntryHash       = sysID("System.Runtime.GetEntryScriptHash")
 
 	idContractGetCallFlags = sysID("System.Contract.GetCallFlags")
 	idContractCall         = sysID("System.Contract.Call")
@@ -907,11 +908,15 @@ func (e *syscallEnv) handler(v *vm.VM, id uint32) error {
 
 	// contract.Call: pops (hash, method, callFlags, args) top-first.
 	// Ref: contract/call.go Call. This single-contract oracle has no
-	// chain state, so only the StdLib native's pure `deserialize`
-	// method is serviced (used by the translator's state-carrying
-	// notification lowering); it mirrors native/std.go `deserialize`,
-	// which is stackitem.Deserialize over the argument bytes. Any other
-	// target keeps the previous behaviour: a loud FAULT.
+	// chain state, so only pure native methods are serviced:
+	//   - StdLib `deserialize` (the translator's state-carrying
+	//     notification lowering) — mirrors native/std.go `deserialize`,
+	//     which is stackitem.Deserialize over the argument bytes;
+	//   - CryptoLib `sha256` / `ripemd160` (the translator's
+	//     `Neo.Crypto.*` buffer-ABI lowering) — mirror native/crypto.go
+	//     Sha256/RipeMD160: hash.Sha256/hash.RipeMD160 over the argument
+	//     bytes, pushed as a ByteString.
+	// Any other target keeps the previous behaviour: a loud FAULT.
 	case idContractCall:
 		h := v.Estack().Pop().Bytes()
 		method := v.Estack().Pop().String()
@@ -937,8 +942,27 @@ func (e *syscallEnv) handler(v *vm.VM, id uint32) error {
 			v.Estack().PushItem(item)
 			return nil
 		}
+		cryptolib := state.CreateNativeContractHash(nativenames.CryptoLib)
+		if u.Equals(cryptolib) && len(args) == 1 {
+			switch method {
+			case "sha256":
+				data, err := args[0].TryBytes()
+				if err != nil {
+					return err
+				}
+				v.Estack().PushItem(stackitem.NewByteArray(hash.Sha256(data).BytesBE()))
+				return nil
+			case "ripemd160":
+				data, err := args[0].TryBytes()
+				if err != nil {
+					return err
+				}
+				v.Estack().PushItem(stackitem.NewByteArray(hash.RipeMD160(data).BytesBE()))
+				return nil
+			}
+		}
 		return fmt.Errorf(
-			"unsupported System.Contract.Call to %s::%s (only StdLib.deserialize is serviced)",
+			"unsupported System.Contract.Call to %s::%s (only StdLib.deserialize and CryptoLib.sha256/ripemd160 are serviced)",
 			u.StringLE(), method)
 	}
 

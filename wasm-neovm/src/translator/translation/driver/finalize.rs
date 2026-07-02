@@ -318,6 +318,29 @@ impl DriverState {
             manifest_builder.merge_overlay(&overlay, None);
         }
 
+        // Neo.Crypto.* lowerings call the CryptoLib native via
+        // `System.Contract.Call` (sha256/ripemd160/...). Auto-insert the
+        // scoped, least-privilege permission for exactly the methods used,
+        // just like the StdLib `deserialize` entry above — without it the
+        // (otherwise correct) call is denied on-chain by the manifest
+        // permission check.
+        let cryptolib_methods = self.runtime.cryptolib_methods_used();
+        if !cryptolib_methods.is_empty() {
+            let cryptolib_be: String = crate::native_contracts::CRYPTOLIB_HASH
+                .iter()
+                .rev()
+                .map(|b| format!("{b:02x}"))
+                .collect();
+            let methods: Vec<&str> = cryptolib_methods.iter().copied().collect();
+            let overlay = serde_json::json!({
+                "permissions": [{
+                    "contract": format!("0x{cryptolib_be}"),
+                    "methods": methods,
+                }],
+            });
+            manifest_builder.merge_overlay(&overlay, None);
+        }
+
         manifest_builder.propagate_safe_flags();
         manifest_builder.ensure_method_parity()?;
 
