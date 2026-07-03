@@ -37,4 +37,4 @@ pub use crypto::NeoCrypto;
 #[cfg(feature = "json")]
 pub use json::NeoJSON;
 pub use runtime::NeoRuntime;
-pub use storage::{NeoStorage, RawKeyBuilder, RawStorage, RawStorageGet};
+pub use storage::{NeoStorage, RawKeyBuilder, RawStorage, RawStorageGet, StorageRead};

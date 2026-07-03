@@ -20,7 +20,7 @@ pub use native_contracts::*;
 pub use neo_macros::*;
 pub use neo_runtime::{
     call_typed, ContractCallError, DefaultContractCaller, NeoContractRuntime, NeoRuntime,
-    NeoRuntimeContext, NeoStorage, RawKeyBuilder, RawStorage, RawStorageGet,
+    NeoRuntimeContext, NeoStorage, RawKeyBuilder, RawStorage, RawStorageGet, StorageRead,
 };
 #[cfg(feature = "std")]
 pub use neo_runtime::{NeoCrypto, NeoJSON};
@@ -64,7 +64,7 @@ pub mod prelude {
         MAX_STACK_SIZE,
     };
     /// Storage: typed and raw storage access plus key building.
-    pub use crate::{NeoStorage, NeoStorageContext, RawKeyBuilder, RawStorage, RawStorageGet};
+    pub use crate::{NeoStorage, NeoStorageContext, RawKeyBuilder, RawStorage, RawStorageGet, StorageRead};
     /// Runtime services: syscall wrappers, contract calls, native contracts,
     /// and NEP standard traits.
     pub use crate::{

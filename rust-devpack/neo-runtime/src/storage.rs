@@ -20,6 +20,18 @@
 //!   contract's NeoVM stack, so storage-heavy state transitions (multisig,
 //!   escrow, crowdfund, etc.) stay deploy-and-invoke-able rather than
 //!   "deploy-only".
+//!
+//! ## Missing vs. empty
+//!
+//! Neo N3 stores an integer `0` (and any empty value) as a *zero-length* byte
+//! string, so a plain "get returns bytes" API cannot tell an absent key from a
+//! present-but-empty one — the ambiguity behind the historical
+//! `get_i64_key_or_zero` fault. The presence-aware reads make the distinction
+//! explicit where the runtime reports it: [`RawStorage::get_checked`] →
+//! [`StorageRead`] (allocating) and [`RawStorage::get_into`] →
+//! [`RawStorageGet`] (heap-free). For a *reliable* existence check regardless of
+//! backend, use [`RawStorage::has_i64_key`] or a `Storage.Find` scan rather than
+//! inferring it from an empty read.
 
 use neo_syscalls::NeoVMSyscall;
 use neo_types::*;
@@ -118,6 +130,53 @@ pub enum RawStorageGet {
     /// Value exists but is larger than the caller buffer; the contained
     /// `usize` is the byte length the caller must allocate before retrying.
     BufferTooSmall(usize),
+}
+
+/// Allocating, presence-aware result of [`RawStorage::get_checked`] — the
+/// heap-using counterpart of [`RawStorageGet`] that keeps *missing* and *empty*
+/// distinct in one value instead of a caller buffer.
+///
+/// A present-but-empty entry (Neo N3 stores an integer `0` and any empty value
+/// as a zero-length byte string) is [`StorageRead::Found`] with an empty
+/// [`NeoByteString`] — **not** [`StorageRead::Missing`]. This is the ambiguity
+/// behind the historical `get_i64_key_or_zero` fault: reaching for a plain
+/// "get returns bytes" API conflated the two.
+///
+/// ⚠️ Neo N3 caveat: some backends surface an *absent* key as an empty byte
+/// string rather than an explicit null, so `Found(empty)` can mean either
+/// "stored empty" or "no such key". `Missing` reflects only what the runtime
+/// chose to report; when you must tell absent from empty *reliably*, keep an
+/// explicit presence flag or use [`RawStorage::has_i64_key`] / a `Storage.Find`
+/// scan.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum StorageRead {
+    /// The runtime reported the key as absent (null).
+    Missing,
+    /// The key is present; the value may be empty.
+    Found(NeoByteString),
+}
+
+impl StorageRead {
+    /// `true` when the runtime reported the key absent.
+    pub fn is_missing(&self) -> bool {
+        matches!(self, StorageRead::Missing)
+    }
+    /// `true` when the key is present (even with an empty value).
+    pub fn is_found(&self) -> bool {
+        matches!(self, StorageRead::Found(_))
+    }
+    /// The stored value, or `None` when absent. A present-but-empty value maps
+    /// to `Some(empty)`.
+    pub fn into_option(self) -> Option<NeoByteString> {
+        match self {
+            StorageRead::Missing => None,
+            StorageRead::Found(v) => Some(v),
+        }
+    }
+    /// The stored value, or `default` when the key is absent.
+    pub fn unwrap_or(self, default: NeoByteString) -> NeoByteString {
+        self.into_option().unwrap_or(default)
+    }
 }
 
 /// Fixed-capacity stack key builder for `RawStorage` keys.
@@ -271,6 +330,36 @@ impl RawStorage {
             RawStorageGet::Found(actual as usize)
         } else {
             RawStorageGet::BufferTooSmall((-actual) as usize)
+        }
+    }
+
+    /// Allocating, presence-aware read — the heap-using convenience over
+    /// [`get_into`](Self::get_into). Returns [`StorageRead::Missing`] when the
+    /// runtime reports a null value and [`StorageRead::Found`] (possibly empty)
+    /// otherwise, so *absent* and *empty* stay distinct in a single value.
+    ///
+    /// A small stack buffer covers the common case; only oversized values
+    /// allocate. See [`StorageRead`] for the Neo N3 absent-vs-empty caveat and
+    /// prefer the heap-free [`get_into`](Self::get_into) on hot contract paths.
+    pub fn get_checked(key: &[u8]) -> StorageRead {
+        let mut small = [0u8; 64];
+        match Self::get_into(key, &mut small) {
+            RawStorageGet::Missing => StorageRead::Missing,
+            RawStorageGet::Found(n) => StorageRead::Found(NeoByteString::from_slice(&small[..n])),
+            RawStorageGet::BufferTooSmall(need) => {
+                let mut big = vec![0u8; need];
+                match Self::get_into(key, &mut big) {
+                    RawStorageGet::Missing => StorageRead::Missing,
+                    RawStorageGet::Found(n) => {
+                        StorageRead::Found(NeoByteString::from_slice(&big[..n]))
+                    }
+                    // The value cannot grow between two reads inside one
+                    // single-threaded invocation; take what the retry buffer holds.
+                    RawStorageGet::BufferTooSmall(_) => {
+                        StorageRead::Found(NeoByteString::from_slice(&big))
+                    }
+                }
+            }
         }
     }
 

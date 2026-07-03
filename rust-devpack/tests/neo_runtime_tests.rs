@@ -133,6 +133,42 @@ fn raw_storage_empty_and_missing_read_as_zero_length() {
 }
 
 #[test]
+fn storage_get_checked_distinguishes_missing_from_empty() {
+    let _guard = setup_runtime_test();
+    RawStorage::put(b"empty", b"");
+    RawStorage::put(b"val", b"hello");
+
+    // present-but-empty -> Found(empty), NOT Missing (the get_i64_key_or_zero
+    // fault class): a stored empty value must not read as absent.
+    let empty = RawStorage::get_checked(b"empty");
+    assert_eq!(empty, StorageRead::Found(NeoByteString::from_slice(b"")));
+    assert!(empty.is_found() && !empty.is_missing());
+
+    // absent -> Missing
+    let missing = RawStorage::get_checked(b"missing");
+    assert_eq!(missing, StorageRead::Missing);
+    assert!(missing.is_missing() && missing.into_option().is_none());
+
+    // present value round-trips through into_option
+    assert_eq!(
+        RawStorage::get_checked(b"val").into_option(),
+        Some(NeoByteString::from_slice(b"hello"))
+    );
+}
+
+#[test]
+fn storage_get_checked_grows_past_the_stack_buffer() {
+    let _guard = setup_runtime_test();
+    // 200 bytes > the 64-byte fast-path buffer, exercising the grow-and-retry.
+    let big = vec![0xABu8; 200];
+    RawStorage::put(b"big", &big);
+    assert_eq!(
+        RawStorage::get_checked(b"big"),
+        StorageRead::Found(NeoByteString::from_slice(&big))
+    );
+}
+
+#[test]
 fn raw_storage_i64_has_matches_neovm_zero_encoding() {
     let _guard = setup_runtime_test();
 
