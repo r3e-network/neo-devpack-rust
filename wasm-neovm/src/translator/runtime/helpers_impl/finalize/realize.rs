@@ -66,12 +66,17 @@ impl RuntimeHelpers {
             }
         }
 
-        let storage_kinds: Vec<StorageHelperKind> = self
+        let mut storage_kinds: Vec<StorageHelperKind> = self
             .storage_helpers
             .iter()
             .filter(|(_, record)| !record.calls.is_empty())
             .map(|(kind, _)| *kind)
             .collect();
+        // Deterministic emission order: storage_helpers is a HashMap, so iterate
+        // a sorted copy (like memory_kinds/bit_kinds/table_kinds above) or a
+        // contract using >=2 storage helpers translates to different NEF bytes
+        // run-to-run, breaking reproducible builds and output diffing.
+        storage_kinds.sort_unstable();
         for kind in storage_kinds {
             let offset = self.realize_storage_helper(script, kind)?;
             if let Some(record) = self.storage_helpers.get_mut(&kind) {
