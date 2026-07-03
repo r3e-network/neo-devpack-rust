@@ -10,74 +10,74 @@ pub(in crate::translator::runtime) fn emit_memory_grow_helper(
 ) -> Result<()> {
     let mask = (1u128 << 32) - 1;
     let _ = emit_push_int(script, mask as i128);
-    script.push(lookup_opcode("AND")?.byte);
+    script.push(op::AND);
 
-    script.push(lookup_opcode("DUP")?.byte);
-    script.push(lookup_opcode("PUSH0")?.byte);
-    script.push(lookup_opcode("EQUAL")?.byte);
+    script.push(op::DUP);
+    script.push(op::PUSH0);
+    script.push(op::EQUAL);
     let zero_branch = emit_jump_placeholder(script, "JMPIF_L")?;
 
-    script.push(lookup_opcode("INITSLOT")?.byte);
+    script.push(op::INITSLOT);
     script.push(3);
     script.push(0);
 
-    script.push(lookup_opcode("STLOC0")?.byte); // delta pages
+    script.push(op::STLOC0); // delta pages
 
-    script.push(lookup_opcode("LDSFLD2")?.byte); // current pages
-    script.push(lookup_opcode("DUP")?.byte);
-    script.push(lookup_opcode("STLOC1")?.byte); // save for return
+    script.push(op::LDSFLD2); // current pages
+    script.push(op::DUP);
+    script.push(op::STLOC1); // save for return
 
-    script.push(lookup_opcode("LDLOC1")?.byte);
-    script.push(lookup_opcode("LDLOC0")?.byte);
-    script.push(lookup_opcode("ADD")?.byte);
-    script.push(lookup_opcode("DUP")?.byte);
-    script.push(lookup_opcode("STLOC2")?.byte); // new pages
+    script.push(op::LDLOC1);
+    script.push(op::LDLOC0);
+    script.push(op::ADD);
+    script.push(op::DUP);
+    script.push(op::STLOC2); // new pages
 
-    script.push(lookup_opcode("LDLOC2")?.byte); // new pages
-    script.push(lookup_opcode("LDSFLD3")?.byte); // maximum
-    script.push(lookup_opcode("DUP")?.byte);
-    script.push(lookup_opcode("PUSHM1")?.byte);
-    script.push(lookup_opcode("EQUAL")?.byte);
+    script.push(op::LDLOC2); // new pages
+    script.push(op::LDSFLD3); // maximum
+    script.push(op::DUP);
+    script.push(op::PUSHM1);
+    script.push(op::EQUAL);
     let skip_limit = emit_jump_placeholder(script, "JMPIF_L")?;
 
-    script.push(lookup_opcode("GT")?.byte);
+    script.push(op::GT);
     let fail_on_max = emit_jump_placeholder(script, "JMPIF_L")?;
     let after_normal = emit_jump_placeholder(script, "JMP_L")?;
 
     let skip_limit_label = script.len();
-    script.push(lookup_opcode("DROP")?.byte); // drop max when unlimited
-    script.push(lookup_opcode("DROP")?.byte); // drop duplicated new_pages to normalise stack
+    script.push(op::DROP); // drop max when unlimited
+    script.push(op::DROP); // drop duplicated new_pages to normalise stack
 
     let after_limit = script.len();
     patch_jump(script, skip_limit, skip_limit_label)?;
     patch_jump(script, after_normal, after_limit)?;
 
-    script.push(lookup_opcode("LDLOC2")?.byte);
+    script.push(op::LDLOC2);
     let _ = emit_push_int(script, 16);
-    script.push(lookup_opcode("SHL")?.byte); // new byte length
-    script.push(lookup_opcode("DUP")?.byte);
-    script.push(lookup_opcode("NEWBUFFER")?.byte);
-    script.push(lookup_opcode("DUP")?.byte);
-    script.push(lookup_opcode("PUSH0")?.byte);
-    script.push(lookup_opcode("LDSFLD0")?.byte);
-    script.push(lookup_opcode("PUSH0")?.byte);
-    script.push(lookup_opcode("LDSFLD1")?.byte);
-    script.push(lookup_opcode("MEMCPY")?.byte);
+    script.push(op::SHL); // new byte length
+    script.push(op::DUP);
+    script.push(op::NEWBUFFER);
+    script.push(op::DUP);
+    script.push(op::PUSH0);
+    script.push(op::LDSFLD0);
+    script.push(op::PUSH0);
+    script.push(op::LDSFLD1);
+    script.push(op::MEMCPY);
 
-    script.push(lookup_opcode("STSFLD0")?.byte); // buffer
-    script.push(lookup_opcode("STSFLD1")?.byte); // byte length
-    script.push(lookup_opcode("LDLOC2")?.byte);
-    script.push(lookup_opcode("STSFLD2")?.byte); // page count
-    script.push(lookup_opcode("LDLOC1")?.byte); // return old pages
+    script.push(op::STSFLD0); // buffer
+    script.push(op::STSFLD1); // byte length
+    script.push(op::LDLOC2);
+    script.push(op::STSFLD2); // page count
+    script.push(op::LDLOC1); // return old pages
     script.push(RET);
 
     let zero_label = script.len();
-    script.push(lookup_opcode("DROP")?.byte);
-    script.push(lookup_opcode("LDSFLD2")?.byte);
+    script.push(op::DROP);
+    script.push(op::LDSFLD2);
     script.push(RET);
 
     let fail_label = script.len();
-    script.push(lookup_opcode("PUSHM1")?.byte);
+    script.push(op::PUSHM1);
     script.push(RET);
 
     patch_jump(script, zero_branch, zero_label)?;
@@ -91,87 +91,87 @@ pub(in crate::translator::runtime) fn emit_chunked_memory_grow_helper(
 ) -> Result<()> {
     let mask = (1u128 << 32) - 1;
     let _ = emit_push_int(script, mask as i128);
-    script.push(lookup_opcode("AND")?.byte);
+    script.push(op::AND);
 
-    script.push(lookup_opcode("DUP")?.byte);
-    script.push(lookup_opcode("PUSH0")?.byte);
-    script.push(lookup_opcode("EQUAL")?.byte);
+    script.push(op::DUP);
+    script.push(op::PUSH0);
+    script.push(op::EQUAL);
     let zero_branch = emit_jump_placeholder(script, "JMPIF_L")?;
 
-    script.push(lookup_opcode("INITSLOT")?.byte);
+    script.push(op::INITSLOT);
     script.push(4);
     script.push(0);
 
-    script.push(lookup_opcode("STLOC0")?.byte); // delta pages
+    script.push(op::STLOC0); // delta pages
 
-    script.push(lookup_opcode("LDSFLD2")?.byte); // current pages
-    script.push(lookup_opcode("DUP")?.byte);
-    script.push(lookup_opcode("STLOC1")?.byte); // save for return
+    script.push(op::LDSFLD2); // current pages
+    script.push(op::DUP);
+    script.push(op::STLOC1); // save for return
 
-    script.push(lookup_opcode("LDLOC1")?.byte);
-    script.push(lookup_opcode("LDLOC0")?.byte);
-    script.push(lookup_opcode("ADD")?.byte);
-    script.push(lookup_opcode("DUP")?.byte);
-    script.push(lookup_opcode("STLOC2")?.byte); // new pages
+    script.push(op::LDLOC1);
+    script.push(op::LDLOC0);
+    script.push(op::ADD);
+    script.push(op::DUP);
+    script.push(op::STLOC2); // new pages
 
-    script.push(lookup_opcode("LDLOC2")?.byte); // new pages
-    script.push(lookup_opcode("LDSFLD3")?.byte); // maximum
-    script.push(lookup_opcode("DUP")?.byte);
-    script.push(lookup_opcode("PUSHM1")?.byte);
-    script.push(lookup_opcode("EQUAL")?.byte);
+    script.push(op::LDLOC2); // new pages
+    script.push(op::LDSFLD3); // maximum
+    script.push(op::DUP);
+    script.push(op::PUSHM1);
+    script.push(op::EQUAL);
     let skip_limit = emit_jump_placeholder(script, "JMPIF_L")?;
 
-    script.push(lookup_opcode("GT")?.byte);
+    script.push(op::GT);
     let fail_on_max = emit_jump_placeholder(script, "JMPIF_L")?;
     let after_normal = emit_jump_placeholder(script, "JMP_L")?;
 
     let skip_limit_label = script.len();
-    script.push(lookup_opcode("DROP")?.byte);
-    script.push(lookup_opcode("DROP")?.byte);
+    script.push(op::DROP);
+    script.push(op::DROP);
 
     let after_limit = script.len();
     patch_jump(script, skip_limit, skip_limit_label)?;
     patch_jump(script, after_normal, after_limit)?;
 
-    script.push(lookup_opcode("LDLOC0")?.byte);
-    script.push(lookup_opcode("STLOC3")?.byte); // remaining pages to append
+    script.push(op::LDLOC0);
+    script.push(op::STLOC3); // remaining pages to append
 
     let grow_loop = script.len();
-    script.push(lookup_opcode("LDLOC3")?.byte);
-    script.push(lookup_opcode("PUSH0")?.byte);
-    script.push(lookup_opcode("EQUAL")?.byte);
+    script.push(op::LDLOC3);
+    script.push(op::PUSH0);
+    script.push(op::EQUAL);
     let grow_exit = emit_jump_placeholder(script, "JMPIF_L")?;
 
-    script.push(lookup_opcode("LDSFLD0")?.byte);
-    script.push(lookup_opcode("DUP")?.byte);
+    script.push(op::LDSFLD0);
+    script.push(op::DUP);
     emit_chunked_new_page(script)?;
-    script.push(lookup_opcode("APPEND")?.byte);
-    script.push(lookup_opcode("STSFLD0")?.byte);
+    script.push(op::APPEND);
+    script.push(op::STSFLD0);
 
-    script.push(lookup_opcode("LDLOC3")?.byte);
-    script.push(lookup_opcode("DEC")?.byte);
-    script.push(lookup_opcode("STLOC3")?.byte);
+    script.push(op::LDLOC3);
+    script.push(op::DEC);
+    script.push(op::STLOC3);
     let grow_back = emit_jump_placeholder(script, "JMP_L")?;
 
     let grow_exit_label = script.len();
-    script.push(lookup_opcode("LDLOC2")?.byte);
+    script.push(op::LDLOC2);
     let _ = emit_push_int(script, WASM_MEMORY_PAGE_BYTES);
-    script.push(lookup_opcode("MUL")?.byte);
-    script.push(lookup_opcode("STSFLD1")?.byte);
-    script.push(lookup_opcode("LDLOC2")?.byte);
-    script.push(lookup_opcode("STSFLD2")?.byte);
-    script.push(lookup_opcode("LDLOC1")?.byte);
+    script.push(op::MUL);
+    script.push(op::STSFLD1);
+    script.push(op::LDLOC2);
+    script.push(op::STSFLD2);
+    script.push(op::LDLOC1);
     script.push(RET);
     patch_jump(script, grow_exit, grow_exit_label)?;
     patch_jump(script, grow_back, grow_loop)?;
 
     let zero_label = script.len();
-    script.push(lookup_opcode("DROP")?.byte);
-    script.push(lookup_opcode("LDSFLD2")?.byte);
+    script.push(op::DROP);
+    script.push(op::LDSFLD2);
     script.push(RET);
 
     let fail_label = script.len();
-    script.push(lookup_opcode("PUSHM1")?.byte);
+    script.push(op::PUSHM1);
     script.push(RET);
 
     patch_jump(script, zero_branch, zero_label)?;

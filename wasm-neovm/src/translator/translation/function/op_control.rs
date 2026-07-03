@@ -175,7 +175,7 @@ pub(super) fn try_handle(
                 // of failing — the optimizer proved they are not observably
                 // needed (or the end is in a quasi-reachable context).
                 while value_stack.len() < target_height {
-                    script.push(lookup_opcode("PUSH0")?.byte);
+                    script.push(op::PUSH0);
                     value_stack.push(StackValue::unknown());
                 }
             }

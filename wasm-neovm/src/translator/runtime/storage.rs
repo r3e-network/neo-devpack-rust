@@ -133,30 +133,30 @@ fn emit_extract_memory_bytes(
     tmp_local: u8,
 ) -> Result<()> {
     if !chunked {
-        script.push(lookup_opcode("LDSFLD0")?.byte);
+        script.push(op::LDSFLD0);
         emit_load_arg(script, ptr_arg)?;
         emit_load_arg(script, len_arg)?;
-        script.push(lookup_opcode("SUBSTR")?.byte);
+        script.push(op::SUBSTR);
         return Ok(());
     }
 
     emit_load_arg(script, len_arg)?;
-    script.push(lookup_opcode("NEWBUFFER")?.byte);
+    script.push(op::NEWBUFFER);
     emit_store_local(script, acc_local)?;
 
-    script.push(lookup_opcode("PUSH0")?.byte);
+    script.push(op::PUSH0);
     emit_store_local(script, idx_local)?;
 
     let loop_start = script.len();
     emit_load_local(script, idx_local)?;
     emit_load_arg(script, len_arg)?;
-    script.push(lookup_opcode("EQUAL")?.byte);
+    script.push(op::EQUAL);
     let exit_jump = emit_jump_placeholder(script, "JMPIF_L")?;
 
     // tmp_local <- ptr + idx
     emit_load_arg(script, ptr_arg)?;
     emit_load_local(script, idx_local)?;
-    script.push(lookup_opcode("ADD")?.byte);
+    script.push(op::ADD);
     emit_store_local(script, tmp_local)?;
 
     emit_chunked_load_byte_at_local(script, tmp_local)?;
@@ -165,10 +165,10 @@ fn emit_extract_memory_bytes(
     emit_load_local(script, acc_local)?;
     emit_load_local(script, idx_local)?;
     emit_load_local(script, tmp_local)?;
-    script.push(lookup_opcode("SETITEM")?.byte);
+    script.push(op::SETITEM);
 
     emit_load_local(script, idx_local)?;
-    script.push(lookup_opcode("INC")?.byte);
+    script.push(op::INC);
     emit_store_local(script, idx_local)?;
     let back_jump = emit_jump_placeholder(script, "JMP_L")?;
 
@@ -205,18 +205,18 @@ fn emit_write_value_to_memory(
 ) -> Result<()> {
     if !chunked {
         // Stack at entry: [value]
-        script.push(lookup_opcode("LDSFLD0")?.byte); // [value, mem]
-        script.push(lookup_opcode("SWAP")?.byte); // [mem, value]
+        script.push(op::LDSFLD0); // [value, mem]
+        script.push(op::SWAP); // [mem, value]
         emit_load_arg(script, out_ptr_arg)?; // [mem, value, out_ptr]
-        script.push(lookup_opcode("SWAP")?.byte); // [mem, out_ptr, value]
-        script.push(lookup_opcode("PUSH0")?.byte); // [mem, out_ptr, value, 0]
+        script.push(op::SWAP); // [mem, out_ptr, value]
+        script.push(op::PUSH0); // [mem, out_ptr, value, 0]
         emit_load_local(script, length_local)?; // [mem, out_ptr, value, 0, length]
-        script.push(lookup_opcode("MEMCPY")?.byte);
+        script.push(op::MEMCPY);
         return Ok(());
     }
 
     emit_store_local(script, value_local)?; // value out of the stack into a local
-    script.push(lookup_opcode("PUSH0")?.byte);
+    script.push(op::PUSH0);
     emit_store_local(script, idx_local)?; // idx = 0
 
     let byte_local = tmp_local
@@ -226,25 +226,25 @@ fn emit_write_value_to_memory(
     let loop_start = script.len();
     emit_load_local(script, idx_local)?;
     emit_load_local(script, length_local)?;
-    script.push(lookup_opcode("EQUAL")?.byte);
+    script.push(op::EQUAL);
     let exit_jump = emit_jump_placeholder(script, "JMPIF_L")?;
 
     // tmp_local = out_ptr + idx (absolute wasm address for this byte).
     emit_load_arg(script, out_ptr_arg)?;
     emit_load_local(script, idx_local)?;
-    script.push(lookup_opcode("ADD")?.byte);
+    script.push(op::ADD);
     emit_store_local(script, tmp_local)?;
 
     // byte_local = value[idx].
     emit_load_local(script, value_local)?;
     emit_load_local(script, idx_local)?;
-    script.push(lookup_opcode("PICKITEM")?.byte);
+    script.push(op::PICKITEM);
     emit_store_local(script, byte_local)?;
 
     emit_chunked_store_byte_at_local(script, tmp_local, byte_local)?;
 
     emit_load_local(script, idx_local)?;
-    script.push(lookup_opcode("INC")?.byte);
+    script.push(op::INC);
     emit_store_local(script, idx_local)?;
     let back_jump = emit_jump_placeholder(script, "JMP_L")?;
 
@@ -288,7 +288,7 @@ pub(in crate::translator::runtime) fn emit_storage_put_helper(
     chunked: bool,
 ) -> Result<()> {
     let local_count = if chunked { 3 } else { 0 };
-    script.push(lookup_opcode("INITSLOT")?.byte);
+    script.push(op::INITSLOT);
     script.push(local_count);
     script.push(4); // 4 args
 
@@ -296,7 +296,7 @@ pub(in crate::translator::runtime) fn emit_storage_put_helper(
     emit_extract_memory_bytes(script, 3, 2, chunked, 0, 1, 2)?; // key   (ARG3=ptr, ARG2=len)
     emit_storage_syscall(script, "System.Storage.GetContext")?; // ctx (top)
     emit_storage_syscall(script, "System.Storage.Put")?;
-    script.push(lookup_opcode("RET")?.byte);
+    script.push(op::RET);
     Ok(())
 }
 
@@ -330,12 +330,12 @@ pub(in crate::translator::runtime) fn emit_extract_memory_bytes_helper(
     // for byte address+value), matching the convention used by the storage
     // helpers. Compact mode needs none.
     let local_count = if chunked { 3 } else { 0 };
-    script.push(lookup_opcode("INITSLOT")?.byte);
+    script.push(op::INITSLOT);
     script.push(local_count);
     script.push(2); // 2 args: ptr, len
 
     emit_extract_memory_bytes(script, 1, 0, chunked, 0, 1, 2)?; // ARG1=ptr, ARG0=len
-    script.push(lookup_opcode("RET")?.byte);
+    script.push(op::RET);
     Ok(())
 }
 
@@ -347,7 +347,7 @@ pub(in crate::translator::runtime) fn emit_storage_delete_helper(
     chunked: bool,
 ) -> Result<()> {
     let local_count = if chunked { 3 } else { 0 };
-    script.push(lookup_opcode("INITSLOT")?.byte);
+    script.push(op::INITSLOT);
     script.push(local_count);
     script.push(2); // 2 args
 
@@ -355,7 +355,7 @@ pub(in crate::translator::runtime) fn emit_storage_delete_helper(
     emit_extract_memory_bytes(script, 1, 0, chunked, 0, 1, 2)?; // key (ARG1=ptr, ARG0=len)
     emit_storage_syscall(script, "System.Storage.GetContext")?; // ctx (top)
     emit_storage_syscall(script, "System.Storage.Delete")?;
-    script.push(lookup_opcode("RET")?.byte);
+    script.push(op::RET);
     Ok(())
 }
 
@@ -385,7 +385,7 @@ pub(in crate::translator::runtime) fn emit_storage_get_helper(
     // buffer/index/addr/byte (see emit_extract_memory_bytes /
     // emit_write_value_to_memory comments).
     let local_count = if chunked { 5 } else { 1 };
-    script.push(lookup_opcode("INITSLOT")?.byte);
+    script.push(op::INITSLOT);
     script.push(local_count);
     script.push(4); // 4 args: key_ptr, key_len, out_ptr, out_cap
 
@@ -395,37 +395,37 @@ pub(in crate::translator::runtime) fn emit_storage_get_helper(
     emit_storage_syscall(script, "System.Storage.Get")?;
     // Stack: [value-or-null]
 
-    script.push(lookup_opcode("DUP")?.byte);
-    script.push(lookup_opcode("ISNULL")?.byte);
+    script.push(op::DUP);
+    script.push(op::ISNULL);
     let jump_not_found = emit_jump_placeholder(script, "JMPIF_L")?;
     // Fallthrough stack (value not null): [value]
 
-    script.push(lookup_opcode("DUP")?.byte);
-    script.push(lookup_opcode("SIZE")?.byte);
-    script.push(lookup_opcode("DUP")?.byte);
-    script.push(lookup_opcode("STLOC0")?.byte);
+    script.push(op::DUP);
+    script.push(op::SIZE);
+    script.push(op::DUP);
+    script.push(op::STLOC0);
     emit_load_arg(script, 0)?; // out_cap (ARG0)
-    script.push(lookup_opcode("GT")?.byte);
+    script.push(op::GT);
     let jump_too_small = emit_jump_placeholder(script, "JMPIF_L")?;
     // Fallthrough stack: [value]
 
     emit_write_value_to_memory(script, 1, 0, chunked, 1, 2, 3)?; // out_ptr=ARG1, length cached in LOC0
 
-    script.push(lookup_opcode("LDLOC0")?.byte);
-    script.push(lookup_opcode("RET")?.byte);
+    script.push(op::LDLOC0);
+    script.push(op::RET);
 
     let not_found_label = script.len();
     // Stack at entry: [null]
-    script.push(lookup_opcode("DROP")?.byte);
+    script.push(op::DROP);
     let _ = emit_push_int(script, -1);
-    script.push(lookup_opcode("RET")?.byte);
+    script.push(op::RET);
 
     let too_small_label = script.len();
     // Stack at entry: [value]
-    script.push(lookup_opcode("DROP")?.byte);
-    script.push(lookup_opcode("LDLOC0")?.byte);
-    script.push(lookup_opcode("NEGATE")?.byte);
-    script.push(lookup_opcode("RET")?.byte);
+    script.push(op::DROP);
+    script.push(op::LDLOC0);
+    script.push(op::NEGATE);
+    script.push(op::RET);
 
     patch_jump(script, jump_not_found, not_found_label)?;
     patch_jump(script, jump_too_small, too_small_label)?;
@@ -450,16 +450,16 @@ pub(in crate::translator::runtime) fn emit_storage_find_helper(
     iterator_slot: usize,
 ) -> Result<()> {
     let local_count = if chunked { 3 } else { 0 };
-    script.push(lookup_opcode("INITSLOT")?.byte);
+    script.push(op::INITSLOT);
     script.push(local_count);
     script.push(2); // 2 args: prefix_ptr, prefix_len
 
-    script.push(lookup_opcode("PUSH0")?.byte); // FindOptions.None
+    script.push(op::PUSH0); // FindOptions.None
     emit_extract_memory_bytes(script, 1, 0, chunked, 0, 1, 2)?; // prefix (ARG1=ptr, ARG0=len)
     emit_storage_syscall(script, "System.Storage.GetContext")?; // ctx (top)
     emit_storage_syscall(script, "System.Storage.Find")?;
     emit_store_static(script, iterator_slot)?;
-    script.push(lookup_opcode("RET")?.byte);
+    script.push(op::RET);
     Ok(())
 }
 
@@ -472,7 +472,7 @@ pub(in crate::translator::runtime) fn emit_iterator_next_helper(
 ) -> Result<()> {
     emit_load_static(script, iterator_slot)?;
     emit_storage_syscall(script, "System.Iterator.Next")?;
-    script.push(lookup_opcode("RET")?.byte);
+    script.push(op::RET);
     Ok(())
 }
 
@@ -502,7 +502,7 @@ pub(in crate::translator::runtime) fn emit_iterator_value_helper(
     iterator_slot: usize,
 ) -> Result<()> {
     let local_count = if chunked { 5 } else { 1 };
-    script.push(lookup_opcode("INITSLOT")?.byte);
+    script.push(op::INITSLOT);
     script.push(local_count);
     script.push(2); // 2 args: out_ptr, out_cap
 
@@ -510,46 +510,46 @@ pub(in crate::translator::runtime) fn emit_iterator_value_helper(
     emit_storage_syscall(script, "System.Iterator.Value")?;
     // Stack: [Struct{key,value}] — UNPACK pushes value then key then count,
     // leaving (count, key, value) top-first.
-    script.push(lookup_opcode("UNPACK")?.byte);
-    script.push(lookup_opcode("DROP")?.byte); // [key, value]
+    script.push(op::UNPACK);
+    script.push(op::DROP); // [key, value]
 
     // 4-byte LE key length header.
-    script.push(lookup_opcode("DUP")?.byte);
-    script.push(lookup_opcode("SIZE")?.byte); // [key_len, key, value]
+    script.push(op::DUP);
+    script.push(op::SIZE); // [key_len, key, value]
     emit_convert(script, STACKITEM_TYPE_BYTESTRING)?; // [len_bs, key, value]
     emit_push_data(script, &[0u8; 4])?; // [zeros, len_bs, key, value]
-    script.push(lookup_opcode("CAT")?.byte); // [len_bs||zeros, key, value]
-    script.push(lookup_opcode("PUSH0")?.byte);
-    script.push(lookup_opcode("PUSH4")?.byte);
-    script.push(lookup_opcode("SUBSTR")?.byte); // [len4, key, value]
+    script.push(op::CAT); // [len_bs||zeros, key, value]
+    script.push(op::PUSH0);
+    script.push(op::PUSH4);
+    script.push(op::SUBSTR); // [len4, key, value]
 
     // payload = len4 || key || value (CAT pops the TOP as the second part).
-    script.push(lookup_opcode("SWAP")?.byte); // [key, len4, value]
-    script.push(lookup_opcode("CAT")?.byte); // [len4||key, value]
-    script.push(lookup_opcode("SWAP")?.byte); // [value, len4||key]
-    script.push(lookup_opcode("CAT")?.byte); // [payload]
+    script.push(op::SWAP); // [key, len4, value]
+    script.push(op::CAT); // [len4||key, value]
+    script.push(op::SWAP); // [value, len4||key]
+    script.push(op::CAT); // [payload]
 
     // GetInto-style epilogue: cache length, bounds-check, write back.
-    script.push(lookup_opcode("DUP")?.byte);
-    script.push(lookup_opcode("SIZE")?.byte);
-    script.push(lookup_opcode("DUP")?.byte);
-    script.push(lookup_opcode("STLOC0")?.byte);
+    script.push(op::DUP);
+    script.push(op::SIZE);
+    script.push(op::DUP);
+    script.push(op::STLOC0);
     emit_load_arg(script, 0)?; // out_cap (ARG0)
-    script.push(lookup_opcode("GT")?.byte);
+    script.push(op::GT);
     let jump_too_small = emit_jump_placeholder(script, "JMPIF_L")?;
     // Fallthrough stack: [payload]
 
     emit_write_value_to_memory(script, 1, 0, chunked, 1, 2, 3)?; // out_ptr=ARG1, length in LOC0
 
-    script.push(lookup_opcode("LDLOC0")?.byte);
-    script.push(lookup_opcode("RET")?.byte);
+    script.push(op::LDLOC0);
+    script.push(op::RET);
 
     let too_small_label = script.len();
     // Stack at entry: [payload]
-    script.push(lookup_opcode("DROP")?.byte);
-    script.push(lookup_opcode("LDLOC0")?.byte);
-    script.push(lookup_opcode("NEGATE")?.byte);
-    script.push(lookup_opcode("RET")?.byte);
+    script.push(op::DROP);
+    script.push(op::LDLOC0);
+    script.push(op::NEGATE);
+    script.push(op::RET);
 
     patch_jump(script, jump_too_small, too_small_label)?;
     Ok(())
@@ -558,7 +558,7 @@ pub(in crate::translator::runtime) fn emit_iterator_value_helper(
 pub(in crate::translator::runtime) fn emit_storage_put_i64_helper(
     script: &mut Vec<u8>,
 ) -> Result<()> {
-    script.push(lookup_opcode("INITSLOT")?.byte);
+    script.push(op::INITSLOT);
     script.push(0);
     script.push(2); // ARG0=value, ARG1=key
 
@@ -566,21 +566,21 @@ pub(in crate::translator::runtime) fn emit_storage_put_i64_helper(
     emit_convert(script, STACKITEM_TYPE_BYTESTRING)?;
     emit_i64_key_and_context_from_arg(script, 1)?;
     emit_storage_syscall(script, "System.Storage.Put")?;
-    script.push(lookup_opcode("RET")?.byte);
+    script.push(op::RET);
     Ok(())
 }
 
 pub(in crate::translator::runtime) fn emit_storage_get_i64_helper(
     script: &mut Vec<u8>,
 ) -> Result<()> {
-    script.push(lookup_opcode("INITSLOT")?.byte);
+    script.push(op::INITSLOT);
     script.push(0);
     script.push(1); // ARG0=key
 
     emit_i64_key_and_context_from_arg(script, 0)?;
     emit_storage_syscall(script, "System.Storage.Get")?;
-    script.push(lookup_opcode("DUP")?.byte);
-    script.push(lookup_opcode("ISNULL")?.byte);
+    script.push(op::DUP);
+    script.push(op::ISNULL);
     let jump_missing = emit_jump_placeholder(script, "JMPIF_L")?;
     // A present-but-empty ByteString is NeoVM's encoding of integer 0
     // (Storage.Put serialises 0 to zero-length bytes). Treat empty as 0 — the
@@ -588,16 +588,16 @@ pub(in crate::translator::runtime) fn emit_storage_get_i64_helper(
     // rather than CONVERTing empty bytes to Integer. The reference C# VM maps
     // CONVERT(empty->Integer) to 0, but neo-go rejects it ("nil slice provided
     // to FromBytes"), so a round-tripped stored 0 would fault on neo-go nodes.
-    script.push(lookup_opcode("DUP")?.byte);
-    script.push(lookup_opcode("SIZE")?.byte);
+    script.push(op::DUP);
+    script.push(op::SIZE);
     let jump_empty = emit_jump_placeholder(script, "JMPIFNOT_L")?;
     emit_convert(script, STACKITEM_TYPE_INTEGER)?;
-    script.push(lookup_opcode("RET")?.byte);
+    script.push(op::RET);
 
     let missing_label = script.len();
-    script.push(lookup_opcode("DROP")?.byte);
+    script.push(op::DROP);
     let _ = emit_push_int(script, 0);
-    script.push(lookup_opcode("RET")?.byte);
+    script.push(op::RET);
 
     patch_jump(script, jump_missing, missing_label)?;
     patch_jump(script, jump_empty, missing_label)?;
@@ -607,24 +607,24 @@ pub(in crate::translator::runtime) fn emit_storage_get_i64_helper(
 pub(in crate::translator::runtime) fn emit_storage_has_i64_helper(
     script: &mut Vec<u8>,
 ) -> Result<()> {
-    script.push(lookup_opcode("INITSLOT")?.byte);
+    script.push(op::INITSLOT);
     script.push(0);
     script.push(1); // ARG0=key
 
     emit_i64_key_and_context_from_arg(script, 0)?;
     emit_storage_syscall(script, "System.Storage.Get")?;
-    script.push(lookup_opcode("DUP")?.byte);
-    script.push(lookup_opcode("ISNULL")?.byte);
+    script.push(op::DUP);
+    script.push(op::ISNULL);
     let jump_missing = emit_jump_placeholder(script, "JMPIF_L")?;
-    script.push(lookup_opcode("SIZE")?.byte);
-    script.push(lookup_opcode("PUSH0")?.byte);
-    script.push(lookup_opcode("GT")?.byte);
-    script.push(lookup_opcode("RET")?.byte);
+    script.push(op::SIZE);
+    script.push(op::PUSH0);
+    script.push(op::GT);
+    script.push(op::RET);
 
     let missing_label = script.len();
-    script.push(lookup_opcode("DROP")?.byte);
+    script.push(op::DROP);
     let _ = emit_push_int(script, 0);
-    script.push(lookup_opcode("RET")?.byte);
+    script.push(op::RET);
 
     patch_jump(script, jump_missing, missing_label)?;
     Ok(())
@@ -633,12 +633,12 @@ pub(in crate::translator::runtime) fn emit_storage_has_i64_helper(
 pub(in crate::translator::runtime) fn emit_storage_delete_i64_helper(
     script: &mut Vec<u8>,
 ) -> Result<()> {
-    script.push(lookup_opcode("INITSLOT")?.byte);
+    script.push(op::INITSLOT);
     script.push(0);
     script.push(1); // ARG0=key
 
     emit_i64_key_and_context_from_arg(script, 0)?;
     emit_storage_syscall(script, "System.Storage.Delete")?;
-    script.push(lookup_opcode("RET")?.byte);
+    script.push(op::RET);
     Ok(())
 }

@@ -174,7 +174,7 @@ pub(super) fn handle_branch(
                     );
                 }
                 while value_stack.len() < needed {
-                    script.push(lookup_opcode("PUSH0")?.byte);
+                    script.push(op::PUSH0);
                     value_stack.push(StackValue::unknown());
                 }
             }
@@ -186,7 +186,7 @@ pub(super) fn handle_branch(
             let discard = value_stack.len() - needed;
             for _ in 0..discard {
                 let _ = emit_push_int(script, keep_top as i128);
-                script.push(lookup_opcode("XDROP")?.byte);
+                script.push(op::XDROP);
                 // Remove the topmost buried entry from the abstract stack
                 // (the item just beneath the preserved top `keep_top`).
                 value_stack.remove(value_stack.len() - 1 - keep_top);
@@ -262,11 +262,11 @@ pub(super) fn handle_branch(
     // --- taken path ---
     // Pad missing top operands (wasm-opt edge case), then discard buried values.
     for _ in 0..pad {
-        script.push(lookup_opcode("PUSH0")?.byte);
+        script.push(op::PUSH0);
     }
     for _ in 0..discard {
         let _ = emit_push_int(script, keep_top as i128);
-        script.push(lookup_opcode("XDROP")?.byte);
+        script.push(op::XDROP);
     }
     let target_fixup = emit_jump_placeholder(script, "JMP_L")?;
     frame.end_fixups.push(target_fixup);
@@ -294,7 +294,7 @@ pub(super) fn handle_br_table(
             // Do not rewind script bytes here; it can invalidate pending
             // jump/call fixups tracked in surrounding control frames.
         }
-        script.push(lookup_opcode("DROP")?.byte);
+        script.push(op::DROP);
         let idx = if const_idx < 0 || const_idx > usize::MAX as i128 {
             usize::MAX
         } else {
@@ -330,14 +330,14 @@ fn emit_br_table_dynamic(
     default_depth: usize,
     is_unreachable: &mut bool,
 ) -> Result<()> {
-    let dup = lookup_opcode("DUP")?.byte;
+    let dup = op::DUP;
     // NUMEQUAL, not type-strict EQUAL: the br_table selector is a wasm i32 that
     // may be a NeoVM Boolean (e.g. `match (a < b) as u32 { .. }`). EQUAL would
     // compare Boolean(0/1) against the Integer case labels by type and never
     // match; NUMEQUAL coerces both to BigInteger. Selector is always numeric,
     // so this is safe. (Same class as the eqz/eq/ne type-strict-EQUAL fix.)
-    let equal = lookup_opcode("NUMEQUAL")?.byte;
-    let drop = lookup_opcode("DROP")?.byte;
+    let equal = op::NUMEQUAL;
+    let drop = op::DROP;
 
     let mut case_fixups: Vec<(usize, usize)> = Vec::with_capacity(targets.len());
 

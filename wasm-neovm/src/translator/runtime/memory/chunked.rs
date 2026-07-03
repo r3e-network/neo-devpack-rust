@@ -24,15 +24,15 @@ pub(in crate::translator::runtime) fn emit_chunked_load_byte_at_local(
     script: &mut Vec<u8>,
     address_local: u8,
 ) -> Result<()> {
-    script.push(lookup_opcode("LDSFLD0")?.byte);
+    script.push(op::LDSFLD0);
     emit_ldloc(script, address_local)?;
     let _ = emit_push_int(script, WASM_MEMORY_PAGE_BYTES);
-    script.push(lookup_opcode("DIV")?.byte);
-    script.push(lookup_opcode("PICKITEM")?.byte);
+    script.push(op::DIV);
+    script.push(op::PICKITEM);
     emit_ldloc(script, address_local)?;
     let _ = emit_push_int(script, WASM_MEMORY_PAGE_BYTES);
-    script.push(lookup_opcode("MOD")?.byte);
-    script.push(lookup_opcode("PICKITEM")?.byte);
+    script.push(op::MOD);
+    script.push(op::PICKITEM);
     Ok(())
 }
 
@@ -41,22 +41,22 @@ pub(in crate::translator::runtime) fn emit_chunked_store_byte_at_local(
     address_local: u8,
     value_local: u8,
 ) -> Result<()> {
-    script.push(lookup_opcode("LDSFLD0")?.byte);
+    script.push(op::LDSFLD0);
     emit_ldloc(script, address_local)?;
     let _ = emit_push_int(script, WASM_MEMORY_PAGE_BYTES);
-    script.push(lookup_opcode("DIV")?.byte);
-    script.push(lookup_opcode("PICKITEM")?.byte);
+    script.push(op::DIV);
+    script.push(op::PICKITEM);
     emit_ldloc(script, address_local)?;
     let _ = emit_push_int(script, WASM_MEMORY_PAGE_BYTES);
-    script.push(lookup_opcode("MOD")?.byte);
+    script.push(op::MOD);
     emit_ldloc(script, value_local)?;
-    script.push(lookup_opcode("SETITEM")?.byte);
+    script.push(op::SETITEM);
     Ok(())
 }
 
 pub(in crate::translator::runtime) fn emit_chunked_new_page(script: &mut Vec<u8>) -> Result<()> {
     let _ = emit_push_int(script, WASM_MEMORY_PAGE_BYTES);
-    script.push(lookup_opcode("NEWBUFFER")?.byte);
+    script.push(op::NEWBUFFER);
     Ok(())
 }
 
@@ -73,14 +73,14 @@ pub(in crate::translator::runtime) fn emit_chunked_copy_literal_to_memory(
         let chunk_len = page_remaining.min(bytes.len() - copied);
         let page_index = absolute / WASM_MEMORY_PAGE_BYTES as usize;
 
-        script.push(lookup_opcode("LDSFLD0")?.byte);
+        script.push(op::LDSFLD0);
         let _ = emit_push_int(script, page_index as i128);
-        script.push(lookup_opcode("PICKITEM")?.byte);
+        script.push(op::PICKITEM);
         let _ = emit_push_int(script, page_offset as i128);
         emit_push_data(script, &bytes[copied..copied + chunk_len])?;
-        script.push(lookup_opcode("PUSH0")?.byte);
+        script.push(op::PUSH0);
         let _ = emit_push_int(script, chunk_len as i128);
-        script.push(lookup_opcode("MEMCPY")?.byte);
+        script.push(op::MEMCPY);
 
         copied += chunk_len;
     }

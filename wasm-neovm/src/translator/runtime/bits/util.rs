@@ -49,16 +49,16 @@ pub(super) fn mask_top_bits(script: &mut Vec<u8>, bits: u32) -> Result<()> {
     if (9..=127).contains(&bits) {
         let _ = emit_push_int(script, 1);
         let _ = emit_push_int(script, bits as i128);
-        script.push(lookup_opcode("SHL")?.byte);
-        script.push(lookup_opcode("DEC")?.byte);
-        script.push(lookup_opcode("AND")?.byte);
+        script.push(op::SHL);
+        script.push(op::DEC);
+        script.push(op::AND);
         return Ok(());
     }
 
     // For other bit widths, use the pre-computed mask table
     let mask = MASKS[bits as usize];
     let _ = emit_push_int(script, mask);
-    script.push(lookup_opcode("AND")?.byte);
+    script.push(op::AND);
     Ok(())
 }
 
@@ -85,13 +85,13 @@ pub(super) fn emit_pow2(script: &mut Vec<u8>, bits: u32) -> Result<()> {
     if bits >= 8 {
         let _ = emit_push_int(script, 1);
         let _ = emit_push_int(script, bits as i128);
-        script.push(lookup_opcode("SHL")?.byte);
+        script.push(op::SHL);
     } else if bits <= 64 {
         let _ = emit_push_int(script, POW2_TABLE[bits as usize]);
     } else {
         let _ = emit_push_int(script, 1);
         let _ = emit_push_int(script, bits as i128);
-        script.push(lookup_opcode("SHL")?.byte);
+        script.push(op::SHL);
     }
     Ok(())
 }

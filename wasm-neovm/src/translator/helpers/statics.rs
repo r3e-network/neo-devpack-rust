@@ -3,7 +3,7 @@
 
 use anyhow::{bail, Result};
 
-use super::lookup_opcode;
+use super::{lookup_opcode, op};
 
 /// Emit a load from a static field slot.
 ///
@@ -23,7 +23,7 @@ pub(crate) fn emit_load_static(script: &mut Vec<u8>, slot: usize) -> Result<()> 
                 bail!("static field slot {} exceeds NeoVM maximum (255)", slot);
             }
             // For slots >= 7, use LDSFLD with explicit slot index
-            script.push(lookup_opcode("LDSFLD")?.byte);
+            script.push(op::LDSFLD);
             script.push(slot as u8);
             return Ok(());
         }
@@ -51,7 +51,7 @@ pub(crate) fn emit_store_static(script: &mut Vec<u8>, slot: usize) -> Result<()>
                 bail!("static field slot {} exceeds NeoVM maximum (255)", slot);
             }
             // For slots >= 7, use STSFLD with explicit slot index
-            script.push(lookup_opcode("STSFLD")?.byte);
+            script.push(op::STSFLD);
             script.push(slot as u8);
             return Ok(());
         }

@@ -9,112 +9,112 @@ pub(in super::super) fn emit_table_copy_helper(
     src_slot: usize,
     mask_u32_offset: Option<usize>,
 ) -> Result<()> {
-    script.push(lookup_opcode("INITSLOT")?.byte);
+    script.push(op::INITSLOT);
     script.push(7);
     script.push(0);
 
-    script.push(lookup_opcode("STLOC2")?.byte);
-    script.push(lookup_opcode("STLOC1")?.byte);
-    script.push(lookup_opcode("STLOC0")?.byte);
+    script.push(op::STLOC2);
+    script.push(op::STLOC1);
+    script.push(op::STLOC0);
     emit_load_static(script, dst_slot)?;
-    script.push(lookup_opcode("STLOC3")?.byte);
+    script.push(op::STLOC3);
     emit_load_static(script, src_slot)?;
-    script.push(lookup_opcode("STLOC4")?.byte);
-    script.push(lookup_opcode("NEWARRAY0")?.byte);
-    script.push(lookup_opcode("STLOC5")?.byte);
-    script.push(lookup_opcode("PUSH0")?.byte);
-    script.push(lookup_opcode("STLOC6")?.byte);
+    script.push(op::STLOC4);
+    script.push(op::NEWARRAY0);
+    script.push(op::STLOC5);
+    script.push(op::PUSH0);
+    script.push(op::STLOC6);
 
-    script.push(lookup_opcode("LDLOC2")?.byte);
+    script.push(op::LDLOC2);
     if let Some(off) = mask_u32_offset {
         emit_call_to(script, off)?;
     } else {
         emit_mask_u32(script)?;
     }
-    script.push(lookup_opcode("STLOC2")?.byte);
+    script.push(op::STLOC2);
 
-    script.push(lookup_opcode("LDLOC0")?.byte);
+    script.push(op::LDLOC0);
     if let Some(off) = mask_u32_offset {
         emit_call_to(script, off)?;
     } else {
         emit_mask_u32(script)?;
     }
-    script.push(lookup_opcode("STLOC0")?.byte);
+    script.push(op::STLOC0);
 
-    script.push(lookup_opcode("LDLOC1")?.byte);
+    script.push(op::LDLOC1);
     if let Some(off) = mask_u32_offset {
         emit_call_to(script, off)?;
     } else {
         emit_mask_u32(script)?;
     }
-    script.push(lookup_opcode("STLOC1")?.byte);
+    script.push(op::STLOC1);
 
-    script.push(lookup_opcode("LDLOC0")?.byte);
-    script.push(lookup_opcode("LDLOC2")?.byte);
-    script.push(lookup_opcode("ADD")?.byte);
-    script.push(lookup_opcode("LDLOC3")?.byte);
-    script.push(lookup_opcode("SIZE")?.byte);
-    script.push(lookup_opcode("GT")?.byte);
+    script.push(op::LDLOC0);
+    script.push(op::LDLOC2);
+    script.push(op::ADD);
+    script.push(op::LDLOC3);
+    script.push(op::SIZE);
+    script.push(op::GT);
     let trap_dst_oob = emit_jump_placeholder(script, "JMPIF_L")?;
 
-    script.push(lookup_opcode("LDLOC1")?.byte);
-    script.push(lookup_opcode("LDLOC2")?.byte);
-    script.push(lookup_opcode("ADD")?.byte);
-    script.push(lookup_opcode("LDLOC4")?.byte);
-    script.push(lookup_opcode("SIZE")?.byte);
-    script.push(lookup_opcode("GT")?.byte);
+    script.push(op::LDLOC1);
+    script.push(op::LDLOC2);
+    script.push(op::ADD);
+    script.push(op::LDLOC4);
+    script.push(op::SIZE);
+    script.push(op::GT);
     let trap_src_oob = emit_jump_placeholder(script, "JMPIF_L")?;
 
-    script.push(lookup_opcode("LDLOC2")?.byte);
-    script.push(lookup_opcode("PUSH0")?.byte);
-    script.push(lookup_opcode("EQUAL")?.byte);
+    script.push(op::LDLOC2);
+    script.push(op::PUSH0);
+    script.push(op::EQUAL);
     let zero_branch = emit_jump_placeholder(script, "JMPIF_L")?;
 
     let collect_start = script.len();
-    script.push(lookup_opcode("LDLOC6")?.byte);
-    script.push(lookup_opcode("LDLOC2")?.byte);
-    script.push(lookup_opcode("LT")?.byte);
+    script.push(op::LDLOC6);
+    script.push(op::LDLOC2);
+    script.push(op::LT);
     let collect_exit = emit_jump_placeholder(script, "JMPIFNOT_L")?;
 
-    script.push(lookup_opcode("LDLOC5")?.byte);
-    script.push(lookup_opcode("DUP")?.byte);
-    script.push(lookup_opcode("LDLOC4")?.byte);
-    script.push(lookup_opcode("LDLOC1")?.byte);
-    script.push(lookup_opcode("LDLOC6")?.byte);
-    script.push(lookup_opcode("ADD")?.byte);
-    script.push(lookup_opcode("PICKITEM")?.byte);
-    script.push(lookup_opcode("APPEND")?.byte);
-    script.push(lookup_opcode("STLOC5")?.byte);
+    script.push(op::LDLOC5);
+    script.push(op::DUP);
+    script.push(op::LDLOC4);
+    script.push(op::LDLOC1);
+    script.push(op::LDLOC6);
+    script.push(op::ADD);
+    script.push(op::PICKITEM);
+    script.push(op::APPEND);
+    script.push(op::STLOC5);
 
-    script.push(lookup_opcode("LDLOC6")?.byte);
-    script.push(lookup_opcode("INC")?.byte);
-    script.push(lookup_opcode("STLOC6")?.byte);
+    script.push(op::LDLOC6);
+    script.push(op::INC);
+    script.push(op::STLOC6);
     let collect_back = emit_jump_placeholder(script, "JMP_L")?;
     let collect_done = script.len();
     patch_jump(script, collect_exit, collect_done)?;
     patch_jump(script, collect_back, collect_start)?;
 
-    script.push(lookup_opcode("PUSH0")?.byte);
-    script.push(lookup_opcode("STLOC6")?.byte);
+    script.push(op::PUSH0);
+    script.push(op::STLOC6);
 
     let store_start = script.len();
-    script.push(lookup_opcode("LDLOC6")?.byte);
-    script.push(lookup_opcode("LDLOC2")?.byte);
-    script.push(lookup_opcode("LT")?.byte);
+    script.push(op::LDLOC6);
+    script.push(op::LDLOC2);
+    script.push(op::LT);
     let store_exit = emit_jump_placeholder(script, "JMPIFNOT_L")?;
 
-    script.push(lookup_opcode("LDLOC3")?.byte);
-    script.push(lookup_opcode("LDLOC0")?.byte);
-    script.push(lookup_opcode("LDLOC6")?.byte);
-    script.push(lookup_opcode("ADD")?.byte);
-    script.push(lookup_opcode("LDLOC5")?.byte);
-    script.push(lookup_opcode("LDLOC6")?.byte);
-    script.push(lookup_opcode("PICKITEM")?.byte);
-    script.push(lookup_opcode("SETITEM")?.byte);
+    script.push(op::LDLOC3);
+    script.push(op::LDLOC0);
+    script.push(op::LDLOC6);
+    script.push(op::ADD);
+    script.push(op::LDLOC5);
+    script.push(op::LDLOC6);
+    script.push(op::PICKITEM);
+    script.push(op::SETITEM);
 
-    script.push(lookup_opcode("LDLOC6")?.byte);
-    script.push(lookup_opcode("INC")?.byte);
-    script.push(lookup_opcode("STLOC6")?.byte);
+    script.push(op::LDLOC6);
+    script.push(op::INC);
+    script.push(op::STLOC6);
     let store_back = emit_jump_placeholder(script, "JMP_L")?;
     let store_done = script.len();
     patch_jump(script, store_exit, store_done)?;
@@ -125,7 +125,7 @@ pub(in super::super) fn emit_table_copy_helper(
     patch_jump(script, zero_branch, zero_label)?;
 
     let trap_label = script.len();
-    script.push(lookup_opcode("ABORT")?.byte);
+    script.push(op::ABORT);
     patch_jump(script, trap_dst_oob, trap_label)?;
     patch_jump(script, trap_src_oob, trap_label)?;
     Ok(())

@@ -212,3 +212,599 @@ pub static OPCODES: &[OpcodeInfo] = &[
     OpcodeInfo { name: "ABORTMSG", byte: 0xE0, operand_size: 0, operand_size_prefix: 0 },
     OpcodeInfo { name: "ASSERTMSG", byte: 0xE1, operand_size: 0, operand_size_prefix: 0 },
 ];
+
+/// Byte-value constants for each NeoVM opcode, keyed by mnemonic name.
+pub mod op {
+    /// `PUSHINT8` opcode byte.
+    pub const PUSHINT8: u8 = 0x00;
+    /// `PUSHINT16` opcode byte.
+    pub const PUSHINT16: u8 = 0x01;
+    /// `PUSHINT32` opcode byte.
+    pub const PUSHINT32: u8 = 0x02;
+    /// `PUSHINT64` opcode byte.
+    pub const PUSHINT64: u8 = 0x03;
+    /// `PUSHINT128` opcode byte.
+    pub const PUSHINT128: u8 = 0x04;
+    /// `PUSHINT256` opcode byte.
+    pub const PUSHINT256: u8 = 0x05;
+    /// `PUSHT` opcode byte.
+    pub const PUSHT: u8 = 0x08;
+    /// `PUSHF` opcode byte.
+    pub const PUSHF: u8 = 0x09;
+    /// `PUSHA` opcode byte.
+    pub const PUSHA: u8 = 0x0A;
+    /// `PUSHNULL` opcode byte.
+    pub const PUSHNULL: u8 = 0x0B;
+    /// `PUSHDATA1` opcode byte.
+    pub const PUSHDATA1: u8 = 0x0C;
+    /// `PUSHDATA2` opcode byte.
+    pub const PUSHDATA2: u8 = 0x0D;
+    /// `PUSHDATA4` opcode byte.
+    pub const PUSHDATA4: u8 = 0x0E;
+    /// `PUSHM1` opcode byte.
+    pub const PUSHM1: u8 = 0x0F;
+    /// `PUSH0` opcode byte.
+    pub const PUSH0: u8 = 0x10;
+    /// `PUSH1` opcode byte.
+    pub const PUSH1: u8 = 0x11;
+    /// `PUSH2` opcode byte.
+    pub const PUSH2: u8 = 0x12;
+    /// `PUSH3` opcode byte.
+    pub const PUSH3: u8 = 0x13;
+    /// `PUSH4` opcode byte.
+    pub const PUSH4: u8 = 0x14;
+    /// `PUSH5` opcode byte.
+    pub const PUSH5: u8 = 0x15;
+    /// `PUSH6` opcode byte.
+    pub const PUSH6: u8 = 0x16;
+    /// `PUSH7` opcode byte.
+    pub const PUSH7: u8 = 0x17;
+    /// `PUSH8` opcode byte.
+    pub const PUSH8: u8 = 0x18;
+    /// `PUSH9` opcode byte.
+    pub const PUSH9: u8 = 0x19;
+    /// `PUSH10` opcode byte.
+    pub const PUSH10: u8 = 0x1A;
+    /// `PUSH11` opcode byte.
+    pub const PUSH11: u8 = 0x1B;
+    /// `PUSH12` opcode byte.
+    pub const PUSH12: u8 = 0x1C;
+    /// `PUSH13` opcode byte.
+    pub const PUSH13: u8 = 0x1D;
+    /// `PUSH14` opcode byte.
+    pub const PUSH14: u8 = 0x1E;
+    /// `PUSH15` opcode byte.
+    pub const PUSH15: u8 = 0x1F;
+    /// `PUSH16` opcode byte.
+    pub const PUSH16: u8 = 0x20;
+    /// `NOP` opcode byte.
+    pub const NOP: u8 = 0x21;
+    /// `JMP` opcode byte.
+    pub const JMP: u8 = 0x22;
+    /// `JMP_L` opcode byte.
+    pub const JMP_L: u8 = 0x23;
+    /// `JMPIF` opcode byte.
+    pub const JMPIF: u8 = 0x24;
+    /// `JMPIF_L` opcode byte.
+    pub const JMPIF_L: u8 = 0x25;
+    /// `JMPIFNOT` opcode byte.
+    pub const JMPIFNOT: u8 = 0x26;
+    /// `JMPIFNOT_L` opcode byte.
+    pub const JMPIFNOT_L: u8 = 0x27;
+    /// `JMPEQ` opcode byte.
+    pub const JMPEQ: u8 = 0x28;
+    /// `JMPEQ_L` opcode byte.
+    pub const JMPEQ_L: u8 = 0x29;
+    /// `JMPNE` opcode byte.
+    pub const JMPNE: u8 = 0x2A;
+    /// `JMPNE_L` opcode byte.
+    pub const JMPNE_L: u8 = 0x2B;
+    /// `JMPGT` opcode byte.
+    pub const JMPGT: u8 = 0x2C;
+    /// `JMPGT_L` opcode byte.
+    pub const JMPGT_L: u8 = 0x2D;
+    /// `JMPGE` opcode byte.
+    pub const JMPGE: u8 = 0x2E;
+    /// `JMPGE_L` opcode byte.
+    pub const JMPGE_L: u8 = 0x2F;
+    /// `JMPLT` opcode byte.
+    pub const JMPLT: u8 = 0x30;
+    /// `JMPLT_L` opcode byte.
+    pub const JMPLT_L: u8 = 0x31;
+    /// `JMPLE` opcode byte.
+    pub const JMPLE: u8 = 0x32;
+    /// `JMPLE_L` opcode byte.
+    pub const JMPLE_L: u8 = 0x33;
+    /// `CALL` opcode byte.
+    pub const CALL: u8 = 0x34;
+    /// `CALL_L` opcode byte.
+    pub const CALL_L: u8 = 0x35;
+    /// `CALLA` opcode byte.
+    pub const CALLA: u8 = 0x36;
+    /// `CALLT` opcode byte.
+    pub const CALLT: u8 = 0x37;
+    /// `ABORT` opcode byte.
+    pub const ABORT: u8 = 0x38;
+    /// `ASSERT` opcode byte.
+    pub const ASSERT: u8 = 0x39;
+    /// `THROW` opcode byte.
+    pub const THROW: u8 = 0x3A;
+    /// `TRY` opcode byte.
+    pub const TRY: u8 = 0x3B;
+    /// `TRY_L` opcode byte.
+    pub const TRY_L: u8 = 0x3C;
+    /// `ENDTRY` opcode byte.
+    pub const ENDTRY: u8 = 0x3D;
+    /// `ENDTRY_L` opcode byte.
+    pub const ENDTRY_L: u8 = 0x3E;
+    /// `ENDFINALLY` opcode byte.
+    pub const ENDFINALLY: u8 = 0x3F;
+    /// `RET` opcode byte.
+    pub const RET: u8 = 0x40;
+    /// `SYSCALL` opcode byte.
+    pub const SYSCALL: u8 = 0x41;
+    /// `DEPTH` opcode byte.
+    pub const DEPTH: u8 = 0x43;
+    /// `DROP` opcode byte.
+    pub const DROP: u8 = 0x45;
+    /// `NIP` opcode byte.
+    pub const NIP: u8 = 0x46;
+    /// `XDROP` opcode byte.
+    pub const XDROP: u8 = 0x48;
+    /// `CLEAR` opcode byte.
+    pub const CLEAR: u8 = 0x49;
+    /// `DUP` opcode byte.
+    pub const DUP: u8 = 0x4A;
+    /// `OVER` opcode byte.
+    pub const OVER: u8 = 0x4B;
+    /// `PICK` opcode byte.
+    pub const PICK: u8 = 0x4D;
+    /// `TUCK` opcode byte.
+    pub const TUCK: u8 = 0x4E;
+    /// `SWAP` opcode byte.
+    pub const SWAP: u8 = 0x50;
+    /// `ROT` opcode byte.
+    pub const ROT: u8 = 0x51;
+    /// `ROLL` opcode byte.
+    pub const ROLL: u8 = 0x52;
+    /// `REVERSE3` opcode byte.
+    pub const REVERSE3: u8 = 0x53;
+    /// `REVERSE4` opcode byte.
+    pub const REVERSE4: u8 = 0x54;
+    /// `REVERSEN` opcode byte.
+    pub const REVERSEN: u8 = 0x55;
+    /// `INITSSLOT` opcode byte.
+    pub const INITSSLOT: u8 = 0x56;
+    /// `INITSLOT` opcode byte.
+    pub const INITSLOT: u8 = 0x57;
+    /// `LDSFLD0` opcode byte.
+    pub const LDSFLD0: u8 = 0x58;
+    /// `LDSFLD1` opcode byte.
+    pub const LDSFLD1: u8 = 0x59;
+    /// `LDSFLD2` opcode byte.
+    pub const LDSFLD2: u8 = 0x5A;
+    /// `LDSFLD3` opcode byte.
+    pub const LDSFLD3: u8 = 0x5B;
+    /// `LDSFLD4` opcode byte.
+    pub const LDSFLD4: u8 = 0x5C;
+    /// `LDSFLD5` opcode byte.
+    pub const LDSFLD5: u8 = 0x5D;
+    /// `LDSFLD6` opcode byte.
+    pub const LDSFLD6: u8 = 0x5E;
+    /// `LDSFLD` opcode byte.
+    pub const LDSFLD: u8 = 0x5F;
+    /// `STSFLD0` opcode byte.
+    pub const STSFLD0: u8 = 0x60;
+    /// `STSFLD1` opcode byte.
+    pub const STSFLD1: u8 = 0x61;
+    /// `STSFLD2` opcode byte.
+    pub const STSFLD2: u8 = 0x62;
+    /// `STSFLD3` opcode byte.
+    pub const STSFLD3: u8 = 0x63;
+    /// `STSFLD4` opcode byte.
+    pub const STSFLD4: u8 = 0x64;
+    /// `STSFLD5` opcode byte.
+    pub const STSFLD5: u8 = 0x65;
+    /// `STSFLD6` opcode byte.
+    pub const STSFLD6: u8 = 0x66;
+    /// `STSFLD` opcode byte.
+    pub const STSFLD: u8 = 0x67;
+    /// `LDLOC0` opcode byte.
+    pub const LDLOC0: u8 = 0x68;
+    /// `LDLOC1` opcode byte.
+    pub const LDLOC1: u8 = 0x69;
+    /// `LDLOC2` opcode byte.
+    pub const LDLOC2: u8 = 0x6A;
+    /// `LDLOC3` opcode byte.
+    pub const LDLOC3: u8 = 0x6B;
+    /// `LDLOC4` opcode byte.
+    pub const LDLOC4: u8 = 0x6C;
+    /// `LDLOC5` opcode byte.
+    pub const LDLOC5: u8 = 0x6D;
+    /// `LDLOC6` opcode byte.
+    pub const LDLOC6: u8 = 0x6E;
+    /// `LDLOC` opcode byte.
+    pub const LDLOC: u8 = 0x6F;
+    /// `STLOC0` opcode byte.
+    pub const STLOC0: u8 = 0x70;
+    /// `STLOC1` opcode byte.
+    pub const STLOC1: u8 = 0x71;
+    /// `STLOC2` opcode byte.
+    pub const STLOC2: u8 = 0x72;
+    /// `STLOC3` opcode byte.
+    pub const STLOC3: u8 = 0x73;
+    /// `STLOC4` opcode byte.
+    pub const STLOC4: u8 = 0x74;
+    /// `STLOC5` opcode byte.
+    pub const STLOC5: u8 = 0x75;
+    /// `STLOC6` opcode byte.
+    pub const STLOC6: u8 = 0x76;
+    /// `STLOC` opcode byte.
+    pub const STLOC: u8 = 0x77;
+    /// `LDARG0` opcode byte.
+    pub const LDARG0: u8 = 0x78;
+    /// `LDARG1` opcode byte.
+    pub const LDARG1: u8 = 0x79;
+    /// `LDARG2` opcode byte.
+    pub const LDARG2: u8 = 0x7A;
+    /// `LDARG3` opcode byte.
+    pub const LDARG3: u8 = 0x7B;
+    /// `LDARG4` opcode byte.
+    pub const LDARG4: u8 = 0x7C;
+    /// `LDARG5` opcode byte.
+    pub const LDARG5: u8 = 0x7D;
+    /// `LDARG6` opcode byte.
+    pub const LDARG6: u8 = 0x7E;
+    /// `LDARG` opcode byte.
+    pub const LDARG: u8 = 0x7F;
+    /// `STARG0` opcode byte.
+    pub const STARG0: u8 = 0x80;
+    /// `STARG1` opcode byte.
+    pub const STARG1: u8 = 0x81;
+    /// `STARG2` opcode byte.
+    pub const STARG2: u8 = 0x82;
+    /// `STARG3` opcode byte.
+    pub const STARG3: u8 = 0x83;
+    /// `STARG4` opcode byte.
+    pub const STARG4: u8 = 0x84;
+    /// `STARG5` opcode byte.
+    pub const STARG5: u8 = 0x85;
+    /// `STARG6` opcode byte.
+    pub const STARG6: u8 = 0x86;
+    /// `STARG` opcode byte.
+    pub const STARG: u8 = 0x87;
+    /// `NEWBUFFER` opcode byte.
+    pub const NEWBUFFER: u8 = 0x88;
+    /// `MEMCPY` opcode byte.
+    pub const MEMCPY: u8 = 0x89;
+    /// `CAT` opcode byte.
+    pub const CAT: u8 = 0x8B;
+    /// `SUBSTR` opcode byte.
+    pub const SUBSTR: u8 = 0x8C;
+    /// `LEFT` opcode byte.
+    pub const LEFT: u8 = 0x8D;
+    /// `RIGHT` opcode byte.
+    pub const RIGHT: u8 = 0x8E;
+    /// `INVERT` opcode byte.
+    pub const INVERT: u8 = 0x90;
+    /// `AND` opcode byte.
+    pub const AND: u8 = 0x91;
+    /// `OR` opcode byte.
+    pub const OR: u8 = 0x92;
+    /// `XOR` opcode byte.
+    pub const XOR: u8 = 0x93;
+    /// `EQUAL` opcode byte.
+    pub const EQUAL: u8 = 0x97;
+    /// `NOTEQUAL` opcode byte.
+    pub const NOTEQUAL: u8 = 0x98;
+    /// `SIGN` opcode byte.
+    pub const SIGN: u8 = 0x99;
+    /// `ABS` opcode byte.
+    pub const ABS: u8 = 0x9A;
+    /// `NEGATE` opcode byte.
+    pub const NEGATE: u8 = 0x9B;
+    /// `INC` opcode byte.
+    pub const INC: u8 = 0x9C;
+    /// `DEC` opcode byte.
+    pub const DEC: u8 = 0x9D;
+    /// `ADD` opcode byte.
+    pub const ADD: u8 = 0x9E;
+    /// `SUB` opcode byte.
+    pub const SUB: u8 = 0x9F;
+    /// `MUL` opcode byte.
+    pub const MUL: u8 = 0xA0;
+    /// `DIV` opcode byte.
+    pub const DIV: u8 = 0xA1;
+    /// `MOD` opcode byte.
+    pub const MOD: u8 = 0xA2;
+    /// `POW` opcode byte.
+    pub const POW: u8 = 0xA3;
+    /// `SQRT` opcode byte.
+    pub const SQRT: u8 = 0xA4;
+    /// `MODMUL` opcode byte.
+    pub const MODMUL: u8 = 0xA5;
+    /// `MODPOW` opcode byte.
+    pub const MODPOW: u8 = 0xA6;
+    /// `SHL` opcode byte.
+    pub const SHL: u8 = 0xA8;
+    /// `SHR` opcode byte.
+    pub const SHR: u8 = 0xA9;
+    /// `NOT` opcode byte.
+    pub const NOT: u8 = 0xAA;
+    /// `BOOLAND` opcode byte.
+    pub const BOOLAND: u8 = 0xAB;
+    /// `BOOLOR` opcode byte.
+    pub const BOOLOR: u8 = 0xAC;
+    /// `NZ` opcode byte.
+    pub const NZ: u8 = 0xB1;
+    /// `NUMEQUAL` opcode byte.
+    pub const NUMEQUAL: u8 = 0xB3;
+    /// `NUMNOTEQUAL` opcode byte.
+    pub const NUMNOTEQUAL: u8 = 0xB4;
+    /// `LT` opcode byte.
+    pub const LT: u8 = 0xB5;
+    /// `LE` opcode byte.
+    pub const LE: u8 = 0xB6;
+    /// `GT` opcode byte.
+    pub const GT: u8 = 0xB7;
+    /// `GE` opcode byte.
+    pub const GE: u8 = 0xB8;
+    /// `MIN` opcode byte.
+    pub const MIN: u8 = 0xB9;
+    /// `MAX` opcode byte.
+    pub const MAX: u8 = 0xBA;
+    /// `WITHIN` opcode byte.
+    pub const WITHIN: u8 = 0xBB;
+    /// `PACKMAP` opcode byte.
+    pub const PACKMAP: u8 = 0xBE;
+    /// `PACKSTRUCT` opcode byte.
+    pub const PACKSTRUCT: u8 = 0xBF;
+    /// `PACK` opcode byte.
+    pub const PACK: u8 = 0xC0;
+    /// `UNPACK` opcode byte.
+    pub const UNPACK: u8 = 0xC1;
+    /// `NEWARRAY0` opcode byte.
+    pub const NEWARRAY0: u8 = 0xC2;
+    /// `NEWARRAY` opcode byte.
+    pub const NEWARRAY: u8 = 0xC3;
+    /// `NEWARRAY_T` opcode byte.
+    pub const NEWARRAY_T: u8 = 0xC4;
+    /// `NEWSTRUCT0` opcode byte.
+    pub const NEWSTRUCT0: u8 = 0xC5;
+    /// `NEWSTRUCT` opcode byte.
+    pub const NEWSTRUCT: u8 = 0xC6;
+    /// `NEWMAP` opcode byte.
+    pub const NEWMAP: u8 = 0xC8;
+    /// `SIZE` opcode byte.
+    pub const SIZE: u8 = 0xCA;
+    /// `HASKEY` opcode byte.
+    pub const HASKEY: u8 = 0xCB;
+    /// `KEYS` opcode byte.
+    pub const KEYS: u8 = 0xCC;
+    /// `VALUES` opcode byte.
+    pub const VALUES: u8 = 0xCD;
+    /// `PICKITEM` opcode byte.
+    pub const PICKITEM: u8 = 0xCE;
+    /// `APPEND` opcode byte.
+    pub const APPEND: u8 = 0xCF;
+    /// `SETITEM` opcode byte.
+    pub const SETITEM: u8 = 0xD0;
+    /// `REVERSEITEMS` opcode byte.
+    pub const REVERSEITEMS: u8 = 0xD1;
+    /// `REMOVE` opcode byte.
+    pub const REMOVE: u8 = 0xD2;
+    /// `CLEARITEMS` opcode byte.
+    pub const CLEARITEMS: u8 = 0xD3;
+    /// `POPITEM` opcode byte.
+    pub const POPITEM: u8 = 0xD4;
+    /// `ISNULL` opcode byte.
+    pub const ISNULL: u8 = 0xD8;
+    /// `ISTYPE` opcode byte.
+    pub const ISTYPE: u8 = 0xD9;
+    /// `CONVERT` opcode byte.
+    pub const CONVERT: u8 = 0xDB;
+    /// `ABORTMSG` opcode byte.
+    pub const ABORTMSG: u8 = 0xE0;
+    /// `ASSERTMSG` opcode byte.
+    pub const ASSERTMSG: u8 = 0xE1;
+
+    /// Every opcode paired with its byte value, mirroring [`super::OPCODES`].
+    pub static ALL: &[(&str, u8)] = &[
+        ("PUSHINT8", PUSHINT8),
+        ("PUSHINT16", PUSHINT16),
+        ("PUSHINT32", PUSHINT32),
+        ("PUSHINT64", PUSHINT64),
+        ("PUSHINT128", PUSHINT128),
+        ("PUSHINT256", PUSHINT256),
+        ("PUSHT", PUSHT),
+        ("PUSHF", PUSHF),
+        ("PUSHA", PUSHA),
+        ("PUSHNULL", PUSHNULL),
+        ("PUSHDATA1", PUSHDATA1),
+        ("PUSHDATA2", PUSHDATA2),
+        ("PUSHDATA4", PUSHDATA4),
+        ("PUSHM1", PUSHM1),
+        ("PUSH0", PUSH0),
+        ("PUSH1", PUSH1),
+        ("PUSH2", PUSH2),
+        ("PUSH3", PUSH3),
+        ("PUSH4", PUSH4),
+        ("PUSH5", PUSH5),
+        ("PUSH6", PUSH6),
+        ("PUSH7", PUSH7),
+        ("PUSH8", PUSH8),
+        ("PUSH9", PUSH9),
+        ("PUSH10", PUSH10),
+        ("PUSH11", PUSH11),
+        ("PUSH12", PUSH12),
+        ("PUSH13", PUSH13),
+        ("PUSH14", PUSH14),
+        ("PUSH15", PUSH15),
+        ("PUSH16", PUSH16),
+        ("NOP", NOP),
+        ("JMP", JMP),
+        ("JMP_L", JMP_L),
+        ("JMPIF", JMPIF),
+        ("JMPIF_L", JMPIF_L),
+        ("JMPIFNOT", JMPIFNOT),
+        ("JMPIFNOT_L", JMPIFNOT_L),
+        ("JMPEQ", JMPEQ),
+        ("JMPEQ_L", JMPEQ_L),
+        ("JMPNE", JMPNE),
+        ("JMPNE_L", JMPNE_L),
+        ("JMPGT", JMPGT),
+        ("JMPGT_L", JMPGT_L),
+        ("JMPGE", JMPGE),
+        ("JMPGE_L", JMPGE_L),
+        ("JMPLT", JMPLT),
+        ("JMPLT_L", JMPLT_L),
+        ("JMPLE", JMPLE),
+        ("JMPLE_L", JMPLE_L),
+        ("CALL", CALL),
+        ("CALL_L", CALL_L),
+        ("CALLA", CALLA),
+        ("CALLT", CALLT),
+        ("ABORT", ABORT),
+        ("ASSERT", ASSERT),
+        ("THROW", THROW),
+        ("TRY", TRY),
+        ("TRY_L", TRY_L),
+        ("ENDTRY", ENDTRY),
+        ("ENDTRY_L", ENDTRY_L),
+        ("ENDFINALLY", ENDFINALLY),
+        ("RET", RET),
+        ("SYSCALL", SYSCALL),
+        ("DEPTH", DEPTH),
+        ("DROP", DROP),
+        ("NIP", NIP),
+        ("XDROP", XDROP),
+        ("CLEAR", CLEAR),
+        ("DUP", DUP),
+        ("OVER", OVER),
+        ("PICK", PICK),
+        ("TUCK", TUCK),
+        ("SWAP", SWAP),
+        ("ROT", ROT),
+        ("ROLL", ROLL),
+        ("REVERSE3", REVERSE3),
+        ("REVERSE4", REVERSE4),
+        ("REVERSEN", REVERSEN),
+        ("INITSSLOT", INITSSLOT),
+        ("INITSLOT", INITSLOT),
+        ("LDSFLD0", LDSFLD0),
+        ("LDSFLD1", LDSFLD1),
+        ("LDSFLD2", LDSFLD2),
+        ("LDSFLD3", LDSFLD3),
+        ("LDSFLD4", LDSFLD4),
+        ("LDSFLD5", LDSFLD5),
+        ("LDSFLD6", LDSFLD6),
+        ("LDSFLD", LDSFLD),
+        ("STSFLD0", STSFLD0),
+        ("STSFLD1", STSFLD1),
+        ("STSFLD2", STSFLD2),
+        ("STSFLD3", STSFLD3),
+        ("STSFLD4", STSFLD4),
+        ("STSFLD5", STSFLD5),
+        ("STSFLD6", STSFLD6),
+        ("STSFLD", STSFLD),
+        ("LDLOC0", LDLOC0),
+        ("LDLOC1", LDLOC1),
+        ("LDLOC2", LDLOC2),
+        ("LDLOC3", LDLOC3),
+        ("LDLOC4", LDLOC4),
+        ("LDLOC5", LDLOC5),
+        ("LDLOC6", LDLOC6),
+        ("LDLOC", LDLOC),
+        ("STLOC0", STLOC0),
+        ("STLOC1", STLOC1),
+        ("STLOC2", STLOC2),
+        ("STLOC3", STLOC3),
+        ("STLOC4", STLOC4),
+        ("STLOC5", STLOC5),
+        ("STLOC6", STLOC6),
+        ("STLOC", STLOC),
+        ("LDARG0", LDARG0),
+        ("LDARG1", LDARG1),
+        ("LDARG2", LDARG2),
+        ("LDARG3", LDARG3),
+        ("LDARG4", LDARG4),
+        ("LDARG5", LDARG5),
+        ("LDARG6", LDARG6),
+        ("LDARG", LDARG),
+        ("STARG0", STARG0),
+        ("STARG1", STARG1),
+        ("STARG2", STARG2),
+        ("STARG3", STARG3),
+        ("STARG4", STARG4),
+        ("STARG5", STARG5),
+        ("STARG6", STARG6),
+        ("STARG", STARG),
+        ("NEWBUFFER", NEWBUFFER),
+        ("MEMCPY", MEMCPY),
+        ("CAT", CAT),
+        ("SUBSTR", SUBSTR),
+        ("LEFT", LEFT),
+        ("RIGHT", RIGHT),
+        ("INVERT", INVERT),
+        ("AND", AND),
+        ("OR", OR),
+        ("XOR", XOR),
+        ("EQUAL", EQUAL),
+        ("NOTEQUAL", NOTEQUAL),
+        ("SIGN", SIGN),
+        ("ABS", ABS),
+        ("NEGATE", NEGATE),
+        ("INC", INC),
+        ("DEC", DEC),
+        ("ADD", ADD),
+        ("SUB", SUB),
+        ("MUL", MUL),
+        ("DIV", DIV),
+        ("MOD", MOD),
+        ("POW", POW),
+        ("SQRT", SQRT),
+        ("MODMUL", MODMUL),
+        ("MODPOW", MODPOW),
+        ("SHL", SHL),
+        ("SHR", SHR),
+        ("NOT", NOT),
+        ("BOOLAND", BOOLAND),
+        ("BOOLOR", BOOLOR),
+        ("NZ", NZ),
+        ("NUMEQUAL", NUMEQUAL),
+        ("NUMNOTEQUAL", NUMNOTEQUAL),
+        ("LT", LT),
+        ("LE", LE),
+        ("GT", GT),
+        ("GE", GE),
+        ("MIN", MIN),
+        ("MAX", MAX),
+        ("WITHIN", WITHIN),
+        ("PACKMAP", PACKMAP),
+        ("PACKSTRUCT", PACKSTRUCT),
+        ("PACK", PACK),
+        ("UNPACK", UNPACK),
+        ("NEWARRAY0", NEWARRAY0),
+        ("NEWARRAY", NEWARRAY),
+        ("NEWARRAY_T", NEWARRAY_T),
+        ("NEWSTRUCT0", NEWSTRUCT0),
+        ("NEWSTRUCT", NEWSTRUCT),
+        ("NEWMAP", NEWMAP),
+        ("SIZE", SIZE),
+        ("HASKEY", HASKEY),
+        ("KEYS", KEYS),
+        ("VALUES", VALUES),
+        ("PICKITEM", PICKITEM),
+        ("APPEND", APPEND),
+        ("SETITEM", SETITEM),
+        ("REVERSEITEMS", REVERSEITEMS),
+        ("REMOVE", REMOVE),
+        ("CLEARITEMS", CLEARITEMS),
+        ("POPITEM", POPITEM),
+        ("ISNULL", ISNULL),
+        ("ISTYPE", ISTYPE),
+        ("CONVERT", CONVERT),
+        ("ABORTMSG", ABORTMSG),
+        ("ASSERTMSG", ASSERTMSG),
+    ];
+}

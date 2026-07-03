@@ -120,10 +120,10 @@ pub(crate) fn translate_memory_store(
     let _ = value;
     ensure_memory_access(runtime, mem_index)?;
     runtime.emit_memory_init_call(script)?;
-    script.push(lookup_opcode("SWAP")?.byte);
+    script.push(op::SWAP);
     let _addr = apply_memory_offset(script, address, offset)
         .with_context(|| format!("failed to apply offset for {}", context))?;
-    script.push(lookup_opcode("SWAP")?.byte);
+    script.push(op::SWAP);
     runtime
         .emit_memory_store_call(script, bytes)
         .with_context(|| format!("failed to emit helper call for {}", context))?;

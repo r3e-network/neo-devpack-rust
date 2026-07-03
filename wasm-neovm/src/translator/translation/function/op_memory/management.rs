@@ -13,7 +13,7 @@ pub(super) fn try_handle(
         Operator::MemorySize { mem, .. } => {
             ensure_memory_access(runtime, *mem)?;
             runtime.emit_memory_init_call(script)?;
-            script.push(lookup_opcode("LDSFLD2")?.byte);
+            script.push(op::LDSFLD2);
             value_stack.push(StackValue {
                 const_value: None,
                 bytecode_start: None,

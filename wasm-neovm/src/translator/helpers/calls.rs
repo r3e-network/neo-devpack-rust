@@ -3,8 +3,8 @@
 
 use anyhow::Result;
 
-use super::lookup_opcode;
 use super::offsets::emit_placeholder;
+use super::op;
 use super::push::emit_push_int;
 
 /// Emit a CALL_L placeholder for runtime helper calls
@@ -27,14 +27,14 @@ pub fn emit_call_to(script: &mut Vec<u8>, target: usize) -> Result<()> {
     let delta_i64 = target_i64 - opcode_pos_i64;
 
     if (i8::MIN as i64..=i8::MAX as i64).contains(&delta_i64) {
-        script.push(lookup_opcode("CALL")?.byte);
+        script.push(op::CALL);
         script.push(delta_i64 as i8 as u8);
         return Ok(());
     }
 
     let delta_i32 = i32::try_from(delta_i64)
         .map_err(|_| anyhow::anyhow!("call delta {} exceeds i32 range", delta_i64))?;
-    script.push(lookup_opcode("CALL_L")?.byte);
+    script.push(op::CALL_L);
     script.extend_from_slice(&delta_i32.to_le_bytes());
     Ok(())
 }
@@ -60,20 +60,20 @@ pub fn emit_reverse_top_n(script: &mut Vec<u8>, n: usize) -> Result<()> {
     match n {
         0 | 1 => Ok(()),
         2 => {
-            script.push(lookup_opcode("SWAP")?.byte);
+            script.push(op::SWAP);
             Ok(())
         }
         3 => {
-            script.push(lookup_opcode("REVERSE3")?.byte);
+            script.push(op::REVERSE3);
             Ok(())
         }
         4 => {
-            script.push(lookup_opcode("REVERSE4")?.byte);
+            script.push(op::REVERSE4);
             Ok(())
         }
         _ => {
             let _ = emit_push_int(script, n as i128);
-            script.push(lookup_opcode("REVERSEN")?.byte);
+            script.push(op::REVERSEN);
             Ok(())
         }
     }

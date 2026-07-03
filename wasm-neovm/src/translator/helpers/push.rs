@@ -7,7 +7,7 @@ use super::super::constants::{
     PUSH0, PUSHINT128, PUSHINT16, PUSHINT32, PUSHINT64, PUSHINT8, PUSHM1, PUSH_BASE,
 };
 use super::super::types::StackValue;
-use super::lookup_opcode;
+use super::{lookup_opcode, op};
 
 // Small value cache for common constants (Round 64 optimization)
 // These are the most frequently pushed values in WASM contracts
@@ -110,17 +110,17 @@ pub(crate) fn emit_push_data(script: &mut Vec<u8>, data: &[u8]) -> Result<()> {
     // (Neo Legacy supported PUSHBYTES1..75, but those byte values are not data pushes in N3.)
     if len <= 255 {
         // For data <= 255 bytes, use PUSHDATA1 (length encoded as u8)
-        script.push(lookup_opcode("PUSHDATA1")?.byte);
+        script.push(op::PUSHDATA1);
         script.push(len as u8);
         script.extend_from_slice(data);
     } else if len <= 65535 {
         // For data <= 65535 bytes, use PUSHDATA2 (length encoded as u16)
-        script.push(lookup_opcode("PUSHDATA2")?.byte);
+        script.push(op::PUSHDATA2);
         script.extend_from_slice(&(len as u16).to_le_bytes());
         script.extend_from_slice(data);
     } else {
         // For larger data, use PUSHDATA4 (length encoded as u32)
-        script.push(lookup_opcode("PUSHDATA4")?.byte);
+        script.push(op::PUSHDATA4);
         script.extend_from_slice(&(len as u32).to_le_bytes());
         script.extend_from_slice(data);
     }

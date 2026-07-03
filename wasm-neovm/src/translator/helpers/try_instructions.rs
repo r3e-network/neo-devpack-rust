@@ -5,11 +5,11 @@
 
 use anyhow::{bail, Result};
 
-use super::lookup_opcode;
+use super::op;
 
 /// Emit a TRY_L instruction with placeholder catch offset
 pub(crate) fn emit_try_placeholder(script: &mut Vec<u8>) -> Result<usize> {
-    script.push(lookup_opcode("TRY_L")?.byte);
+    script.push(op::TRY_L);
     let placeholder_pos = script.len();
 
     // Emit 8-byte placeholder (4 bytes for catch offset, 4 bytes for finally offset)
@@ -20,7 +20,7 @@ pub(crate) fn emit_try_placeholder(script: &mut Vec<u8>) -> Result<usize> {
 
 /// Emit an ENDTRY_L instruction with placeholder offset
 pub(crate) fn emit_endtry_placeholder(script: &mut Vec<u8>) -> Result<usize> {
-    script.push(lookup_opcode("ENDTRY_L")?.byte);
+    script.push(op::ENDTRY_L);
     let placeholder_pos = script.len();
 
     // Emit 4-byte placeholder for end offset

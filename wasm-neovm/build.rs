@@ -255,6 +255,29 @@ fn generate_opcodes(opcode_path: &Path) -> Result<()> {
     }
     writeln!(file, "];")?;
 
+    writeln!(
+        file,
+        "\n/// Byte-value constants for each NeoVM opcode, keyed by mnemonic name."
+    )?;
+    writeln!(file, "pub mod op {{")?;
+    for entry in &entries {
+        writeln!(
+            file,
+            "    /// `{}` opcode byte.\n    pub const {}: u8 = 0x{:02X};",
+            entry.name, entry.name, entry.byte
+        )?;
+    }
+    writeln!(
+        file,
+        "\n    /// Every opcode paired with its byte value, mirroring [`super::OPCODES`]."
+    )?;
+    writeln!(file, "    pub static ALL: &[(&str, u8)] = &[")?;
+    for entry in &entries {
+        writeln!(file, "        (\"{}\", {}),", entry.name, entry.name)?;
+    }
+    writeln!(file, "    ];")?;
+    writeln!(file, "}}")?;
+
     Ok(())
 }
 

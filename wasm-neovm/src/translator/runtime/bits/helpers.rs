@@ -20,22 +20,22 @@ pub(in crate::translator::runtime) fn emit_ctz_helper(
 ) -> Result<()> {
     mask_top_bits(script, bits)?;
 
-    script.push(lookup_opcode("DUP")?.byte);
-    script.push(lookup_opcode("PUSH0")?.byte);
-    script.push(lookup_opcode("EQUAL")?.byte);
+    script.push(op::DUP);
+    script.push(op::PUSH0);
+    script.push(op::EQUAL);
     let zero_branch = emit_jump_placeholder(script, "JMPIF_L")?;
 
-    script.push(lookup_opcode("DUP")?.byte);
-    script.push(lookup_opcode("NEGATE")?.byte);
-    script.push(lookup_opcode("AND")?.byte);
+    script.push(op::DUP);
+    script.push(op::NEGATE);
+    script.push(op::AND);
     let _ = emit_push_int(script, 1);
-    script.push(lookup_opcode("SUB")?.byte);
+    script.push(op::SUB);
     mask_top_bits(script, bits)?;
     emit_popcnt_core(script, bits)?;
     script.push(RET);
 
     let zero_label = script.len();
-    script.push(lookup_opcode("DROP")?.byte);
+    script.push(op::DROP);
     let _ = emit_push_int(script, bits as i128);
     script.push(RET);
 
@@ -49,9 +49,9 @@ pub(in crate::translator::runtime) fn emit_clz_helper(
 ) -> Result<()> {
     mask_top_bits(script, bits)?;
 
-    script.push(lookup_opcode("DUP")?.byte);
-    script.push(lookup_opcode("PUSH0")?.byte);
-    script.push(lookup_opcode("EQUAL")?.byte);
+    script.push(op::DUP);
+    script.push(op::PUSH0);
+    script.push(op::EQUAL);
     let zero_branch = emit_jump_placeholder(script, "JMPIF_L")?;
 
     let shifts: &[u32] = match bits {
@@ -61,19 +61,19 @@ pub(in crate::translator::runtime) fn emit_clz_helper(
     };
 
     for &shift in shifts {
-        script.push(lookup_opcode("DUP")?.byte);
+        script.push(op::DUP);
         let _ = emit_push_int(script, shift as i128);
-        script.push(lookup_opcode("SHR")?.byte);
-        script.push(lookup_opcode("OR")?.byte);
+        script.push(op::SHR);
+        script.push(op::OR);
     }
 
-    script.push(lookup_opcode("INVERT")?.byte);
+    script.push(op::INVERT);
     mask_top_bits(script, bits)?;
     emit_popcnt_core(script, bits)?;
     script.push(RET);
 
     let zero_label = script.len();
-    script.push(lookup_opcode("DROP")?.byte);
+    script.push(op::DROP);
     let _ = emit_push_int(script, bits as i128);
     script.push(RET);
 
@@ -100,34 +100,34 @@ fn emit_popcnt_core(script: &mut Vec<u8>, bits: u32) -> Result<()> {
         _ => bail!("unsupported bit-width {} for popcnt helper", bits),
     };
 
-    script.push(lookup_opcode("DUP")?.byte);
+    script.push(op::DUP);
     let _ = emit_push_int(script, 1);
-    script.push(lookup_opcode("SHR")?.byte);
+    script.push(op::SHR);
     let _ = emit_push_int(script, mask1);
-    script.push(lookup_opcode("AND")?.byte);
-    script.push(lookup_opcode("SUB")?.byte);
+    script.push(op::AND);
+    script.push(op::SUB);
 
-    script.push(lookup_opcode("DUP")?.byte);
+    script.push(op::DUP);
     let _ = emit_push_int(script, mask2);
-    script.push(lookup_opcode("AND")?.byte);
-    script.push(lookup_opcode("OVER")?.byte);
+    script.push(op::AND);
+    script.push(op::OVER);
     let _ = emit_push_int(script, 2);
-    script.push(lookup_opcode("SHR")?.byte);
+    script.push(op::SHR);
     let _ = emit_push_int(script, mask2);
-    script.push(lookup_opcode("AND")?.byte);
-    script.push(lookup_opcode("ADD")?.byte);
-    script.push(lookup_opcode("SWAP")?.byte);
-    script.push(lookup_opcode("DROP")?.byte);
+    script.push(op::AND);
+    script.push(op::ADD);
+    script.push(op::SWAP);
+    script.push(op::DROP);
 
-    script.push(lookup_opcode("DUP")?.byte);
+    script.push(op::DUP);
     let _ = emit_push_int(script, 4);
-    script.push(lookup_opcode("SHR")?.byte);
-    script.push(lookup_opcode("ADD")?.byte);
+    script.push(op::SHR);
+    script.push(op::ADD);
     let _ = emit_push_int(script, mask4);
-    script.push(lookup_opcode("AND")?.byte);
+    script.push(op::AND);
 
     let _ = emit_push_int(script, h01);
-    script.push(lookup_opcode("MUL")?.byte);
+    script.push(op::MUL);
     // The SWAR popcount trick `(x * h01) >> shift` extracts the byte-sum from
     // the TOP byte of a `bits`-wide product, relying on the multiply wrapping
     // modulo 2^bits. NeoVM `BigInteger` is arbitrary-precision and does NOT
@@ -136,6 +136,6 @@ fn emit_popcnt_core(script: &mut Vec<u8>, bits: u32) -> Result<()> {
     // fixed-width wraparound before extracting the top byte.
     mask_top_bits(script, bits)?;
     let _ = emit_push_int(script, shift as i128);
-    script.push(lookup_opcode("SHR")?.byte);
+    script.push(op::SHR);
     Ok(())
 }

@@ -27,7 +27,7 @@ pub(super) fn emit_runtime_init_helper(
         bail!("too many static slots required for runtime initialisation");
     }
 
-    script.push(lookup_opcode("INITSSLOT")?.byte);
+    script.push(op::INITSSLOT);
     script.push(static_slot_count as u8);
 
     // Only emit memory-related slot initialization when memory is actually declared.
@@ -35,36 +35,36 @@ pub(super) fn emit_runtime_init_helper(
     if has_memory {
         let initial_bytes = (config.initial_pages as i128) * 65_536i128;
         if chunked_memory {
-            script.push(lookup_opcode("NEWARRAY0")?.byte);
+            script.push(op::NEWARRAY0);
             for _ in 0..config.initial_pages {
-                script.push(lookup_opcode("DUP")?.byte);
+                script.push(op::DUP);
                 emit_chunked_new_page(script)?;
-                script.push(lookup_opcode("APPEND")?.byte);
+                script.push(op::APPEND);
             }
-            script.push(lookup_opcode("STSFLD0")?.byte);
+            script.push(op::STSFLD0);
             let _ = emit_push_int(script, initial_bytes);
         } else {
             if initial_bytes == 0 {
-                script.push(lookup_opcode("PUSH0")?.byte);
-                script.push(lookup_opcode("NEWBUFFER")?.byte);
-                script.push(lookup_opcode("STSFLD0")?.byte);
-                script.push(lookup_opcode("PUSH0")?.byte);
+                script.push(op::PUSH0);
+                script.push(op::NEWBUFFER);
+                script.push(op::STSFLD0);
+                script.push(op::PUSH0);
             } else {
                 let _ = emit_push_int(script, initial_bytes);
-                script.push(lookup_opcode("DUP")?.byte); // reuse initial_bytes for STSFLD1
-                script.push(lookup_opcode("NEWBUFFER")?.byte);
-                script.push(lookup_opcode("STSFLD0")?.byte);
+                script.push(op::DUP); // reuse initial_bytes for STSFLD1
+                script.push(op::NEWBUFFER);
+                script.push(op::STSFLD0);
                 // DUP'd value is still on stack for STSFLD1
             }
         }
-        script.push(lookup_opcode("STSFLD1")?.byte);
+        script.push(op::STSFLD1);
 
         if config.initial_pages == 0 {
-            script.push(lookup_opcode("PUSH0")?.byte);
+            script.push(op::PUSH0);
         } else {
             let _ = emit_push_int(script, config.initial_pages as i128);
         }
-        script.push(lookup_opcode("STSFLD2")?.byte);
+        script.push(op::STSFLD2);
 
         match config.maximum_pages {
             Some(max) => {
@@ -74,7 +74,7 @@ pub(super) fn emit_runtime_init_helper(
                 let _ = emit_push_int(script, -1);
             }
         }
-        script.push(lookup_opcode("STSFLD3")?.byte);
+        script.push(op::STSFLD3);
     }
 
     // NeoVM's INITSSLOT initializes all static slots to null, then the helper
@@ -83,21 +83,21 @@ pub(super) fn emit_runtime_init_helper(
     for table in tables {
         let len = table.entries.len();
         if len == 0 {
-            script.push(lookup_opcode("NEWARRAY0")?.byte);
+            script.push(op::NEWARRAY0);
         } else {
             let _ = emit_push_int(script, len as i128);
-            script.push(lookup_opcode("NEWARRAY")?.byte);
+            script.push(op::NEWARRAY);
         }
         emit_store_static(script, table.slot)?;
         if len > 0 {
             emit_load_static(script, table.slot)?;
             for (idx, value) in table.entries.iter().enumerate() {
-                script.push(lookup_opcode("DUP")?.byte);
+                script.push(op::DUP);
                 let _ = emit_push_int(script, idx as i128);
                 let _ = emit_push_int(script, *value as i128);
-                script.push(lookup_opcode("SETITEM")?.byte);
+                script.push(op::SETITEM);
             }
-            script.push(lookup_opcode("DROP")?.byte);
+            script.push(op::DROP);
         }
     }
 
@@ -109,7 +109,7 @@ pub(super) fn emit_runtime_init_helper(
     for segment in passive_segments {
         emit_push_data(script, segment.bytes)?;
         emit_store_static(script, segment.byte_slot)?;
-        script.push(lookup_opcode("PUSH0")?.byte);
+        script.push(op::PUSH0);
         emit_store_static(script, segment.drop_slot)?;
     }
 
@@ -120,35 +120,35 @@ pub(super) fn emit_runtime_init_helper(
         if has_memory && chunked_memory {
             emit_chunked_copy_literal_to_memory(script, segment.offset, segment.bytes)?;
         } else {
-            script.push(lookup_opcode("LDSFLD0")?.byte);
+            script.push(op::LDSFLD0);
             let _ = emit_push_int(script, segment.offset as i128);
             emit_push_data(script, segment.bytes)?;
-            script.push(lookup_opcode("PUSH0")?.byte);
+            script.push(op::PUSH0);
             let _ = emit_push_int(script, segment.bytes.len() as i128);
-            script.push(lookup_opcode("MEMCPY")?.byte);
+            script.push(op::MEMCPY);
         }
     }
 
     for element in passive_elements {
         let len = element.values.len();
         if len == 0 {
-            script.push(lookup_opcode("NEWARRAY0")?.byte);
+            script.push(op::NEWARRAY0);
         } else {
             let _ = emit_push_int(script, len as i128);
-            script.push(lookup_opcode("NEWARRAY")?.byte);
+            script.push(op::NEWARRAY);
         }
         emit_store_static(script, element.value_slot)?;
         if len > 0 {
             emit_load_static(script, element.value_slot)?;
             for (idx, value) in element.values.iter().enumerate() {
-                script.push(lookup_opcode("DUP")?.byte);
+                script.push(op::DUP);
                 let _ = emit_push_int(script, idx as i128);
                 let _ = emit_push_int(script, *value as i128);
-                script.push(lookup_opcode("SETITEM")?.byte);
+                script.push(op::SETITEM);
             }
-            script.push(lookup_opcode("DROP")?.byte);
+            script.push(op::DROP);
         }
-        script.push(lookup_opcode("PUSH0")?.byte);
+        script.push(op::PUSH0);
         emit_store_static(script, element.drop_slot)?;
     }
 

@@ -11,11 +11,11 @@ pub(crate) fn emit_select(
     condition: StackValue,
 ) -> Result<StackValue> {
     let jmp_false = emit_jump_placeholder(script, "JMPIFNOT_L")?;
-    script.push(lookup_opcode("DROP")?.byte);
+    script.push(op::DROP);
     let jmp_end = emit_jump_placeholder(script, "JMP_L")?;
     let else_target = script.len();
     patch_jump(script, jmp_false, else_target)?;
-    script.push(lookup_opcode("NIP")?.byte);
+    script.push(op::NIP);
     let end_target = script.len();
     patch_jump(script, jmp_end, end_target)?;
 
@@ -45,7 +45,7 @@ pub(crate) fn emit_zero_extend(
     if let (Some(result), Some(_start)) = (const_result, value.bytecode_start) {
         // Avoid bytecode backtracking (`truncate`) because it can invalidate
         // pending control-flow fixup positions captured earlier.
-        script.push(lookup_opcode("DROP")?.byte);
+        script.push(op::DROP);
         return Ok(emit_push_int(script, result));
     }
 
@@ -72,7 +72,7 @@ pub(crate) fn emit_bit_count(
         };
 
         if let Some(_start) = value.bytecode_start {
-            script.push(lookup_opcode("DROP")?.byte);
+            script.push(op::DROP);
             return Ok(emit_push_int(script, result));
         }
     }
@@ -138,7 +138,7 @@ pub(crate) fn emit_sign_extend(
         .map(|c| sign_extend_const(truncate_to_bits(c, from_bits), from_bits));
 
     if let (Some(result), Some(_start)) = (const_result, value.bytecode_start) {
-        script.push(lookup_opcode("DROP")?.byte);
+        script.push(op::DROP);
         return Ok(emit_push_int(script, result));
     }
 
@@ -156,25 +156,25 @@ pub(crate) fn emit_sign_extend(
     // For bit widths <= 8, use the old approach since mask_top_bits uses a shorter literal push.
     if from_bits >= 9 {
         super::util::emit_pow2(script, from_bits - 1)?;
-        script.push(lookup_opcode("TUCK")?.byte);
-        script.push(lookup_opcode("DUP")?.byte);
+        script.push(op::TUCK);
+        script.push(op::DUP);
         let _ = emit_push_int(script, 1);
-        script.push(lookup_opcode("SHL")?.byte);
-        script.push(lookup_opcode("DEC")?.byte);
-        script.push(lookup_opcode("ROT")?.byte);
-        script.push(lookup_opcode("AND")?.byte);
-        script.push(lookup_opcode("XOR")?.byte);
-        script.push(lookup_opcode("SWAP")?.byte);
-        script.push(lookup_opcode("SUB")?.byte);
+        script.push(op::SHL);
+        script.push(op::DEC);
+        script.push(op::ROT);
+        script.push(op::AND);
+        script.push(op::XOR);
+        script.push(op::SWAP);
+        script.push(op::SUB);
     } else {
         // Old approach: mask first, then XOR-SUB with separate sign_bit push
         mask_top_bits(script, from_bits)?;
         super::util::emit_pow2(script, from_bits - 1)?;
-        script.push(lookup_opcode("SWAP")?.byte);
-        script.push(lookup_opcode("OVER")?.byte);
-        script.push(lookup_opcode("XOR")?.byte);
-        script.push(lookup_opcode("SWAP")?.byte);
-        script.push(lookup_opcode("SUB")?.byte);
+        script.push(op::SWAP);
+        script.push(op::OVER);
+        script.push(op::XOR);
+        script.push(op::SWAP);
+        script.push(op::SUB);
     }
 
     Ok(StackValue {
@@ -202,7 +202,7 @@ pub(crate) fn emit_sign_extend_via_helper(
         .map(|c| sign_extend_const(truncate_to_bits(c, from_bits), from_bits));
 
     if let (Some(result), Some(_start)) = (const_result, value.bytecode_start) {
-        script.push(lookup_opcode("DROP")?.byte);
+        script.push(op::DROP);
         return Ok(emit_push_int(script, result));
     }
 

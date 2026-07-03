@@ -19,16 +19,16 @@ pub(in super::super) fn emit_shift_right(
     mask_shift_amount(script, bits)?;
     match kind {
         ShiftKind::Arithmetic => {
-            script.push(lookup_opcode("SHR")?.byte);
+            script.push(op::SHR);
         }
         ShiftKind::Logical => {
             let swap = lookup_opcode("SWAP")?;
             script.push(swap.byte);
             let mask = ((1u128 << bits) - 1) as i128;
             let _ = emit_push_int(script, mask);
-            script.push(lookup_opcode("AND")?.byte);
+            script.push(op::AND);
             script.push(swap.byte);
-            script.push(lookup_opcode("SHR")?.byte);
+            script.push(op::SHR);
         }
     }
 
@@ -109,8 +109,8 @@ pub(in super::super) fn emit_rotate(
             let _ = (value_start, shift_start);
             // Keep script monotonic: replacing backtracking `truncate` with
             // explicit stack cleanup avoids invalidating pending fixups.
-            script.push(lookup_opcode("DROP")?.byte);
-            script.push(lookup_opcode("DROP")?.byte);
+            script.push(op::DROP);
+            script.push(op::DROP);
             Ok(emit_push_int(script, rotate))
         }
         _ => emit_rotate_dynamic(script, value, shift, bits, left),
@@ -218,7 +218,7 @@ fn apply_shift_right(
 fn stack_pick(script: &mut Vec<u8>, stack: &mut Vec<StackValue>, index: usize) -> Result<()> {
     let idx_sv = emit_push_int(script, index as i128);
     stack.push(idx_sv);
-    script.push(lookup_opcode("PICK")?.byte);
+    script.push(op::PICK);
     let len = stack.len();
     if index >= len - 1 {
         bail!("PICK index {} out of range", index);
@@ -237,7 +237,7 @@ fn stack_swap(script: &mut Vec<u8>, stack: &mut [StackValue]) -> Result<()> {
     if stack.len() < 2 {
         bail!("SWAP requires at least two stack values");
     }
-    script.push(lookup_opcode("SWAP")?.byte);
+    script.push(op::SWAP);
     let len = stack.len();
     stack.swap(len - 1, len - 2);
     Ok(())
@@ -247,7 +247,7 @@ fn stack_drop(script: &mut Vec<u8>, stack: &mut Vec<StackValue>) -> Result<()> {
     if stack.is_empty() {
         bail!("DROP requires at least one stack value");
     }
-    script.push(lookup_opcode("DROP")?.byte);
+    script.push(op::DROP);
     stack.pop();
     Ok(())
 }
@@ -280,6 +280,6 @@ pub(in super::super) fn mask_shift_amount(script: &mut Vec<u8>, bits: u32) -> Re
     };
 
     let _ = emit_push_int(script, mask);
-    script.push(lookup_opcode("AND")?.byte);
+    script.push(op::AND);
     Ok(())
 }

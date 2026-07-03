@@ -92,7 +92,7 @@ pub(in super::super) fn try_handle_neo_import(
         script.push(convert.byte);
         script.push(STACKITEMTYPE_BYTESTRING);
         emit_push_data(script, &[0u8; 19])?;
-        script.push(lookup_opcode("CAT")?.byte);
+        script.push(op::CAT);
 
         let syscall = syscalls::lookup_extended("System.Runtime.CheckWitness")
             .ok_or_else(|| anyhow!("syscall 'System.Runtime.CheckWitness' not found"))?;

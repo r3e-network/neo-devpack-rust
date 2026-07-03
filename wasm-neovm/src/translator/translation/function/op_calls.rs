@@ -62,20 +62,20 @@ fn emit_reverse_args(script: &mut Vec<u8>, n: usize) -> Result<()> {
     match n {
         0 | 1 => Ok(()),
         2 => {
-            script.push(lookup_opcode("SWAP")?.byte);
+            script.push(op::SWAP);
             Ok(())
         }
         3 => {
-            script.push(lookup_opcode("REVERSE3")?.byte);
+            script.push(op::REVERSE3);
             Ok(())
         }
         4 => {
-            script.push(lookup_opcode("REVERSE4")?.byte);
+            script.push(op::REVERSE4);
             Ok(())
         }
         _ => {
             let _ = emit_push_int(script, n as i128);
-            script.push(lookup_opcode("REVERSEN")?.byte);
+            script.push(op::REVERSEN);
             Ok(())
         }
     }

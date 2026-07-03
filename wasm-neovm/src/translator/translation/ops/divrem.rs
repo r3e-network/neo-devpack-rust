@@ -26,11 +26,11 @@ const INT_MIN_64: i128 = i64::MIN as i128;
 pub(in super::super) fn emit_abort_on_zero_divisor(script: &mut Vec<u8>) -> Result<()> {
     // Stack before: [..., dividend, divisor]
     // Trap if divisor == 0.
-    script.push(lookup_opcode("DUP")?.byte);
-    script.push(lookup_opcode("PUSH0")?.byte);
-    script.push(lookup_opcode("EQUAL")?.byte);
+    script.push(op::DUP);
+    script.push(op::PUSH0);
+    script.push(op::EQUAL);
     let ok = emit_jump_placeholder(script, "JMPIFNOT_L")?;
-    script.push(lookup_opcode("ABORT")?.byte);
+    script.push(op::ABORT);
     let end = script.len();
     patch_jump(script, ok, end)?;
     Ok(())
@@ -53,16 +53,16 @@ pub(in super::super) fn emit_abort_on_signed_div_overflow(
 
     // Stack before: [..., dividend, divisor]
     // Compute: (dividend == MIN) && (divisor == -1)
-    script.push(lookup_opcode("OVER")?.byte);
+    script.push(op::OVER);
     let _ = emit_push_int(script, min);
-    script.push(lookup_opcode("EQUAL")?.byte);
-    script.push(lookup_opcode("OVER")?.byte);
-    script.push(lookup_opcode("PUSHM1")?.byte);
-    script.push(lookup_opcode("EQUAL")?.byte);
-    script.push(lookup_opcode("BOOLAND")?.byte);
+    script.push(op::EQUAL);
+    script.push(op::OVER);
+    script.push(op::PUSHM1);
+    script.push(op::EQUAL);
+    script.push(op::BOOLAND);
 
     let ok = emit_jump_placeholder(script, "JMPIFNOT_L")?;
-    script.push(lookup_opcode("ABORT")?.byte);
+    script.push(op::ABORT);
     let end = script.len();
     patch_jump(script, ok, end)?;
     Ok(())

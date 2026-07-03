@@ -36,7 +36,7 @@ pub(crate) fn emit_binary_op(
 pub(in super::super) fn emit_eqz(script: &mut Vec<u8>, value: StackValue) -> Result<StackValue> {
     // Round 82: Const evaluation for EQZ
     if let (Some(constant), Some(_start)) = (value.const_value, value.bytecode_start) {
-        script.push(lookup_opcode("DROP")?.byte);
+        script.push(op::DROP);
         let result = if constant == 0 { 1 } else { 0 };
         return Ok(emit_push_int(script, result));
     }

@@ -7,6 +7,7 @@ mod generated {
     include!(concat!(env!("OUT_DIR"), "/opcodes.rs"));
 }
 
+pub use generated::op;
 pub use generated::OpcodeInfo;
 
 /// Fast O(1) opcode lookup table initialized lazily
@@ -47,4 +48,38 @@ pub fn lookup(name: &str) -> Option<&'static OpcodeInfo> {
 /// Look up an opcode by its byte value.
 pub fn lookup_by_byte(byte: u8) -> Option<&'static OpcodeInfo> {
     OPCODE_BYTE_LOOKUP[byte as usize]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `op::ALL` must cover every entry in `OPCODES`, in the same order, and
+    /// each named byte constant must equal the corresponding table byte.
+    #[test]
+    fn op_consts_cover_opcodes_exhaustively() {
+        assert_eq!(
+            op::ALL.len(),
+            generated::OPCODES.len(),
+            "op::ALL and OPCODES must have the same number of entries"
+        );
+        for (info, &(name, byte)) in generated::OPCODES.iter().zip(op::ALL.iter()) {
+            assert_eq!(info.name, name, "op::ALL name mismatch at byte 0x{:02X}", info.byte);
+            assert_eq!(
+                info.byte, byte,
+                "op::ALL byte mismatch for '{}': table 0x{:02X} vs const 0x{:02X}",
+                info.name, info.byte, byte
+            );
+        }
+        // Every table entry must also be reachable through name lookup,
+        // guaranteeing the const genuinely equals the table byte.
+        for info in generated::OPCODES {
+            let looked_up = lookup(info.name).expect("every opcode name resolves");
+            assert_eq!(
+                looked_up.byte, info.byte,
+                "lookup byte disagrees with table for '{}'",
+                info.name
+            );
+        }
+    }
 }

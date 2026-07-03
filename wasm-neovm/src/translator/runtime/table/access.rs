@@ -8,36 +8,36 @@ pub(in super::super) fn emit_table_get_helper(
     table_slot: usize,
     mask_u32_offset: Option<usize>,
 ) -> Result<()> {
-    script.push(lookup_opcode("INITSLOT")?.byte);
+    script.push(op::INITSLOT);
     script.push(2);
     script.push(0);
 
-    script.push(lookup_opcode("STLOC0")?.byte);
+    script.push(op::STLOC0);
     emit_load_static(script, table_slot)?;
-    script.push(lookup_opcode("STLOC1")?.byte);
+    script.push(op::STLOC1);
 
-    script.push(lookup_opcode("LDLOC0")?.byte);
+    script.push(op::LDLOC0);
     if let Some(off) = mask_u32_offset {
         emit_call_to(script, off)?;
     } else {
         emit_mask_u32(script)?;
     }
-    script.push(lookup_opcode("STLOC0")?.byte);
+    script.push(op::STLOC0);
 
-    script.push(lookup_opcode("LDLOC0")?.byte);
-    script.push(lookup_opcode("LDLOC1")?.byte);
-    script.push(lookup_opcode("SIZE")?.byte);
-    script.push(lookup_opcode("SWAP")?.byte);
-    script.push(lookup_opcode("GT")?.byte);
+    script.push(op::LDLOC0);
+    script.push(op::LDLOC1);
+    script.push(op::SIZE);
+    script.push(op::SWAP);
+    script.push(op::GT);
     let trap_oob = emit_jump_placeholder(script, "JMPIFNOT_L")?;
 
-    script.push(lookup_opcode("LDLOC1")?.byte);
-    script.push(lookup_opcode("LDLOC0")?.byte);
-    script.push(lookup_opcode("PICKITEM")?.byte);
+    script.push(op::LDLOC1);
+    script.push(op::LDLOC0);
+    script.push(op::PICKITEM);
     script.push(RET);
 
     let trap_label = script.len();
-    script.push(lookup_opcode("ABORT")?.byte);
+    script.push(op::ABORT);
     patch_jump(script, trap_oob, trap_label)?;
     Ok(())
 }
@@ -47,38 +47,38 @@ pub(in super::super) fn emit_table_set_helper(
     table_slot: usize,
     mask_u32_offset: Option<usize>,
 ) -> Result<()> {
-    script.push(lookup_opcode("INITSLOT")?.byte);
+    script.push(op::INITSLOT);
     script.push(3);
     script.push(0);
 
-    script.push(lookup_opcode("STLOC0")?.byte);
-    script.push(lookup_opcode("STLOC1")?.byte);
+    script.push(op::STLOC0);
+    script.push(op::STLOC1);
     emit_load_static(script, table_slot)?;
-    script.push(lookup_opcode("STLOC2")?.byte);
+    script.push(op::STLOC2);
 
-    script.push(lookup_opcode("LDLOC1")?.byte);
+    script.push(op::LDLOC1);
     if let Some(off) = mask_u32_offset {
         emit_call_to(script, off)?;
     } else {
         emit_mask_u32(script)?;
     }
-    script.push(lookup_opcode("STLOC1")?.byte);
+    script.push(op::STLOC1);
 
-    script.push(lookup_opcode("LDLOC1")?.byte);
-    script.push(lookup_opcode("LDLOC2")?.byte);
-    script.push(lookup_opcode("SIZE")?.byte);
-    script.push(lookup_opcode("SWAP")?.byte);
-    script.push(lookup_opcode("GT")?.byte);
+    script.push(op::LDLOC1);
+    script.push(op::LDLOC2);
+    script.push(op::SIZE);
+    script.push(op::SWAP);
+    script.push(op::GT);
     let trap_oob = emit_jump_placeholder(script, "JMPIFNOT_L")?;
 
-    script.push(lookup_opcode("LDLOC2")?.byte);
-    script.push(lookup_opcode("LDLOC1")?.byte);
-    script.push(lookup_opcode("LDLOC0")?.byte);
-    script.push(lookup_opcode("SETITEM")?.byte);
+    script.push(op::LDLOC2);
+    script.push(op::LDLOC1);
+    script.push(op::LDLOC0);
+    script.push(op::SETITEM);
     script.push(RET);
 
     let trap_label = script.len();
-    script.push(lookup_opcode("ABORT")?.byte);
+    script.push(op::ABORT);
     patch_jump(script, trap_oob, trap_label)?;
     Ok(())
 }
@@ -88,7 +88,7 @@ pub(in super::super) fn emit_table_size_helper(
     table_slot: usize,
 ) -> Result<()> {
     emit_load_static(script, table_slot)?;
-    script.push(lookup_opcode("SIZE")?.byte);
+    script.push(op::SIZE);
     script.push(RET);
     Ok(())
 }

@@ -41,10 +41,10 @@ impl RuntimeHelpers {
             // mask_u32 body: (1 << 32) - 1, AND, RET
             let _ = emit_push_int(script, 1);
             let _ = emit_push_int(script, 32);
-            script.push(lookup_opcode("SHL")?.byte);
-            script.push(lookup_opcode("DEC")?.byte);
-            script.push(lookup_opcode("AND")?.byte);
-            script.push(lookup_opcode("RET")?.byte);
+            script.push(op::SHL);
+            script.push(op::DEC);
+            script.push(op::AND);
+            script.push(op::RET);
             Some(offset)
         } else {
             None
@@ -219,7 +219,7 @@ impl RuntimeHelpers {
         //   ByteString → Integer (little-endian decode)
         //   Integer → Integer (no-op)
         // No explicit null check needed — NeoVM CONVERT does it all.
-        script.push(lookup_opcode("CONVERT")?.byte);
+        script.push(op::CONVERT);
         script.push(0x21); // StackItemType.Integer
 
         // Falls through to sign-extend body
@@ -241,19 +241,19 @@ impl RuntimeHelpers {
         // Stack: [value]
         let _ = emit_push_int(script, 1);
         let _ = emit_push_int(script, (bits - 1) as i128);
-        script.push(lookup_opcode("SHL")?.byte); // [value, sign_bit]
-        script.push(lookup_opcode("TUCK")?.byte); // [sign_bit, value, sign_bit]
-        script.push(lookup_opcode("DUP")?.byte); // [sign_bit, value, sign_bit, sign_bit]
+        script.push(op::SHL); // [value, sign_bit]
+        script.push(op::TUCK); // [sign_bit, value, sign_bit]
+        script.push(op::DUP); // [sign_bit, value, sign_bit, sign_bit]
         let _ = emit_push_int(script, 1);
-        script.push(lookup_opcode("SHL")?.byte); // [sign_bit, value, sign_bit, mask+1]
-        script.push(lookup_opcode("DEC")?.byte); // [sign_bit, value, sign_bit, mask]
-        script.push(lookup_opcode("ROT")?.byte); // [sign_bit, sign_bit, mask, value]
-        script.push(lookup_opcode("AND")?.byte); // [sign_bit, sign_bit, masked]
-        script.push(lookup_opcode("XOR")?.byte); // [sign_bit, masked^sign]
-        script.push(lookup_opcode("SWAP")?.byte); // [masked^sign, sign_bit]
-        script.push(lookup_opcode("SUB")?.byte); // [result]
+        script.push(op::SHL); // [sign_bit, value, sign_bit, mask+1]
+        script.push(op::DEC); // [sign_bit, value, sign_bit, mask]
+        script.push(op::ROT); // [sign_bit, sign_bit, mask, value]
+        script.push(op::AND); // [sign_bit, sign_bit, masked]
+        script.push(op::XOR); // [sign_bit, masked^sign]
+        script.push(op::SWAP); // [masked^sign, sign_bit]
+        script.push(op::SUB); // [result]
 
-        script.push(lookup_opcode("RET")?.byte);
+        script.push(op::RET);
 
         Ok(offset)
     }
@@ -476,9 +476,9 @@ impl RuntimeHelpers {
         let table_get_call = emit_call_placeholder(script)?;
         patch_call(script, table_get_call, table_helper_offset)?;
 
-        script.push(lookup_opcode("DUP")?.byte);
+        script.push(op::DUP);
         let _ = emit_push_int(script, FUNCREF_NULL);
-        script.push(lookup_opcode("EQUAL")?.byte);
+        script.push(op::EQUAL);
         let trap_null = emit_jump_placeholder(script, "JMPIF_L")?;
 
         let total_functions = imports.len() + func_type_indices.len();
@@ -512,9 +512,9 @@ impl RuntimeHelpers {
                 continue;
             }
 
-            script.push(lookup_opcode("DUP")?.byte);
+            script.push(op::DUP);
             let _ = emit_push_int(script, fn_index as i128);
-            script.push(lookup_opcode("EQUAL")?.byte);
+            script.push(op::EQUAL);
             let jump = emit_jump_placeholder(script, "JMPIF_L")?;
 
             let target = if fn_index < imports.len() {
@@ -526,8 +526,8 @@ impl RuntimeHelpers {
         }
 
         let trap_label = script.len();
-        script.push(lookup_opcode("DROP")?.byte);
-        script.push(lookup_opcode("ABORT")?.byte);
+        script.push(op::DROP);
+        script.push(op::ABORT);
         patch_jump(script, trap_null, trap_label)?;
 
         let helper_type = types.get(key.type_index as usize).ok_or_else(|| {
@@ -550,7 +550,7 @@ impl RuntimeHelpers {
         for (jump, target) in case_fixups {
             let label = script.len();
             patch_jump(script, jump, label)?;
-            script.push(lookup_opcode("DROP")?.byte);
+            script.push(op::DROP);
             match target {
                 CallTarget::Import(idx) => {
                     // Imports route through helpers whose own INITSLOT already
@@ -583,7 +583,7 @@ impl RuntimeHelpers {
             patch_jump(script, fixup, end_label)?;
         }
 
-        script.push(lookup_opcode("RET")?.byte);
+        script.push(op::RET);
 
         if let Some(record) = self.call_indirect_helpers.get_mut(&key) {
             record.offset = Some(helper_offset);

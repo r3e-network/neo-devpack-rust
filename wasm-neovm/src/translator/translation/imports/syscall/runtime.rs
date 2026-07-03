@@ -71,9 +71,9 @@ pub(super) fn try_handle_runtime_hash_i64_import(
     }
 
     emit_descriptor_syscall(descriptor, script)?;
-    script.push(lookup_opcode("PUSH0")?.byte);
-    script.push(lookup_opcode("PUSH8")?.byte);
-    script.push(lookup_opcode("SUBSTR")?.byte);
+    script.push(op::PUSH0);
+    script.push(op::PUSH8);
+    script.push(op::SUBSTR);
 
     let convert =
         opcodes::lookup("CONVERT").ok_or_else(|| anyhow!("CONVERT opcode metadata missing"))?;
@@ -131,8 +131,8 @@ pub(super) fn try_handle_runtime_event_import(
         // name; SWAP restores (name, state) pop order. Without the SWAP the
         // VM pops the Array as the name and faults with
         // "invalid conversion: Array/ByteString".
-        script.push(lookup_opcode("NEWARRAY0")?.byte);
-        script.push(lookup_opcode("SWAP")?.byte);
+        script.push(op::NEWARRAY0);
+        script.push(op::SWAP);
     }
 
     let syscall = syscalls::lookup_extended(descriptor)
@@ -270,8 +270,8 @@ pub(super) fn try_handle_notify_with_state_import(
 
     // 3. (event_ptr, event_len) -> ByteString of the event name. The pair
     //    sits beneath the decoded array; two ROTs restore (len, ptr) on top.
-    script.push(lookup_opcode("ROT")?.byte);
-    script.push(lookup_opcode("ROT")?.byte);
+    script.push(op::ROT);
+    script.push(op::ROT);
     runtime.emit_storage_helper(
         script,
         crate::translator::runtime::StorageHelperKind::ExtractMemoryBytes,
@@ -304,7 +304,7 @@ fn emit_stdlib_deserialize_call(script: &mut Vec<u8>) -> Result<()> {
 
     // args = [serialised_state]
     let _ = emit_push_int(script, 1);
-    script.push(lookup_opcode("PACK")?.byte);
+    script.push(op::PACK);
     // callFlags, method, contractHash (LE bytes, as Contract.Call consumes).
     let _ = emit_push_int(script, CALLFLAGS_READ_ONLY);
     emit_push_data(script, b"deserialize")?;

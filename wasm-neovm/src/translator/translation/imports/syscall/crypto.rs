@@ -123,11 +123,11 @@ fn resolve_cryptolib_target(name: &str) -> Option<(&'static str, NativeMethod)> 
 fn emit_roll(script: &mut Vec<u8>, n: usize) -> Result<()> {
     match n {
         0 => {}
-        1 => script.push(lookup_opcode("SWAP")?.byte),
-        2 => script.push(lookup_opcode("ROT")?.byte),
+        1 => script.push(op::SWAP),
+        2 => script.push(op::ROT),
         _ => {
             let _ = emit_push_int(script, n as i128);
-            script.push(lookup_opcode("ROLL")?.byte);
+            script.push(op::ROLL);
         }
     }
     Ok(())
@@ -252,7 +252,7 @@ pub(super) fn try_handle_crypto_import(
     // PACK pops top-first, so the first native argument (extracted last,
     // now on top) lands in args[0] and the trailing scalars in the tail.
     let _ = emit_push_int(script, shape.native_arg_count() as i128);
-    script.push(lookup_opcode("PACK")?.byte);
+    script.push(op::PACK);
 
     emit_contract_call_frame(script, &method.contract_hash, method.method)?;
     runtime.mark_cryptolib_used(method.method);
@@ -290,7 +290,7 @@ pub(super) fn emit_cryptolib_call(
         contract_hash, CRYPTOLIB_HASH,
         "emit_cryptolib_call is only routed CryptoLib methods (import '{import_name}')"
     );
-    script.push(lookup_opcode("NEWARRAY0")?.byte);
+    script.push(op::NEWARRAY0);
     emit_contract_call_frame(script, &contract_hash, method)?;
     cryptolib_descriptor_for_method(method)
 }

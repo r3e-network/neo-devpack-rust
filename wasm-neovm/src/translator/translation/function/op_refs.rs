@@ -36,10 +36,10 @@ pub(super) fn try_handle(
                 let dup = lookup_opcode("DUP")?;
                 script.push(dup.byte);
                 let _ = emit_push_int(script, FUNCREF_NULL);
-                script.push(lookup_opcode("EQUAL")?.byte);
+                script.push(op::EQUAL);
                 let skip_trap = emit_jump_placeholder(script, "JMPIFNOT_L")?;
-                script.push(lookup_opcode("DROP")?.byte);
-                script.push(lookup_opcode("ABORT")?.byte);
+                script.push(op::DROP);
+                script.push(op::ABORT);
                 let continue_label = script.len();
                 patch_jump(script, skip_trap, continue_label)?;
                 value_stack.push(value);

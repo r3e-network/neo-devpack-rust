@@ -129,7 +129,7 @@ pub(super) fn translate_function(ctx: &mut TranslationContext<'_>) -> Result<Str
     }
 
     if local_count > 0 || param_count > 0 {
-        ctx.script.push(lookup_opcode("INITSLOT")?.byte);
+        ctx.script.push(op::INITSLOT);
         ctx.script.push(local_count as u8);
         ctx.script.push(param_count as u8);
     }
