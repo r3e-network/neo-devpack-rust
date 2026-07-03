@@ -18,6 +18,24 @@ RANDOM_PAIRS="${RANDOM_PAIRS:-200}"
 GEN="$ROOT/contracts/fuzz-ops"
 GENFILE="$GEN/src/generated_ops.rs"
 REPRO_DIR="${REPRO_DIR:-/tmp/neo-validate}"
+MIN_FREE_MB="${MIN_FREE_MB:-2048}"   # abort a round if free disk drops below this
+
+# Free disk in MB on the volume holding the repo (BSD/GNU df compatible).
+free_mb() {
+    df -Pm "$ROOT" 2>/dev/null | awk 'NR==2 {print $4}'
+}
+
+# A round writes NEFs + a ~tens-of-MB oracle batch file; a full disk corrupts
+# those mid-write (the fuzzer once mis-reported an Errno-28 batch-write failure
+# as a translator MISMATCH). Guard so low disk pauses cleanly instead.
+disk_guard() {
+    local free; free=$(free_mb)
+    if [ -n "$free" ] && [ "$free" -lt "$MIN_FREE_MB" ]; then
+        echo "!!! low disk: ${free}MB free < ${MIN_FREE_MB}MB — pausing. Reclaim with: rm -rf $ROOT/contracts/*/target $ROOT/wasm-neovm/fuzz/target (regenerable; keep the corpus)." | tee -a "$LOG"
+        return 1
+    fi
+    return 0
+}
 
 mkdir -p "$REPRO_DIR"
 : > "$LOG"
@@ -61,6 +79,7 @@ restore_genfile() {
 i=0; seed=$START
 trap 'restore_genfile; echo "stopped $(date) after $i rounds" | tee -a "$LOG"; exit 0' INT TERM
 while :; do
+    if ! disk_guard; then break; fi
     i=$((i + 1))
     # Fresh expression batch for this seed (temp -> move so the lib never sees a
     # truncated generated_ops.rs).
