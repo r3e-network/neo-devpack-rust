@@ -360,35 +360,35 @@ jobs:
         run: cargo tarpaulin --manifest-path solana-compat/Cargo.toml --out xml --output-dir ./coverage-solana-compat
 
       - name: Upload coverage to Codecov - wasm-neovm
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v7
         with:
           files: ./coverage-wasm-neovm/cobertura.xml
           flags: wasm-neovm
           token: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Upload coverage to Codecov - move-neovm
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v7
         with:
           files: ./coverage-move-neovm/cobertura.xml
           flags: move-neovm
           token: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Upload coverage to Codecov - rust-devpack
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v7
         with:
           files: ./coverage-rust-devpack/cobertura.xml
           flags: rust-devpack
           token: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Upload coverage to Codecov - neo-test
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v7
         with:
           files: ./coverage-neo-test/cobertura.xml
           flags: neo-test
           token: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Upload coverage to Codecov - solana-compat
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v7
         with:
           files: ./coverage-solana-compat/cobertura.xml
           flags: solana-compat
